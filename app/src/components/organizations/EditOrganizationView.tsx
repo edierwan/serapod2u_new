@@ -201,17 +201,17 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (logoFile) {
         try {
           const fileExt = logoFile.name.split('.').pop()
-          const fileName = `${organization!.org_code}-${Date.now()}.${fileExt}`
-          const filePath = `${fileName}`
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+          const filePath = `${organization!.id}/${fileName}` // Nested folder: org_id/filename
 
-          // Delete old logo if exists
+          // Delete old logo if exists (using same pattern as user avatars)
           if (organization?.logo_url) {
             try {
-              const oldPath = organization.logo_url.split('/').pop()
+              const oldPath = organization.logo_url.split('/').pop()?.split('?')[0]
               if (oldPath) {
                 await supabase.storage
-                  .from('organization-logos')
-                  .remove([oldPath])
+                  .from('avatars')
+                  .remove([`${organization.id}/${oldPath}`])
               }
             } catch (deleteError) {
               console.error('Error deleting old logo:', deleteError)
@@ -219,10 +219,10 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
           }
 
           const { error: uploadError } = await supabase.storage
-            .from('organization-logos')
+            .from('avatars') // Use same bucket as user avatars
             .upload(filePath, logoFile, {
               cacheControl: '3600',
-              upsert: false
+              upsert: true // Allow overwrite
             })
 
           if (uploadError) {
@@ -234,10 +234,10 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             })
           } else {
             const { data: { publicUrl } } = supabase.storage
-              .from('organization-logos')
+              .from('avatars')
               .getPublicUrl(filePath)
             
-            logo_url = publicUrl
+            logo_url = `${publicUrl}?v=${Date.now()}` // Add cache-busting
           }
         } catch (logoUploadError) {
           console.error('Error uploading logo:', logoUploadError)

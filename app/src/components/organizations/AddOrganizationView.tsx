@@ -360,38 +360,6 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     setSuccess('')
 
     try {
-      let logo_url = null
-
-      // Upload logo if provided
-      if (logoFile) {
-        try {
-          const fileExt = logoFile.name.split('.').pop()
-          const fileName = `${formData.org_code}-${Date.now()}.${fileExt}`
-          const filePath = `${fileName}`
-
-          const { error: uploadError } = await supabase.storage
-            .from('organization-logos')
-            .upload(filePath, logoFile, {
-              cacheControl: '3600',
-              upsert: false
-            })
-
-          if (uploadError) {
-            console.error('Logo upload error:', uploadError)
-            // Continue without logo if upload fails
-          } else {
-            const { data: { publicUrl } } = supabase.storage
-              .from('organization-logos')
-              .getPublicUrl(filePath)
-            
-            logo_url = publicUrl
-          }
-        } catch (logoUploadError) {
-          console.error('Error uploading logo:', logoUploadError)
-          // Continue without logo if upload fails
-        }
-      }
-
       const insertData: any = {
         org_type_code: formData.org_type_code,
         org_code: formData.org_code,
@@ -413,7 +381,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         contact_phone: formData.contact_phone || null,
         contact_email: formData.contact_email || null,
         is_active: formData.is_active,
-        logo_url: logo_url,
+        logo_url: null, // Will be updated after upload
         created_by: userProfile.id
       }
 
@@ -428,6 +396,44 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         .select()
 
       if (insertError) throw insertError
+
+      const newOrgId = data[0].id
+
+      // Upload logo if provided (using same pattern as user avatars)
+      if (logoFile && newOrgId) {
+        try {
+          const fileExt = logoFile.name.split('.').pop()
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+          const filePath = `${newOrgId}/${fileName}` // Nested folder: org_id/filename
+
+          const { error: uploadError } = await supabase.storage
+            .from('avatars') // Use same bucket as user avatars
+            .upload(filePath, logoFile, {
+              cacheControl: '3600',
+              upsert: true // Allow overwrite
+            })
+
+          if (uploadError) {
+            console.error('Logo upload error:', uploadError)
+            // Continue without logo if upload fails
+          } else {
+            const { data: { publicUrl } } = supabase.storage
+              .from('avatars')
+              .getPublicUrl(filePath)
+            
+            const logo_url = `${publicUrl}?v=${Date.now()}` // Add cache-busting
+            
+            // Update organization with logo URL
+            await supabase
+              .from('organizations')
+              .update({ logo_url })
+              .eq('id', newOrgId)
+          }
+        } catch (logoUploadError) {
+          console.error('Error uploading logo:', logoUploadError)
+          // Continue without logo if upload fails
+        }
+      }
 
       // If creating a SHOP with a DIST parent, automatically create shop_distributors relationship
       if (data && data.length > 0 && formData.org_type_code === 'SHOP' && formData.parent_org_id) {
