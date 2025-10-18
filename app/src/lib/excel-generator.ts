@@ -6,6 +6,22 @@
 import * as XLSX from 'xlsx'
 import { GeneratedMasterCode, GeneratedQRCode } from './qr-generator'
 
+/**
+ * Get the base URL for QR code tracking
+ * Uses environment variable or falls back to production URL
+ */
+function getBaseURL(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || 'http://www.serapod2u.com'
+}
+
+/**
+ * Generate tracking URL for a QR code
+ */
+function generateTrackingURL(code: string, type: 'product' | 'master'): string {
+  const baseUrl = getBaseURL()
+  return `${baseUrl}/track/${type}/${code}`
+}
+
 export interface QRExcelData {
   orderNo: string
   orderDate: string
@@ -41,11 +57,17 @@ export function generateQRExcel(data: QRExcelData): Buffer {
     ['Total Individual Codes:', data.totalUniqueCodes],
     ['Buffer Percentage:', `${data.bufferPercent}%`],
     [],
+    ['Tracking System'],
+    ['Base URL:', getBaseURL()],
+    ['Product Tracking:', `${getBaseURL()}/track/product/[CODE]`],
+    ['Master Tracking:', `${getBaseURL()}/track/master/[CODE]`],
+    [],
     ['Instructions'],
     ['1. Print Master QR codes and attach to cases/boxes'],
     ['2. Print Individual QR codes and attach to each product unit'],
     ['3. Scan Master QR when packing products into cases'],
-    ['4. Scan Individual QR codes during manufacturing process']
+    ['4. Scan Individual QR codes during manufacturing process'],
+    ['5. Each QR code contains a tracking URL that can be scanned']
   ]
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
@@ -62,6 +84,7 @@ export function generateQRExcel(data: QRExcelData): Buffer {
   const masterSheetData = data.masterCodes.map((master, index) => ({
     '#': index + 1,
     'Master QR Code': master.code,
+    'Tracking URL': generateTrackingURL(master.code, 'master'),
     'Case Number': master.case_number,
     'Expected Units': master.expected_unit_count,
     'Order No': data.orderNo,
@@ -74,6 +97,7 @@ export function generateQRExcel(data: QRExcelData): Buffer {
   masterSheet['!cols'] = [
     { wch: 5 },   // #
     { wch: 45 },  // Master QR Code
+    { wch: 60 },  // Tracking URL
     { wch: 12 },  // Case Number
     { wch: 14 },  // Expected Units
     { wch: 20 },  // Order No
@@ -86,6 +110,7 @@ export function generateQRExcel(data: QRExcelData): Buffer {
   const individualSheetData = data.individualCodes.map((code, index) => ({
     '#': index + 1,
     'Individual QR Code': code.code,
+    'Tracking URL': generateTrackingURL(code.code, 'product'),
     'Sequence': code.sequence_number,
     'Product Code': code.product_code,
     'Variant Code': code.variant_code,
@@ -102,6 +127,7 @@ export function generateQRExcel(data: QRExcelData): Buffer {
   individualSheet['!cols'] = [
     { wch: 5 },   // #
     { wch: 50 },  // Individual QR Code
+    { wch: 60 },  // Tracking URL
     { wch: 10 },  // Sequence
     { wch: 15 },  // Product Code
     { wch: 15 },  // Variant Code
