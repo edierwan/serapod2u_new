@@ -205,7 +205,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
             <div>
               <h3 className="font-semibold text-gray-900">Quick Ordering</h3>
               <p className="text-sm text-gray-600 mt-1">
-                Click "Order Now" on any product to be taken to the order creation page where you can select variants, quantities, and complete your order.
+                Click &quot;Order Now&quot; on any product to be taken to the order creation page where you can select variants, quantities, and complete your order.
               </p>
             </div>
           </div>
