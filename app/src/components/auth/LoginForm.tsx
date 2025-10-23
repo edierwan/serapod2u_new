@@ -64,8 +64,8 @@ export default function LoginForm() {
       console.log('Auth User Email:', authUser.email)
 
       // Get user profile using the database function for better error handling
-      let { data: userProfile, error: profileError } = await supabase
-        .rpc('get_user_by_email', { p_email: authUser.email || email } as any)
+      let { data: userProfile, error: profileError } = (await supabase
+        .rpc('get_user_by_email', { p_email: authUser.email || email } as any)) as { data: any; error: any }
 
       console.log('Profile Error:', profileError)
       console.log('User Profile:', userProfile)
@@ -77,16 +77,16 @@ export default function LoginForm() {
         return
       }
 
-      if (!userProfile || userProfile.length === 0) {
+      if (!userProfile || (Array.isArray(userProfile) && userProfile.length === 0)) {
         console.warn('⚠️ No user profile found, waiting for trigger to create user record')
         // Wait a moment for trigger to create the user record
         await new Promise(resolve => setTimeout(resolve, 2000))
         
         // Retry profile lookup
-        const { data: retryProfile, error: retryError } = await supabase
-          .rpc('get_user_by_email', { p_email: authUser.email || email })
+        const { data: retryProfile, error: retryError } = (await supabase
+          .rpc('get_user_by_email', { p_email: authUser.email || email } as any)) as { data: any; error: any }
 
-        if (retryError || !retryProfile || retryProfile.length === 0) {
+        if (retryError || !retryProfile || (Array.isArray(retryProfile) && retryProfile.length === 0)) {
           setError(`User record not found. Please contact administrator to create user record for ID: ${authUser.id}`)
           await supabase.auth.signOut()
           return
