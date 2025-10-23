@@ -92,11 +92,11 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
 
   async function loadOrgSettings() {
     try {
-      const { data, error } = await supabase
+      const { data, error } = (await supabase
         .from('organizations')
         .select('settings')
         .eq('id', userProfile.organization_id)
-        .single()
+        .single()) as { data: any; error: any }
 
       if (error) throw error
 
@@ -113,11 +113,11 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
   async function loadApprovedH2MOrders() {
     try {
       // Get parent org (HQ) for this distributor
-      const { data: orgData, error: orgError } = await supabase
+      const { data: orgData, error: orgError } = (await supabase
         .from('organizations')
         .select('parent_org_id')
         .eq('id', userProfile.organization_id)
-        .single()
+        .single()) as { data: any; error: any }
 
       if (orgError || !orgData?.parent_org_id) return
 
