@@ -65,7 +65,7 @@ export default function LoginForm() {
 
       // Get user profile using the database function for better error handling
       let { data: userProfile, error: profileError } = await supabase
-        .rpc('get_user_by_email', { p_email: authUser.email || email })
+        .rpc('get_user_by_email', { p_email: authUser.email || email } as any)
 
       console.log('Profile Error:', profileError)
       console.log('User Profile:', userProfile)
@@ -106,7 +106,7 @@ export default function LoginForm() {
       // Update last_login_at timestamp
       try {
         console.log('🔍 Updating last_login for user:', authUser.id)
-        const { error: updateError } = await supabase.rpc('update_last_login', { user_id: authUser.id })
+        const { error: updateError } = await supabase.rpc('update_last_login', { user_id: authUser.id } as any) as any
         if (updateError) {
           console.error('🔍 Failed to update last_login:', updateError)
         } else {
