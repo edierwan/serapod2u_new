@@ -709,7 +709,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="org_name"
                   value={formData.org_name}
                   onChange={(e) => handleInputChange('org_name', e.target.value)}
-                  placeholder="Full organization name"
+                  placeholder="Enter full organization name"
+                  className="placeholder:text-gray-400"
                 />
               </div>
             </div>
@@ -721,7 +722,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="registration_no"
                   value={formData.registration_no}
                   onChange={(e) => handleInputChange('registration_no', e.target.value)}
-                  placeholder="Business registration"
+                  placeholder="Enter business registration number"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -731,7 +733,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="tax_id"
                   value={formData.tax_id}
                   onChange={(e) => handleInputChange('tax_id', e.target.value)}
-                  placeholder="Tax identification"
+                  placeholder="Enter tax identification number"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -741,8 +744,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="website"
                   value={formData.website}
                   onChange={(e) => handleInputChange('website', e.target.value)}
-                  placeholder="https://example.com"
+                  placeholder="Enter website URL (e.g., https://example.com)"
                   type="url"
+                  className="placeholder:text-gray-400"
                 />
               </div>
             </div>
@@ -762,8 +766,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 id="address"
                 value={formData.address}
                 onChange={(e) => handleInputChange('address', e.target.value)}
-                placeholder="Street address"
+                placeholder="Enter street address (e.g., 123 Main Street)"
                 rows={2}
+                className="placeholder:text-gray-400"
               />
             </div>
 
@@ -773,8 +778,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 id="address_line2"
                 value={formData.address_line2}
                 onChange={(e) => handleInputChange('address_line2', e.target.value)}
-                placeholder="Additional address information"
+                placeholder="Enter additional address information (e.g., Suite 100, Building B)"
                 rows={2}
+                className="placeholder:text-gray-400"
               />
             </div>
 
@@ -785,7 +791,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="city"
                   value={formData.city}
                   onChange={(e) => handleInputChange('city', e.target.value)}
-                  placeholder="City name"
+                  placeholder="Enter city name (e.g., Kuala Lumpur)"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -795,8 +802,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="postal_code"
                   value={formData.postal_code}
                   onChange={(e) => handleInputChange('postal_code', e.target.value)}
-                  placeholder="12345"
+                  placeholder="Enter 5-digit postal code (e.g., 50450)"
                   maxLength={5}
+                  className="placeholder:text-gray-400"
                 />
               </div>
             </div>
@@ -853,6 +861,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('country_code', e.target.value)}
                   maxLength={2}
                   defaultValue="MY"
+                  placeholder="Enter 2-letter country code (e.g., MY)"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -862,11 +872,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="latitude"
                   value={formData.latitude}
                   onChange={(e) => handleInputChange('latitude', e.target.value)}
-                  placeholder="-90 to 90"
+                  placeholder="Enter latitude (-90 to 90, e.g., 3.139003)"
                   type="number"
                   step="0.000001"
                   min="-90"
                   max="90"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -876,11 +887,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="longitude"
                   value={formData.longitude}
                   onChange={(e) => handleInputChange('longitude', e.target.value)}
-                  placeholder="-180 to 180"
+                  placeholder="Enter longitude (-180 to 180, e.g., 101.686855)"
                   type="number"
                   step="0.000001"
                   min="-180"
                   max="180"
+                  className="placeholder:text-gray-400"
                 />
               </div>
             </div>
@@ -901,7 +913,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_name"
                   value={formData.contact_name}
                   onChange={(e) => handleInputChange('contact_name', e.target.value)}
-                  placeholder="Full name"
+                  placeholder="Enter contact person's full name (e.g., John Doe)"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -911,7 +924,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_title"
                   value={formData.contact_title}
                   onChange={(e) => handleInputChange('contact_title', e.target.value)}
-                  placeholder="Job title"
+                  placeholder="Enter job title (e.g., General Manager)"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -921,8 +935,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_phone"
                   value={formData.contact_phone}
                   onChange={(e) => handleInputChange('contact_phone', e.target.value)}
-                  placeholder="+60123456789"
+                  placeholder="Enter phone number (e.g., +60123456789)"
                   type="tel"
+                  className="placeholder:text-gray-400"
                 />
               </div>
 
@@ -932,8 +947,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_email"
                   value={formData.contact_email}
                   onChange={(e) => handleInputChange('contact_email', e.target.value)}
-                  placeholder="contact@example.com"
+                  placeholder="Enter email address (e.g., contact@example.com)"
                   type="email"
+                  className="placeholder:text-gray-400"
                 />
               </div>
             </div>
