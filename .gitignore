@@ -234,11 +234,11 @@ VERIFY_*.md
 VISUAL_*.md
 WHICH_*.md
 
-# SQL files (except in proper database folders)
+# SQL files (development/reference only - keep local, don't commit)
 *.sql
-!supabase/**/*.sql
-!database/**/*.sql
-!migrations/**/*.sql
+
+# Exception: Only allow SQL in specific production migration folders if needed
+# !database/migrations/**/*.sql
 
 # Shell scripts (development only)
 run_*.sh
