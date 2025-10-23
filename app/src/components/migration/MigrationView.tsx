@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/components/ui/use-toast'
 import { 
   Download, 
   Upload, 
@@ -17,8 +18,11 @@ import {
   Warehouse,
   Factory,
   ShoppingBag,
-  Truck
+  Truck,
+  Loader2
 } from 'lucide-react'
+import Papa from 'papaparse'
+import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 
 interface MigrationViewProps {
   userProfile: any
@@ -36,6 +40,9 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
     message: string
     details?: any
   } | null>(null)
+  
+  const { toast } = useToast()
+  const { supabase } = useSupabaseAuth()
 
   const templates = {
     products: {
@@ -181,27 +188,271 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
     setUploadResult(null)
 
     try {
-      // TODO: Implement file parsing and database insertion
-      // This is a placeholder for the actual implementation
-      setTimeout(() => {
-        setUploadResult({
-          success: true,
-          message: `Successfully uploaded ${file.name}. This is a demo - actual implementation will parse and import data.`,
-          details: {
-            fileName: file.name,
-            fileSize: file.size,
-            type: type
-          }
-        })
-        setUploading(false)
-      }, 2000)
+      if (type === 'products') {
+        await handleProductImport(file)
+      } else if (type === 'inventory') {
+        await handleInventoryImport(file)
+      } else if (type === 'organizations') {
+        await handleOrganizationImport(file)
+      }
     } catch (error: any) {
+      console.error('Import error:', error)
       setUploadResult({
         success: false,
         message: error.message || 'Failed to process file'
       })
       setUploading(false)
+      
+      toast({
+        title: 'Import Failed',
+        description: error.message || 'Failed to process file',
+        variant: 'destructive'
+      })
     }
+  }
+
+  const handleProductImport = async (file: File) => {
+    return new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          try {
+            const rows = results.data as any[]
+            let successCount = 0
+            let errorCount = 0
+            const errors: string[] = []
+
+            for (let i = 0; i < rows.length; i++) {
+              const row = rows[i]
+              const rowNum = i + 2 // +2 because row 1 is header, and arrays are 0-indexed
+
+              try {
+                // Validate required fields
+                if (!row['Product Name*']) {
+                  throw new Error(`Row ${rowNum}: Product Name is required`)
+                }
+                if (!row['Brand Name*']) {
+                  throw new Error(`Row ${rowNum}: Brand Name is required`)
+                }
+                if (!row['Category*']) {
+                  throw new Error(`Row ${rowNum}: Category is required`)
+                }
+                if (!row['Group*']) {
+                  throw new Error(`Row ${rowNum}: Group is required`)
+                }
+                if (!row['SubGroup*']) {
+                  throw new Error(`Row ${rowNum}: SubGroup is required`)
+                }
+                if (!row['Manufacturer*']) {
+                  throw new Error(`Row ${rowNum}: Manufacturer is required`)
+                }
+                if (!row['Variant Name*']) {
+                  throw new Error(`Row ${rowNum}: Variant Name is required`)
+                }
+                if (!row['Base Cost (RM)*']) {
+                  throw new Error(`Row ${rowNum}: Base Cost is required`)
+                }
+                if (!row['Retail Price (RM)*']) {
+                  throw new Error(`Row ${rowNum}: Retail Price is required`)
+                }
+
+                // Lookup brand
+                const { data: brand, error: brandError } = await supabase
+                  .from('brands')
+                  .select('id')
+                  .eq('brand_name', row['Brand Name*'].trim())
+                  .eq('is_active', true)
+                  .single()
+
+                if (brandError || !brand) {
+                  throw new Error(`Row ${rowNum}: Brand "${row['Brand Name*']}" not found. Create it first via Product Management.`)
+                }
+
+                // Lookup category
+                const { data: category, error: categoryError } = await supabase
+                  .from('product_categories')
+                  .select('id')
+                  .eq('category_name', row['Category*'].trim())
+                  .eq('is_active', true)
+                  .single()
+
+                if (categoryError || !category) {
+                  throw new Error(`Row ${rowNum}: Category "${row['Category*']}" not found. Create it first.`)
+                }
+
+                // Lookup group
+                const { data: group, error: groupError } = await supabase
+                  .from('product_groups')
+                  .select('id')
+                  .eq('group_name', row['Group*'].trim())
+                  .eq('category_id', category.id)
+                  .eq('is_active', true)
+                  .single()
+
+                if (groupError || !group) {
+                  throw new Error(`Row ${rowNum}: Group "${row['Group*']}" not found under category "${row['Category*']}".`)
+                }
+
+                // Lookup subgroup
+                const { data: subgroup, error: subgroupError } = await supabase
+                  .from('product_subgroups')
+                  .select('id')
+                  .eq('subgroup_name', row['SubGroup*'].trim())
+                  .eq('group_id', group.id)
+                  .eq('is_active', true)
+                  .single()
+
+                if (subgroupError || !subgroup) {
+                  throw new Error(`Row ${rowNum}: SubGroup "${row['SubGroup*']}" not found under group "${row['Group*']}".`)
+                }
+
+                // Lookup manufacturer
+                const { data: manufacturer, error: mfgError } = await supabase
+                  .from('organizations')
+                  .select('id')
+                  .eq('org_name', row['Manufacturer*'].trim())
+                  .eq('org_type_code', 'MFG')
+                  .eq('is_active', true)
+                  .single()
+
+                if (mfgError || !manufacturer) {
+                  throw new Error(`Row ${rowNum}: Manufacturer "${row['Manufacturer*']}" not found. Register it first via Organizations.`)
+                }
+
+                // Generate product code if not provided
+                const productCode = row['Product Code*']?.trim() || `PRD${Date.now().toString().slice(-8)}`
+
+                // Check if product code already exists
+                const { data: existingProduct } = await supabase
+                  .from('products')
+                  .select('id, product_name')
+                  .eq('product_code', productCode)
+                  .single()
+
+                if (existingProduct) {
+                  throw new Error(`Row ${rowNum}: Product code "${productCode}" already exists for "${existingProduct.product_name}".`)
+                }
+
+                // Parse is_vape
+                const isVapeText = row['Is Vape Product*']?.trim().toLowerCase()
+                const isVape = isVapeText === 'yes' || isVapeText === 'y' || isVapeText === 'true' || isVapeText === '1'
+
+                // Insert product
+                const { data: product, error: productError } = await supabase
+                  .from('products')
+                  .insert({
+                    product_code: productCode,
+                    product_name: row['Product Name*'].trim(),
+                    product_description: row['Product Description']?.trim() || null,
+                    brand_id: brand.id,
+                    category_id: category.id,
+                    group_id: group.id,
+                    subgroup_id: subgroup.id,
+                    manufacturer_id: manufacturer.id,
+                    is_vape: isVape,
+                    age_restriction: row['Age Restriction'] ? parseInt(row['Age Restriction']) : (isVape ? 18 : null),
+                    is_active: true,
+                    created_by: userProfile.id
+                  })
+                  .select()
+                  .single()
+
+                if (productError) {
+                  throw new Error(`Row ${rowNum}: Failed to create product - ${productError.message}`)
+                }
+
+                // Generate variant code if not provided
+                const variantCode = row['Variant Code*']?.trim() || `VAR-${productCode}-01`
+
+                // Insert variant
+                const { error: variantError } = await supabase
+                  .from('product_variants')
+                  .insert({
+                    product_id: product.id,
+                    variant_code: variantCode,
+                    variant_name: row['Variant Name*'].trim(),
+                    base_cost: parseFloat(row['Base Cost (RM)*']),
+                    suggested_retail_price: parseFloat(row['Retail Price (RM)*']),
+                    barcode: row['Barcode']?.trim() || null,
+                    manufacturer_sku: row['Manufacturer SKU']?.trim() || `SKU-${productCode}-${Date.now().toString().slice(-6)}`,
+                    is_default: true,
+                    is_active: true
+                  })
+
+                if (variantError) {
+                  // Rollback product if variant fails
+                  await supabase.from('products').delete().eq('id', product.id)
+                  throw new Error(`Row ${rowNum}: Failed to create variant - ${variantError.message}`)
+                }
+
+                successCount++
+              } catch (error: any) {
+                errorCount++
+                errors.push(error.message)
+                console.error(`Row ${rowNum} error:`, error)
+              }
+            }
+
+            setUploading(false)
+
+            if (successCount > 0 && errorCount === 0) {
+              setUploadResult({
+                success: true,
+                message: `✅ Successfully imported ${successCount} product(s)!`,
+                details: { successCount, errorCount, total: rows.length }
+              })
+              
+              toast({
+                title: 'Import Successful!',
+                description: `Imported ${successCount} products with variants.`,
+              })
+            } else if (successCount > 0 && errorCount > 0) {
+              setUploadResult({
+                success: true,
+                message: `⚠️ Partially successful: ${successCount} imported, ${errorCount} failed.\n\nErrors:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...and ${errors.length - 5} more errors` : ''}`,
+                details: { successCount, errorCount, total: rows.length, errors }
+              })
+              
+              toast({
+                title: 'Partial Import',
+                description: `${successCount} imported, ${errorCount} failed. Check results for details.`,
+                variant: 'default'
+              })
+            } else {
+              throw new Error(`All ${errorCount} rows failed:\n\n${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n...and ${errors.length - 3} more errors` : ''}`)
+            }
+
+            resolve(true)
+          } catch (error: any) {
+            reject(error)
+          }
+        },
+        error: (error) => {
+          reject(new Error(`CSV parsing failed: ${error.message}`))
+        }
+      })
+    })
+  }
+
+  const handleInventoryImport = async (file: File) => {
+    // TODO: Implement inventory import
+    toast({
+      title: 'Not Implemented',
+      description: 'Inventory import will be implemented next.',
+      variant: 'default'
+    })
+    setUploading(false)
+  }
+
+  const handleOrganizationImport = async (file: File) => {
+    // TODO: Implement organization import
+    toast({
+      title: 'Not Implemented',
+      description: 'Organization import will be implemented next.',
+      variant: 'default'
+    })
+    setUploading(false)
   }
 
   return (
@@ -309,8 +560,12 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
                       asChild
                     >
                       <span className="flex items-center gap-2">
-                        <Upload className="w-4 h-4" />
-                        {uploading ? 'Uploading...' : 'Upload Filled Template'}
+                        {uploading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Upload className="w-4 h-4" />
+                        )}
+                        {uploading ? 'Importing Products...' : 'Upload Filled Template'}
                       </span>
                     </Button>
                   </label>
@@ -325,7 +580,7 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
                   ) : (
                     <AlertTriangle className="h-4 w-4 text-red-600" />
                   )}
-                  <AlertDescription className={uploadResult.success ? 'text-green-800' : 'text-red-800'}>
+                  <AlertDescription className={uploadResult.success ? 'text-green-800 whitespace-pre-wrap' : 'text-red-800 whitespace-pre-wrap'}>
                     {uploadResult.message}
                   </AlertDescription>
                 </Alert>
