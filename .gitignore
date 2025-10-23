@@ -250,3 +250,4 @@ run_*.sh
 !README.md
 !CHANGELOG.md
 !LICENSE.md
+.vercel
