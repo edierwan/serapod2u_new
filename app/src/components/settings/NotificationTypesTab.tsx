@@ -175,20 +175,28 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       setSaveStatus('idle')
 
       // Prepare settings for upsert
-      const settingsArray = Array.from(settings.values()).map(setting => ({
-        id: setting.id,
-        org_id: setting.org_id,
-        event_code: setting.event_code,
-        enabled: setting.enabled,
-        channels_enabled: setting.channels_enabled,
-        priority: setting.priority,
-        recipient_roles: null,
-        recipient_users: null,
-        recipient_custom: null,
-        template_code: null,
-        retry_enabled: true,
-        max_retries: 3
-      }))
+      const settingsArray = Array.from(settings.values()).map(setting => {
+        const record: any = {
+          org_id: setting.org_id,
+          event_code: setting.event_code,
+          enabled: setting.enabled,
+          channels_enabled: setting.channels_enabled,
+          priority: setting.priority,
+          recipient_roles: null,
+          recipient_users: null,
+          recipient_custom: null,
+          template_code: null,
+          retry_enabled: true,
+          max_retries: 3
+        }
+        
+        // Only include id if it exists (for updates)
+        if (setting.id) {
+          record.id = setting.id
+        }
+        
+        return record
+      })
 
       // Upsert all settings
       const { error } = await (supabase as any)
@@ -201,6 +209,9 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
 
       setSaveStatus('success')
       setTimeout(() => setSaveStatus('idle'), 3000)
+      
+      // Reload settings to get the new IDs
+      await loadNotificationTypes()
     } catch (error: any) {
       console.error('Error saving notification settings:', error)
       setSaveStatus('error')

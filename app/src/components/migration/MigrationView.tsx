@@ -41,16 +41,28 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
     products: {
       title: 'Product Masterdata',
       icon: Package,
-      description: 'Import product information including SKU, name, brand, category, and pricing',
+      description: 'Import product information including SKU, name, brand, category, group, subgroup, manufacturer, variants, and pricing',
       filename: 'product_masterdata_template.xlsx',
       columns: [
-        { field: 'product_code', label: 'Product Code*', example: 'PRD001', description: 'Unique product identifier' },
-        { field: 'product_name', label: 'Product Name*', example: 'Sample Product', description: 'Full product name' },
-        { field: 'brand_name', label: 'Brand Name', example: 'Brand X', description: 'Product brand (optional)' },
-        { field: 'category_name', label: 'Category', example: 'Electronics', description: 'Product category (optional)' },
-        { field: 'product_description', label: 'Description', example: 'Product description here', description: 'Detailed description (optional)' },
-        { field: 'is_vape', label: 'Is Vape Product', example: 'Yes/No', description: 'Indicate if this is a vape product' },
-        { field: 'age_restriction', label: 'Age Restriction', example: '18', description: 'Minimum age requirement (e.g., 18, 21)' },
+        // Product Master Fields
+        { field: 'product_code', label: 'Product Code*', example: 'PRD001', description: 'Unique product identifier (auto-generated if empty)' },
+        { field: 'product_name', label: 'Product Name*', example: 'Vape Device Premium', description: 'Full product name (REQUIRED)' },
+        { field: 'product_description', label: 'Product Description', example: 'High-quality vape device with advanced features', description: 'Detailed product description' },
+        { field: 'brand_name', label: 'Brand Name*', example: 'VapeTech', description: 'Product brand - must exist in system first (REQUIRED)' },
+        { field: 'category_name', label: 'Category*', example: 'Electronics', description: 'Product category - must exist in system first (REQUIRED)' },
+        { field: 'group_name', label: 'Group*', example: 'Vaping Devices', description: 'Product group under category - must exist first (REQUIRED)' },
+        { field: 'subgroup_name', label: 'SubGroup*', example: 'Premium Devices', description: 'Product sub-group under group - must exist first (REQUIRED)' },
+        { field: 'manufacturer_name', label: 'Manufacturer*', example: 'TechFactory Ltd', description: 'Manufacturer organization name - must exist first (REQUIRED)' },
+        { field: 'is_vape', label: 'Is Vape Product*', example: 'Yes', description: 'Yes/No - Indicate if vape product for compliance (REQUIRED)' },
+        { field: 'age_restriction', label: 'Age Restriction', example: '18', description: 'Minimum age (18 or 21), default: 18' },
+        
+        // Variant Fields (Default Variant)
+        { field: 'variant_code', label: 'Variant Code*', example: 'VAR-PRD001-01', description: 'Unique variant code (auto-generated if empty)' },
+        { field: 'variant_name', label: 'Variant Name*', example: 'Black 2000mAh', description: 'Variant name - color, size, flavor, etc (REQUIRED)' },
+        { field: 'base_cost', label: 'Base Cost (RM)*', example: '85.50', description: 'Unit cost price in RM (REQUIRED for inventory)' },
+        { field: 'suggested_retail_price', label: 'Retail Price (RM)*', example: '150.00', description: 'Suggested retail price in RM (REQUIRED)' },
+        { field: 'barcode', label: 'Barcode', example: '1234567890123', description: 'Product barcode/EAN (optional)' },
+        { field: 'manufacturer_sku', label: 'Manufacturer SKU', example: 'MFG-12345', description: 'Manufacturer SKU (auto-generated if empty)' },
       ]
     },
     organizations: {
@@ -83,16 +95,17 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
     inventory: {
       title: 'Inventory & Stock',
       icon: FileSpreadsheet,
-      description: 'Import initial stock levels for products across different locations',
+      description: 'Import initial stock levels for product variants across different warehouse locations',
       filename: 'inventory_stock_template.xlsx',
       columns: [
-        { field: 'variant_code', label: 'Variant Code*', example: 'VAR001', description: 'Product variant code' },
-        { field: 'organization_code', label: 'Location Code*', example: 'WH001', description: 'Warehouse/location code' },
-        { field: 'quantity', label: 'Quantity*', example: '100', description: 'Stock quantity' },
-        { field: 'unit_cost', label: 'Unit Cost', example: '10.50', description: 'Cost per unit (optional)' },
-        { field: 'warehouse_location', label: 'Bin Location', example: 'A1-B2', description: 'Physical location in warehouse' },
-        { field: 'reorder_point', label: 'Reorder Point', example: '20', description: 'Minimum stock level before reorder' },
-        { field: 'reorder_quantity', label: 'Reorder Quantity', example: '50', description: 'Quantity to order when restocking' },
+        { field: 'variant_code', label: 'Variant Code*', example: 'VAR-PRD001-01', description: 'Product variant code - must exist in system first (REQUIRED)' },
+        { field: 'organization_code', label: 'Location Code*', example: 'WH001', description: 'Warehouse/organization code where stock is located (REQUIRED)' },
+        { field: 'quantity_on_hand', label: 'Quantity On Hand*', example: '100', description: 'Current stock quantity (REQUIRED)' },
+        { field: 'average_cost', label: 'Average Cost (RM)', example: '85.50', description: 'Average unit cost in RM (recommended for accurate valuation)' },
+        { field: 'warehouse_location', label: 'Bin Location', example: 'A1-B2-C3', description: 'Physical location/bin in warehouse (optional)' },
+        { field: 'reorder_point', label: 'Reorder Point', example: '20', description: 'Minimum stock level before reorder alert (default: 10)' },
+        { field: 'reorder_quantity', label: 'Reorder Quantity', example: '50', description: 'Quantity to order when restocking (default: 50)' },
+        { field: 'max_stock_level', label: 'Max Stock Level', example: '500', description: 'Maximum stock level (optional)' },
       ]
     }
   }
@@ -104,8 +117,29 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
     if (type === 'products') {
       filename = templates.products.filename
       const headers = templates.products.columns.map(col => col.label).join(',')
-      const examples = templates.products.columns.map(col => col.example).join(',')
-      csvContent = `${headers}\n${examples}\n`
+      
+      // Provide 2 example rows to show the format
+      const example1 = templates.products.columns.map(col => col.example).join(',')
+      const example2 = [
+        '', // product_code (auto-generated)
+        'Vape Starter Kit',
+        'Complete starter kit with charger and case',
+        'VapeTech',
+        'Electronics',
+        'Vaping Devices',
+        'Starter Kits',
+        'TechFactory Ltd',
+        'Yes',
+        '21',
+        '', // variant_code (auto-generated)
+        'Silver 1500mAh',
+        '75.00',
+        '129.90',
+        '9876543210987',
+        ''  // manufacturer_sku (auto-generated)
+      ].join(',')
+      
+      csvContent = `${headers}\n${example1}\n${example2}\n`
     } else if (type === 'organizations' && subtype) {
       filename = templates.organizations.subtypes[subtype].filename
       const headers = templates.organizations.columns.map(col => col.label).join(',')
@@ -114,8 +148,21 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
     } else if (type === 'inventory') {
       filename = templates.inventory.filename
       const headers = templates.inventory.columns.map(col => col.label).join(',')
-      const examples = templates.inventory.columns.map(col => col.example).join(',')
-      csvContent = `${headers}\n${examples}\n`
+      
+      // Provide 2 example rows
+      const example1 = templates.inventory.columns.map(col => col.example).join(',')
+      const example2 = [
+        'VAR-PRD001-01',
+        'WH002',
+        '250',
+        '75.00',
+        'B2-C3-D4',
+        '30',
+        '100',
+        '1000'
+      ].join(',')
+      
+      csvContent = `${headers}\n${example1}\n${example2}\n`
     }
 
     // Create blob and download
@@ -202,6 +249,22 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
               <CardDescription>{templates.products.description}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Prerequisites Warning */}
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  <strong>⚠️ Important Prerequisites:</strong> Before importing products, ensure these master data exist in your system:
+                  <ul className="list-disc ml-5 mt-2 space-y-1">
+                    <li><strong>Brands</strong> - Product brands must be created first</li>
+                    <li><strong>Categories</strong> - Product categories must exist</li>
+                    <li><strong>Groups</strong> - Product groups under each category</li>
+                    <li><strong>SubGroups</strong> - Sub-groups under each group</li>
+                    <li><strong>Manufacturers</strong> - Manufacturer organizations must be registered</li>
+                  </ul>
+                  <p className="mt-2">❗ Import will fail if any referenced master data doesn't exist. Create them via Product Management menu first.</p>
+                </AlertDescription>
+              </Alert>
+
               {/* Template Info */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-semibold mb-3">Template Columns:</h4>
@@ -392,12 +455,17 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
               <CardDescription>{templates.inventory.description}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Important Notes */}
-              <Alert className="border-yellow-200 bg-yellow-50">
-                <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                <AlertDescription className="text-yellow-800">
-                  <strong>Important:</strong> Make sure products and organizations are already created before importing inventory data.
-                  The system will match records by variant codes and organization codes.
+              {/* Prerequisites Warning */}
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  <strong>⚠️ Important Prerequisites:</strong> Before importing inventory, ensure:
+                  <ul className="list-disc ml-5 mt-2 space-y-1">
+                    <li><strong>Product Variants</strong> - Variants must exist with correct variant codes</li>
+                    <li><strong>Organizations</strong> - Warehouses/locations must be registered with organization codes</li>
+                    <li><strong>Matching Codes</strong> - Variant codes and organization codes in your file must match exactly</li>
+                  </ul>
+                  <p className="mt-2">💡 Tip: Export existing products and organizations first to get correct codes, then use them in your inventory file.</p>
                 </AlertDescription>
               </Alert>
 

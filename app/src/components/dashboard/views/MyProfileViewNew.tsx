@@ -485,7 +485,15 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   <div className="flex items-start gap-3 text-gray-700">
                     <User className="h-5 w-5 text-gray-400 mt-0.5" />
                     <div className="flex-1">
-                      <p className="text-sm text-gray-500 font-medium">Full Name</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-gray-500 font-medium">Full Name</p>
+                        <button 
+                          onClick={() => setIsEditing(true)}
+                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                        >
+                          [Edit]
+                        </button>
+                      </div>
                       <p className="text-base font-medium text-gray-900 mt-1">
                         {userProfile.full_name || (
                           <span className="text-gray-400 italic">Not set</span>
@@ -496,7 +504,15 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   <div className="flex items-start gap-3 text-gray-700">
                     <Phone className="h-5 w-5 text-gray-400 mt-0.5" />
                     <div className="flex-1">
-                      <p className="text-sm text-gray-500 font-medium">Phone Number</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-gray-500 font-medium">Phone Number</p>
+                        <button 
+                          onClick={() => setIsEditing(true)}
+                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                        >
+                          [Edit]
+                        </button>
+                      </div>
                       <p className="text-base font-medium text-gray-900 mt-1">
                         {userProfile.phone || (
                           <span className="text-gray-400 italic">Not set</span>
