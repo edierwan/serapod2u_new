@@ -257,57 +257,131 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
                   throw new Error(`Row ${rowNum}: Retail Price is required`)
                 }
 
-                // Lookup brand
-                const { data: brand, error: brandError } = await supabase
+                // Auto-create or lookup brand
+                let brandData = await supabase
                   .from('brands')
                   .select('id')
                   .eq('brand_name', row['Brand Name*'].trim())
                   .eq('is_active', true)
-                  .single()
+                  .maybeSingle()
+                  .then(res => res.data)
 
-                if (brandError || !brand) {
-                  throw new Error(`Row ${rowNum}: Brand "${row['Brand Name*']}" not found. Create it first via Product Management.`)
+                if (!brandData) {
+                  // Auto-create brand
+                  const brandCode = `BRD${Date.now().toString().slice(-6)}`
+                  const { data: newBrand, error: createBrandError } = await supabase
+                    .from('brands')
+                    .insert({
+                      brand_code: brandCode,
+                      brand_name: row['Brand Name*'].trim(),
+                      is_active: true,
+                      created_by: userProfile.id
+                    })
+                    .select()
+                    .single()
+
+                  if (createBrandError || !newBrand) {
+                    throw new Error(`Row ${rowNum}: Failed to create brand "${row['Brand Name*']}" - ${createBrandError?.message}`)
+                  }
+                  brandData = newBrand
                 }
+                const brand = brandData!
 
-                // Lookup category
-                const { data: category, error: categoryError } = await supabase
+                // Auto-create or lookup category
+                let categoryData = await supabase
                   .from('product_categories')
                   .select('id')
                   .eq('category_name', row['Category*'].trim())
                   .eq('is_active', true)
-                  .single()
+                  .maybeSingle()
+                  .then(res => res.data)
 
-                if (categoryError || !category) {
-                  throw new Error(`Row ${rowNum}: Category "${row['Category*']}" not found. Create it first.`)
+                if (!categoryData) {
+                  // Auto-create category
+                  const categoryCode = `CAT${Date.now().toString().slice(-6)}`
+                  const { data: newCategory, error: createCategoryError } = await supabase
+                    .from('product_categories')
+                    .insert({
+                      category_code: categoryCode,
+                      category_name: row['Category*'].trim(),
+                      is_active: true,
+                      created_by: userProfile.id
+                    })
+                    .select()
+                    .single()
+
+                  if (createCategoryError || !newCategory) {
+                    throw new Error(`Row ${rowNum}: Failed to create category "${row['Category*']}" - ${createCategoryError?.message}`)
+                  }
+                  categoryData = newCategory
                 }
+                const category = categoryData!
 
-                // Lookup group
-                const { data: group, error: groupError } = await supabase
+                // Auto-create or lookup group
+                let groupData = await supabase
                   .from('product_groups')
                   .select('id')
                   .eq('group_name', row['Group*'].trim())
                   .eq('category_id', category.id)
                   .eq('is_active', true)
-                  .single()
+                  .maybeSingle()
+                  .then(res => res.data)
 
-                if (groupError || !group) {
-                  throw new Error(`Row ${rowNum}: Group "${row['Group*']}" not found under category "${row['Category*']}".`)
+                if (!groupData) {
+                  // Auto-create group
+                  const groupCode = `GRP${Date.now().toString().slice(-6)}`
+                  const { data: newGroup, error: createGroupError } = await supabase
+                    .from('product_groups')
+                    .insert({
+                      group_code: groupCode,
+                      group_name: row['Group*'].trim(),
+                      category_id: category.id,
+                      is_active: true,
+                      created_by: userProfile.id
+                    })
+                    .select()
+                    .single()
+
+                  if (createGroupError || !newGroup) {
+                    throw new Error(`Row ${rowNum}: Failed to create group "${row['Group*']}" - ${createGroupError?.message}`)
+                  }
+                  groupData = newGroup
                 }
+                const group = groupData!
 
-                // Lookup subgroup
-                const { data: subgroup, error: subgroupError } = await supabase
+                // Auto-create or lookup subgroup
+                let subgroupData = await supabase
                   .from('product_subgroups')
                   .select('id')
                   .eq('subgroup_name', row['SubGroup*'].trim())
                   .eq('group_id', group.id)
                   .eq('is_active', true)
-                  .single()
+                  .maybeSingle()
+                  .then(res => res.data)
 
-                if (subgroupError || !subgroup) {
-                  throw new Error(`Row ${rowNum}: SubGroup "${row['SubGroup*']}" not found under group "${row['Group*']}".`)
+                if (!subgroupData) {
+                  // Auto-create subgroup
+                  const subgroupCode = `SUB${Date.now().toString().slice(-6)}`
+                  const { data: newSubgroup, error: createSubgroupError } = await supabase
+                    .from('product_subgroups')
+                    .insert({
+                      subgroup_code: subgroupCode,
+                      subgroup_name: row['SubGroup*'].trim(),
+                      group_id: group.id,
+                      is_active: true,
+                      created_by: userProfile.id
+                    })
+                    .select()
+                    .single()
+
+                  if (createSubgroupError || !newSubgroup) {
+                    throw new Error(`Row ${rowNum}: Failed to create subgroup "${row['SubGroup*']}" - ${createSubgroupError?.message}`)
+                  }
+                  subgroupData = newSubgroup
                 }
+                const subgroup = subgroupData!
 
-                // Lookup manufacturer
+                // Lookup manufacturer (still required to exist - user must register manufacturers)
                 const { data: manufacturer, error: mfgError } = await supabase
                   .from('organizations')
                   .select('id')
@@ -317,7 +391,7 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
                   .single()
 
                 if (mfgError || !manufacturer) {
-                  throw new Error(`Row ${rowNum}: Manufacturer "${row['Manufacturer*']}" not found. Register it first via Organizations.`)
+                  throw new Error(`Row ${rowNum}: Manufacturer "${row['Manufacturer*']}" not found. Please register it first via Organizations menu (must be registered as a legal entity).`)
                 }
 
                 // Generate product code if not provided
@@ -501,18 +575,18 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Prerequisites Warning */}
-              <Alert className="border-amber-200 bg-amber-50">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-800">
-                  <strong>⚠️ Important Prerequisites:</strong> Before importing products, ensure these master data exist in your system:
+              <Alert className="border-green-200 bg-green-50">
+                <Info className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">
+                  <strong>✨ Smart Import:</strong> The system will automatically create master data if it doesn't exist!
                   <ul className="list-disc ml-5 mt-2 space-y-1">
-                    <li><strong>Brands</strong> - Product brands must be created first</li>
-                    <li><strong>Categories</strong> - Product categories must exist</li>
-                    <li><strong>Groups</strong> - Product groups under each category</li>
-                    <li><strong>SubGroups</strong> - Sub-groups under each group</li>
-                    <li><strong>Manufacturers</strong> - Manufacturer organizations must be registered</li>
+                    <li><strong>Brands</strong> - Will be auto-created from your CSV</li>
+                    <li><strong>Categories</strong> - Will be auto-created from your CSV</li>
+                    <li><strong>Groups</strong> - Will be auto-created under the correct category</li>
+                    <li><strong>SubGroups</strong> - Will be auto-created under the correct group</li>
+                    <li><strong>Manufacturers</strong> - ⚠️ Must be registered first (via Organizations menu)</li>
                   </ul>
-                  <p className="mt-2">❗ Import will fail if any referenced master data doesn't exist. Create them via Product Management menu first.</p>
+                  <p className="mt-2">💡 Just fill in the template and upload! The system handles brand/category/group/subgroup creation automatically.</p>
                 </AlertDescription>
               </Alert>
 
