@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ArrowLeft, Building2, Save, AlertCircle, Info } from 'lucide-react'
+import { ArrowLeft, Building2, Save, AlertCircle, Info, MapPin, Loader2 } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
 import { 
   getValidParentOrgs, 
@@ -96,6 +96,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoError, setLogoError] = useState('')
+  const [gettingLocation, setGettingLocation] = useState(false)
 
   const { isReady, supabase } = useSupabaseAuth()
 
@@ -344,6 +345,46 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     } else {
       setLogoError('')
     }
+  }
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser')
+      return
+    }
+
+    setGettingLocation(true)
+    setError('')
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        handleInputChange('latitude', latitude.toFixed(6))
+        handleInputChange('longitude', longitude.toFixed(6))
+        setGettingLocation(false)
+      },
+      (error) => {
+        setGettingLocation(false)
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            setError('Location permission denied. Please enable location access in your browser settings.')
+            break
+          case error.POSITION_UNAVAILABLE:
+            setError('Location information is unavailable.')
+            break
+          case error.TIMEOUT:
+            setError('Location request timed out.')
+            break
+          default:
+            setError('An error occurred while getting your location.')
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -710,7 +751,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.org_name}
                   onChange={(e) => handleInputChange('org_name', e.target.value)}
                   placeholder="Enter full organization name"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>
@@ -723,7 +764,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.registration_no}
                   onChange={(e) => handleInputChange('registration_no', e.target.value)}
                   placeholder="Enter business registration number"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -734,7 +775,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.tax_id}
                   onChange={(e) => handleInputChange('tax_id', e.target.value)}
                   placeholder="Enter tax identification number"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -746,7 +787,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('website', e.target.value)}
                   placeholder="Enter website URL (e.g., https://example.com)"
                   type="url"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>
@@ -768,7 +809,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="Enter street address (e.g., 123 Main Street)"
                 rows={2}
-                className="placeholder:text-gray-400"
+                className="placeholder:text-gray-400 placeholder:italic"
               />
             </div>
 
@@ -780,7 +821,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 onChange={(e) => handleInputChange('address_line2', e.target.value)}
                 placeholder="Enter additional address information (e.g., Suite 100, Building B)"
                 rows={2}
-                className="placeholder:text-gray-400"
+                className="placeholder:text-gray-400 placeholder:italic"
               />
             </div>
 
@@ -792,7 +833,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.city}
                   onChange={(e) => handleInputChange('city', e.target.value)}
                   placeholder="Enter city name (e.g., Kuala Lumpur)"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -804,7 +845,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('postal_code', e.target.value)}
                   placeholder="Enter 5-digit postal code (e.g., 50450)"
                   maxLength={5}
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>
@@ -862,7 +903,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   maxLength={2}
                   defaultValue="MY"
                   placeholder="Enter 2-letter country code (e.g., MY)"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -877,7 +918,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   step="0.000001"
                   min="-90"
                   max="90"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -892,9 +933,39 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   step="0.000001"
                   min="-180"
                   max="180"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
+            </div>
+
+            {/* GPS Auto-fill Button */}
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleGetLocation}
+                disabled={gettingLocation}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                {gettingLocation ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Getting location...
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="w-4 h-4 mr-2" />
+                    Auto-detect my location (GPS)
+                  </>
+                )}
+              </Button>
+              {(formData.latitude && formData.longitude) && (
+                <span className="text-xs text-green-600 flex items-center gap-1">
+                  <MapPin className="w-3 h-3" />
+                  Coordinates set
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -914,7 +985,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.contact_name}
                   onChange={(e) => handleInputChange('contact_name', e.target.value)}
                   placeholder="Enter contact person's full name (e.g., John Doe)"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -925,7 +996,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.contact_title}
                   onChange={(e) => handleInputChange('contact_title', e.target.value)}
                   placeholder="Enter job title (e.g., General Manager)"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -937,7 +1008,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('contact_phone', e.target.value)}
                   placeholder="Enter phone number (e.g., +60123456789)"
                   type="tel"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -949,7 +1020,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('contact_email', e.target.value)}
                   placeholder="Enter email address (e.g., contact@example.com)"
                   type="email"
-                  className="placeholder:text-gray-400"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>

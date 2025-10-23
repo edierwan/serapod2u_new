@@ -15,6 +15,7 @@ import AddStockView from '@/components/inventory/AddStockView'
 import StockAdjustmentView from '@/components/inventory/StockAdjustmentView'
 import StockTransferView from '@/components/inventory/StockTransferView'
 import StockMovementReportView from '@/components/inventory/StockMovementReportView'
+import MigrationView from '@/components/migration/MigrationView'
 import OrganizationsView from '@/components/organizations/OrganizationsView'
 import AddOrganizationView from '@/components/organizations/AddOrganizationView'
 import EditOrganizationView from '@/components/organizations/EditOrganizationView'
@@ -146,6 +147,8 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
         return <StockTransferView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'stock-movements':
         return <StockMovementReportView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'migration':
+        return <MigrationView userProfile={userProfile} />
       case 'organizations':
         return <OrganizationsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'add-organization':

@@ -30,7 +30,8 @@ import {
   ShoppingCart,
   Plus,
   TrendingUp,
-  ListTree
+  ListTree,
+  Database
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -267,6 +268,15 @@ const navigationItems: MenuItem[] = [
         icon: ListTree,
         access: {
           maxRoleLevel: 50
+        }
+      },
+      { 
+        id: 'migration', 
+        label: 'Data Migration', 
+        icon: Database,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 20
         }
       }
     ]
