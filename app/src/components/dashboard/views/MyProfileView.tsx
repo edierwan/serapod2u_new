@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
 import { createClient } from '@/lib/supabase/client'
-import { User, Mail, Building2, Shield, Calendar, Phone, MapPin, Edit2, Save, X, Loader2 } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { User, Mail, Building2, Shield, Calendar, Phone, Edit2, Save, X, Loader2, Camera, Upload } from 'lucide-react'
 
 interface MyProfileViewProps {
   userProfile: any
@@ -17,10 +18,13 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [localProfile, setLocalProfile] = useState(userProfile)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarRefresh, setAvatarRefresh] = useState(Date.now())
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     full_name: userProfile?.full_name || '',
-    phone: userProfile?.phone || '',
-    address: userProfile?.address || ''
+    phone: userProfile?.phone || ''
   })
   const { toast } = useToast()
   const supabase = createClient()
@@ -30,22 +34,107 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
     setLocalProfile(userProfile)
     setFormData({
       full_name: userProfile?.full_name || '',
-      phone: userProfile?.phone || '',
-      address: userProfile?.address || ''
+      phone: userProfile?.phone || ''
     })
+    setAvatarRefresh(Date.now())
   }, [userProfile])
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid File",
+          description: "Please select an image file.",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Image must be less than 5MB.",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      setAvatarFile(file)
+      
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleAvatarClick = () => {
+    if (isEditing) {
+      fileInputRef.current?.click()
+    }
+  }
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
+      let updateData: any = {
+        full_name: formData.full_name || null,
+        phone: formData.phone || null,
+        updated_at: new Date().toISOString()
+      }
+
+      // Handle avatar upload if file is selected
+      if (avatarFile) {
+        try {
+          // Delete old avatar if exists
+          if (localProfile.avatar_url) {
+            const oldPath = localProfile.avatar_url.split('/').pop()?.split('?')[0]
+            if (oldPath) {
+              const pathToDelete = `${userProfile.id}/${oldPath}`
+              await supabase.storage.from('avatars').remove([pathToDelete])
+            }
+          }
+          
+          const fileExtension = avatarFile.name.split('.').pop()
+          const fileName = `${Date.now()}.${fileExtension}`
+          const filePath = `${userProfile.id}/${fileName}`
+          
+          const { error: uploadError } = await supabase.storage
+            .from('avatars')
+            .upload(filePath, avatarFile, {
+              cacheControl: '3600',
+              upsert: true
+            })
+          
+          if (uploadError) {
+            console.error('Upload error:', uploadError)
+            toast({ 
+              title: 'Warning', 
+              description: 'Avatar upload failed, but other changes saved.', 
+              variant: 'default' 
+            })
+          } else {
+            const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
+            updateData.avatar_url = data.publicUrl
+          }
+        } catch (avatarError) {
+          console.error('Avatar upload error:', avatarError)
+          toast({ 
+            title: 'Warning', 
+            description: 'Avatar upload failed, but other changes saved.', 
+            variant: 'default' 
+          })
+        }
+      }
+
       const { data, error } = await supabase
         .from('users')
-        .update({
-          full_name: formData.full_name || null,
-          phone: formData.phone || null,
-          address: formData.address || null,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', userProfile.id)
         .select()
         .single()
@@ -53,7 +142,10 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
       if (error) throw error
 
       // Update local state with saved data
-      setLocalProfile({ ...localProfile, ...formData })
+      setLocalProfile({ ...localProfile, ...updateData })
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      setAvatarRefresh(Date.now())
       
       toast({
         title: "Success",
@@ -82,10 +174,20 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
   const handleCancel = () => {
     setFormData({
       full_name: localProfile?.full_name || '',
-      phone: localProfile?.phone || '',
-      address: localProfile?.address || ''
+      phone: localProfile?.phone || ''
     })
+    setAvatarFile(null)
+    setAvatarPreview(null)
     setIsEditing(false)
+  }
+
+  const getInitials = (name: string | null, email: string): string => {
+    if (name) {
+      const parts = name.trim().split(' ')
+      if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      return name.substring(0, 2).toUpperCase()
+    }
+    return email.substring(0, 2).toUpperCase()
   }
 
   return (
@@ -108,14 +210,48 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
         {/* Profile Information Card */}
         <Card className="p-6">
           <div className="flex items-center gap-4 mb-6">
-            <div className="h-20 w-20 rounded-full bg-blue-100 flex items-center justify-center">
-              <User className="h-10 w-10 text-blue-600" />
+            <div className="relative">
+              <Avatar className="h-20 w-20 cursor-pointer" onClick={handleAvatarClick}>
+                {(avatarPreview || localProfile?.avatar_url) && (
+                  <AvatarImage 
+                    src={avatarPreview || `${localProfile?.avatar_url?.split('?')[0]}?v=${avatarRefresh}`} 
+                    alt={localProfile?.full_name || 'User'} 
+                  />
+                )}
+                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-2xl font-semibold">
+                  {getInitials(localProfile?.full_name, localProfile?.email)}
+                </AvatarFallback>
+              </Avatar>
+              {isEditing && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="absolute -bottom-2 -right-2 h-8 w-8 rounded-full p-0 shadow-lg"
+                  onClick={handleAvatarClick}
+                >
+                  <Camera className="h-4 w-4" />
+                </Button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
                 {localProfile?.full_name || localProfile?.email?.split('@')[0]}
               </h2>
               <p className="text-sm text-gray-600">{localProfile?.email}</p>
+              {isEditing && avatarFile && (
+                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                  <Upload className="h-3 w-3" />
+                  New image selected
+                </p>
+              )}
             </div>
           </div>
 
@@ -139,16 +275,6 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="Enter your phone number"
-                    disabled={isSaving}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="Enter your address"
                     disabled={isSaving}
                   />
                 </div>
@@ -195,13 +321,6 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
                   <div>
                     <p className="text-sm text-gray-500">Phone Number</p>
                     <p className="font-medium">{localProfile?.phone || 'Not set'}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 text-gray-700">
-                  <MapPin className="h-5 w-5 text-gray-400" />
-                  <div>
-                    <p className="text-sm text-gray-500">Address</p>
-                    <p className="font-medium">{localProfile?.address || 'Not set'}</p>
                   </div>
                 </div>
               </>

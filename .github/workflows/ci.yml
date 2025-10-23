@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging, develop]
+  pull_request:
+    branches: [main, staging, develop]
+
+jobs:
+  develop:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Deploy to Vercel (development)
+        run: npx vercel --yes --token ${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ENV: development
+
+  staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      # Assuming e2e tests are added later; placeholder
+      # - run: npm run e2e
+      - name: Deploy to Vercel (staging)
+        run: npx vercel --yes --token ${{ secrets.VERCEL_TOKEN }} --prod
+        env:
+          VERCEL_ENV: staging
+
+  main:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      # Assuming e2e tests are added later; placeholder
+      # - run: npm run e2e
+      - name: Create and push tag
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          VERSION=$(npm version patch --no-git-tag-version)
+          git tag $VERSION
+          git push origin $VERSION
+      - name: Deploy to Vercel (production)
+        run: npx vercel --yes --token ${{ secrets.VERCEL_TOKEN }} --prod
+        env:
+          VERCEL_ENV: production

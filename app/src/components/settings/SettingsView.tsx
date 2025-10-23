@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,6 +9,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
+import DangerZoneTab from './DangerZoneTab'
+import NotificationTypesTab from './NotificationTypesTab'
+import NotificationProvidersTab from './NotificationProvidersTab'
 import { 
   Settings,
   User,
@@ -26,7 +31,11 @@ import {
   Phone,
   MapPin,
   Edit,
-  FileText
+  FileText,
+  AlertTriangle,
+  Upload,
+  X,
+  Image as ImageIcon
 } from 'lucide-react'
 
 interface UserProfile {
@@ -68,11 +77,14 @@ interface OrganizationSettings {
   contact_phone: string
   contact_email: string
   address: string
+  address_line2: string
   city: string
-  state: string
+  state_id: string | null
+  district_id: string | null
   postal_code: string
   country_code: string
   require_payment_proof: boolean
+  logo_url: string | null
 }
 
 export default function SettingsView({ userProfile }: SettingsViewProps) {
@@ -80,6 +92,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const { theme, setTheme } = useTheme()
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [userSettings, setUserSettings] = useState<UserSettings>({
     full_name: '',
     phone_number: '',
@@ -96,11 +111,14 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     contact_phone: '',
     contact_email: '',
     address: '',
+    address_line2: '',
     city: '',
-    state: '',
+    state_id: null,
+    district_id: null,
     postal_code: '',
     country_code: 'MY',
-    require_payment_proof: true
+    require_payment_proof: true,
+    logo_url: null
   })
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -140,7 +158,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         .from('organizations')
         .select('*')
         .eq('id', userProfile.organizations.id)
-        .single()
+        .single() as { data: any; error: any }
 
       if (orgError) throw orgError
 
@@ -151,12 +169,18 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         contact_phone: orgData.contact_phone || '',
         contact_email: orgData.contact_email || '',
         address: orgData.address || '',
+        address_line2: orgData.address_line2 || '',
         city: orgData.city || '',
-        state: orgData.state || '',
+        state_id: orgData.state_id || null,
+        district_id: orgData.district_id || null,
         postal_code: orgData.postal_code || '',
         country_code: orgData.country_code || 'MY',
-        require_payment_proof: orgData.settings?.require_payment_proof ?? true
+        require_payment_proof: orgData.settings?.require_payment_proof ?? true,
+        logo_url: orgData.logo_url || null
       })
+      
+      // Set initial logo preview
+      setLogoPreview(orgData.logo_url || null)
     } catch (error) {
       console.error('Error loading settings:', error)
     } finally {
@@ -190,7 +214,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
       
       // Save organization payment proof setting if HQ user
       if (userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && isReady) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('organizations')
           .update({
             settings: {
@@ -217,9 +241,35 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
     try {
       setLoading(true)
+      
+      let logoUrl = orgSettings.logo_url
 
-      // Update the organizations table with new settings including payment proof setting
-      const { error } = await supabase
+      // Handle logo upload if there's a new file
+      if (logoFile) {
+        const fileExt = logoFile.name.split('.').pop()
+        const fileName = `org-${userProfile.organizations.id}-${Date.now()}.${fileExt}`
+        
+        // Upload the logo to avatars bucket
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, logoFile, {
+            cacheControl: '3600',
+            upsert: false
+          })
+
+        if (uploadError) throw uploadError
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(uploadData.path)
+
+        // Add cache-busting parameter
+        logoUrl = `${publicUrl}?v=${Date.now()}`
+      }
+
+      // Update the organizations table with new settings including logo
+      const { error } = await (supabase as any)
         .from('organizations')
         .update({
           org_name: orgSettings.org_name,
@@ -227,19 +277,29 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
           contact_phone: orgSettings.contact_phone || null,
           contact_email: orgSettings.contact_email || null,
           address: orgSettings.address || null,
+          address_line2: orgSettings.address_line2 || null,
           city: orgSettings.city || null,
-          state: orgSettings.state || null,
+          state_id: orgSettings.state_id || null,
+          district_id: orgSettings.district_id || null,
           postal_code: orgSettings.postal_code || null,
           country_code: orgSettings.country_code || null,
+          logo_url: logoUrl,
           settings: {
             require_payment_proof: orgSettings.require_payment_proof
           },
-          is_active: true, // Explicitly preserve active status to prevent RLS visibility issues
+          is_active: true,
           updated_at: new Date().toISOString()
         })
         .eq('id', userProfile.organizations.id)
 
       if (error) throw error
+
+      // Clear the logo file selection
+      setLogoFile(null)
+      
+      // Reload organization data to ensure we have the latest logo_url from database
+      // This also ensures the cache-busted URL is properly set
+      await loadSettings()
 
       alert('Organization settings saved successfully!')
     } catch (error: any) {
@@ -281,12 +341,61 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     }
   }
 
+  // Handle logo file selection
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB')
+      return
+    }
+
+    setLogoFile(file)
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setLogoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Remove logo
+  const handleRemoveLogo = () => {
+    setLogoFile(null)
+    setLogoPreview(null)
+    setOrgSettings(prev => ({ ...prev, logo_url: null }))
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // Get organization initials for fallback
+  const getOrgInitials = (name: string) => {
+    return name
+      .split(' ')
+      .filter(word => word.length > 0)
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'organization', label: 'Organization', icon: Building2 },
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'preferences', label: 'Preferences', icon: Settings }
+    { id: 'preferences', label: 'Preferences', icon: Settings },
+    ...(userProfile.roles.role_level === 1 ? [{ id: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle }] : [])
   ]
 
   // Check if user can edit organization (Super Admin: 1, HQ Admin: 10, Power User: 20)
@@ -400,6 +509,75 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Logo Upload Section */}
+              {canEditOrganization && (
+                <div className="pb-6 border-b border-gray-200">
+                  <Label className="text-base font-semibold mb-4 block">Organization Logo</Label>
+                  <div className="flex items-start gap-6">
+                    {/* Logo Preview */}
+                    <div className="flex-shrink-0">
+                      <Avatar className="w-24 h-24 rounded-lg" key={logoPreview || 'no-logo'}>
+                        <AvatarImage
+                          src={logoPreview || undefined}
+                          alt={`${orgSettings.org_name} logo`}
+                          className="object-cover"
+                        />
+                        <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50">
+                          <Building2 className="w-10 h-10 text-blue-600" />
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+
+                    {/* Upload Controls */}
+                    <div className="flex-1 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoFileChange}
+                          className="hidden"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={loading}
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          {logoPreview ? 'Change Logo' : 'Upload Logo'}
+                        </Button>
+                        {logoPreview && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRemoveLogo}
+                            disabled={loading}
+                          >
+                            <X className="w-4 h-4 mr-2" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500 space-y-1">
+                        <p className="flex items-center gap-1">
+                          <ImageIcon className="w-4 h-4" />
+                          Recommended: Square image, at least 200x200px
+                        </p>
+                        <p>Supported formats: JPG, PNG, GIF (Max 5MB)</p>
+                        {logoFile && (
+                          <p className="text-blue-600 font-medium">
+                            New logo selected: {logoFile.name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="orgName">Organization Name</Label>
@@ -478,6 +656,17 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     <p className="text-xs text-gray-400 italic">Please enter the street address</p>
                   )}
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="address_line2">Address Line 2 (Optional)</Label>
+                  <Input
+                    id="address_line2"
+                    value={orgSettings.address_line2}
+                    onChange={(e) => setOrgSettings({...orgSettings, address_line2: e.target.value})}
+                    disabled={!canEditOrganization}
+                    placeholder="Apt, suite, unit, building, floor, etc."
+                    className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>
                   <Input
@@ -493,18 +682,15 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
+                  <Label htmlFor="state_id">State</Label>
                   <Input
-                    id="state"
-                    value={orgSettings.state}
-                    onChange={(e) => setOrgSettings({...orgSettings, state: e.target.value})}
-                    disabled={!canEditOrganization}
-                    placeholder="Enter state"
-                    className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
+                    id="state_id"
+                    value={orgSettings.state_id || ''}
+                    disabled={true}
+                    placeholder="State (managed in Organizations)"
+                    className="bg-gray-50 placeholder:text-gray-300"
                   />
-                  {!orgSettings.state && canEditOrganization && (
-                    <p className="text-xs text-gray-400 italic">Enter state/province</p>
-                  )}
+                  <p className="text-xs text-gray-400 italic">State must be managed through Organizations page</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="postalCode">Postal Code</Label>
@@ -615,103 +801,85 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
         {/* Notifications Settings */}
         {activeTab === 'notifications' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>
-                Choose how you want to be notified about important updates
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                {/* Email Notifications */}
-                <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
-                  <div className="space-y-0.5 flex-1">
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-gray-600" />
-                      <Label className="text-base font-medium">Email Notifications</Label>
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      Receive notifications via email for important updates
-                    </p>
-                  </div>
-                  <Switch
-                    checked={userSettings.email_notifications}
-                    onCheckedChange={(checked) => setUserSettings({
-                      ...userSettings, 
-                      email_notifications: checked
-                    })}
-                  />
-                </div>
-
-                {/* SMS Notifications */}
-                <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
-                  <div className="space-y-0.5 flex-1">
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-gray-600" />
-                      <Label className="text-base font-medium">SMS Notifications</Label>
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      Receive urgent notifications via SMS
-                    </p>
-                  </div>
-                  <Switch
-                    checked={userSettings.sms_notifications}
-                    onCheckedChange={(checked) => setUserSettings({
-                      ...userSettings, 
-                      sms_notifications: checked
-                    })}
-                  />
-                </div>
-
-                {/* Payment Proof Requirement - HQ Only */}
-                {userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && (
-                  <div className="border-t pt-4 mt-6">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Document Workflow Settings
-                    </h3>
-                    <div className="flex items-start justify-between p-4 rounded-lg border bg-blue-50 border-blue-200">
-                      <div className="space-y-1 flex-1">
+          <div className="space-y-6">
+            {/* For HQ Power Users - Show comprehensive notification system */}
+            {userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? (
+              <TabsComponent defaultValue="types" className="w-full">
+                <TabsList2 className="grid w-full grid-cols-2">
+                  <TabsTrigger2 value="types">Notification Types</TabsTrigger2>
+                  <TabsTrigger2 value="providers">Providers</TabsTrigger2>
+                </TabsList2>
+                
+                <TabsContent2 value="types" className="mt-6">
+                  <NotificationTypesTab userProfile={userProfile} />
+                </TabsContent2>
+                
+                <TabsContent2 value="providers" className="mt-6">
+                  <NotificationProvidersTab userProfile={userProfile} />
+                </TabsContent2>
+              </TabsComponent>
+            ) : (
+              /* Regular Users - Show simple notification preferences */
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notification Preferences</CardTitle>
+                  <CardDescription>
+                    Choose how you want to be notified about important updates
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    {/* Email Notifications */}
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <div className="space-y-0.5 flex-1">
                         <div className="flex items-center gap-2">
-                          <Label className="text-base font-medium">Require Payment Proof for Invoices</Label>
-                          {orgSettings.require_payment_proof && (
-                            <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full font-medium">
-                              Active
-                            </span>
-                          )}
+                          <Mail className="w-4 h-4 text-gray-600" />
+                          <Label className="text-base font-medium">Email Notifications</Label>
                         </div>
-                        <p className="text-sm text-gray-600">
-                          When enabled, users must upload payment proof before acknowledging invoices
-                        </p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          {orgSettings.require_payment_proof 
-                            ? '✓ Payment proof required - users will see upload section'
-                            : '○ Payment proof optional - users can acknowledge directly'
-                          }
+                        <p className="text-sm text-gray-500">
+                          Receive notifications via email for important updates
                         </p>
                       </div>
                       <Switch
-                        checked={orgSettings.require_payment_proof}
-                        onCheckedChange={(checked) => setOrgSettings({
-                          ...orgSettings, 
-                          require_payment_proof: checked
+                        checked={userSettings.email_notifications}
+                        onCheckedChange={(checked) => setUserSettings({
+                          ...userSettings, 
+                          email_notifications: checked
                         })}
-                        className="ml-4 flex-shrink-0"
+                      />
+                    </div>
+
+                    {/* SMS Notifications */}
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <div className="space-y-0.5 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-gray-600" />
+                          <Label className="text-base font-medium">SMS Notifications</Label>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          Receive urgent notifications via SMS
+                        </p>
+                      </div>
+                      <Switch
+                        checked={userSettings.sms_notifications}
+                        onCheckedChange={(checked) => setUserSettings({
+                          ...userSettings, 
+                          sms_notifications: checked
+                        })}
                       />
                     </div>
                   </div>
-                )}
-              </div>
 
-              <div className="flex justify-end">
-                <Button onClick={handleSaveNotifications} disabled={loading}>
-                  <Save className="w-4 h-4 mr-2" />
-                  {loading ? 'Saving...' : 'Save Preferences'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveNotifications} disabled={loading}>
+                      <Save className="w-4 h-4 mr-2" />
+                      {loading ? 'Saving...' : 'Save Preferences'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
 
         {/* Preferences Settings */}
@@ -786,6 +954,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Danger Zone Tab - Super Admin Only */}
+        {activeTab === 'danger-zone' && (
+          <DangerZoneTab userProfile={userProfile} />
         )}
       </div>
     </div>

@@ -27,7 +27,19 @@ export default async function DashboardPage() {
   // This ensures we always get the current logged-in user's data, not cached email lookups
   const { data: userProfile, error: userProfileError } = await supabase
     .from('users')
-    .select('*')
+    .select(`
+      *,
+      organizations:organization_id (
+        id,
+        org_name,
+        org_type_code,
+        org_code
+      ),
+      roles:role_code (
+        role_name,
+        role_level
+      )
+    `)
     .eq('id', user.id)
     .single()
 
@@ -47,51 +59,15 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  // Fetch organization details using the user's organization_id
-  const { data: orgData } = await supabase
-    .from('organizations')
-    .select('id, org_name, org_type_code, org_code')
-    .eq('id', userProfile.organization_id)
-    .single()
-
-  console.log('🔍 Dashboard - Organization Data:', {
-    id: orgData?.id,
-    org_name: orgData?.org_name,
-    org_type_code: orgData?.org_type_code
-  })
-
-  // Fetch role details using the user's role_code
-  const { data: roleData } = await supabase
-    .from('roles')
-    .select('role_name, role_level')
-    .eq('role_code', userProfile.role_code)
-    .single()
-
-  // Transform the user profile data to match the interface
+  // Transform the data structure for nested relationships
   const transformedUserProfile = {
-    id: userProfile.id,
-    email: userProfile.email,
-    role_code: userProfile.role_code,
-    organization_id: userProfile.organization_id,
-    is_active: userProfile.is_active,
-    organizations: orgData ? {
-      id: orgData.id,
-      org_name: orgData.org_name,
-      org_type_code: orgData.org_type_code,
-      org_code: orgData.org_code
-    } : {
-      id: '',
-      org_name: 'Unknown Organization',
-      org_type_code: 'UNKNOWN',
-      org_code: 'UNK'
-    },
-    roles: roleData ? {
-      role_name: roleData.role_name,
-      role_level: roleData.role_level
-    } : {
-      role_name: 'Unknown Role',
-      role_level: 0
-    }
+    ...userProfile,
+    organizations: Array.isArray(userProfile.organizations) 
+      ? userProfile.organizations[0] 
+      : userProfile.organizations,
+    roles: Array.isArray(userProfile.roles) 
+      ? userProfile.roles[0] 
+      : userProfile.roles
   }
 
   return <DashboardContent userProfile={transformedUserProfile} />

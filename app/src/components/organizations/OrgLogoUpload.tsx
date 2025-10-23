@@ -22,16 +22,6 @@ export default function OrgLogoUpload({
   const [logoPreview, setLogoPreview] = useState<string | null>(currentLogoUrl || null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const getInitials = (name: string) => {
-    if (!name) return 'ORG'
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
-  }
-
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -70,14 +60,17 @@ export default function OrgLogoUpload({
       <div className="flex items-center gap-4">
         {/* Logo Preview */}
         <Avatar className="w-24 h-24 rounded-lg">
-          <AvatarImage 
-            src={logoPreview || undefined} 
-            alt={`${orgName} logo`}
-            className="object-cover"
-          />
-          <AvatarFallback className="rounded-lg bg-blue-100 text-blue-600 text-xl font-semibold">
-            <Building2 className="w-10 h-10" />
-          </AvatarFallback>
+          {logoPreview ? (
+            <AvatarImage 
+              src={logoPreview} 
+              alt="Organization logo"
+              className="object-cover"
+            />
+          ) : (
+            <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50 text-blue-600">
+              <Building2 className="w-10 h-10" />
+            </AvatarFallback>
+          )}
         </Avatar>
 
         {/* Upload Controls */}
@@ -91,7 +84,7 @@ export default function OrgLogoUpload({
               className="flex-1"
             >
               <Upload className="w-4 h-4 mr-2" />
-              Upload Logo
+              {logoPreview ? 'Change Logo' : 'Upload Logo'}
             </Button>
             {logoPreview && (
               <Button

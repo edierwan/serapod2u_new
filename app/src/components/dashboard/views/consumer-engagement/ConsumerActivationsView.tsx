@@ -50,7 +50,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           )
         `)
         .eq('company_id', userProfile.organizations.id)
-        .order('scanned_at', { ascending: false })
+        .order('activated_at', { ascending: false })
         .limit(100)
 
       if (error) throw error
@@ -76,7 +76,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .select('consumer_phone')
         .eq('company_id', userProfile.organizations.id)
 
-      const uniqueCount = new Set(uniqueConsumers?.map(c => c.consumer_phone)).size
+      const uniqueCount = new Set(uniqueConsumers?.map((c: any) => c.consumer_phone)).size
 
       // Total points
       const { data: pointsData } = await supabase
@@ -84,7 +84,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .select('points_awarded')
         .eq('company_id', userProfile.organizations.id)
 
-      const totalPoints = pointsData?.reduce((sum, a) => sum + (a.points_awarded || 0), 0) || 0
+      const totalPoints = pointsData?.reduce((sum: number, a: any) => sum + (a.points_awarded || 0), 0) || 0
 
       // Today's scans
       const today = new Date().toISOString().split('T')[0]
@@ -92,7 +92,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .from('consumer_activations')
         .select('*', { count: 'exact', head: true })
         .eq('company_id', userProfile.organizations.id)
-        .gte('scanned_at', `${today}T00:00:00`)
+        .gte('activated_at', `${today}T00:00:00`)
 
       setStats({
         total_scans: totalScans || 0,
@@ -185,7 +185,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                 {activations.map((activation) => (
                   <tr key={activation.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {new Date(activation.scanned_at).toLocaleString()}
+                      {new Date(activation.activated_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <div>
@@ -217,10 +217,10 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {activation.scan_location ? (
+                      {activation.activation_location ? (
                         <div className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
-                          <span className="text-xs">{activation.scan_location}</span>
+                          <span className="text-xs">{activation.activation_location}</span>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-500">-</span>

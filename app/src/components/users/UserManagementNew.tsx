@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Users, Search, Plus, Loader2, Edit, CheckCircle, XCircle, Trash2 } from 'lucide-react'
+import { Users, Search, Plus, Loader2, Edit, CheckCircle, XCircle, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Power } from 'lucide-react'
 import UserDialogNew from './UserDialogNew'
 import type { User as UserType, Role, Organization } from '@/types/user'
 
@@ -55,6 +55,9 @@ interface UserProfile {
   roles: { role_level: number }
 }
 
+type SortField = 'full_name' | 'role_code' | 'is_active' | 'organization_id' | 'created_at' | 'last_login_at'
+type SortDirection = 'asc' | 'desc'
+
 export default function UserManagementNew({ userProfile }: { userProfile: UserProfile }) {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,6 +67,8 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
   const [roles, setRoles] = useState<Role[]>([])
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  const [sortField, setSortField] = useState<SortField>('created_at')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -126,7 +131,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
     try {
       const { data, error } = await supabase
         .from('organizations')
-        .select('id, org_name, org_code')
+        .select('id, org_name, org_code, org_type_code')
         .eq('is_active', true)
         .order('org_name', { ascending: true })
       
@@ -134,6 +139,17 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       setOrganizations((data || []) as Organization[])
     } catch (error) {
       console.error('Error loading organizations:', error)
+    }
+  }
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if clicking same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // Set new field with default ascending direction
+      setSortField(field)
+      setSortDirection('asc')
     }
   }
 
@@ -176,12 +192,12 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
             
             if (uploadError) throw uploadError
             
-            // Get public URL with cache-busting timestamp
+            // Get public URL without cache-busting params (will be added in display)
             const { data: urlData } = supabase.storage
               .from('avatars')
               .getPublicUrl(filePath)
             
-            updateData.avatar_url = `${urlData.publicUrl}?v=${Date.now()}`
+            updateData.avatar_url = urlData.publicUrl
           } catch (avatarError) {
             console.error('Avatar upload error:', avatarError)
             toast({ title: 'Warning', description: 'Avatar upload failed, but user data saved.', variant: 'default' })
@@ -189,7 +205,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         }
         
         // Update user in database
-        const { error: updateError } = await supabase
+        const { error: updateError } = await (supabase as any)
           .from('users')
           .update(updateData)
           .eq('id', editingUser.id)
@@ -225,17 +241,26 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
             const filePath = `${result.user_id}/${fileName}`
             
-            await supabase.storage.from('avatars').upload(filePath, avatarFile, { 
+            const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, { 
               cacheControl: '3600',
               upsert: true 
             })
             
-            const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(filePath)
-            
-            await supabase
-              .from('users')
-              .update({ avatar_url: `${urlData.publicUrl}?v=${Date.now()}` })
-              .eq('id', result.user_id)
+            if (!uploadError) {
+              const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(filePath)
+              
+              // Store clean URL without cache-busting params
+              const { error: updateError } = await (supabase as any)
+                .from('users')
+                .update({ avatar_url: urlData.publicUrl })
+                .eq('id', result.user_id)
+              
+              if (updateError) {
+                console.error('Avatar URL update error:', updateError)
+              }
+            } else {
+              console.error('Avatar upload error:', uploadError)
+            }
           } catch (avatarError) {
             console.error('Avatar upload error:', avatarError)
           }
@@ -244,6 +269,9 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         console.log('✅ User created successfully, reloading user list...')
         toast({ title: 'Success', description: `${userData.full_name} created successfully` })
         setDialogOpen(false)
+        
+        // Small delay to ensure database transaction completes
+        await new Promise(resolve => setTimeout(resolve, 500))
         
         // Force reload users to update the list
         await loadUsers()
@@ -254,6 +282,35 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       toast({ 
         title: 'Error', 
         description: error instanceof Error ? error.message : 'Failed to save user', 
+        variant: 'destructive' 
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleToggleActive = async (userId: string, currentStatus: boolean, userName: string) => {
+    try {
+      setIsSaving(true)
+      
+      const { error } = await (supabase as any)
+        .from('users')
+        .update({ is_active: !currentStatus })
+        .eq('id', userId)
+      
+      if (error) throw error
+
+      toast({ 
+        title: 'Success', 
+        description: `${userName} ${!currentStatus ? 'activated' : 'deactivated'} successfully`
+      })
+      
+      await loadUsers()
+    } catch (error) {
+      console.error('Error toggling user status:', error)
+      toast({ 
+        title: 'Error', 
+        description: error instanceof Error ? error.message : 'Failed to update user status', 
         variant: 'destructive' 
       })
     } finally {
@@ -293,10 +350,45 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
     }
   }
 
-  const filteredUsers = users.filter(user => 
-    user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredUsers = users
+    .filter(user => 
+      user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      let aVal: any = a[sortField]
+      let bVal: any = b[sortField]
+
+      // Handle null values
+      if (aVal === null || aVal === undefined) return 1
+      if (bVal === null || bVal === undefined) return -1
+
+      // Handle different data types
+      if (sortField === 'created_at' || sortField === 'last_login_at') {
+        aVal = new Date(aVal).getTime()
+        bVal = new Date(bVal).getTime()
+      } else if (sortField === 'is_active') {
+        aVal = aVal ? 1 : 0
+        bVal = bVal ? 1 : 0
+      } else if (sortField === 'full_name') {
+        aVal = (aVal || '').toLowerCase()
+        bVal = (bVal || '').toLowerCase()
+      } else if (sortField === 'role_code') {
+        aVal = roles.find(r => r.role_code === a.role_code)?.role_name || a.role_code
+        bVal = roles.find(r => r.role_code === b.role_code)?.role_name || b.role_code
+        aVal = aVal.toLowerCase()
+        bVal = bVal.toLowerCase()
+      } else if (sortField === 'organization_id') {
+        aVal = organizations.find(o => o.id === a.organization_id)?.org_name || ''
+        bVal = organizations.find(o => o.id === b.organization_id)?.org_name || ''
+        aVal = aVal.toLowerCase()
+        bVal = bVal.toLowerCase()
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
 
   const stats = {
     total: users.length,
@@ -322,6 +414,17 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       'USER': 'bg-gray-100 text-gray-800',
     }
     return colors[roleCode] || 'bg-gray-100 text-gray-800'
+  }
+
+  const getOrgTypeName = (orgTypeCode: string): string => {
+    const typeNames: Record<string, string> = {
+      'HQ': 'Headquarters',
+      'MANU': 'Manufacturer',
+      'DIST': 'Distributor',
+      'WH': 'Warehouse',
+      'SHOP': 'Shop',
+    }
+    return typeNames[orgTypeCode] || orgTypeCode
   }
 
   if (loading) {
@@ -426,11 +529,71 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Verified</TableHead>
-                    <TableHead>Last Login</TableHead>
+                    <TableHead>
+                      <button 
+                        onClick={() => handleSort('full_name')} 
+                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      >
+                        User
+                        {sortField === 'full_name' ? (
+                          sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button 
+                        onClick={() => handleSort('role_code')} 
+                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      >
+                        Role
+                        {sortField === 'role_code' ? (
+                          sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button 
+                        onClick={() => handleSort('organization_id')} 
+                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      >
+                        Organization
+                        {sortField === 'organization_id' ? (
+                          sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button 
+                        onClick={() => handleSort('created_at')} 
+                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      >
+                        Join Date
+                        {sortField === 'created_at' ? (
+                          sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button 
+                        onClick={() => handleSort('last_login_at')} 
+                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      >
+                        Last Login
+                        {sortField === 'last_login_at' ? (
+                          sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        )}
+                      </button>
+                    </TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -442,7 +605,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                           <Avatar className="w-10 h-10">
                             {user.avatar_url && (
                               <AvatarImage
-                                src={`${user.avatar_url.split('?')[0]}?v=${user.updated_at || Date.now()}`}
+                                src={`${user.avatar_url.split('?')[0]}?t=${new Date(user.updated_at).getTime()}`}
                                 alt={user.full_name || 'User'}
                                 key={`avatar-${user.id}-${user.updated_at}`}
                               />
@@ -456,7 +619,6 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                               {user.full_name || 'No Name'}
                             </div>
                             <div className="text-sm text-gray-500 truncate">{user.email}</div>
-                            {user.phone && <div className="text-sm text-gray-400 truncate">{user.phone}</div>}
                           </div>
                         </div>
                       </TableCell>
@@ -466,22 +628,24 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                          {user.is_active ? (
-                            <><CheckCircle className="w-3 h-3 mr-1" />Active</>
+                        <div className="min-w-0">
+                          {organizations.find(o => o.id === user.organization_id) ? (
+                            <span className="text-gray-900">
+                              {getOrgTypeName(organizations.find(o => o.id === user.organization_id)?.org_type_code || '')}
+                            </span>
                           ) : (
-                            <><XCircle className="w-3 h-3 mr-1" />Inactive</>
+                            <span className="text-gray-400 italic">No Organization</span>
                           )}
-                        </Badge>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={user.is_verified ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}>
-                          {user.is_verified ? (
-                            <><CheckCircle className="w-3 h-3 mr-1" />Verified</>
-                          ) : (
-                            <><XCircle className="w-3 h-3 mr-1" />Unverified</>
-                          )}
-                        </Badge>
+                        <span className="text-gray-900">
+                          {new Date(user.created_at).toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                          })}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <span className={user.last_login_at ? 'text-gray-900' : 'text-gray-400 italic'}>
@@ -489,15 +653,26 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleToggleActive(user.id, user.is_active, user.full_name || user.email)}
+                            disabled={isSaving || user.id === userProfile.id}
+                            className={user.is_active ? 'text-green-600 hover:text-green-700 hover:bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}
+                            title={user.id === userProfile.id ? "Cannot deactivate yourself" : (user.is_active ? "Deactivate user" : "Activate user")}
+                          >
+                            <Power className="w-4 h-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => { setEditingUser(user); setDialogOpen(true) }}
                             disabled={isSaving}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            title="Edit user"
                           >
-                            <Edit className="w-4 h-4 mr-1" />
-                            Edit
+                            <Edit className="w-4 h-4" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -507,8 +682,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
                             title={user.id === userProfile.id ? "Cannot delete yourself" : "Delete user"}
                           >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            Delete
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </TableCell>

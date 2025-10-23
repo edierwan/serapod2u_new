@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Loader2 } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { X, Loader2, Upload, Image as ImageIcon } from 'lucide-react'
 
 interface Product {
   id: string
@@ -25,6 +26,7 @@ interface Variant {
   suggested_retail_price: number | null
   is_active: boolean
   is_default: boolean
+  image_url?: string | null
 }
 
 interface VariantDialogProps {
@@ -53,11 +55,13 @@ export default function VariantDialog({
     base_cost: null,
     suggested_retail_price: null,
     is_active: true,
-    is_default: false
+    is_default: false,
+    image_url: null
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
-
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
   useEffect(() => {
     if (open) {
       if (variant) {
@@ -70,8 +74,10 @@ export default function VariantDialog({
           base_cost: variant.base_cost,
           suggested_retail_price: variant.suggested_retail_price,
           is_active: variant.is_active,
-          is_default: variant.is_default
+          is_default: variant.is_default,
+          image_url: variant.image_url || null
         })
+        setImagePreview(variant.image_url || null)
       } else {
         setFormData({
           product_id: products.length > 0 ? products[0].id : '',
@@ -82,10 +88,13 @@ export default function VariantDialog({
           base_cost: null,
           suggested_retail_price: null,
           is_active: true,
-          is_default: false
+          is_default: false,
+          image_url: null
         })
+        setImagePreview(null)
       }
       setErrors({})
+      setImageFile(null)
     }
   }, [open, variant, products])
 
@@ -143,9 +152,53 @@ export default function VariantDialog({
     if (validate()) {
       onSave({
         ...formData,
-        variant_code: generateVariantCode()
-      })
+        variant_code: generateVariantCode(),
+        imageFile: imageFile // Pass the image file to parent for upload
+      } as any)
     }
+  }
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setErrors(prev => ({ ...prev, image: 'Please select a valid image file' }))
+        return
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, image: 'Image size must be less than 5MB' }))
+        return
+      }
+
+      setImageFile(file)
+      setErrors(prev => ({ ...prev, image: '' }))
+
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleRemoveImage = () => {
+    setImageFile(null)
+    setImagePreview(null)
+    setFormData(prev => ({ ...prev, image_url: null }))
+  }
+
+  const getVariantInitials = (name: string) => {
+    if (!name) return 'V'
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
   }
 
   if (!open) return null
@@ -166,6 +219,59 @@ export default function VariantDialog({
         </div>
 
         <div className="p-6 space-y-4">
+          {/* Variant Image Upload */}
+          <div className="space-y-2">
+            <Label>Variant Image</Label>
+            <div className="flex items-center gap-4">
+              <Avatar className="w-20 h-20 rounded-lg">
+                <AvatarImage 
+                  src={imagePreview || undefined} 
+                  alt={`${formData.variant_name || 'Variant'} image`}
+                  className="object-cover"
+                />
+                <AvatarFallback className="rounded-lg bg-gray-100 text-gray-600 text-lg font-semibold">
+                  {formData.variant_name ? getVariantInitials(formData.variant_name) : <ImageIcon className="w-8 h-8" />}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById('variant-image-upload')?.click()}
+                    className="flex items-center gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {imagePreview ? 'Change Image' : 'Upload Image'}
+                  </Button>
+                  {imagePreview && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRemoveImage}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+                <input
+                  id="variant-image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  PNG, JPG, GIF up to 5MB. Recommended: 400x400px
+                </p>
+                {errors.image && <p className="text-xs text-red-500 mt-1">{errors.image}</p>}
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="product">Product *</Label>
             <select

@@ -31,11 +31,16 @@ interface Product {
   is_vape: boolean
   is_active: boolean
   age_restriction: number | null
+  manufacturer_id: string | null
   brands?: {
     brand_name: string
   } | null
   product_categories?: {
     category_name: string
+  } | null
+  manufacturers?: {
+    org_name: string
+    org_code: string
   } | null
   product_images?: Array<{
     image_url: string
@@ -99,6 +104,10 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
           product_categories (
             category_name
           ),
+          manufacturers:organizations!products_manufacturer_id_fkey (
+            org_name,
+            org_code
+          ),
           product_images (
             image_url,
             is_primary
@@ -142,7 +151,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
       const transformedData = (data || []).map((item: any) => ({
         ...item,
         brands: Array.isArray(item.brands) ? item.brands[0] : item.brands,
-        product_categories: Array.isArray(item.product_categories) ? item.product_categories[0] : item.product_categories
+        product_categories: Array.isArray(item.product_categories) ? item.product_categories[0] : item.product_categories,
+        manufacturers: Array.isArray(item.manufacturers) ? item.manufacturers[0] : item.manufacturers
       }))
       
       setProducts(transformedData)
@@ -484,6 +494,9 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                       <p className="text-gray-600">
                         <span className="font-medium">Category:</span> {product.product_categories?.category_name || 'No Category'}
                       </p>
+                      <p className="text-gray-600">
+                        <span className="font-medium">Manufacturer:</span> {product.manufacturers?.org_name || 'Unknown'} {product.manufacturers?.org_code && `(${product.manufacturers.org_code})`}
+                      </p>
                       {product.product_description && (
                         <p className="text-gray-600 text-xs mt-2 line-clamp-2">
                           {product.product_description}
@@ -545,6 +558,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 <TableHead>Product Name</TableHead>
                 <TableHead>Brand</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Manufacturer</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -553,13 +567,13 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     Loading products...
                   </TableCell>
                 </TableRow>
               ) : products.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     No products found
                   </TableCell>
                 </TableRow>
@@ -622,6 +636,9 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                     </TableCell>
                     <TableCell>
                       {product.product_categories?.category_name || 'No Category'}
+                    </TableCell>
+                    <TableCell>
+                      {product.manufacturers?.org_name || 'Unknown'} {product.manufacturers?.org_code && `(${product.manufacturers.org_code})`}
                     </TableCell>
                     <TableCell>
                       {product.is_vape ? (

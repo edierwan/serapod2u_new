@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, ArrowLeft, Save, Info, AlertTriangle } from 'lucide-react'
+import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
 import { 
   getValidParentOrgs, 
@@ -65,6 +65,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   const [parentOrgs, setParentOrgs] = useState<ParentOrganization[]>([])
   const [filteredParentOrgs, setFilteredParentOrgs] = useState<ParentOrganization[]>([])
   const [childOrgs, setChildOrgs] = useState<any[]>([])
+  const [shopDistributors, setShopDistributors] = useState<any[]>([])
+  const [orgUsers, setOrgUsers] = useState<any[]>([])
   const [typeChangeWarning, setTypeChangeWarning] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -91,6 +93,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         loadOrganization(orgId)
         loadParentOrganizations()
         loadChildOrganizations(orgId)
+        loadShopDistributors(orgId)
+        loadOrganizationUsers(orgId)
       } else {
         // No org selected, go back to organizations
         onViewChange?.('organizations')
@@ -151,6 +155,72 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     }
   }
 
+  const loadShopDistributors = async (orgId: string) => {
+    try {
+      // Only load for SHOP organizations
+      const { data: orgData } = await (supabase as any)
+        .from('organizations')
+        .select('org_type_code')
+        .eq('id', orgId)
+        .single()
+
+      if (orgData?.org_type_code === 'SHOP') {
+        const { data, error } = await (supabase as any)
+          .from('shop_distributors')
+          .select(`
+            *,
+            distributor:organizations!shop_distributors_distributor_id_fkey(
+              id,
+              org_name,
+              org_code
+            )
+          `)
+          .eq('shop_id', orgId)
+          .eq('is_active', true)
+          .order('is_preferred', { ascending: false })
+
+        if (error) throw error
+        
+        const transformed = (data || []).map((sd: any) => ({
+          ...sd,
+          distributor: Array.isArray(sd.distributor) ? sd.distributor[0] : sd.distributor
+        }))
+        
+        setShopDistributors(transformed)
+      }
+    } catch (error) {
+      console.error('Error loading shop distributors:', error)
+    }
+  }
+
+  const loadOrganizationUsers = async (orgId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select(`
+          id,
+          email,
+          full_name,
+          phone,
+          is_active,
+          roles:role_code (
+            role_name,
+            role_level
+          )
+        `)
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('full_name', { ascending: true })
+
+      if (error) throw error
+      
+      console.log('📊 Loaded organization users:', data?.length)
+      setOrgUsers(data || [])
+    } catch (error) {
+      console.error('Error loading organization users:', error)
+    }
+  }
+
   const loadOrganization = async (orgId: string) => {
     try {
       setLoading(true)
@@ -194,6 +264,19 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   const handleSave = async () => {
     try {
       setSaving(true)
+
+      // Validate required parent_org_id for organizations that need it
+      if (isParentRequired(formData.org_type_code as OrgType || organization?.org_type_code as OrgType)) {
+        if (!formData.parent_org_id) {
+          toast({
+            title: '✕ Validation Error',
+            description: `${getParentFieldLabel(formData.org_type_code as OrgType || organization?.org_type_code as OrgType)} is required`,
+            variant: 'destructive'
+          })
+          setSaving(false)
+          return
+        }
+      }
 
       // Upload logo if a new file is provided
       let logo_url = formData.logo_url
@@ -262,9 +345,13 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (formData.website !== undefined) updatePayload.website = formData.website || null
       if (logo_url !== undefined) updatePayload.logo_url = logo_url
 
-      // Only include parent_org_id if it was actually changed
-      if (formData.parent_org_id !== undefined && formData.parent_org_id !== organization?.parent_org_id) {
-        // Validate hierarchy when parent is being changed
+      // Handle parent_org_id - include if changed OR if org type requires parent and it's missing
+      const needsParent = isParentRequired(organization?.org_type_code as OrgType)
+      const parentChanged = formData.parent_org_id !== undefined && formData.parent_org_id !== organization?.parent_org_id
+      const parentMissing = needsParent && !organization?.parent_org_id && formData.parent_org_id
+      
+      if (parentChanged || parentMissing) {
+        // Validate hierarchy when parent is being changed or added
         const parentOrg = formData.parent_org_id 
           ? parentOrgs.find(p => p.id === formData.parent_org_id)
           : undefined
@@ -288,12 +375,47 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         updatePayload.parent_org_id = formData.parent_org_id || null
       }
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('organizations')
         .update(updatePayload)
         .eq('id', organization!.id)
 
       if (error) throw error
+
+      // Auto-repair: If this is a SHOP with a DIST parent, ensure shop_distributors entry exists
+      if (organization?.org_type_code === 'SHOP' && updatePayload.parent_org_id) {
+        const parentOrg = parentOrgs.find(p => p.id === updatePayload.parent_org_id)
+        if (parentOrg?.org_type_code === 'DIST') {
+          // Check if shop_distributors entry exists
+          const { data: existing, error: checkError } = await (supabase as any)
+            .from('shop_distributors')
+            .select('id')
+            .eq('shop_id', organization.id)
+            .eq('distributor_id', updatePayload.parent_org_id)
+            .maybeSingle()
+
+          if (!checkError && !existing) {
+            // Entry doesn't exist, create it
+            console.log('🔧 Auto-repair: Creating missing shop_distributors entry...')
+            const { error: linkError } = await (supabase as any)
+              .from('shop_distributors')
+              .insert([{
+                shop_id: organization.id,
+                distributor_id: updatePayload.parent_org_id,
+                payment_terms: 'NET_30',
+                is_active: true,
+                is_preferred: shopDistributors.length === 0, // Make preferred if it's the first one
+                created_by: userProfile.id
+              }])
+
+            if (!linkError) {
+              console.log('✅ Auto-repair: shop_distributors entry created successfully')
+            } else {
+              console.error('❌ Auto-repair failed:', linkError)
+            }
+          }
+        }
+      }
 
       toast({
         title: '✓ Saved Successfully',
@@ -301,6 +423,9 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         variant: 'success'
       })
 
+      // Set flag to refresh links and go back to organizations
+      sessionStorage.setItem('needsLinkRefresh', 'true')
+      
       // Go back to organizations
       setTimeout(() => {
         onViewChange?.('organizations')
@@ -575,6 +700,71 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         </CardContent>
       </Card>
 
+      {/* Linked Distributors Section (for SHOP organizations) */}
+      {organization.org_type_code === 'SHOP' && shopDistributors.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <LinkIcon className="w-5 h-5 text-blue-600" />
+                  Linked Distributors
+                </CardTitle>
+                <CardDescription>
+                  Distributor relationships for this shop
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {shopDistributors.map((sd) => (
+              <div
+                key={sd.id}
+                className={`flex justify-between items-center p-4 border rounded-lg ${
+                  sd.is_preferred ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                    <LinkIcon className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{sd.distributor?.org_name}</p>
+                    <p className="text-sm text-gray-500">{sd.distributor?.org_code}</p>
+                    <div className="flex gap-2 mt-1">
+                      {sd.payment_terms && (
+                        <span className="text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                          {sd.payment_terms}
+                        </span>
+                      )}
+                      {sd.account_number && (
+                        <span className="text-xs text-gray-600">
+                          Account: {sd.account_number}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {sd.is_preferred && (
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <Star className="w-4 h-4 fill-current" />
+                    <span className="text-sm font-medium">Default</span>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="pt-2">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  To manage distributor relationships, close this page and click the "Distributors" button on the organization card.
+                </AlertDescription>
+              </Alert>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Contact Information */}
       <Card>
         <CardHeader>
@@ -642,6 +832,66 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
               )}
             </div>
           </div>
+
+          {/* Organization Users List - Show when there are 2 or more users */}
+          {orgUsers.length >= 2 && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-gray-900">
+                  Organization Users ({orgUsers.length})
+                </h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  All active users belonging to this organization
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                {orgUsers.map((user: any) => (
+                  <div 
+                    key={user.id} 
+                    className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
+                        {user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
+                      </div>
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {user.full_name || 'No Name'}
+                        </p>
+                        {user.roles && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            {Array.isArray(user.roles) ? user.roles[0]?.role_name : user.roles?.role_name}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          <span className="truncate">{user.email}</span>
+                        </div>
+                        
+                        {user.phone && (
+                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                            </svg>
+                            <span>{user.phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -71,31 +71,52 @@ export async function middleware(request: NextRequest) {
       console.log('🔍 Middleware - User Email:', user.email)
     }
 
-    // Handle refresh token errors
-    if (authError && (
-      authError.message?.includes('refresh_token_not_found') ||
-      authError.message?.includes('Invalid Refresh Token') ||
-      authError.message?.includes('Token has expired')
-    )) {
-      // Clear ALL session cookies (try multiple possible cookie names)
-      response = NextResponse.redirect(new URL('/login', request.url))
+    // Handle authentication errors
+    if (authError) {
+      console.error('🔴 Auth Error in Middleware:', authError.message, authError.status)
       
-      // Clear common Supabase cookie names
-      const cookieNames = [
-        'sb-access-token',
-        'sb-refresh-token',
-        `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`,
-        `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token-code-verifier`
-      ]
-      
-      cookieNames.forEach(name => {
-        if (name) {
-          response.cookies.delete(name)
-          request.cookies.delete(name)
+      // Check for rate limit error
+      if (authError.status === 429 || authError.message?.toLowerCase().includes('rate limit')) {
+        console.error('⚠️ Rate limit reached - too many requests')
+        // Don't redirect on rate limit, just continue
+        // The session might still be valid
+        if (request.nextUrl.pathname === '/login') {
+          return response // Allow access to login page
         }
-      })
+      }
       
-      return response
+      // Handle token errors
+      if (
+        authError.message?.includes('refresh_token_not_found') ||
+        authError.message?.includes('Invalid Refresh Token') ||
+        authError.message?.includes('Refresh Token Not Found') ||
+        authError.message?.includes('Token has expired') ||
+        authError.status === 400
+      ) {
+        console.log('🔴 Invalid/expired token - clearing session and redirecting to login')
+        
+        // Only redirect if not already on login page
+        if (request.nextUrl.pathname !== '/login') {
+          response = NextResponse.redirect(new URL('/login', request.url))
+          
+          // Clear ALL session cookies
+          const cookieNames = [
+            'sb-access-token',
+            'sb-refresh-token',
+            `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`,
+            `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token-code-verifier`
+          ]
+          
+          cookieNames.forEach(name => {
+            if (name) {
+              response.cookies.delete(name)
+              request.cookies.delete(name)
+            }
+          })
+          
+          return response
+        }
+      }
     }
 
     // Update last_login_at when user first accesses any dashboard page

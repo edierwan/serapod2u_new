@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Upload, X, Loader2, ImageIcon } from 'lucide-react'
+import { Upload, X, Loader2, ImageIcon, AlertCircle } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
+import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 
 interface UserDialogNewProps {
   user: User | null
@@ -31,12 +32,14 @@ export default function UserDialogNew({
   onOpenChange,
   onSave
 }: UserDialogNewProps) {
-  const [formData, setFormData] = useState<Partial<User> & { password?: string }>(
+  const { supabase } = useSupabaseAuth()
+  const [formData, setFormData] = useState<Partial<User> & { password?: string; confirmPassword?: string }>(
     user || {
       email: '',
       full_name: '',
       phone: '',
       password: '',
+      confirmPassword: '',
       role_code: '',
       organization_id: '',
       is_active: true,
@@ -46,10 +49,59 @@ export default function UserDialogNew({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [emailCheckStatus, setEmailCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Filter roles based on current user's role level
   const availableRoles = roles.filter(role => role.role_level >= currentUserRoleLevel)
+
+  // Check if email exists in database
+  const checkEmailAvailability = async (email: string) => {
+    if (!email || !email.includes('@') || !!user) {
+      setEmailCheckStatus('idle')
+      return
+    }
+
+    setIsCheckingEmail(true)
+    setEmailCheckStatus('checking')
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email')
+        .ilike('email', email.trim())
+        .limit(1)
+
+      if (error) {
+        console.error('Error checking email:', error)
+        setEmailCheckStatus('idle')
+        setIsCheckingEmail(false)
+        return
+      }
+
+      if (data && data.length > 0) {
+        setEmailCheckStatus('taken')
+        setErrors(prev => ({ 
+          ...prev, 
+          email: 'This email address is already registered. Please use a different email.' 
+        }))
+      } else {
+        setEmailCheckStatus('available')
+        setErrors(prev => {
+          const newErrors = { ...prev }
+          delete newErrors.email
+          return newErrors
+        })
+      }
+    } catch (err) {
+      console.error('Error checking email availability:', err)
+      setEmailCheckStatus('idle')
+    } finally {
+      setIsCheckingEmail(false)
+    }
+  }
 
   // Re-initialize form when user prop changes
   useEffect(() => {
@@ -64,6 +116,7 @@ export default function UserDialogNew({
           full_name: '',
           phone: '',
           password: '',
+          confirmPassword: '',
           role_code: '',
           organization_id: '',
           is_active: true,
@@ -73,8 +126,19 @@ export default function UserDialogNew({
       }
       setAvatarFile(null)
       setErrors({})
+      setEmailCheckStatus('idle')
+      setIsCheckingEmail(false)
     }
   }, [user, open])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (emailCheckTimeoutRef.current) {
+        clearTimeout(emailCheckTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U'
@@ -136,6 +200,17 @@ export default function UserDialogNew({
         return newErrors
       })
     }
+
+    // Check email availability with debounce
+    if (field === 'email' && !user) {
+      setEmailCheckStatus('idle')
+      if (emailCheckTimeoutRef.current) {
+        clearTimeout(emailCheckTimeoutRef.current)
+      }
+      emailCheckTimeoutRef.current = setTimeout(() => {
+        checkEmailAvailability(value)
+      }, 500) // 500ms debounce
+    }
   }
 
   const validateForm = (): boolean => {
@@ -145,6 +220,8 @@ export default function UserDialogNew({
       newErrors.email = 'Email is required'
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Invalid email format'
+    } else if (emailCheckStatus === 'taken') {
+      newErrors.email = 'This email address is already registered. Please use a different email.'
     }
 
     if (!formData.full_name) {
@@ -164,13 +241,24 @@ export default function UserDialogNew({
       newErrors.password = 'Password must be at least 6 characters'
     }
 
+    // Validate confirm password for new users
+    if (!user && !formData.confirmPassword) {
+      newErrors.confirmPassword = 'Please confirm your password'
+    }
+
+    if (!user && formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match'
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = () => {
     if (validateForm()) {
-      onSave(formData, avatarFile)
+      // Remove confirmPassword before saving
+      const { confirmPassword, ...dataToSave } = formData
+      onSave(dataToSave, avatarFile)
     }
   }
 
@@ -284,16 +372,42 @@ export default function UserDialogNew({
                 <Label htmlFor="email">
                   Email <span className="text-red-500">*</span>
                 </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="user@company.com"
-                  value={formData.email || ''}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  disabled={!!user || isSaving}
-                  className={errors.email ? 'border-red-500' : ''}
-                />
+                <div className="relative">
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={formData.email || ''}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    disabled={!!user || isSaving}
+                    className={`${errors.email ? 'border-red-500' : ''} ${
+                      emailCheckStatus === 'available' ? 'border-green-500' : ''
+                    } placeholder:text-gray-400 placeholder:italic`}
+                  />
+                  {!user && isCheckingEmail && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    </div>
+                  )}
+                  {!user && emailCheckStatus === 'available' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+                        <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                  {!user && emailCheckStatus === 'taken' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <AlertCircle className="w-5 h-5 text-red-500" />
+                    </div>
+                  )}
+                </div>
                 {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
+                {!errors.email && emailCheckStatus === 'available' && (
+                  <p className="text-xs text-green-600">✓ Email is available</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -302,43 +416,65 @@ export default function UserDialogNew({
                 </Label>
                 <Input
                   id="full_name"
-                  placeholder="John Doe"
+                  placeholder="Enter your full name"
                   value={formData.full_name || ''}
                   onChange={(e) => handleInputChange('full_name', e.target.value)}
                   disabled={isSaving}
-                  className={errors.full_name ? 'border-red-500' : ''}
+                  className={`${errors.full_name ? 'border-red-500' : ''} placeholder:text-gray-400 placeholder:italic`}
                 />
                 {errors.full_name && <p className="text-xs text-red-500">{errors.full_name}</p>}
               </div>
             </div>
 
             {!user && (
-              <div className="space-y-2">
-                <Label htmlFor="password">
-                  Password <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter a secure password"
-                  value={formData.password || ''}
-                  onChange={(e) => handleInputChange('password', e.target.value)}
-                  disabled={isSaving}
-                  className={errors.password ? 'border-red-500' : ''}
-                />
-                {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
-                <p className="text-xs text-gray-500">Minimum 6 characters</p>
-              </div>
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="password">
+                    Password <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter a secure password"
+                    value={formData.password || ''}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    disabled={isSaving}
+                    className={`${errors.password ? 'border-red-500' : ''} placeholder:text-gray-400 placeholder:italic`}
+                  />
+                  {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
+                  <p className="text-xs text-gray-500">Minimum 6 characters</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">
+                    Confirm Password <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="Re-enter your password"
+                    value={formData.confirmPassword || ''}
+                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                    disabled={isSaving}
+                    className={`${errors.confirmPassword ? 'border-red-500' : ''} placeholder:text-gray-400 placeholder:italic`}
+                  />
+                  {errors.confirmPassword && <p className="text-xs text-red-500">{errors.confirmPassword}</p>}
+                  {!errors.confirmPassword && formData.password && formData.confirmPassword && formData.password === formData.confirmPassword && (
+                    <p className="text-xs text-green-600">✓ Passwords match</p>
+                  )}
+                </div>
+              </>
             )}
 
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
               <Input
                 id="phone"
-                placeholder="+60123456789"
+                placeholder="Enter your phone number (e.g., +60123456789)"
                 value={formData.phone || ''}
                 onChange={(e) => handleInputChange('phone', e.target.value)}
                 disabled={isSaving}
+                className="placeholder:text-gray-400 placeholder:italic"
               />
             </div>
           </div>

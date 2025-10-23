@@ -68,6 +68,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
   const [districts, setDistricts] = useState<District[]>([])
   const [parentOrgs, setParentOrgs] = useState<Organization[]>([])
   const [filteredParentOrgs, setFilteredParentOrgs] = useState<Organization[]>([])
+  const [autoAssignedHQ, setAutoAssignedHQ] = useState<Organization | null>(null)
 
   const [formData, setFormData] = useState({
     org_type_code: '',
@@ -128,17 +129,39 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
       )
       setFilteredParentOrgs(validParents as Organization[])
       
-      // Clear parent_org_id if current selection is not valid
-      if (formData.parent_org_id) {
-        const isValid = validParents.some(p => p.id === formData.parent_org_id)
-        if (!isValid) {
-          handleInputChange('parent_org_id', '')
+      // Smart auto-assignment logic for DIST and MANU
+      if ((formData.org_type_code === 'DIST' || formData.org_type_code === 'MANU') && validParents.length === 1) {
+        // Only 1 HQ exists - auto-assign it
+        const singleHQ = validParents[0]
+        handleInputChange('parent_org_id', singleHQ.id)
+        setAutoAssignedHQ(singleHQ)
+        console.log('✅ Auto-assigned to single HQ:', singleHQ.org_name)
+      } else if ((formData.org_type_code === 'DIST' || formData.org_type_code === 'MANU') && validParents.length > 1) {
+        // Multiple HQs - user must choose
+        setAutoAssignedHQ(null)
+        // Don't clear selection if already valid
+        if (formData.parent_org_id) {
+          const isValid = validParents.some(p => p.id === formData.parent_org_id)
+          if (!isValid) {
+            handleInputChange('parent_org_id', '')
+          }
+        }
+      } else {
+        // Other org types or no HQ available
+        setAutoAssignedHQ(null)
+        // Clear parent_org_id if current selection is not valid
+        if (formData.parent_org_id) {
+          const isValid = validParents.some(p => p.id === formData.parent_org_id)
+          if (!isValid) {
+            handleInputChange('parent_org_id', '')
+          }
         }
       }
       
       // For HQ, always clear parent
       if (formData.org_type_code === 'HQ') {
         handleInputChange('parent_org_id', '')
+        setAutoAssignedHQ(null)
       }
     }
   }, [formData.org_type_code, parentOrgs])
@@ -228,7 +251,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
       const prefix = prefixMap[typeCode] || typeCode.substring(0, 2)
 
       // Get the highest number for this type
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('organizations')
         .select('org_code')
         .eq('org_type_code', typeCode)
@@ -382,15 +405,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         contact_email: formData.contact_email || null,
         is_active: formData.is_active,
         logo_url: null, // Will be updated after upload
-        created_by: userProfile.id
+        created_by: userProfile.id,
+        // Always include parent_org_id (required for SHOP and DIST, optional for others)
+        parent_org_id: formData.parent_org_id || null
       }
 
-      // Only add parent_org_id if selected
-      if (formData.parent_org_id) {
-        insertData.parent_org_id = formData.parent_org_id
-      }
-
-      const { data, error: insertError } = await supabase
+      const { data, error: insertError } = await (supabase as any)
         .from('organizations')
         .insert([insertData])
         .select()
@@ -424,7 +444,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
             const logo_url = `${publicUrl}?v=${Date.now()}` // Add cache-busting
             
             // Update organization with logo URL
-            await supabase
+            await (supabase as any)
               .from('organizations')
               .update({ logo_url })
               .eq('id', newOrgId)
@@ -438,35 +458,52 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
       // If creating a SHOP with a DIST parent, automatically create shop_distributors relationship
       if (data && data.length > 0 && formData.org_type_code === 'SHOP' && formData.parent_org_id) {
         const parentOrg = parentOrgs.find(p => p.id === formData.parent_org_id)
+        console.log('🔍 Auto-link check:', {
+          shopId: data[0].id,
+          parentOrgId: formData.parent_org_id,
+          parentOrgCode: parentOrg?.org_type_code,
+          parentOrgName: parentOrg?.org_name
+        })
+        
         if (parentOrg && parentOrg.org_type_code === 'DIST') {
           try {
-            const { error: linkError } = await supabase
+            console.log('✅ Creating shop_distributors link...')
+            const { data: linkData, error: linkError } = await (supabase as any)
               .from('shop_distributors')
               .insert([{
                 shop_id: data[0].id,
                 distributor_id: formData.parent_org_id,
                 payment_terms: 'NET_30',
                 is_active: true,
-                is_preferred: true,
+                is_preferred: true, // First distributor is always default
                 created_by: userProfile.id
               }])
+              .select()
             
             if (linkError) {
-              console.error('Failed to create shop-distributor link:', linkError)
+              console.error('❌ Failed to create shop-distributor link:', linkError)
               // Don't fail the whole operation, just log it
+            } else {
+              console.log('✅ Shop-distributor link created successfully:', linkData)
+              // Longer delay to ensure database transaction is committed and indexed
+              await new Promise(resolve => setTimeout(resolve, 800))
+              // Signal parent to refresh link status
+              sessionStorage.setItem('needsLinkRefresh', 'true')
             }
           } catch (linkErr) {
-            console.error('Error creating shop-distributor link:', linkErr)
+            console.error('❌ Error creating shop-distributor link:', linkErr)
           }
+        } else {
+          console.log('ℹ️ Parent is not a distributor, skipping shop_distributors link')
         }
       }
 
       setSuccess('Organization created successfully!')
       
-      // Redirect after 2 seconds
+      // Redirect after 1 second (reduced since we already waited 800ms above)
       setTimeout(() => {
         onViewChange('organizations')
-      }, 2000)
+      }, 1000)
 
     } catch (error: any) {
       console.error('Error creating organization:', error)
@@ -526,11 +563,31 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         {/* Basic Information */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5" />
-              Basic Information
-            </CardTitle>
-            <CardDescription>Core organization details</CardDescription>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  Basic Information
+                </CardTitle>
+                <CardDescription>Core organization details</CardDescription>
+              </div>
+              
+              {/* Auto-assigned HQ Badge */}
+              {autoAssignedHQ && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm">
+                  <div className="flex items-center gap-2 text-blue-700 font-medium mb-1">
+                    <Info className="w-4 h-4" />
+                    Headquarters Active
+                  </div>
+                  <div className="text-blue-600 font-semibold">
+                    {autoAssignedHQ.org_name}
+                  </div>
+                  <div className="text-blue-500 text-xs mt-0.5">
+                    ({autoAssignedHQ.org_code})
+                  </div>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Logo Upload */}
@@ -568,38 +625,67 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                     {isParentRequired(formData.org_type_code as OrgType) && ' *'}
                   </Label>
                   
-                  {/* Help text showing hierarchy rules */}
-                  <Alert className="mb-2">
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      {getParentHelpText(formData.org_type_code as OrgType)}
-                    </AlertDescription>
-                  </Alert>
-
-                  <Select
-                    value={formData.parent_org_id || 'none'}
-                    onValueChange={(value) => handleInputChange('parent_org_id', value === 'none' ? '' : value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue 
-                        placeholder={
-                          isParentRequired(formData.org_type_code as OrgType)
-                            ? "Select parent organization"
-                            : "Select parent organization (optional)"
-                        } 
+                  {/* Smart rendering: Show dropdown only if multiple HQs or not auto-assigned */}
+                  {autoAssignedHQ ? (
+                    // Single HQ - show read-only info (no dropdown needed)
+                    <div className="relative">
+                      <Input
+                        value={`${autoAssignedHQ.org_name} (${autoAssignedHQ.org_code})`}
+                        disabled
+                        className="bg-blue-50 border-blue-200 text-blue-900 font-medium cursor-not-allowed"
                       />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {!isParentRequired(formData.org_type_code as OrgType) && (
-                        <SelectItem value="none">No parent organization</SelectItem>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-semibold">
+                        Auto-assigned
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                        <Info className="w-3 h-3" />
+                        Only one headquarters available - automatically assigned
+                      </p>
+                    </div>
+                  ) : (
+                    // Multiple HQs or other scenarios - show dropdown
+                    <>
+                      {/* Help text showing hierarchy rules */}
+                      <Alert className="mb-2">
+                        <Info className="h-4 w-4" />
+                        <AlertDescription>
+                          {getParentHelpText(formData.org_type_code as OrgType)}
+                        </AlertDescription>
+                      </Alert>
+
+                      <Select
+                        value={formData.parent_org_id || 'none'}
+                        onValueChange={(value) => handleInputChange('parent_org_id', value === 'none' ? '' : value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue 
+                            placeholder={
+                              isParentRequired(formData.org_type_code as OrgType)
+                                ? "Select parent organization"
+                                : "Select parent organization (optional)"
+                            } 
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {!isParentRequired(formData.org_type_code as OrgType) && (
+                            <SelectItem value="none">No parent organization</SelectItem>
+                          )}
+                          {filteredParentOrgs.map((org) => (
+                            <SelectItem key={org.id} value={org.id}>
+                              {org.org_name} ({org.org_code})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
+                      {filteredParentOrgs.length > 1 && (formData.org_type_code === 'DIST' || formData.org_type_code === 'MANU') && (
+                        <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Multiple headquarters detected - please select one
+                        </p>
                       )}
-                      {filteredParentOrgs.map((org) => (
-                        <SelectItem key={org.id} value={org.id}>
-                          {org.org_name} ({org.org_code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    </>
+                  )}
                 </div>
               )}
 

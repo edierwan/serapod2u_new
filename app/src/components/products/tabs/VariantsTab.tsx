@@ -6,8 +6,9 @@ import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, Package } from 'lucide-react'
 import VariantDialog from '../dialogs/VariantDialog'
 
 interface Product {
@@ -28,6 +29,7 @@ interface Variant {
   is_default: boolean
   created_at: string
   product_name?: string
+  image_url?: string | null
 }
 
 interface VariantsTabProps {
@@ -67,7 +69,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       if (error) throw error
       setProducts((data || []) as Product[])
       if (data && data.length > 0 && !selectedProduct) {
-        setSelectedProduct(data[0].id)
+        setSelectedProduct((data as any[])[0].id)
       }
     } catch (error) {
       console.error('Error loading products:', error)
@@ -85,7 +87,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       if (error) throw error
       const variantsData = (data || []).map((variant: any) => ({
         ...variant,
-        product_name: variant.products?.product_name || '-'
+        product_name: variant.products?.product_name || '-',
+        image_url: variant.image_url || null
       }))
       setVariants(variantsData as Variant[])
     } catch (error) {
@@ -100,13 +103,58 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     }
   }
 
-  const handleSave = async (variantData: Partial<Variant>) => {
+  const getVariantInitials = (name: string) => {
+    if (!name) return 'V'
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
+  const handleSave = async (variantData: Partial<Variant> & { imageFile?: File }) => {
     try {
       setIsSaving(true)
+      
+      let imageUrl = variantData.image_url || null
+
+      // Handle image upload if there's a new image file
+      if (variantData.imageFile) {
+        const file = variantData.imageFile
+        const fileExt = file.name.split('.').pop()
+        const fileName = `variant-${Date.now()}.${fileExt}`
+        const filePath = `${fileName}`
+
+        // Upload to avatars bucket
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
+
+        if (uploadError) throw uploadError
+
+        // Get public URL with cache-busting
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(uploadData.path)
+
+        imageUrl = `${publicUrl}?v=${Date.now()}`
+      }
+
+      // Remove imageFile from data before saving to database
+      const { imageFile, ...dbData } = variantData
+      const dataToSave = {
+        ...dbData,
+        image_url: imageUrl
+      }
+
       if (editingVariant) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('product_variants')
-          .update(variantData)
+          .update(dataToSave)
           .eq('id', editingVariant.id)
         if (error) throw error
         toast({
@@ -114,9 +162,9 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           description: 'Variant updated successfully'
         })
       } else {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('product_variants')
-          .insert([variantData])
+          .insert([dataToSave])
         if (error) throw error
         toast({
           title: 'Success',
@@ -141,7 +189,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this variant?')) return
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('product_variants')
         .update({ is_active: false })
         .eq('id', id)
@@ -224,6 +272,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Image</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Product</TableHead>
               <TableHead>Barcode</TableHead>
@@ -238,6 +287,18 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             {filteredVariants.length > 0 ? (
               filteredVariants.map((variant) => (
                 <TableRow key={variant.id} className="hover:bg-gray-50">
+                  <TableCell>
+                    <Avatar className="w-10 h-10 rounded-lg" key={variant.image_url || variant.id}>
+                      <AvatarImage 
+                        src={variant.image_url || undefined} 
+                        alt={`${variant.variant_name} image`}
+                        className="object-cover"
+                      />
+                      <AvatarFallback className="rounded-lg bg-blue-100 text-blue-600 text-xs font-semibold">
+                        {getVariantInitials(variant.variant_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </TableCell>
                   <TableCell>{variant.variant_name}</TableCell>
                   <TableCell className="text-sm text-gray-600">{variant.product_name}</TableCell>
                   <TableCell className="text-sm text-gray-600">{variant.barcode || '-'}</TableCell>
@@ -279,7 +340,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                   No variants found
                 </TableCell>
               </TableRow>

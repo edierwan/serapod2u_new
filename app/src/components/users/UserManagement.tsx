@@ -56,7 +56,7 @@ interface UserProfile {
   roles: { role_level: number }
 }
 
-type SortField = 'name' | 'role' | 'organization' | 'status' | 'verified' | 'last_login'
+type SortField = 'name' | 'role' | 'organization' | 'status' | 'verified' | 'date_joined' | 'last_login'
 type SortDirection = 'asc' | 'desc' | null
 
 interface SortState {
@@ -134,7 +134,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
 
   const loadOrganizations = async () => {
     try {
-      const { data, error } = await supabase.from('organizations').select('id, org_name, org_code').eq('is_active', true).order('org_name', { ascending: true })
+      const { data, error } = await supabase.from('organizations').select('id, org_name, org_code, org_type_code').eq('is_active', true).order('org_name', { ascending: true })
       if (error) throw error
       setOrganizations((data || []) as Organization[])
     } catch (error) {
@@ -328,6 +328,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
         case 'organization': aValue = orgMap[a.organization_id]?.toLowerCase() || ''; bValue = orgMap[b.organization_id]?.toLowerCase() || ''; break
         case 'status': aValue = a.is_active ? 1 : 0; bValue = b.is_active ? 1 : 0; break
         case 'verified': aValue = a.is_verified ? 1 : 0; bValue = b.is_verified ? 1 : 0; break
+        case 'date_joined': aValue = a.created_at ? new Date(a.created_at).getTime() : 0; bValue = b.created_at ? new Date(b.created_at).getTime() : 0; break
         case 'last_login': aValue = a.last_login_at ? new Date(a.last_login_at).getTime() : 0; bValue = b.last_login_at ? new Date(b.last_login_at).getTime() : 0; break
         default: return 0
       }
@@ -384,9 +385,9 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
     <Card><CardContent className="pt-6">{filteredUsers.length > 0 ? <div className="border rounded-lg overflow-hidden"><Table><TableHeader><TableRow>
       <SortableHeader field="name">User</SortableHeader>
       <SortableHeader field="role">Role</SortableHeader>
-      <SortableHeader field="organization">Organization</SortableHeader>
       <SortableHeader field="status">Status</SortableHeader>
-      <SortableHeader field="verified">Verified</SortableHeader>
+      <SortableHeader field="organization">Department</SortableHeader>
+      <SortableHeader field="date_joined">Join Date</SortableHeader>
       <SortableHeader field="last_login">Last Login</SortableHeader>
       <TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
       <TableBody>{filteredUsers.map((user) => <TableRow key={user.id} className="hover:bg-gray-50">
@@ -397,11 +398,11 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
             key={`avatar-${user.id}-${avatarRefresh[user.id]}`}
           />}
           <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">{getInitials(user.full_name)}</AvatarFallback>
-        </Avatar><div className="min-w-0 flex-1"><div className="text-gray-900 truncate font-medium">{user.full_name || 'No Name'}</div><div className="text-sm text-gray-500 truncate">{user.email}</div>{user.phone && <div className="text-sm text-gray-400 truncate">{user.phone}</div>}</div></div></TableCell>
+        </Avatar><div className="min-w-0 flex-1"><div className="text-gray-900 truncate font-medium">{user.full_name || 'No Name'}</div><div className="text-sm text-gray-500 truncate">{user.email}</div></div></div></TableCell>
         <TableCell><Badge variant="outline" className={getRoleBadgeColor(user.role_code)}>{roleMap[user.role_code] || user.role_code}</Badge></TableCell>
-        <TableCell>{orgMap[user.organization_id] ? <span className="text-gray-900">{orgMap[user.organization_id]}</span> : <span className="text-gray-400 italic">No Organization</span>}</TableCell>
         <TableCell><Badge variant="outline" className={user.is_active ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}>{user.is_active ? <><CheckCircle className="w-3 h-3 mr-1" />Active</> : <><XCircle className="w-3 h-3 mr-1" />Inactive</>}</Badge></TableCell>
-        <TableCell><Badge variant="outline" className={user.is_verified ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}>{user.is_verified ? <><CheckCircle className="w-3 h-3 mr-1" />Verified</> : <><XCircle className="w-3 h-3 mr-1" />Unverified</>}</Badge></TableCell>
+        <TableCell><div className="min-w-0">{orgMap[user.organization_id] ? <><div className="text-gray-900 font-medium truncate">{orgMap[user.organization_id]}</div><div className="text-xs text-gray-500 truncate">{organizations.find(o => o.id === user.organization_id)?.org_type_code || ''}</div></> : <span className="text-gray-400 italic">No Department</span>}</div></TableCell>
+        <TableCell><span className="text-gray-900">{new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span></TableCell>
         <TableCell><span className={user.last_login_at ? 'text-gray-900' : 'text-gray-400 italic'}>{formatRelativeTime(user.last_login_at)}</span></TableCell>
         <TableCell className="text-right"><div className="flex items-center justify-end gap-2"><Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setEditingUser(user); setDialogOpen(true) }}><Edit className="w-4 h-4 mr-1" />Edit</Button>
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setDeleteConfirmation({ show: true, userId: user.id }) }} className="text-red-600 hover:text-red-700 hover:bg-red-50"><Trash2 className="w-4 h-4 mr-1" />Delete</Button></div></TableCell>

@@ -13,7 +13,7 @@ import {
   Truck,
   Users,
   FileText,
-  Settings,
+  Settings as SettingsIcon,
   LogOut,
   User,
   Menu,
@@ -25,7 +25,12 @@ import {
   Trophy,
   ShieldCheck,
   Warehouse,
-  Factory
+  Factory,
+  BookOpen,
+  ShoppingCart,
+  Plus,
+  TrendingUp,
+  ListTree
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -165,6 +170,15 @@ const navigationItems: MenuItem[] = [
     },
     submenu: [
       { 
+        id: 'journey-builder', 
+        label: 'Journey Builder', 
+        icon: BookOpen,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 30
+        }
+      },
+      { 
         id: 'redemption-catalog', 
         label: 'Redemption Catalog', 
         icon: Gift,
@@ -190,6 +204,15 @@ const navigationItems: MenuItem[] = [
           allowedOrgTypes: ['HQ', 'SHOP'],
           maxRoleLevel: 50
         }
+      },
+      { 
+        id: 'product-catalog', 
+        label: 'Product Catalog', 
+        icon: ShoppingCart,
+        access: {
+          allowedOrgTypes: ['HQ', 'DIST', 'SHOP'],
+          maxRoleLevel: 50
+        }
       }
     ]
   },
@@ -201,7 +224,52 @@ const navigationItems: MenuItem[] = [
     access: {
       // Exclude guests
       maxRoleLevel: 60
-    }
+    },
+    submenu: [
+      { 
+        id: 'inventory-list', 
+        label: 'View Inventory', 
+        icon: Package,
+        access: {
+          maxRoleLevel: 60
+        }
+      },
+      { 
+        id: 'add-stock', 
+        label: 'Add Stock', 
+        icon: Plus,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 40
+        }
+      },
+      { 
+        id: 'stock-adjustment', 
+        label: 'Stock Adjustment', 
+        icon: SettingsIcon,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 40
+        }
+      },
+      { 
+        id: 'stock-transfer', 
+        label: 'Stock Transfer', 
+        icon: Truck,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 40
+        }
+      },
+      { 
+        id: 'stock-movements', 
+        label: 'Movement Reports', 
+        icon: ListTree,
+        access: {
+          maxRoleLevel: 50
+        }
+      }
+    ]
   },
   {
     id: 'organizations',
@@ -249,7 +317,7 @@ const secondaryItems: MenuItem[] = [
   {
     id: 'settings',
     label: 'Settings',
-    icon: Settings,
+    icon: SettingsIcon,
     description: 'System settings',
     access: {
       // Only HQ can access settings
@@ -291,11 +359,11 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   }
 
   return (
-    <div className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
+    <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
       isCollapsed ? 'w-16' : 'w-64'
     }`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center gap-3">
@@ -303,8 +371,8 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                 <Package className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="font-semibold text-gray-900">Serapod2U</h1>
-                <p className="text-xs text-gray-600">Supply Chain</p>
+                <h1 className="font-semibold text-foreground">Serapod2U</h1>
+                <p className="text-xs text-muted-foreground">Supply Chain</p>
               </div>
             </div>
           )}
@@ -341,8 +409,8 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       isActive 
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                        : 'text-gray-700 hover:bg-gray-50'
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800' 
+                        : 'text-foreground hover:bg-accent'
                     }`}
                     title={isCollapsed ? item.label : undefined}
                   >
@@ -359,15 +427,15 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                   
                   {/* Submenu */}
                   {item.submenu && isMenuOpen && !isCollapsed && (
-                    <div className="ml-4 mt-1 space-y-1 border-l border-gray-200 pl-2">
+                    <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
                       {item.submenu.map((subitem: any) => (
                         <button
                           key={subitem.id}
                           onClick={() => onViewChange(subitem.id)}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                             currentView === subitem.id
-                              ? 'bg-blue-100 text-blue-700 font-medium'
-                              : 'text-gray-600 hover:bg-gray-50'
+                              ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                           }`}
                         >
                           <subitem.icon className="h-4 w-4" />
@@ -382,7 +450,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           </div>
 
           {/* Divider */}
-          <div className="border-t border-gray-200 my-4" />
+          <div className="border-t border-border my-4" />
 
           {/* Secondary Navigation */}
           <div className="space-y-1">
@@ -396,8 +464,8 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                   onClick={() => onViewChange(item.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     isActive 
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800' 
+                      : 'text-foreground hover:bg-accent'
                   }`}
                   title={isCollapsed ? item.label : undefined}
                 >
@@ -415,18 +483,18 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
       </div>
 
       {/* User Profile Section */}
-      <div className="p-4 border-t border-gray-200">
+      <div className="p-4 border-t border-border">
         {!isCollapsed && (
           <div className="mb-3">
-            <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-accent">
               <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
                 <User className="h-4 w-4 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-foreground truncate">
                   {userProfile?.email || 'User'}
                 </p>
-                <p className="text-xs text-gray-600 truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   {userProfile?.roles?.role_name || 'Guest'} • {userProfile?.organizations?.org_name || 'No Org'}
                 </p>
               </div>
@@ -439,7 +507,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           size="sm" 
           onClick={handleSignOut}
           disabled={isSigningOut}
-          className="w-full justify-start gap-3 text-gray-700 hover:bg-gray-50"
+          className="w-full justify-start gap-3 text-foreground hover:bg-accent"
           title={isCollapsed ? 'Sign Out' : undefined}
         >
           <LogOut className="h-4 w-4 flex-shrink-0" />

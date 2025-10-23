@@ -33,8 +33,19 @@ export default function LoginForm() {
       })
 
       if (signInError) {
+        console.error('🔴 Sign in error:', signInError)
+        
+        // Handle specific error types
         if (signInError.message.includes('Invalid login credentials')) {
           setError('Invalid email or password. Please check your credentials and try again.')
+        } else if (signInError.status === 429 || signInError.message.toLowerCase().includes('rate limit')) {
+          setError('Too many login attempts. Please wait a few minutes and try again.')
+        } else if (signInError.message.includes('refresh_token_not_found') || 
+                   signInError.message.includes('Invalid Refresh Token') ||
+                   signInError.message.includes('Refresh Token Not Found')) {
+          // Clear session and allow retry
+          await supabase.auth.signOut()
+          setError('Your session has expired. Please try logging in again.')
         } else {
           setError(signInError.message)
         }

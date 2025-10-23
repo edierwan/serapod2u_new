@@ -60,6 +60,10 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             category_name,
             category_code
           ),
+          manufacturers:organizations!products_manufacturer_id_fkey (
+            org_name,
+            org_code
+          ),
           product_images (
             id,
             image_url,
@@ -95,10 +99,11 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       console.log('✅ Product loaded:', data)
       
       // Transform the data
-      const transformedProduct = {
-        ...data,
-        brands: Array.isArray(data.brands) ? data.brands[0] : data.brands,
-        product_categories: Array.isArray(data.product_categories) ? data.product_categories[0] : data.product_categories
+      const transformedProduct: any = {
+        ...(data as any),
+        brands: Array.isArray((data as any).brands) ? (data as any).brands[0] : (data as any).brands,
+        product_categories: Array.isArray((data as any).product_categories) ? (data as any).product_categories[0] : (data as any).product_categories,
+        manufacturers: Array.isArray((data as any).manufacturers) ? (data as any).manufacturers[0] : (data as any).manufacturers
       }
       
       setProduct(transformedProduct)
@@ -284,6 +289,13 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
               <div>
                 <label className="text-sm font-medium text-gray-700">Category</label>
                 <p className="text-gray-900 mt-1">{product.product_categories?.category_name || 'No Category'}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">Manufacturer</label>
+                <p className="text-gray-900 mt-1">
+                  {product.manufacturers?.org_name || 'Unknown'} 
+                  {product.manufacturers?.org_code && ` (${product.manufacturers.org_code})`}
+                </p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700">Product Type</label>

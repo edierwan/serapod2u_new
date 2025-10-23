@@ -131,13 +131,13 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
   const handleSetPreferred = async (shopDistributorId: string) => {
     try {
       // First, unset all preferred flags for this shop
-      await supabase
+      await (supabase as any)
         .from('shop_distributors')
         .update({ is_preferred: false })
         .eq('shop_id', shopId)
 
       // Then set the selected one as preferred
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('shop_distributors')
         .update({ is_preferred: true })
         .eq('id', shopDistributorId)
@@ -183,13 +183,13 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
 
       // If this is the first distributor or marked as preferred, unset others
       if (formData.is_preferred || shopDistributors.length === 0) {
-        await supabase
+        await (supabase as any)
           .from('shop_distributors')
           .update({ is_preferred: false })
           .eq('shop_id', shopId)
       }
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('shop_distributors')
         .insert([{
           shop_id: shopId,
@@ -237,7 +237,7 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
     if (!confirm('Are you sure you want to remove this distributor link?')) return
 
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('shop_distributors')
         .update({ is_active: false })
         .eq('id', shopDistributorId)

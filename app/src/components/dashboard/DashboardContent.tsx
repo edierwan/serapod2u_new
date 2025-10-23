@@ -11,12 +11,16 @@ import OrdersView from '@/components/orders/OrdersView'
 import CreateOrderView from '@/components/orders/CreateOrderView'
 import TrackOrderView from '@/components/dashboard/views/orders/TrackOrderView'
 import InventoryView from '@/components/inventory/InventoryView'
+import AddStockView from '@/components/inventory/AddStockView'
+import StockAdjustmentView from '@/components/inventory/StockAdjustmentView'
+import StockTransferView from '@/components/inventory/StockTransferView'
+import StockMovementReportView from '@/components/inventory/StockMovementReportView'
 import OrganizationsView from '@/components/organizations/OrganizationsView'
 import AddOrganizationView from '@/components/organizations/AddOrganizationView'
 import EditOrganizationView from '@/components/organizations/EditOrganizationView'
 import DistributorsView from '@/components/distributors/DistributorsView'
 import UsersView from '@/components/users/UsersView'
-import MyProfileView from '@/components/dashboard/views/MyProfileView'
+import MyProfileViewNew from '@/components/dashboard/views/MyProfileViewNew'
 import ReportsView from '@/components/reports/ReportsView'
 import SettingsView from '@/components/settings/SettingsView'
 import DashboardOverview from '@/components/dashboard/DashboardOverview'
@@ -31,6 +35,8 @@ import QRValidationView from '@/components/dashboard/views/qr-tracking/QRValidat
 import RedemptionCatalogView from '@/components/dashboard/views/consumer-engagement/RedemptionCatalogView'
 import LuckyDrawView from '@/components/dashboard/views/consumer-engagement/LuckyDrawView'
 import ConsumerActivationsView from '@/components/dashboard/views/consumer-engagement/ConsumerActivationsView'
+import ProductCatalogView from '@/components/dashboard/views/consumer-engagement/ProductCatalogView'
+import JourneyBuilderView from '@/components/journey/JourneyBuilderView'
 import { Card, CardContent } from '@/components/ui/card'
 import { 
   Package
@@ -39,9 +45,19 @@ import {
 interface UserProfile {
   id: string
   email: string
+  full_name: string | null
+  phone: string | null
   role_code: string
   organization_id: string
+  avatar_url: string | null
   is_active: boolean
+  is_verified: boolean
+  email_verified_at: string | null
+  phone_verified_at: string | null
+  last_login_at: string | null
+  last_login_ip: string | null
+  created_at: string
+  updated_at: string
   organizations: {
     id: string
     org_name: string
@@ -108,15 +124,28 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
         return <QRValidationView userProfile={userProfile} onViewChange={handleViewChange} />
       
       // Consumer Engagement Views
+      case 'journey-builder':
+        return <JourneyBuilderView userProfile={userProfile} />
       case 'redemption-catalog':
         return <RedemptionCatalogView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'lucky-draw':
         return <LuckyDrawView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'consumer-activations':
         return <ConsumerActivationsView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'product-catalog':
+        return <ProductCatalogView userProfile={userProfile} onViewChange={handleViewChange} />
       
       case 'inventory':
+      case 'inventory-list':
         return <InventoryView userProfile={userProfile} />
+      case 'add-stock':
+        return <AddStockView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'stock-adjustment':
+        return <StockAdjustmentView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'stock-transfer':
+        return <StockTransferView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'stock-movements':
+        return <StockMovementReportView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'organizations':
         return <OrganizationsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'add-organization':
@@ -135,7 +164,7 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
       case 'distributors':
         return <DistributorsView userProfile={userProfile} />
       case 'my-profile':
-        return <MyProfileView userProfile={userProfile} />
+        return <MyProfileViewNew userProfile={userProfile} />
       case 'users':
         return <UsersView userProfile={userProfile} />
       case 'reports':
@@ -148,7 +177,7 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-background flex">
       <Sidebar 
         userProfile={userProfile} 
         currentView={currentView} 
