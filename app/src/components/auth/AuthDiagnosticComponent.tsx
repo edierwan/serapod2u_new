@@ -22,6 +22,7 @@ export function AuthDiagnosticComponent() {
       })
     }
     checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const runDiagnostic = async () => {

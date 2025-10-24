@@ -2,20 +2,22 @@
 
 ## ✅ Status: FULLY FUNCTIONAL
 
-**Previous:** Demo placeholder that showed "success" but didn't import  
-**Now:** Real CSV parsing → Database validation → Product + Variant insertion  
+**Previous:** Demo placeholder that showed "success" but didn't import\
+**Now:** Real CSV parsing → Database validation → Product + Variant insertion
 
 ---
 
 ## 🎯 What's Implemented
 
 ### ✅ Real CSV Parsing
+
 - Uses **Papa Parse** library for robust CSV processing
 - Handles headers automatically
 - Skips empty lines
 - Validates data types
 
 ### ✅ Complete Database Integration
+
 ```typescript
 Flow:
 1. Parse CSV file
@@ -32,6 +34,7 @@ Flow:
 ```
 
 ### ✅ Error Handling
+
 - **Per-row validation** with row number tracking
 - **Detailed error messages** like:
   - "Row 3: Brand 'VapeTech' not found. Create it first via Product Management."
@@ -40,6 +43,7 @@ Flow:
 - **Automatic rollback** if variant creation fails (removes orphaned product)
 
 ### ✅ User Feedback
+
 - **Loading spinner** during import
 - **Toast notifications** for quick status
 - **Detailed results box** with:
@@ -53,12 +57,14 @@ Flow:
 ## 📋 How It Works
 
 ### **Step 1: User Downloads Template**
+
 ```csv
 Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,SubGroup*,Manufacturer*,Is Vape Product*,Age Restriction,Variant Code*,Variant Name*,Base Cost (RM)*,Retail Price (RM)*,Barcode,Manufacturer SKU
 PRD001,Vape Device Premium,High-quality vape device,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,18,VAR-PRD001-01,Black 2000mAh,85.50,150.00,1234567890123,MFG-12345
 ```
 
 ### **Step 2: User Fills Template**
+
 ```csv
 ,My Awesome Vape,Premium device with LED,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,21,,Black Edition,95.00,179.90,,
 ,Starter Kit Basic,Good for beginners,VapeTech,Electronics,Vaping Devices,Starter Kits,TechFactory Ltd,Yes,18,,Silver 1500mAh,65.00,119.90,,
@@ -92,6 +98,7 @@ Result: 1 imported, 1 failed
 ```
 
 ### **Step 4: User Sees Results**
+
 ```
 ⚠️ Partially successful: 1 imported, 1 failed.
 
@@ -106,31 +113,36 @@ Row 3: SubGroup "Starter Kits" not found under group "Vaping Devices".
 ## 🔍 Validation Rules
 
 ### **Required Fields (Will Fail Import if Missing):**
-| Field | Validation | Error Message |
-|-------|-----------|---------------|
-| Product Name* | Not empty | "Row X: Product Name is required" |
-| Brand Name* | Must exist in DB | "Row X: Brand 'XXX' not found. Create it first." |
-| Category* | Must exist in DB | "Row X: Category 'XXX' not found." |
-| Group* | Must exist under Category | "Row X: Group 'XXX' not found under category 'YYY'." |
-| SubGroup* | Must exist under Group | "Row X: SubGroup 'XXX' not found under group 'YYY'." |
-| Manufacturer* | Must exist as MFG org | "Row X: Manufacturer 'XXX' not found. Register it first." |
-| Variant Name* | Not empty | "Row X: Variant Name is required" |
-| Base Cost (RM)* | Valid number | "Row X: Base Cost is required" |
-| Retail Price (RM)* | Valid number | "Row X: Retail Price is required" |
+
+| Field              | Validation                | Error Message                                             |
+| ------------------ | ------------------------- | --------------------------------------------------------- |
+| Product Name*      | Not empty                 | "Row X: Product Name is required"                         |
+| Brand Name*        | Must exist in DB          | "Row X: Brand 'XXX' not found. Create it first."          |
+| Category*          | Must exist in DB          | "Row X: Category 'XXX' not found."                        |
+| Group*             | Must exist under Category | "Row X: Group 'XXX' not found under category 'YYY'."      |
+| SubGroup*          | Must exist under Group    | "Row X: SubGroup 'XXX' not found under group 'YYY'."      |
+| Manufacturer*      | Must exist as MFG org     | "Row X: Manufacturer 'XXX' not found. Register it first." |
+| Variant Name*      | Not empty                 | "Row X: Variant Name is required"                         |
+| Base Cost (RM)*    | Valid number              | "Row X: Base Cost is required"                            |
+| Retail Price (RM)* | Valid number              | "Row X: Retail Price is required"                         |
 
 ### **Auto-Generated (If Empty):**
+
 - **Product Code**: `PRD{timestamp_last_8_digits}`
 - **Variant Code**: `VAR-{product_code}-01`
 - **Manufacturer SKU**: `SKU-{product_code}-{random_6_digits}`
 
 ### **Optional Fields:**
+
 - Product Description
 - Age Restriction (defaults to 18 if vape, null otherwise)
 - Barcode
 - Manufacturer SKU (auto-generated if empty)
 
 ### **Special Handling:**
-- **Is Vape Product**: Accepts `Yes/Y/True/1` (case-insensitive) as true, else false
+
+- **Is Vape Product**: Accepts `Yes/Y/True/1` (case-insensitive) as true, else
+  false
 - **Duplicate Detection**: Checks if product code already exists
 
 ---
@@ -138,6 +150,7 @@ Row 3: SubGroup "Starter Kits" not found under group "Vaping Devices".
 ## 📊 Database Operations
 
 ### **Tables Updated:**
+
 ```sql
 -- 1. products table
 INSERT INTO products (
@@ -170,6 +183,7 @@ INSERT INTO product_variants (
 ```
 
 ### **Lookups Performed:**
+
 ```sql
 -- Brand lookup (exact match, case-sensitive)
 SELECT id FROM brands 
@@ -205,6 +219,7 @@ WHERE org_name = '{CSV_value}'
 ## 🎨 UI States
 
 ### **1. Initial State**
+
 ```
 ┌─────────────────────────────────────────┐
 │ ⚠️ Important Prerequisites:             │
@@ -215,6 +230,7 @@ WHERE org_name = '{CSV_value}'
 ```
 
 ### **2. During Import**
+
 ```
 ┌─────────────────────────────────────────┐
 │ ⚠️ Important Prerequisites:             │
@@ -226,6 +242,7 @@ WHERE org_name = '{CSV_value}'
 ```
 
 ### **3. After Success**
+
 ```
 ┌─────────────────────────────────────────┐
 │ ✅ Successfully imported 5 product(s)!  │
@@ -235,6 +252,7 @@ WHERE org_name = '{CSV_value}'
 ```
 
 ### **4. After Partial Success**
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ ⚠️ Partially successful: 3 imported, 2 failed.         │
@@ -248,6 +266,7 @@ WHERE org_name = '{CSV_value}'
 ```
 
 ### **5. After Complete Failure**
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ ❌ All 5 rows failed:                                   │
@@ -266,7 +285,9 @@ WHERE org_name = '{CSV_value}'
 ## 🧪 Testing Checklist
 
 ### **Before Testing:**
+
 ✅ Create master data first:
+
 ```
 1. Go to Products → Master Data
 2. Create at least 1 Brand (e.g., "VapeTech")
@@ -277,37 +298,49 @@ WHERE org_name = '{CSV_value}'
 ```
 
 ### **Test Case 1: Valid Import (Happy Path)**
+
 ```csv
 Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,SubGroup*,Manufacturer*,Is Vape Product*,Age Restriction,Variant Code*,Variant Name*,Base Cost (RM)*,Retail Price (RM)*,Barcode,Manufacturer SKU
 ,Test Product 1,First test product,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,18,,Black Edition,85.50,150.00,,
 ```
+
 **Expected:** ✅ "Successfully imported 1 product(s)!"
 
 ### **Test Case 2: Missing Brand**
+
 ```csv
 ,Test Product 2,Second test,NonExistentBrand,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,18,,Silver,75.00,130.00,,
 ```
-**Expected:** ❌ "Row 2: Brand 'NonExistentBrand' not found. Create it first via Product Management."
+
+**Expected:** ❌ "Row 2: Brand 'NonExistentBrand' not found. Create it first via
+Product Management."
 
 ### **Test Case 3: Missing Required Field**
+
 ```csv
 ,,Missing name,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,18,,Black,85.00,150.00,,
 ```
+
 **Expected:** ❌ "Row 2: Product Name is required"
 
 ### **Test Case 4: Mixed Success/Failure**
+
 ```csv
 ,Good Product,Valid product,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,18,,Black,85.00,150.00,,
 ,Bad Product,Invalid category,VapeTech,BadCategory,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,18,,Silver,75.00,130.00,,
 ,Another Good,Valid product,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,18,,Gold,95.00,170.00,,
 ```
+
 **Expected:** ⚠️ "Partially successful: 2 imported, 1 failed."
 
 ### **Test Case 5: Auto-Generated Codes**
+
 ```csv
 ,Auto Codes Test,Testing auto generation,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,21,,Blue Edition,100.00,180.00,,
 ```
-**Expected:** 
+
+**Expected:**
+
 - ✅ Product code like `PRD12345678`
 - ✅ Variant code like `VAR-PRD12345678-01`
 - ✅ Manufacturer SKU like `SKU-PRD12345678-123456`
@@ -317,11 +350,13 @@ Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,Sub
 ## 🐛 Known Issues & Limitations
 
 ### **Current Limitations:**
+
 1. ⚠️ **Case-Sensitive Names**: Brand/Category/Group names must match EXACTLY
    - "VapeTech" ≠ "vapetech" ≠ "VAPETECH"
    - Solution: Use exact names from master data
 
-2. ⚠️ **Single Variant Only**: Each row creates ONE product with ONE default variant
+2. ⚠️ **Single Variant Only**: Each row creates ONE product with ONE default
+   variant
    - Multiple variants need separate rows or manual addition
    - Future: Support variant-only imports
 
@@ -340,14 +375,18 @@ Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,Sub
    - Future: Downloadable error report
 
 ### **Error Recovery:**
-- ❌ **No Rollback for Successful Rows**: If row 5 succeeds and row 6 fails, row 5 stays in DB
-- ✅ **Atomic Per-Row**: If variant creation fails, product is deleted (no orphaned products)
+
+- ❌ **No Rollback for Successful Rows**: If row 5 succeeds and row 6 fails, row
+  5 stays in DB
+- ✅ **Atomic Per-Row**: If variant creation fails, product is deleted (no
+  orphaned products)
 
 ---
 
 ## 🚀 Future Enhancements
 
 ### **Phase 2 (Next Sprint):**
+
 - [ ] Inventory import implementation
 - [ ] Organization import implementation
 - [ ] Progress bar for large imports
@@ -355,6 +394,7 @@ Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,Sub
 - [ ] Case-insensitive name matching option
 
 ### **Phase 3 (Future):**
+
 - [ ] Update mode (update existing products)
 - [ ] Bulk variant additions (variant-only CSV)
 - [ ] Image upload via URLs
@@ -388,14 +428,17 @@ Documentation:
 ## 💡 Tips for Users
 
 ### **Best Practices:**
+
 1. **Start Small**: Test with 5-10 products first
-2. **Master Data First**: Always create brands/categories/groups/subgroups before importing
+2. **Master Data First**: Always create brands/categories/groups/subgroups
+   before importing
 3. **Check Names**: Use exact names from your master data (case-sensitive!)
 4. **Leave Codes Empty**: Let system auto-generate codes for consistency
 5. **Review Errors**: If import fails, read error messages carefully
 6. **Keep Backups**: Download existing products before mass imports
 
 ### **Common Mistakes:**
+
 ```
 ❌ Using "yes" instead of "Yes" for Is Vape Product
    → System is case-insensitive, both work!
@@ -415,16 +458,20 @@ Documentation:
 ## 📊 Performance Metrics
 
 **Current Implementation:**
+
 - **Processing Speed**: ~2-3 rows/second (with DB lookups)
 - **Recommended Batch Size**: 50-100 rows per file
 - **Max Tested**: 200 rows (~2 minutes)
 
 **Bottlenecks:**
-1. 6 database lookups per row (brand, category, group, subgroup, manufacturer, duplicate check)
+
+1. 6 database lookups per row (brand, category, group, subgroup, manufacturer,
+   duplicate check)
 2. 2 database inserts per row (product + variant)
 3. Sequential processing (no parallelization)
 
 **Future Optimization:**
+
 - Batch lookups for master data
 - Bulk inserts for products
 - Parallel processing for independent rows
@@ -434,10 +481,12 @@ Documentation:
 ## ✅ Summary
 
 **What We Fixed:**
+
 - ❌ Old: Demo placeholder that didn't import
 - ✅ New: Real CSV parser with database integration
 
 **What Works Now:**
+
 - ✅ CSV parsing with Papa Parse
 - ✅ All 16 columns validated
 - ✅ Foreign key lookups (5 tables)
@@ -448,6 +497,7 @@ Documentation:
 - ✅ Rollback on variant failure
 
 **What's Next:**
+
 - ⏳ Inventory import
 - ⏳ Organization import
 - ⏳ Progress indicators
@@ -455,8 +505,8 @@ Documentation:
 
 ---
 
-**🎉 Status: PRODUCTION READY for product imports!**  
-**📅 Completed:** October 24, 2025  
-**👤 Implemented By:** GitHub Copilot  
-**🔄 Version:** 1.0 (Real Import)  
+**🎉 Status: PRODUCTION READY for product imports!**\
+**📅 Completed:** October 24, 2025\
+**👤 Implemented By:** GitHub Copilot\
+**🔄 Version:** 1.0 (Real Import)\
 **📊 Tested:** Manual testing required - see Test Case 1-5 above

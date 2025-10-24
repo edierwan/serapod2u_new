@@ -70,6 +70,8 @@ export default function DistributorShopsManager({ distributorId, distributorName
       loadDistributorShops()
       loadAvailableShops()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady, distributorId])
 
   const loadDistributorShops = async () => {

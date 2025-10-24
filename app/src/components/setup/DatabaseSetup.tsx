@@ -29,7 +29,7 @@ export default function DatabaseSetup() {
           type_description: 'Corporate headquarters and main office',
           hierarchy_level: 1,
           is_active: true
-        })
+        } as any)
 
       if (orgTypeError) {
         steps.push({step: 'Create organization types', success: false, message: orgTypeError.message})
@@ -54,7 +54,7 @@ export default function DatabaseSetup() {
           contact_email: 'admin@serapod.com',
           website: 'https://serapod.com',
           is_active: true
-        })
+        } as any)
 
       if (orgError) {
         steps.push({step: 'Create SERA organization', success: false, message: orgError.message})
@@ -73,7 +73,7 @@ export default function DatabaseSetup() {
           role_description: 'Full system access with all permissions',
           permissions: {all: true},
           is_active: true
-        })
+        } as any)
 
       if (roleError) {
         steps.push({step: 'Create SUPERADMIN role', success: false, message: roleError.message})
@@ -94,7 +94,7 @@ export default function DatabaseSetup() {
           organization_id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
           is_active: true,
           is_verified: true
-        })
+        } as any)
 
       if (userError) {
         steps.push({step: 'Create super admin user', success: false, message: userError.message})

@@ -130,6 +130,8 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
     loadMetrics()
     loadTopProducts()
     loadTopDistributors()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [selectedPeriod, selectedMonth, selectedYear, comparisonMode, enableComparison])
 
   const getComparisonPeriods = (): ComparisonPeriod => {

@@ -3,12 +3,14 @@
 ## 🎯 Your Problem (Solved!)
 
 **Before:**
+
 ```
 ❌ Row 2: Brand "VapeTech" not found. Create it first via Product Management.
 ❌ Row 3: Brand "VapeTech" not found. Create it first via Product Management.
 ```
 
 User had to:
+
 1. Go to Product Management
 2. Create Brand "VapeTech"
 3. Create Category "Electronics"
@@ -23,6 +25,7 @@ User had to:
 ## ✨ **NEW SOLUTION: Smart Auto-Create**
 
 **Now:**
+
 ```
 ✅ Successfully imported 2 product(s)!
   - Auto-created brand: VapeTech (BRD123456)
@@ -32,12 +35,14 @@ User had to:
 ```
 
 **User just needs to:**
+
 1. Download template
 2. Fill in ONE Excel file with everything
 3. Upload
 4. **DONE!** ✅
 
-The system automatically creates brands/categories/groups/subgroups if they don't exist!
+The system automatically creates brands/categories/groups/subgroups if they
+don't exist!
 
 ---
 
@@ -192,35 +197,39 @@ User uploads CSV with row:
 
 ## 🎯 What Gets Auto-Created
 
-| Master Data Type | Auto-Created? | Code Format | Example |
-|-----------------|---------------|-------------|---------|
-| **Brands** | ✅ Yes | `BRD######` | BRD123456 |
-| **Categories** | ✅ Yes | `CAT######` | CAT789012 |
-| **Groups** | ✅ Yes | `GRP######` | GRP345678 |
-| **SubGroups** | ✅ Yes | `SUB######` | SUB901234 |
-| **Manufacturers** | ⚠️ No (must exist) | User-defined | MFG001 |
+| Master Data Type  | Auto-Created?      | Code Format  | Example   |
+| ----------------- | ------------------ | ------------ | --------- |
+| **Brands**        | ✅ Yes             | `BRD######`  | BRD123456 |
+| **Categories**    | ✅ Yes             | `CAT######`  | CAT789012 |
+| **Groups**        | ✅ Yes             | `GRP######`  | GRP345678 |
+| **SubGroups**     | ✅ Yes             | `SUB######`  | SUB901234 |
+| **Manufacturers** | ⚠️ No (must exist) | User-defined | MFG001    |
 
 ### **Why Manufacturers Aren't Auto-Created:**
 
 Manufacturers are **legal entities** (organizations) that require:
+
 - ✅ Business registration number
 - ✅ Tax ID
 - ✅ Legal address
 - ✅ Contact information
 - ✅ Compliance documentation
 
-**Solution:** Register manufacturers once via Organizations menu, then they're available for all imports.
+**Solution:** Register manufacturers once via Organizations menu, then they're
+available for all imports.
 
 ---
 
 ## 📝 Example: Complete Import Flow
 
 ### **1. Download Template**
+
 ```csv
 Product Code*,Product Name*,...,Brand Name*,Category*,Group*,SubGroup*,Manufacturer*,...
 ```
 
 ### **2. Fill Template (ONE File)**
+
 ```csv
 Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,SubGroup*,Manufacturer*,Is Vape Product*,Age Restriction,Variant Code*,Variant Name*,Base Cost (RM)*,Retail Price (RM)*,Barcode,Manufacturer SKU
 ,Vape Device Pro,Premium device with LED,VapeTech,Electronics,Vaping Devices,Premium Devices,TechFactory Ltd,Yes,21,,Black Edition,95.00,179.90,,
@@ -233,6 +242,7 @@ Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,Sub
 System processes:
 
 **Row 2: Vape Device Pro**
+
 ```
 ✅ Brand "VapeTech" not found → Created (BRD123456)
 ✅ Category "Electronics" not found → Created (CAT789012)
@@ -243,6 +253,7 @@ System processes:
 ```
 
 **Row 3: Vape Starter Kit**
+
 ```
 ✅ Brand "VapeTech" exists → Use existing (BRD123456)
 ✅ Category "Electronics" exists → Use existing (CAT789012)
@@ -253,6 +264,7 @@ System processes:
 ```
 
 **Row 4: Pod System Mini**
+
 ```
 ✅ Brand "CloudMaster" not found → Created (BRD234567)
 ✅ Category "Electronics" exists → Use existing (CAT789012)
@@ -263,6 +275,7 @@ System processes:
 ```
 
 ### **4. Result**
+
 ```
 ✅ Successfully imported 3 product(s)!
 
@@ -290,6 +303,7 @@ Row 2: Brand = "VapeTech"  ← Same name!
 ```
 
 **What Happens:**
+
 ```
 Row 1:
   ├─ Check: Does "VapeTech" exist? No
@@ -309,6 +323,7 @@ Row 2:
 ## 🎨 UI Changes
 
 ### **Old Warning (Scary):**
+
 ```
 ⚠️ Important Prerequisites:
 Before importing products, ensure these master data exist:
@@ -322,6 +337,7 @@ Before importing products, ensure these master data exist:
 ```
 
 ### **New Info (Encouraging):**
+
 ```
 ✨ Smart Import:
 The system will automatically create master data if it doesn't exist!
@@ -339,6 +355,7 @@ The system will automatically create master data if it doesn't exist!
 ## 📈 Benefits Summary
 
 ### **For Users:**
+
 - ✅ **One-Click Import**: Upload ONE file with everything
 - ✅ **No Manual Setup**: System handles master data
 - ✅ **Time Savings**: 75% faster (20-40 min → 5-10 min)
@@ -346,6 +363,7 @@ The system will automatically create master data if it doesn't exist!
 - ✅ **Simple Workflow**: Download → Fill → Upload → Done!
 
 ### **For Business:**
+
 - ✅ **Faster Onboarding**: New users can start immediately
 - ✅ **Less Training**: No need to explain master data setup
 - ✅ **Higher Adoption**: Easier system encourages use
@@ -353,6 +371,7 @@ The system will automatically create master data if it doesn't exist!
 - ✅ **Scalability**: Bulk imports without bottlenecks
 
 ### **Technical:**
+
 - ✅ **Smart Lookups**: Checks existence before creating
 - ✅ **No Duplicates**: Uses existing data when available
 - ✅ **Proper Hierarchy**: Creates groups under categories, etc.
@@ -375,12 +394,14 @@ Manufacturers = Legal Organizations with:
 ```
 
 **Solution:**
+
 1. Go to Organizations menu
 2. Add Manufacturer organization
 3. Fill legal details (one time only)
 4. Use in all future imports
 
 **Example:**
+
 ```
 Organization Name: TechFactory Ltd
 Type: Manufacturer
@@ -398,12 +419,14 @@ Tax ID: TAX-ABC-123
 ### **Test Case: Upload Without Pre-Creating Anything**
 
 **CSV:**
+
 ```csv
 Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,SubGroup*,Manufacturer*,Is Vape Product*,Age Restriction,Variant Code*,Variant Name*,Base Cost (RM)*,Retail Price (RM)*,Barcode,Manufacturer SKU
 ,Test Product 1,My first product,BrandNew,CategoryNew,GroupNew,SubGroupNew,TechFactory Ltd,Yes,18,,Variant1,100.00,200.00,,
 ```
 
 **Prerequisites:**
+
 - ❌ Brand "BrandNew" does NOT exist
 - ❌ Category "CategoryNew" does NOT exist
 - ❌ Group "GroupNew" does NOT exist
@@ -411,6 +434,7 @@ Product Code*,Product Name*,Product Description,Brand Name*,Category*,Group*,Sub
 - ✅ Manufacturer "TechFactory Ltd" DOES exist
 
 **Expected Result:**
+
 ```
 ✅ Successfully imported 1 product(s)!
 
@@ -424,12 +448,14 @@ Product created: Test Product 1 with Variant1
 ```
 
 **OLD Behavior (would fail):**
+
 ```
 ❌ All 1 rows failed:
 Row 2: Brand "BrandNew" not found. Create it first.
 ```
 
 **NEW Behavior (succeeds):**
+
 ```
 ✅ Import successful with auto-created master data!
 ```
@@ -439,6 +465,7 @@ Row 2: Brand "BrandNew" not found. Create it first.
 ## 📊 Database Impact
 
 ### **Before (Manual):**
+
 ```sql
 -- User must run these manually:
 INSERT INTO brands (brand_name, ...) VALUES ('VapeTech', ...);
@@ -451,6 +478,7 @@ INSERT INTO products (...) VALUES (...);
 ```
 
 ### **After (Auto):**
+
 ```sql
 -- System runs automatically during import:
 SELECT id FROM brands WHERE brand_name='VapeTech'; -- Check
@@ -490,12 +518,14 @@ INSERT INTO products (...) VALUES (...);
 ## 🎉 **Your Issue: SOLVED!**
 
 **Before:**
+
 ```
 ❌ Row 2: Brand "VapeTech" not found. Create it first via Product Management.
 ❌ Row 3: Brand "VapeTech" not found. Create it first via Product Management.
 ```
 
 **After (with same file):**
+
 ```
 ✅ Successfully imported 2 product(s)!
   - Auto-created brand: VapeTech
@@ -506,7 +536,7 @@ INSERT INTO products (...) VALUES (...);
 
 ---
 
-**🚀 Now you can just upload ONE Excel file and everything works!**  
-**📅 Fixed:** October 24, 2025  
-**💡 Solution:** Smart auto-create with proper hierarchy  
+**🚀 Now you can just upload ONE Excel file and everything works!**\
+**📅 Fixed:** October 24, 2025\
+**💡 Solution:** Smart auto-create with proper hierarchy\
 **🎯 Result:** 75% time savings, zero prerequisites, one-click import!

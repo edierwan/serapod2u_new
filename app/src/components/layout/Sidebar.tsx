@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { signOut } from '@/app/actions/auth'
@@ -340,8 +340,41 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const router = useRouter()
   const supabase = createClient()
+
+  // Update date/time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date())
+    }, 1000)
+    
+    return () => clearInterval(timer)
+  }, [])
+
+  // Format date/time
+  const formatDateTime = () => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    
+    const day = days[currentDateTime.getDay()]
+    const date = currentDateTime.getDate()
+    const month = months[currentDateTime.getMonth()]
+    const year = currentDateTime.getFullYear()
+    
+    let hours = currentDateTime.getHours()
+    const minutes = currentDateTime.getMinutes()
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    hours = hours % 12 || 12 // Convert to 12-hour format
+    
+    const formattedTime = `${hours}:${minutes.toString().padStart(2, '0')} ${ampm}`
+    const formattedDate = `${date} ${month} ${year}`
+    
+    return { day, date: formattedDate, time: formattedTime }
+  }
+
+  const { day, date, time } = formatDateTime()
 
   // Filter menu items based on user role and organization
   const filteredNavigationItems = useMemo(() => 
@@ -376,13 +409,30 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
           {!isCollapsed && (
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                 <Package className="h-5 w-5 text-white" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h1 className="font-semibold text-foreground">Serapod2U</h1>
                 <p className="text-xs text-muted-foreground">Supply Chain</p>
+                {/* Date & Time Display */}
+                <div className="mt-1.5 pt-1.5 border-t border-gray-200">
+                  <div className="text-[10px] text-gray-600 space-y-0.5 leading-tight">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-gray-500">Date:</span>
+                      <span className="text-gray-700">{date}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-gray-500">Day:</span>
+                      <span className="text-gray-700">{day}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-gray-500">Time:</span>
+                      <span className="text-gray-700">{time}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -390,7 +440,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
             variant="ghost"
             size="sm"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 flex-shrink-0"
           >
             {isCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
           </Button>

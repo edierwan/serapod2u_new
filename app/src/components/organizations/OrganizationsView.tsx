@@ -26,7 +26,10 @@ import {
   LayoutGrid,
   List,
   Link as LinkIcon,
-  Trash2
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react'
 import ShopDistributorsManager from '@/components/shops/ShopDistributorsManager'
 import DistributorShopsManager from '@/components/distributors/DistributorShopsManager'
@@ -92,6 +95,9 @@ interface OrganizationsViewProps {
   onViewChange?: (view: string) => void
 }
 
+type SortField = 'org_name' | 'org_type_code' | 'contact_name' | 'city' | 'is_active'
+type SortDirection = 'asc' | 'desc'
+
 export default function OrganizationsView({ userProfile, onViewChange }: OrganizationsViewProps) {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
@@ -99,6 +105,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [filterType, setFilterType] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
+  const [sortField, setSortField] = useState<SortField>('org_name')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [selectedShopForDistributors, setSelectedShopForDistributors] = useState<Organization | null>(null)
   const [selectedDistributorForShops, setSelectedDistributorForShops] = useState<Organization | null>(null)
   const [shopsWithDistributors, setShopsWithDistributors] = useState<Set<string>>(new Set())
@@ -133,6 +141,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         checkDistributorShopLinks()
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   const checkShopDistributorLinks = async () => {
@@ -313,7 +323,44 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       (filterStatus === 'inactive' && !org.is_active)
 
     return matchesSearch && matchesType && matchesStatus
+  }).sort((a, b) => {
+    let aVal: any = a[sortField]
+    let bVal: any = b[sortField]
+
+    // Handle null values
+    if (aVal === null || aVal === undefined) return 1
+    if (bVal === null || bVal === undefined) return -1
+
+    // Handle different data types
+    if (sortField === 'org_name' || sortField === 'contact_name' || sortField === 'city') {
+      aVal = (aVal || '').toLowerCase()
+      bVal = (bVal || '').toLowerCase()
+    } else if (sortField === 'org_type_code') {
+      // Sort by type name instead of code
+      aVal = a.org_types?.type_name || a.org_type_code
+      bVal = b.org_types?.type_name || b.org_type_code
+      aVal = aVal.toLowerCase()
+      bVal = bVal.toLowerCase()
+    } else if (sortField === 'is_active') {
+      aVal = aVal ? 1 : 0
+      bVal = bVal ? 1 : 0
+    }
+
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+    return 0
   })
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if clicking same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // Set new field with default ascending direction
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
 
   const getOrgTypeColor = (typeCode: string) => {
     const colors = {
@@ -920,12 +967,72 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Organization</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Location</TableHead>
+                  <TableHead>
+                    <button 
+                      onClick={() => handleSort('org_name')} 
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                    >
+                      Organization
+                      {sortField === 'org_name' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button 
+                      onClick={() => handleSort('org_type_code')} 
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                    >
+                      Type
+                      {sortField === 'org_type_code' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button 
+                      onClick={() => handleSort('contact_name')} 
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                    >
+                      Contact
+                      {sortField === 'contact_name' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button 
+                      onClick={() => handleSort('city')} 
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                    >
+                      Location
+                      {sortField === 'city' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead>Linked To</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>
+                    <button 
+                      onClick={() => handleSort('is_active')} 
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                    >
+                      Status
+                      {sortField === 'is_active' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>

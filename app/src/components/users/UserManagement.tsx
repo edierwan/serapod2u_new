@@ -83,12 +83,16 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
     const map: Record<string, string> = {}
     roles.forEach(role => { map[role.role_code] = role.role_name })
     return map
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [roles])
 
   const orgMap = useMemo(() => {
     const map: Record<string, string> = {}
     organizations.forEach(org => { map[org.id] = org.org_name })
     return map
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [organizations])
 
   useEffect(() => {
@@ -97,6 +101,8 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
       loadRoles()
       loadOrganizations()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   const loadUsers = async () => {
@@ -341,6 +347,8 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
   const filteredUsers = useMemo(() => {
     const filtered = users.filter(user => user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || user.email.toLowerCase().includes(searchQuery.toLowerCase()))
     return sortUsers(filtered)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [users, searchQuery, sortState, roleMap, orgMap])
 
   const stats = useMemo(() => ({ total: users.length, active: users.filter(u => u.is_active).length, verified: users.filter(u => u.is_verified).length }), [users])

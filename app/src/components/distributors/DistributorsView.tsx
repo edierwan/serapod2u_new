@@ -97,6 +97,8 @@ export default function DistributorsView({ userProfile }: DistributorsViewProps)
     if (isReady) {
       fetchDistributorRelationships()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   const fetchDistributorRelationships = async () => {

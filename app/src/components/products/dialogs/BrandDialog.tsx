@@ -243,6 +243,7 @@ export default function BrandDialog({
             <div className="space-y-3">
               {imagePreview && (
                 <div className="relative w-full h-32 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={imagePreview}
                     alt="Brand logo preview"

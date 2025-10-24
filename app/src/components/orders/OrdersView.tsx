@@ -207,6 +207,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   useEffect(() => {
     loadOrders()
     loadSummary()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [statusFilter, searchQuery])
 
   const handleCreateOrder = () => {

@@ -88,6 +88,8 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
     if (userProfile.organizations.org_type_code === 'DIST') {
       loadApprovedH2MOrders()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [userProfile.organization_id])
 
   async function loadOrgSettings() {

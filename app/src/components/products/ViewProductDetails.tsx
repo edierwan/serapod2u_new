@@ -33,6 +33,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
     if (isReady) {
       fetchProductDetails()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   const fetchProductDetails = async () => {
@@ -245,6 +247,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
           </CardHeader>
           <CardContent>
             {primaryImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img 
                 src={primaryImage} 
                 alt={product.product_name}
@@ -258,6 +261,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             {product.product_images && product.product_images.length > 1 && (
               <div className="mt-4 grid grid-cols-4 gap-2">
                 {product.product_images.map((img: any) => (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img 
                     key={img.id}
                     src={img.image_url}

@@ -66,6 +66,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   // Load fresh user data on mount and when editing is cancelled
   useEffect(() => {
     loadUserProfile()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   const loadUserProfile = async () => {

@@ -336,8 +336,7 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
                       group_code: groupCode,
                       group_name: row['Group*'].trim(),
                       category_id: category.id,
-                      is_active: true,
-                      created_by: userProfile.id
+                      is_active: true
                     })
                     .select()
                     .single()
@@ -368,8 +367,7 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
                       subgroup_code: subgroupCode,
                       subgroup_name: row['SubGroup*'].trim(),
                       group_id: group.id,
-                      is_active: true,
-                      created_by: userProfile.id
+                      is_active: true
                     })
                     .select()
                     .single()
@@ -386,12 +384,12 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
                   .from('organizations')
                   .select('id')
                   .eq('org_name', row['Manufacturer*'].trim())
-                  .eq('org_type_code', 'MFG')
+                  .eq('org_type_code', 'MANU')
                   .eq('is_active', true)
                   .single()
 
                 if (mfgError || !manufacturer) {
-                  throw new Error(`Row ${rowNum}: Manufacturer "${row['Manufacturer*']}" not found. Please register it first via Organizations menu (must be registered as a legal entity).`)
+                  throw new Error(`Row ${rowNum}: Manufacturer "${row['Manufacturer*']}" not found. Please register it first via Organizations menu (must be registered as a legal entity with type 'Manufacturer').`)
                 }
 
                 // Generate product code if not provided
@@ -578,7 +576,7 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
               <Alert className="border-green-200 bg-green-50">
                 <Info className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
-                  <strong>✨ Smart Import:</strong> The system will automatically create master data if it doesn't exist!
+                  <strong>✨ Smart Import:</strong> The system will automatically create master data if it doesn&apos;t exist!
                   <ul className="list-disc ml-5 mt-2 space-y-1">
                     <li><strong>Brands</strong> - Will be auto-created from your CSV</li>
                     <li><strong>Categories</strong> - Will be auto-created from your CSV</li>

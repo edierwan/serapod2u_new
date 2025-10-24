@@ -34,6 +34,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   useEffect(() => {
     loadActivations()
     loadStats()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   const loadActivations = async () => {

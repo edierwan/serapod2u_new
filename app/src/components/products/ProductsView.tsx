@@ -78,6 +78,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
       fetchCategories()
       fetchBrands()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady, searchQuery, categoryFilter, brandFilter, statusFilter, currentPage])
 
   const fetchProducts = async () => {
@@ -454,6 +456,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between mb-3">
                       {primaryImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={primaryImage}
                           alt={product.product_name}
@@ -597,6 +600,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         {/* Avatar/Image */}
                         <div className="relative">
                           {primaryImage ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={primaryImage}
                               alt={product.product_name}

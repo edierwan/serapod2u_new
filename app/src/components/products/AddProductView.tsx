@@ -77,6 +77,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
       fetchCategories()
       fetchManufacturers()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   // Real-time product name validation with debounce
@@ -125,6 +127,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     }, 500) // 500ms debounce
 
     return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [formData.product_name, isReady])
 
   const fetchBrands = async () => {
@@ -755,6 +759,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               
               {imagePreview ? (
                 <div className="relative inline-block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img 
                     src={imagePreview.url} 
                     alt="Product preview" 

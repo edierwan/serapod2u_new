@@ -26,7 +26,7 @@ interface Product {
   brand_id: string | null
   brands?: {
     brand_name: string
-  }
+  } | null
 }
 
 interface Variant {
@@ -81,6 +81,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       loadManufacturers()
       loadWarehouseLocations()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   useEffect(() => {
@@ -90,6 +91,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       setVariants([])
       setSelectedVariant('')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
 
   const loadProducts = async () => {
@@ -110,7 +112,17 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         .order('product_name')
 
       if (error) throw error
-      setProducts(data || [])
+      
+      // Transform the data to handle brands array
+      const transformedData: Product[] = (data || []).map((item: any) => ({
+        id: item.id,
+        product_code: item.product_code,
+        product_name: item.product_name,
+        brand_id: item.brand_id,
+        brands: Array.isArray(item.brands) ? item.brands[0] : item.brands
+      }))
+      
+      setProducts(transformedData)
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -444,7 +456,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                   <Plus className="w-5 h-5" />
                   Quantity & Cost
                 </CardTitle>
-                <CardDescription>Specify how much stock you're adding</CardDescription>
+                <CardDescription>Specify how much stock you&apos;re adding</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">

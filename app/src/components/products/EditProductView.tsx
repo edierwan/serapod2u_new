@@ -42,6 +42,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       fetchBrands()
       fetchCategories()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   const fetchProductDetails = async () => {

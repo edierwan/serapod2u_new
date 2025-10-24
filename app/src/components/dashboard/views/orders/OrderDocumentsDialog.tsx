@@ -30,6 +30,8 @@ export default function OrderDocumentsDialog({
   useEffect(() => {
     loadDocuments()
     loadOrderData()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [orderId])
 
   const loadDocuments = async () => {

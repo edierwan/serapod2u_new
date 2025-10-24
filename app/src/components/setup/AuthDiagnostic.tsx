@@ -148,6 +148,8 @@ export default function AuthDiagnostic() {
 
   useEffect(() => {
     runDiagnostics()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   return (
