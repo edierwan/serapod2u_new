@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 
 export async function signOut() {
-  const supabase = createClient()
+  const supabase = await createClient()
   
   // Sign out from Supabase
   const { error } = await supabase.auth.signOut()
@@ -16,7 +16,7 @@ export async function signOut() {
   }
   
   // Clear all Supabase cookies manually
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const allCookies = cookieStore.getAll()
   
   // Delete all cookies that start with 'sb-'

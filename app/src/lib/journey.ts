@@ -52,7 +52,7 @@ export interface OtpRequirement {
 export async function getEffectiveJourney(
   orderId: string
 ): Promise<JourneyConfig | null> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     // 1. Try to get journey linked to this specific order
@@ -154,7 +154,7 @@ export async function needOtp(
   journeyConfig: JourneyConfig | null,
   orgId: string
 ): Promise<OtpRequirement> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Get org notification settings to determine available channels
   const { data: orgSettings } = await supabase

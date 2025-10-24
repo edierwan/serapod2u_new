@@ -45,7 +45,7 @@ export async function createUserWithAuth(userData: {
     }
 
     // Step 2: Sync user profile to public.users table using the sync function
-    const supabase = createClient()
+    const supabase = await createClient()
     
     const { data: syncResult, error: syncError } = await supabase
       .rpc('sync_user_profile', {
@@ -88,7 +88,7 @@ export async function createUserWithAuth(userData: {
 }
 
 export async function login(formData: FormData) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // type-casting here for convenience
   // in practice, you should validate your inputs
@@ -124,7 +124,7 @@ export async function login(formData: FormData) {
 }
 
 export async function signup(formData: FormData) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // type-casting here for convenience
   // in practice, you should validate your inputs
@@ -155,7 +155,7 @@ export async function deleteUserWithAuth(userId: string) {
     }
 
     // Step 1: Delete user from public.users table (will cascade to related records)
-    const supabase = createClient()
+    const supabase = await createClient()
     const { error: dbError } = await supabase
       .from('users')
       .delete()

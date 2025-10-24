@@ -3,24 +3,20 @@ import { redirect } from 'next/navigation'
 import LoginForm from '@/components/auth/LoginForm'
 
 export default async function LoginPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   
-  try {
-    // Check if user is already logged in
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    // If there's a token error, ignore it and show login page
-    // This handles the refresh token error gracefully
-    if (authError) {
-      console.log('Auth error on login page (expected if session expired):', authError.message)
-      // Don't redirect, just show login page
-    } else if (user) {
-      // User is authenticated, redirect to dashboard
-      redirect('/dashboard')
-    }
-  } catch (error) {
-    // If there's any error checking auth, just show the login page
-    console.error('Error checking auth on login page:', error)
+  // Check if user is already logged in
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  
+  // If there's a token error, ignore it and show login page
+  // This handles the refresh token error gracefully
+  if (authError) {
+    console.log('Auth error on login page (expected if session expired):', authError.message)
+    // Don't redirect, just show login page
+  } else if (user) {
+    // User is authenticated, redirect to dashboard
+    // Note: redirect() throws NEXT_REDIRECT internally - this is expected behavior
+    redirect('/dashboard')
   }
 
   return (
