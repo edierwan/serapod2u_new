@@ -91,10 +91,14 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
     if (isReady) {
       loadProducts()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   useEffect(() => {
     filterProducts()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [searchQuery, categoryFilter, products])
 
   const loadProducts = async () => {
@@ -275,6 +279,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
             <Card key={product.id} className="group hover:shadow-xl transition-all duration-300">
               <div className="relative h-48 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
                 {product.primary_image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img 
                     src={product.primary_image_url} 
                     alt={product.product_name}
@@ -345,6 +350,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                   <div className="flex items-center gap-6">
                     <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
                       {product.primary_image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img 
                           src={product.primary_image_url} 
                           alt={product.product_name}

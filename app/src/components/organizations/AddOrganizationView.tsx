@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ArrowLeft, Building2, Save, AlertCircle, Info } from 'lucide-react'
+import { ArrowLeft, Building2, Save, AlertCircle, Info, MapPin, Loader2 } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
 import { 
   getValidParentOrgs, 
@@ -96,6 +96,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoError, setLogoError] = useState('')
+  const [gettingLocation, setGettingLocation] = useState(false)
 
   const { isReady, supabase } = useSupabaseAuth()
 
@@ -103,6 +104,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     if (isReady) {
       fetchFormData()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   useEffect(() => {
@@ -111,6 +114,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     } else {
       setDistricts([])
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [formData.state_id])
 
   // Auto-generate org code when type changes
@@ -118,6 +123,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     if (formData.org_type_code) {
       generateOrgCode(formData.org_type_code)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [formData.org_type_code])
 
   // Filter parent organizations when org type changes
@@ -164,6 +171,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         setAutoAssignedHQ(null)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [formData.org_type_code, parentOrgs])
 
   const fetchFormData = async () => {
@@ -344,6 +353,46 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     } else {
       setLogoError('')
     }
+  }
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser')
+      return
+    }
+
+    setGettingLocation(true)
+    setError('')
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        handleInputChange('latitude', latitude.toFixed(6))
+        handleInputChange('longitude', longitude.toFixed(6))
+        setGettingLocation(false)
+      },
+      (error) => {
+        setGettingLocation(false)
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            setError('Location permission denied. Please enable location access in your browser settings.')
+            break
+          case error.POSITION_UNAVAILABLE:
+            setError('Location information is unavailable.')
+            break
+          case error.TIMEOUT:
+            setError('Location request timed out.')
+            break
+          default:
+            setError('An error occurred while getting your location.')
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -709,7 +758,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="org_name"
                   value={formData.org_name}
                   onChange={(e) => handleInputChange('org_name', e.target.value)}
-                  placeholder="Full organization name"
+                  placeholder="Enter full organization name"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>
@@ -721,7 +771,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="registration_no"
                   value={formData.registration_no}
                   onChange={(e) => handleInputChange('registration_no', e.target.value)}
-                  placeholder="Business registration"
+                  placeholder="Enter business registration number"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -731,7 +782,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="tax_id"
                   value={formData.tax_id}
                   onChange={(e) => handleInputChange('tax_id', e.target.value)}
-                  placeholder="Tax identification"
+                  placeholder="Enter tax identification number"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -741,8 +793,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="website"
                   value={formData.website}
                   onChange={(e) => handleInputChange('website', e.target.value)}
-                  placeholder="https://example.com"
+                  placeholder="Enter website URL (e.g., https://example.com)"
                   type="url"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>
@@ -762,8 +815,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 id="address"
                 value={formData.address}
                 onChange={(e) => handleInputChange('address', e.target.value)}
-                placeholder="Street address"
+                placeholder="Enter street address (e.g., 123 Main Street)"
                 rows={2}
+                className="placeholder:text-gray-400 placeholder:italic"
               />
             </div>
 
@@ -773,8 +827,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 id="address_line2"
                 value={formData.address_line2}
                 onChange={(e) => handleInputChange('address_line2', e.target.value)}
-                placeholder="Additional address information"
+                placeholder="Enter additional address information (e.g., Suite 100, Building B)"
                 rows={2}
+                className="placeholder:text-gray-400 placeholder:italic"
               />
             </div>
 
@@ -785,7 +840,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="city"
                   value={formData.city}
                   onChange={(e) => handleInputChange('city', e.target.value)}
-                  placeholder="City name"
+                  placeholder="Enter city name (e.g., Kuala Lumpur)"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -795,8 +851,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="postal_code"
                   value={formData.postal_code}
                   onChange={(e) => handleInputChange('postal_code', e.target.value)}
-                  placeholder="12345"
+                  placeholder="Enter 5-digit postal code (e.g., 50450)"
                   maxLength={5}
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>
@@ -853,6 +910,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('country_code', e.target.value)}
                   maxLength={2}
                   defaultValue="MY"
+                  placeholder="Enter 2-letter country code (e.g., MY)"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -862,11 +921,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="latitude"
                   value={formData.latitude}
                   onChange={(e) => handleInputChange('latitude', e.target.value)}
-                  placeholder="-90 to 90"
+                  placeholder="Enter latitude (-90 to 90, e.g., 3.139003)"
                   type="number"
                   step="0.000001"
                   min="-90"
                   max="90"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -876,13 +936,44 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="longitude"
                   value={formData.longitude}
                   onChange={(e) => handleInputChange('longitude', e.target.value)}
-                  placeholder="-180 to 180"
+                  placeholder="Enter longitude (-180 to 180, e.g., 101.686855)"
                   type="number"
                   step="0.000001"
                   min="-180"
                   max="180"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
+            </div>
+
+            {/* GPS Auto-fill Button */}
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleGetLocation}
+                disabled={gettingLocation}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                {gettingLocation ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Getting location...
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="w-4 h-4 mr-2" />
+                    Auto-detect my location (GPS)
+                  </>
+                )}
+              </Button>
+              {(formData.latitude && formData.longitude) && (
+                <span className="text-xs text-green-600 flex items-center gap-1">
+                  <MapPin className="w-3 h-3" />
+                  Coordinates set
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -901,7 +992,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_name"
                   value={formData.contact_name}
                   onChange={(e) => handleInputChange('contact_name', e.target.value)}
-                  placeholder="Full name"
+                  placeholder="Enter contact person's full name (e.g., John Doe)"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -911,7 +1003,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_title"
                   value={formData.contact_title}
                   onChange={(e) => handleInputChange('contact_title', e.target.value)}
-                  placeholder="Job title"
+                  placeholder="Enter job title (e.g., General Manager)"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -921,8 +1014,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_phone"
                   value={formData.contact_phone}
                   onChange={(e) => handleInputChange('contact_phone', e.target.value)}
-                  placeholder="+60123456789"
+                  placeholder="Enter phone number (e.g., +60123456789)"
                   type="tel"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
 
@@ -932,8 +1026,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   id="contact_email"
                   value={formData.contact_email}
                   onChange={(e) => handleInputChange('contact_email', e.target.value)}
-                  placeholder="contact@example.com"
+                  placeholder="Enter email address (e.g., contact@example.com)"
                   type="email"
+                  className="placeholder:text-gray-400 placeholder:italic"
                 />
               </div>
             </div>

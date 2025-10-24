@@ -68,6 +68,8 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     if (isReady) {
       loadNotificationTypes()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   const loadNotificationTypes = async () => {
@@ -167,6 +169,28 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     }
   }
 
+  const toggleAllInCategory = (category: string, enabled: boolean) => {
+    const newSettings = new Map(settings)
+    const categoryTypes = notificationTypes.filter(t => t.category === category)
+    
+    categoryTypes.forEach(type => {
+      const setting = newSettings.get(type.event_code)
+      if (setting) {
+        setting.enabled = enabled
+        if (enabled) {
+          // Enable all available channels
+          setting.channels_enabled = type.available_channels
+        } else {
+          // Clear all channels
+          setting.channels_enabled = []
+        }
+        newSettings.set(type.event_code, setting)
+      }
+    })
+    
+    setSettings(newSettings)
+  }
+
   const handleSaveSettings = async () => {
     if (!isReady) return
 
@@ -175,20 +199,28 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       setSaveStatus('idle')
 
       // Prepare settings for upsert
-      const settingsArray = Array.from(settings.values()).map(setting => ({
-        id: setting.id,
-        org_id: setting.org_id,
-        event_code: setting.event_code,
-        enabled: setting.enabled,
-        channels_enabled: setting.channels_enabled,
-        priority: setting.priority,
-        recipient_roles: null,
-        recipient_users: null,
-        recipient_custom: null,
-        template_code: null,
-        retry_enabled: true,
-        max_retries: 3
-      }))
+      const settingsArray = Array.from(settings.values()).map(setting => {
+        const record: any = {
+          org_id: setting.org_id,
+          event_code: setting.event_code,
+          enabled: setting.enabled,
+          channels_enabled: setting.channels_enabled,
+          priority: setting.priority,
+          recipient_roles: null,
+          recipient_users: null,
+          recipient_custom: null,
+          template_code: null,
+          retry_enabled: true,
+          max_retries: 3
+        }
+        
+        // Only include id if it exists (for updates)
+        if (setting.id) {
+          record.id = setting.id
+        }
+        
+        return record
+      })
 
       // Upsert all settings
       const { error } = await (supabase as any)
@@ -201,6 +233,9 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
 
       setSaveStatus('success')
       setTimeout(() => setSaveStatus('idle'), 3000)
+      
+      // Reload settings to get the new IDs
+      await loadNotificationTypes()
     } catch (error: any) {
       console.error('Error saving notification settings:', error)
       setSaveStatus('error')
@@ -312,18 +347,53 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       )}
 
       {/* Notification Type Groups */}
-      {Object.entries(groupedNotifications).map(([category, types]) => (
-        <Card key={category} className={`border-l-4 ${getCategoryColor(category)}`}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3 text-lg">
-              {getCategoryIcon(category)}
-              {categoryLabels[category] || category.toUpperCase()}
-            </CardTitle>
-            <CardDescription>
-              Configure which {category} events trigger notifications
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      {Object.entries(groupedNotifications).map(([category, types]) => {
+        const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
+        const allEnabled = categorySettings.every(s => s?.enabled)
+        const someEnabled = categorySettings.some(s => s?.enabled)
+        
+        return (
+          <Card key={category} className={`border-l-4 ${getCategoryColor(category)}`}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {getCategoryIcon(category)}
+                  <div>
+                    <CardTitle className="text-lg">
+                      {categoryLabels[category] || category.toUpperCase()}
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Configure which {category} events trigger notifications
+                    </CardDescription>
+                  </div>
+                </div>
+                
+                {/* Bulk Action Buttons */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={allEnabled ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => toggleAllInCategory(category, true)}
+                    className="flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Enable All
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleAllInCategory(category, false)}
+                    className="flex items-center gap-2"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Disable All
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
             {types.map((type) => {
               const setting = settings.get(type.event_code)
               if (!setting) return null
@@ -338,7 +408,6 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                     <Switch
                       checked={setting.enabled}
                       onCheckedChange={(checked) => toggleNotification(type.event_code, checked)}
-                      disabled={type.is_system}
                     />
                   </div>
 
@@ -398,7 +467,8 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
             })}
           </CardContent>
         </Card>
-      ))}
+        )
+      })}
 
       {/* Summary Card */}
       <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">

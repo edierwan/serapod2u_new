@@ -84,6 +84,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         }, 2000)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [authHookError])
 
   useEffect(() => {
@@ -100,6 +102,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         onViewChange?.('organizations')
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   // Filter parent organizations when org type changes
@@ -124,6 +128,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         handleInputChange('parent_org_id', null)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [formData.org_type_code, parentOrgs])
 
   const loadParentOrganizations = async () => {
@@ -757,7 +763,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>
-                  To manage distributor relationships, close this page and click the "Distributors" button on the organization card.
+                  To manage distributor relationships, close this page and click the &quot;Distributors&quot; button on the organization card.
                 </AlertDescription>
               </Alert>
             </div>

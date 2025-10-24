@@ -72,7 +72,7 @@ export default function MobilePreview({ journeyId }: MobilePreviewProps) {
                   </h1>
                   
                   <p className="text-gray-600">
-                    You've purchased <strong>[Product Name]</strong>
+                    You&apos;ve purchased <strong>[Product Name]</strong>
                   </p>
 
                   {/* Product Image Placeholder */}

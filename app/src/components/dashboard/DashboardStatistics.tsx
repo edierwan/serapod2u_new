@@ -43,6 +43,8 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
 
   useEffect(() => {
     loadStatistics()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [userProfile.organization_id])
 
   async function loadStatistics() {
@@ -80,7 +82,7 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
             .from('organizations')
             .select('parent_org_id')
             .eq('id', userProfile.organization_id)
-            .single<{ parent_org_id: string | null }>()
+            .single()
 
           if (!orgError && orgData?.parent_org_id) {
             // Count approved H2M orders from parent HQ in last 30 days

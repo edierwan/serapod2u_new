@@ -12,25 +12,25 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: app/package-lock.json
-      
+
       - name: Install dependencies
         working-directory: ./app
         run: npm ci
-      
+
       - name: Run linter
         working-directory: ./app
         run: npm run lint
-      
+
       - name: Build application
         working-directory: ./app
         run: npm run build
-      
+
       - name: Build status
         run: echo "✅ Build completed successfully for ${{ github.ref_name }} branch"

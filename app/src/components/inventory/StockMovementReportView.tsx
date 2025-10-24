@@ -38,18 +38,18 @@ interface StockMovement {
     variant_name: string
     products?: {
       product_name: string
-    }
-  }
+    } | null
+  } | null
   organizations?: {
     org_name: string
     org_code: string
-  }
+  } | null
   manufacturers?: {
     org_name: string
-  }
+  } | null
   users?: {
     email: string
-  }
+  } | null
 }
 
 interface StockMovementReportViewProps {
@@ -73,6 +73,8 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
     if (isReady) {
       loadMovements()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady, searchQuery, movementTypeFilter, dateFrom, dateTo, currentPage])
 
   const loadMovements = async () => {
@@ -135,7 +137,26 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       const { data, error } = await query
 
       if (error) throw error
-      setMovements(data || [])
+      
+      // Transform the data to handle array relationships from Supabase
+      const transformedData: StockMovement[] = (data || []).map((item: any) => ({
+        ...item,
+        product_variants: Array.isArray(item.product_variants) ? item.product_variants[0] : item.product_variants,
+        organizations: Array.isArray(item.organizations) ? item.organizations[0] : item.organizations,
+        manufacturers: Array.isArray(item.manufacturers) ? item.manufacturers[0] : item.manufacturers,
+        users: Array.isArray(item.users) ? item.users[0] : item.users,
+        // Handle nested products array
+        ...(item.product_variants && Array.isArray(item.product_variants) && item.product_variants[0] && {
+          product_variants: {
+            ...item.product_variants[0],
+            products: Array.isArray(item.product_variants[0].products) 
+              ? item.product_variants[0].products[0] 
+              : item.product_variants[0].products
+          }
+        })
+      }))
+      
+      setMovements(transformedData)
     } catch (error: any) {
       console.error('Failed to load movements:', error)
     } finally {

@@ -80,6 +80,8 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
       loadWarehouses()
       loadProducts()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   useEffect(() => {
@@ -89,6 +91,8 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
       setVariants([])
       setSelectedVariant('')
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [selectedProduct])
 
   useEffect(() => {
@@ -97,6 +101,8 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
     } else {
       setAvailableStock(0)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [selectedVariant, fromWarehouse])
 
   const loadWarehouses = async () => {

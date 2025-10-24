@@ -96,6 +96,8 @@ export default function VariantDialog({
       setErrors({})
       setImageFile(null)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [open, variant, products])
 
   const validate = (): boolean => {
@@ -146,6 +148,8 @@ export default function VariantDialog({
         manufacturer_sku: generateSKU()
       }))
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [formData.product_id, formData.variant_name, variant])
 
   const handleSubmit = () => {

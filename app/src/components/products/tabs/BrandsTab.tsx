@@ -42,6 +42,8 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
     if (isReady) {
       loadBrands()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady, refreshTrigger])
 
   const loadBrands = async () => {

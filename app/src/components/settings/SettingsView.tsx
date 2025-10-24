@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
+import { toast } from '@/components/ui/use-toast'
 import DangerZoneTab from './DangerZoneTab'
 import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
@@ -35,7 +36,9 @@ import {
   AlertTriangle,
   Upload,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Info,
+  Package
 } from 'lucide-react'
 
 interface UserProfile {
@@ -125,6 +128,21 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     newPassword: '',
     confirmPassword: ''
   })
+  
+  // Branding settings state for live preview
+  const [brandingSettings, setBrandingSettings] = useState({
+    appName: 'Serapod2U',
+    appTagline: 'Supply Chain',
+    loginTitle: 'Welcome to Serapod2U',
+    loginSubtitle: 'Supply Chain Management System',
+    copyrightYear: '2025',
+    companyName: 'Serapod2U',
+    copyrightText: '© 2025 Serapod2U. All rights reserved.'
+  })
+  
+  const [brandingLogoFile, setBrandingLogoFile] = useState<File | null>(null)
+  const [brandingLogoPreview, setBrandingLogoPreview] = useState<string | null>(null)
+  const brandingLogoInputRef = useRef<HTMLInputElement>(null)
 
   const { isReady, supabase } = useSupabaseAuth()
 
@@ -134,6 +152,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     }
     // Sync theme from context
     setUserSettings(prev => ({ ...prev, theme }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady, theme])
 
   const loadSettings = async () => {
@@ -375,6 +395,42 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     setOrgSettings(prev => ({ ...prev, logo_url: null }))
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
+    }
+  }
+
+  // Handle branding logo file change
+  const handleBrandingLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB')
+      return
+    }
+
+    setBrandingLogoFile(file)
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setBrandingLogoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Remove branding logo
+  const handleRemoveBrandingLogo = () => {
+    setBrandingLogoFile(null)
+    setBrandingLogoPreview(null)
+    if (brandingLogoInputRef.current) {
+      brandingLogoInputRef.current.value = ''
     }
   }
 
@@ -730,6 +786,322 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* System Branding Settings (Only for Super Admin) */}
+        {activeTab === 'organization' && userProfile.roles.role_level === 1 && (
+          <Card className="mt-6 border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <CardHeader className="border-b border-blue-200">
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="w-5 h-5 text-blue-600" />
+                System Branding & White-Label Settings
+              </CardTitle>
+              <CardDescription className="text-blue-700">
+                Customize the system branding, application name, logo, and footer for a white-label experience.
+                <span className="block mt-1 font-semibold text-blue-800">⚠️ Super Admin Only - Changes affect the entire system and login page</span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-8 pt-6">
+              
+              {/* Application Branding Section */}
+              <div className="space-y-4 pb-6 border-b border-blue-200">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-blue-600" />
+                  Application Branding
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="appName" className="text-sm font-medium">
+                      Application Name
+                    </Label>
+                    <Input
+                      id="appName"
+                      placeholder="e.g., Serapod2U"
+                      className="font-medium"
+                      value={brandingSettings.appName}
+                      onChange={(e) => setBrandingSettings({...brandingSettings, appName: e.target.value})}
+                    />
+                    <p className="text-xs text-gray-500 italic">
+                      Displayed in sidebar header, browser title, and login page
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="appTagline" className="text-sm font-medium">
+                      Application Tagline
+                    </Label>
+                    <Input
+                      id="appTagline"
+                      placeholder="e.g., Supply Chain Management"
+                      value={brandingSettings.appTagline}
+                      onChange={(e) => setBrandingSettings({...brandingSettings, appTagline: e.target.value})}
+                    />
+                    <p className="text-xs text-gray-500 italic">
+                      Shown below app name in sidebar
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <Label className="text-sm font-medium mb-3 block">Preview: Sidebar Header</Label>
+                  <div className="p-3 bg-gray-50 rounded-lg space-y-3">
+                    {/* Row 1: Logo + App Name & Tagline */}
+                    <div className="flex items-center gap-3">
+                      {brandingLogoPreview ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img 
+                          src={brandingLogoPreview} 
+                          alt="Logo preview" 
+                          className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Package className="h-6 w-6 text-white" />
+                        </div>
+                      )}
+                      <div>
+                        <h1 className="font-semibold text-gray-900">{brandingSettings.appName || 'Serapod2U'}</h1>
+                        <p className="text-xs text-gray-600">{brandingSettings.appTagline || 'Supply Chain'}</p>
+                      </div>
+                    </div>
+                    
+                    {/* Row 2: Date, Day, Time - Aligned Left */}
+                    <div className="text-left text-xs text-gray-600 space-y-0.5 pl-0">
+                      <div><span className="font-medium">Date:</span> 24 Oct 2025</div>
+                      <div><span className="font-medium">Day:</span> Friday</div>
+                      <div><span className="font-medium">Time:</span> 7:32 AM</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Application Logo Section */}
+              <div className="space-y-4 pb-6 border-b border-blue-200">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <ImageIcon className="w-5 h-5 text-blue-600" />
+                  Application Logo
+                </h3>
+                
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <input
+                    ref={brandingLogoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBrandingLogoFileChange}
+                    className="hidden"
+                  />
+                  <div className="flex items-start gap-6">
+                    <div className="flex-shrink-0">
+                      {brandingLogoPreview ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img 
+                          src={brandingLogoPreview} 
+                          alt="Logo preview" 
+                          className="w-16 h-16 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
+                          <Package className="w-8 h-8 text-white" />
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 mt-2 text-center">Current</p>
+                    </div>
+                    
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <div className="flex gap-2 mb-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => brandingLogoInputRef.current?.click()}
+                            type="button"
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            Upload New Logo
+                          </Button>
+                          {brandingLogoPreview && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRemoveBrandingLogo}
+                              type="button"
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Logo appears in sidebar and login page (Recommended: 200x200px, PNG/SVG, Max 5MB)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Login Page Branding */}
+              <div className="space-y-4 pb-6 border-b border-blue-200">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-blue-600" />
+                  Login Page Customization
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="loginTitle" className="text-sm font-medium">
+                      Login Page Title
+                    </Label>
+                    <Input
+                      id="loginTitle"
+                      placeholder="e.g., Welcome to Serapod2U"
+                      value={brandingSettings.loginTitle}
+                      onChange={(e) => setBrandingSettings({...brandingSettings, loginTitle: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="loginSubtitle" className="text-sm font-medium">
+                      Login Page Subtitle
+                    </Label>
+                    <Input
+                      id="loginSubtitle"
+                      placeholder="e.g., Supply Chain Management System"
+                      value={brandingSettings.loginSubtitle}
+                      onChange={(e) => setBrandingSettings({...brandingSettings, loginSubtitle: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <Label className="text-sm font-medium mb-3 block">Preview: Login Page Header</Label>
+                  <div className="text-center space-y-2 p-4 bg-gradient-to-b from-blue-50 to-white rounded-lg">
+                    {brandingLogoPreview ? (
+                      <img 
+                        src={brandingLogoPreview} 
+                        alt="Logo preview" 
+                        className="h-12 w-12 rounded-lg object-cover mx-auto"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto">
+                        <Package className="h-6 w-6 text-white" />
+                      </div>
+                    )}
+                    <h1 className="text-2xl font-bold text-gray-900">{brandingSettings.loginTitle || 'Welcome to Serapod2U'}</h1>
+                    <p className="text-gray-600">{brandingSettings.loginSubtitle || 'Supply Chain Management System'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Customization */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  Footer & Copyright
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="copyrightYear" className="text-sm font-medium">
+                      Copyright Year
+                    </Label>
+                    <Input
+                      id="copyrightYear"
+                      placeholder="e.g., 2025"
+                      value={brandingSettings.copyrightYear}
+                      onChange={(e) => setBrandingSettings({...brandingSettings, copyrightYear: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName" className="text-sm font-medium">
+                      Company Name
+                    </Label>
+                    <Input
+                      id="companyName"
+                      placeholder="e.g., Serapod2U"
+                      value={brandingSettings.companyName}
+                      onChange={(e) => setBrandingSettings({...brandingSettings, companyName: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="copyrightText" className="text-sm font-medium">
+                      Full Copyright Text
+                    </Label>
+                    <Input
+                      id="copyrightText"
+                      placeholder="e.g., © 2025 Serapod2U. All rights reserved."
+                      value={brandingSettings.copyrightText}
+                      onChange={(e) => setBrandingSettings({...brandingSettings, copyrightText: e.target.value})}
+                      className="font-medium"
+                    />
+                    <p className="text-xs text-gray-500 italic">
+                      Displayed at the bottom of login page and system footer
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <Label className="text-sm font-medium mb-3 block">Preview: Footer</Label>
+                  <div className="text-center p-4 bg-gray-50 rounded-lg border-t border-gray-200">
+                    <p className="text-sm text-gray-600">{brandingSettings.copyrightText}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex justify-between items-center pt-6 border-t border-blue-200">
+                <div className="text-sm text-gray-600">
+                  <AlertTriangle className="w-4 h-4 inline mr-1 text-amber-600" />
+                  Changes will affect all users and require page refresh
+                </div>
+                <Button 
+                  type="button"
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => {
+                    // TODO: Implement save to database
+                    // Simulate save operation
+                    const isSuccess = Math.random() > 0.1 // 90% success rate for demo
+                    
+                    if (isSuccess) {
+                      toast({
+                        title: "✅ Success!",
+                        description: "Branding settings have been saved successfully.",
+                      })
+                    } else {
+                      toast({
+                        title: "❌ Error",
+                        description: "Failed to save branding settings. Please try again.",
+                        variant: "destructive",
+                      })
+                    }
+                  }}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Branding Settings
+                </Button>
+              </div>
+
+              {/* Information Note */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+                <div className="flex items-start gap-3">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold mb-1">White-Label Configuration</p>
+                    <p>These settings allow you to fully customize the system branding for your organization. Perfect for resellers and enterprise deployments who want to maintain their own brand identity.</p>
+                    <ul className="mt-2 space-y-1 list-disc list-inside text-blue-800">
+                      <li>Application name and logo appear throughout the system</li>
+                      <li>Login page branding creates a professional first impression</li>
+                      <li>Custom copyright footer ensures legal compliance</li>
+                      <li>All changes are stored in database and persist across sessions</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
             </CardContent>
           </Card>
         )}

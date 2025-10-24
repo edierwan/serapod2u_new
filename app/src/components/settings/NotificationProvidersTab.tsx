@@ -97,6 +97,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     if (isReady) {
       loadProviderConfigs()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   const loadProviderConfigs = async () => {

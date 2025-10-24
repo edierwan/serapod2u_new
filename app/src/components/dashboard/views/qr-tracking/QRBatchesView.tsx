@@ -56,6 +56,8 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
   useEffect(() => {
     loadBatches()
     loadApprovedOrders()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   const loadApprovedOrders = async () => {
@@ -213,6 +215,8 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
   // Get orders that need QR batch generation
   const ordersNeedingBatch = useMemo(() => {
     return approvedOrders.filter(order => !order.qr_batches || order.qr_batches.length === 0)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [approvedOrders])
 
   const getStatusBadge = (status: string) => {

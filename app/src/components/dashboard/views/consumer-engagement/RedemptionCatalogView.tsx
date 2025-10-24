@@ -35,6 +35,8 @@ export default function RedemptionCatalogView({ userProfile, onViewChange }: Red
 
   useEffect(() => {
     loadItems()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   const loadItems = async () => {

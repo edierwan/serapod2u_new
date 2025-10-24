@@ -59,6 +59,8 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
 
   useEffect(() => {
     loadOrderDetails()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   useEffect(() => {
@@ -69,6 +71,8 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       // Clear the flag after opening
       sessionStorage.removeItem('selectedDocumentId')
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [orderDetails])
 
   const loadOrderDetails = async () => {

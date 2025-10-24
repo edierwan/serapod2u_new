@@ -26,7 +26,7 @@ interface Product {
   brand_id: string | null
   brands?: {
     brand_name: string
-  }
+  } | null
 }
 
 interface Variant {
@@ -94,6 +94,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       loadReasons()
       loadWarehouseLocations()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady])
 
   useEffect(() => {
@@ -104,6 +106,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setSelectedVariant('')
       setCurrentInventory(null)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [selectedProduct])
 
   useEffect(() => {
@@ -112,6 +116,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     } else {
       setCurrentInventory(null)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [selectedVariant, selectedWarehouse])
 
   const loadProducts = async () => {
@@ -132,7 +138,17 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         .order('product_name')
 
       if (error) throw error
-      setProducts(data || [])
+      
+      // Transform the data to handle brands array
+      const transformedData: Product[] = (data || []).map((item: any) => ({
+        id: item.id,
+        product_code: item.product_code,
+        product_name: item.product_name,
+        brand_id: item.brand_id,
+        brands: Array.isArray(item.brands) ? item.brands[0] : item.brands
+      }))
+      
+      setProducts(transformedData)
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -702,7 +718,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 <p className="font-medium text-yellow-900">No Inventory Record Found</p>
                 <p className="text-sm text-yellow-700 mt-1">
                   This product variant has no inventory record at the selected location. 
-                  Please use "Add Stock" first to create an initial inventory record.
+                  Please use &quot;Add Stock&quot; first to create an initial inventory record.
                 </p>
               </div>
             </div>

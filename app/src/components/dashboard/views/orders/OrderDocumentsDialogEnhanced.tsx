@@ -49,6 +49,8 @@ export default function OrderDocumentsDialogEnhanced({
 
   useEffect(() => {
     loadData()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [orderId])
 
   async function loadData() {

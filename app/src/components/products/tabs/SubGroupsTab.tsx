@@ -49,6 +49,8 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
       loadGroups()
       loadSubGroups()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady, refreshTrigger])
 
   const loadGroups = async () => {

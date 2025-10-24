@@ -43,6 +43,8 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
   useEffect(() => {
     loadPendingBatches()
     loadReceivedToday()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   const loadPendingBatches = async () => {

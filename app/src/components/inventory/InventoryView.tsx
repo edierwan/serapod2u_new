@@ -63,6 +63,8 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
       fetchInventory()
       fetchLocations()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [isReady, searchQuery, locationFilter, statusFilter, currentPage])
 
   const fetchInventory = async () => {

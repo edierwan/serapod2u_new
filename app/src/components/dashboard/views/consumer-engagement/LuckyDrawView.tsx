@@ -36,6 +36,8 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
 
   useEffect(() => {
     loadCampaigns()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   const loadCampaigns = async () => {
