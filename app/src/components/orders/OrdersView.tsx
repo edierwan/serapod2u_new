@@ -209,6 +209,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     loadSummary()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, searchQuery])
 
   const handleCreateOrder = () => {

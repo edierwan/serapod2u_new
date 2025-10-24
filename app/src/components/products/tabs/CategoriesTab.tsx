@@ -45,6 +45,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, refreshTrigger])
 
   const loadCategories = async () => {

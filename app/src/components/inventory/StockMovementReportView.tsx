@@ -75,6 +75,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, searchQuery, movementTypeFilter, dateFrom, dateTo, currentPage])
 
   const loadMovements = async () => {

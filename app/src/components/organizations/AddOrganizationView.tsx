@@ -106,6 +106,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   useEffect(() => {
@@ -116,6 +117,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.state_id])
 
   // Auto-generate org code when type changes
@@ -125,6 +127,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.org_type_code])
 
   // Filter parent organizations when org type changes
@@ -173,6 +176,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.org_type_code, parentOrgs])
 
   const fetchFormData = async () => {

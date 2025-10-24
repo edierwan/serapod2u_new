@@ -86,6 +86,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authHookError])
 
   useEffect(() => {
@@ -104,6 +105,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   // Filter parent organizations when org type changes
@@ -130,6 +132,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.org_type_code, parentOrgs])
 
   const loadParentOrganizations = async () => {

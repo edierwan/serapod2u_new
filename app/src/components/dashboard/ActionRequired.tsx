@@ -90,6 +90,7 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.organization_id])
 
   async function loadOrgSettings() {

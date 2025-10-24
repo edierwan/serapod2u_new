@@ -7,6 +7,8 @@ import { generateQRExcel, generateQRExcelFilename } from '@/lib/excel-generator'
  * POST /api/qr-batches/generate
  * Generate QR batch and Excel file for an approved H2M order
  */
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const { order_id } = await request.json()

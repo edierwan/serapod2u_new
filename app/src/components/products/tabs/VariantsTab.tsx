@@ -58,6 +58,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, refreshTrigger])
 
   const loadProducts = async () => {

@@ -35,6 +35,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const fetchProductDetails = async () => {

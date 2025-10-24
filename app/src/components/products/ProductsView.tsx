@@ -80,6 +80,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, searchQuery, categoryFilter, brandFilter, statusFilter, currentPage])
 
   const fetchProducts = async () => {

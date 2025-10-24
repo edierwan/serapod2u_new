@@ -143,6 +143,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const checkShopDistributorLinks = async () => {

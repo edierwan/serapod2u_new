@@ -70,6 +70,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const loadNotificationTypes = async () => {

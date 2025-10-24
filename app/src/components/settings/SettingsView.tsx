@@ -154,6 +154,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     setUserSettings(prev => ({ ...prev, theme }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, theme])
 
   const loadSettings = async () => {
@@ -979,6 +980,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Label className="text-sm font-medium mb-3 block">Preview: Login Page Header</Label>
                   <div className="text-center space-y-2 p-4 bg-gradient-to-b from-blue-50 to-white rounded-lg">
                     {brandingLogoPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img 
                         src={brandingLogoPreview} 
                         alt="Logo preview" 

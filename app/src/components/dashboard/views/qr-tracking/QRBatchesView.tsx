@@ -58,6 +58,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     loadApprovedOrders()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadApprovedOrders = async () => {
@@ -217,6 +218,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     return approvedOrders.filter(order => !order.qr_batches || order.qr_batches.length === 0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvedOrders])
 
   const getStatusBadge = (status: string) => {

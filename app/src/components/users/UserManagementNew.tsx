@@ -80,6 +80,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const loadUsers = async () => {

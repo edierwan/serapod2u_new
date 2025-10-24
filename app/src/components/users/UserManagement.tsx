@@ -85,6 +85,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
     return map
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roles])
 
   const orgMap = useMemo(() => {
@@ -93,6 +94,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
     return map
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizations])
 
   useEffect(() => {
@@ -103,6 +105,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const loadUsers = async () => {
@@ -349,6 +352,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
     return sortUsers(filtered)
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [users, searchQuery, sortState, roleMap, orgMap])
 
   const stats = useMemo(() => ({ total: users.length, active: users.filter(u => u.is_active).length, verified: users.filter(u => u.is_verified).length }), [users])
