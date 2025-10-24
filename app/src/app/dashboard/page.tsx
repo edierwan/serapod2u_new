@@ -9,9 +9,9 @@ export const revalidate = 0
 
 export default async function DashboardPage() {
   // Force Next.js to treat this as dynamic by reading headers
-  headers()
+  await headers()
   
-  const supabase = createClient()
+  const supabase = await createClient()
   
   // Check authentication
   const { data: { user }, error } = await supabase.auth.getUser()
