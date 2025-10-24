@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server'
  * Export all system data as JSON backup
  * SUPER ADMIN ONLY (role_level = 1)
  */
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()

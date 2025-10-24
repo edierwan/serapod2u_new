@@ -52,6 +52,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, refreshTrigger])
 
   const loadCategories = async () => {

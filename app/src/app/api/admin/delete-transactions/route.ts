@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server'
  * Delete all transaction data only (keep master data)
  * SUPER ADMIN ONLY (role_level = 1)
  */
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()

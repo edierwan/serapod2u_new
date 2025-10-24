@@ -96,6 +96,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   useEffect(() => {
@@ -108,6 +109,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
 
   useEffect(() => {
@@ -118,6 +120,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVariant, selectedWarehouse])
 
   const loadProducts = async () => {

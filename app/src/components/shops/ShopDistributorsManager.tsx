@@ -72,6 +72,7 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, shopId])
 
   const loadShopDistributors = async () => {

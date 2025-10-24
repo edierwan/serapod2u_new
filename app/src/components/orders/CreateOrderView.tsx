@@ -128,6 +128,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     initializeOrder()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const initializeOrder = async () => {

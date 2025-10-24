@@ -93,12 +93,14 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   useEffect(() => {
     filterProducts()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, categoryFilter, products])
 
   const loadProducts = async () => {

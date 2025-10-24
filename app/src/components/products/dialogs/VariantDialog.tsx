@@ -98,6 +98,7 @@ export default function VariantDialog({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, variant, products])
 
   const validate = (): boolean => {
@@ -150,6 +151,7 @@ export default function VariantDialog({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.product_id, formData.variant_name, variant])
 
   const handleSubmit = () => {

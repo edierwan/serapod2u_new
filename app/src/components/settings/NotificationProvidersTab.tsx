@@ -99,6 +99,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const loadProviderConfigs = async () => {

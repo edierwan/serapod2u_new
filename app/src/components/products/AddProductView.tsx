@@ -79,6 +79,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   // Real-time product name validation with debounce
@@ -129,6 +130,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.product_name, isReady])
 
   const fetchBrands = async () => {

@@ -44,6 +44,7 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
     loadRecentActivities()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.organization_id])
 
   async function loadRecentActivities() {

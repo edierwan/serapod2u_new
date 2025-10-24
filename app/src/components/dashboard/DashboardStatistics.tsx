@@ -45,6 +45,7 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
     loadStatistics()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.organization_id])
 
   async function loadStatistics() {

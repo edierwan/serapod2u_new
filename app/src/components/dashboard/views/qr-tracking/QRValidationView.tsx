@@ -29,6 +29,7 @@ export default function QRValidationView({ userProfile, onViewChange }: QRValida
     loadReports()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadReports = async () => {

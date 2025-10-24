@@ -18,7 +18,7 @@ export interface AvatarImageProps
 
 const AvatarImage = React.forwardRef<HTMLImageElement, AvatarImageProps>(
   (props, ref) => (
-    // eslint-disable-next-line jsx-a11y/alt-text
+    // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element
     <img
       ref={ref}
       className="aspect-square h-full w-full object-cover"
