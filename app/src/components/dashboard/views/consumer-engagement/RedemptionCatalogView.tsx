@@ -84,8 +84,8 @@ export default function RedemptionCatalogView({ userProfile, onViewChange }: Red
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Redemption Catalog</h1>
-          <p className="text-gray-600 mt-1">Manage reward items for consumers</p>
+          <h1 className="text-3xl font-bold text-gray-900">Point Catalog</h1>
+          <p className="text-gray-600 mt-1">Manage reward items for point redemption</p>
         </div>
         <Button onClick={() => setShowAddForm(!showAddForm)}>
           <Plus className="h-4 w-4 mr-2" />
@@ -96,7 +96,7 @@ export default function RedemptionCatalogView({ userProfile, onViewChange }: Red
       {showAddForm && (
         <Card>
           <CardHeader>
-            <CardTitle>Add Redemption Item</CardTitle>
+            <CardTitle>Add Point Redemption Item</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">

@@ -50,6 +50,26 @@ interface ApprovedH2MOrder {
   }
 }
 
+interface SubmittedOrder {
+  id: string
+  order_no: string
+  order_type: string
+  status: string
+  created_at: string
+  buyer_org: {
+    org_name: string
+    org_code: string
+  }
+  seller_org: {
+    org_name: string
+    org_code: string
+  }
+  order_items: Array<{
+    qty: number
+    unit_price: number
+  }>
+}
+
 interface UserProfile {
   id: string
   email: string
@@ -70,12 +90,14 @@ interface UserProfile {
 
 interface ActionRequiredProps {
   userProfile: UserProfile
-  onViewDocument: (orderId: string, documentId: string) => void
+  onViewDocument: (orderId: string, documentId: string, docType: PendingDocument['doc_type']) => void
+  onViewChange: (view: string) => void
 }
 
-export default function ActionRequired({ userProfile, onViewDocument }: ActionRequiredProps) {
+export default function ActionRequired({ userProfile, onViewDocument, onViewChange }: ActionRequiredProps) {
   const [pendingDocs, setPendingDocs] = useState<PendingDocument[]>([])
   const [approvedH2MOrders, setApprovedH2MOrders] = useState<ApprovedH2MOrder[]>([])
+  const [submittedOrders, setSubmittedOrders] = useState<SubmittedOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [requirePaymentProof, setRequirePaymentProof] = useState(true)
   const supabase = createClient()
@@ -83,6 +105,7 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
   useEffect(() => {
     loadPendingDocuments()
     loadOrgSettings()
+    loadSubmittedOrders()
     
     // Load approved H2M orders for distributors
     if (userProfile.organizations.org_type_code === 'DIST') {
@@ -163,6 +186,85 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
       setApprovedH2MOrders(transformedOrders)
     } catch (error) {
       console.error('Error loading approved H2M orders:', error)
+    }
+  }
+
+  async function loadSubmittedOrders() {
+    try {
+      // Check if user can approve orders based on role level
+      const isPowerUser = userProfile.roles.role_level <= 20
+      if (!isPowerUser) return
+
+      const userOrgType = userProfile.organizations.org_type_code
+
+      // Get company_id
+      const { data: companyData } = await supabase
+        .rpc('get_company_id', { p_org_id: userProfile.organization_id })
+      
+      const companyId = companyData || userProfile.organization_id
+
+      let query = supabase
+        .from('orders')
+        .select(`
+          id,
+          order_no,
+          order_type,
+          status,
+          created_at,
+          buyer_org:organizations!orders_buyer_org_id_fkey (
+            org_name,
+            org_code
+          ),
+          seller_org:organizations!orders_seller_org_id_fkey (
+            org_name,
+            org_code
+          ),
+          order_items (
+            qty,
+            unit_price
+          )
+        `)
+        .eq('company_id', companyId)
+        .eq('status', 'submitted')
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      // Filter based on user organization type and order type
+      // H2M: HQ users can approve
+      // D2H: HQ users can approve  
+      // S2D: Distributor (seller) users can approve
+      if (userOrgType === 'HQ') {
+        // HQ can approve H2M and D2H orders
+        query = query.in('order_type', ['H2M', 'D2H'])
+      } else if (userOrgType === 'DIST') {
+        // Distributors can only approve S2D orders where they are the seller
+        query = query
+          .eq('order_type', 'S2D')
+          .eq('seller_org_id', userProfile.organization_id)
+      } else {
+        // Other org types cannot approve orders
+        return
+      }
+
+      const { data, error } = await query
+
+      if (error) throw error
+
+      // Transform data
+      const transformedOrders: SubmittedOrder[] = (data || []).map((order: any) => ({
+        id: order.id,
+        order_no: order.order_no,
+        order_type: order.order_type,
+        status: order.status,
+        created_at: order.created_at,
+        buyer_org: Array.isArray(order.buyer_org) ? order.buyer_org[0] : order.buyer_org,
+        seller_org: Array.isArray(order.seller_org) ? order.seller_org[0] : order.seller_org,
+        order_items: order.order_items || [],
+      }))
+
+      setSubmittedOrders(transformedOrders)
+    } catch (error) {
+      console.error('Error loading submitted orders:', error)
     }
   }
 
@@ -290,7 +392,7 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
     )
   }
 
-  if (pendingDocs.length === 0 && approvedH2MOrders.length === 0) {
+  if (pendingDocs.length === 0 && approvedH2MOrders.length === 0 && submittedOrders.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -310,7 +412,7 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
     )
   }
 
-  const totalActions = pendingDocs.length + approvedH2MOrders.length
+  const totalActions = pendingDocs.length + approvedH2MOrders.length + submittedOrders.length
 
   return (
     <Card>
@@ -326,6 +428,94 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* Submitted Orders Awaiting Approval */}
+        {submittedOrders.map((order) => {
+          const totalAmount = order.order_items.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
+          const totalUnits = order.order_items.reduce((sum, item) => sum + item.qty, 0)
+          
+          return (
+            <div
+              key={`order-${order.id}`}
+              className="flex items-start gap-4 p-4 border border-orange-200 rounded-lg bg-orange-50 hover:bg-orange-100 transition-colors"
+            >
+              {/* Icon */}
+              <div className="p-2.5 rounded-lg bg-orange-600 text-white flex-shrink-0">
+                <Package className="w-5 h-5" />
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 min-w-0 space-y-2">
+                {/* Header Row */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-semibold text-orange-900">
+                        Order Awaiting Approval
+                      </h4>
+                      <Badge variant="outline" className="text-xs font-mono bg-white">
+                        {order.order_no}
+                      </Badge>
+                      <Badge className="text-xs bg-amber-500 hover:bg-amber-600">
+                        {order.order_type}
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    size="sm"
+                    className="flex-shrink-0 bg-orange-600 hover:bg-orange-700"
+                    onClick={() => {
+                      // Navigate to orders view to approve
+                      onViewChange('orders')
+                    }}
+                  >
+                    Review & Approve
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </div>
+
+                {/* Notification Banner */}
+                <div className="w-full bg-white border border-orange-200 rounded-md px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                    <span className="text-xs font-medium text-orange-900">
+                      This order is waiting for your approval before it can be processed.
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Details */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs text-orange-600">Buyer</p>
+                    <p className="text-sm font-medium text-orange-900">{order.buyer_org.org_name}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-orange-600">Seller</p>
+                    <p className="text-sm font-medium text-orange-900">{order.seller_org.org_name}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-orange-600" />
+                    <span className="text-orange-700">{totalUnits} units</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-orange-700">RM {totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+                  </div>
+                </div>
+                
+                {/* Timestamp */}
+                <div className="flex items-center gap-1.5 text-xs text-orange-600">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Submitted {formatTimeAgo(order.created_at)}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+
         {/* Approved H2M Orders for Distributors */}
         {approvedH2MOrders.map((order) => (
           <div
@@ -424,7 +614,7 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
                 
                 <Button
                   size="sm"
-                  onClick={() => onViewDocument(doc.order.id, doc.id)}
+                  onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type)}
                   className="flex-shrink-0"
                 >
                   Review
@@ -437,7 +627,7 @@ export default function ActionRequired({ userProfile, onViewDocument }: ActionRe
                userProfile.organizations.org_type_code === 'HQ' && 
                requirePaymentProof && (
                 <button
-                  onClick={() => onViewDocument(doc.order.id, doc.id)}
+                  onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type)}
                   className="w-full bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-center justify-between gap-2 hover:bg-amber-100 transition-colors group"
                 >
                   <div className="flex items-center gap-2">

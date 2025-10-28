@@ -21,6 +21,9 @@ export interface JourneyConfig {
   end_at: string | null
   created_at: string
   updated_at: string
+  show_product_image?: boolean
+  product_image_source?: 'variant' | 'custom' | 'genuine_badge'
+  product_image_url?: string
 }
 
 export interface RedemptionPolicy {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/layout/Sidebar'
 import ProductsView from '@/components/products/ProductsView'
 import AddProductView from '@/components/products/AddProductView'
@@ -9,6 +10,7 @@ import EditProductView from '@/components/products/EditProductView'
 import ProductManagement from '@/components/products/ProductManagement'
 import OrdersView from '@/components/orders/OrdersView'
 import CreateOrderView from '@/components/orders/CreateOrderView'
+import ViewOrderDetailsView from '@/components/orders/ViewOrderDetailsView'
 import TrackOrderView from '@/components/dashboard/views/orders/TrackOrderView'
 import InventoryView from '@/components/inventory/InventoryView'
 import AddStockView from '@/components/inventory/AddStockView'
@@ -33,15 +35,11 @@ import WarehouseShipView from '@/components/dashboard/views/qr-tracking/Warehous
 import ConsumerScanView from '@/components/dashboard/views/qr-tracking/ConsumerScanView'
 import QRValidationView from '@/components/dashboard/views/qr-tracking/QRValidationView'
 // Consumer Engagement Components
-import RedemptionCatalogView from '@/components/dashboard/views/consumer-engagement/RedemptionCatalogView'
 import LuckyDrawView from '@/components/dashboard/views/consumer-engagement/LuckyDrawView'
 import ConsumerActivationsView from '@/components/dashboard/views/consumer-engagement/ConsumerActivationsView'
 import ProductCatalogView from '@/components/dashboard/views/consumer-engagement/ProductCatalogView'
-import JourneyBuilderView from '@/components/journey/JourneyBuilderView'
-import { Card, CardContent } from '@/components/ui/card'
-import { 
-  Package
-} from 'lucide-react'
+import RedeemGiftManagementView from '@/components/redeem-gift/RedeemGiftManagementView'
+import JourneyBuilderV2 from '@/components/journey/JourneyBuilderV2'
 
 interface UserProfile {
   id: string
@@ -51,6 +49,7 @@ interface UserProfile {
   role_code: string
   organization_id: string
   avatar_url: string | null
+  signature_url: string | null
   is_active: boolean
   is_verified: boolean
   email_verified_at: string | null
@@ -76,6 +75,7 @@ interface DashboardContentProps {
 }
 
 export default function DashboardContent({ userProfile }: DashboardContentProps) {
+  const router = useRouter()
   const [currentView, setCurrentView] = useState('dashboard')
 
   const handleViewChange = (view: string) => {
@@ -88,6 +88,22 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
     if (view !== 'edit-product' && view !== 'view-product') {
       sessionStorage.removeItem('selectedProductId')
     }
+
+    if (view === 'point-catalog') {
+      router.push('/engagement/catalog')
+      return
+    }
+
+    if (view === 'point-catalog-admin' || view === 'point-catalog-admin-list') {
+      router.push('/engagement/catalog/admin')
+      return
+    }
+
+    if (view === 'point-catalog-admin-new') {
+      router.push('/engagement/catalog/admin/new')
+      return
+    }
+
     setCurrentView(view)
   }
 
@@ -107,9 +123,11 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
         return <OrdersView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'create-order':
         return <CreateOrderView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'view-order':
+        return <ViewOrderDetailsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'track-order':
         return <TrackOrderView userProfile={userProfile} onViewChange={handleViewChange} />
-      
+
       // QR Tracking Views
       case 'qr-batches':
         return <QRBatchesView userProfile={userProfile} onViewChange={handleViewChange} />
@@ -123,19 +141,19 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
         return <ConsumerScanView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'qr-validation':
         return <QRValidationView userProfile={userProfile} onViewChange={handleViewChange} />
-      
+
       // Consumer Engagement Views
       case 'journey-builder':
-        return <JourneyBuilderView userProfile={userProfile} />
-      case 'redemption-catalog':
-        return <RedemptionCatalogView userProfile={userProfile} onViewChange={handleViewChange} />
+        return <JourneyBuilderV2 userProfile={userProfile} />
       case 'lucky-draw':
         return <LuckyDrawView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'redeem-gift-management':
+        return <RedeemGiftManagementView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'consumer-activations':
         return <ConsumerActivationsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'product-catalog':
         return <ProductCatalogView userProfile={userProfile} onViewChange={handleViewChange} />
-      
+
       case 'inventory':
       case 'inventory-list':
         return <InventoryView userProfile={userProfile} />
@@ -181,10 +199,10 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
 
   return (
     <div className="min-h-screen bg-background flex">
-      <Sidebar 
-        userProfile={userProfile} 
-        currentView={currentView} 
-        onViewChange={handleViewChange} 
+      <Sidebar
+        userProfile={userProfile}
+        currentView={currentView}
+        onViewChange={handleViewChange}
       />
       <div className="flex-1 overflow-hidden">
         <main className="p-6 h-full overflow-y-auto">

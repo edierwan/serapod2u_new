@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { X, Download, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ interface OrderDocumentsDialogEnhancedProps {
   userProfile: {
     id: string
     organization_id: string
+    signature_url?: string | null
     organizations: {
       org_type_code: string
     }
@@ -24,6 +25,7 @@ interface OrderDocumentsDialogEnhancedProps {
       role_level: number
     }
   }
+  initialTab?: 'po' | 'invoice' | 'payment' | 'receipt'
   onClose: () => void
 }
 
@@ -31,10 +33,12 @@ export default function OrderDocumentsDialogEnhanced({
   orderId,
   orderNo,
   userProfile,
+  initialTab,
   onClose
 }: OrderDocumentsDialogEnhancedProps) {
+  type DocumentTab = 'po' | 'invoice' | 'payment' | 'receipt'
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('po')
+  const [activeTab, setActiveTab] = useState<DocumentTab>(initialTab ?? 'po')
   const [documents, setDocuments] = useState<{
     po?: Document | null
     invoice?: Document | null
@@ -45,7 +49,29 @@ export default function OrderDocumentsDialogEnhanced({
   const [requiresPaymentProof, setRequiresPaymentProof] = useState(false)
   const [orderData, setOrderData] = useState<any>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [hasReviewedPaymentProof, setHasReviewedPaymentProof] = useState(false)
+  const [userSignatureUrl, setUserSignatureUrl] = useState<string | null>(userProfile.signature_url ?? null)
   const supabase = createClient()
+
+  const userProfileWithSignature = useMemo(() => ({
+    ...userProfile,
+    signature_url: userSignatureUrl ?? null
+  }), [userProfile, userSignatureUrl])
+
+  const isDocumentTab = (value: string): value is DocumentTab =>
+    value === 'po' || value === 'invoice' || value === 'payment' || value === 'receipt'
+
+  const handleTabChange = (value: string) => {
+    if (isDocumentTab(value)) {
+      setActiveTab(value)
+    }
+  }
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab)
+    }
+  }, [initialTab])
 
   useEffect(() => {
     loadData()
@@ -60,12 +86,28 @@ export default function OrderDocumentsDialogEnhanced({
       await Promise.all([
         loadDocuments(),
         loadOrderData(),
-        checkPaymentProofRequirement()
+        checkPaymentProofRequirement(),
+        refreshUserSignature()
       ])
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function refreshUserSignature() {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('signature_url')
+        .eq('id', userProfile.id)
+        .single()
+
+      if (error) throw error
+      setUserSignatureUrl(data?.signature_url ?? null)
+    } catch (error) {
+      console.error('Error loading user signature:', error)
     }
   }
 
@@ -105,6 +147,10 @@ export default function OrderDocumentsDialogEnhanced({
         if (paymentFile) {
           setPaymentProofUrl(paymentFile.file_url)
         }
+
+        setHasReviewedPaymentProof(Boolean(docs.payment.acknowledged_at))
+      } else {
+        setHasReviewedPaymentProof(false)
       }
     } catch (error: any) {
       console.error('Error loading documents:', error)
@@ -322,6 +368,9 @@ export default function OrderDocumentsDialogEnhanced({
         document.body.removeChild(a)
       }, 100)
 
+      // Mark payment proof as reviewed
+      setHasReviewedPaymentProof(true)
+
       toast({
         title: 'Success',
         description: 'Payment proof downloaded successfully'
@@ -387,11 +436,11 @@ export default function OrderDocumentsDialogEnhanced({
             {/* Workflow Progress */}
             <DocumentWorkflowProgress 
               documents={documents as any} 
-              onTabChange={setActiveTab}
+              onTabChange={handleTabChange}
             />
 
             {/* Document Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="po">Purchase Order</TabsTrigger>
                 <TabsTrigger value="invoice">Invoice</TabsTrigger>
@@ -449,7 +498,7 @@ export default function OrderDocumentsDialogEnhanced({
 
                     <AcknowledgeButton
                       document={documents.po as Document}
-                      userProfile={userProfile}
+                      userProfile={userProfileWithSignature}
                       onSuccess={loadData}
                     />
                   </div>
@@ -518,7 +567,7 @@ export default function OrderDocumentsDialogEnhanced({
 
                     <AcknowledgeButton
                       document={documents.invoice as Document}
-                      userProfile={userProfile}
+                      userProfile={userProfileWithSignature}
                       onSuccess={loadData}
                       requiresPaymentProof={requiresPaymentProof}
                       paymentProofUrl={paymentProofUrl}
@@ -561,6 +610,13 @@ export default function OrderDocumentsDialogEnhanced({
 
                     {paymentProofUrl && (
                       <div className="space-y-3">
+                        {!hasReviewedPaymentProof && documents.payment?.status === 'pending' && (
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <p className="text-sm text-blue-800 font-medium">
+                              📋 Please download and review the payment proof before acknowledging the payment
+                            </p>
+                          </div>
+                        )}
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                           <p className="text-sm text-green-800 font-medium mb-3">
                             ✓ Payment proof uploaded and attached to this payment
@@ -588,8 +644,10 @@ export default function OrderDocumentsDialogEnhanced({
 
                     <AcknowledgeButton
                       document={documents.payment as Document}
-                      userProfile={userProfile}
+                      userProfile={userProfileWithSignature}
                       onSuccess={loadData}
+                      paymentProofUrl={paymentProofUrl}
+                      hasReviewedPaymentProof={hasReviewedPaymentProof}
                     />
                   </div>
                 ) : (

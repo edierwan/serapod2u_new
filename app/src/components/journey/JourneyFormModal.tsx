@@ -24,11 +24,12 @@ interface JourneyConfig {
 
 interface JourneyFormModalProps {
   journey?: JourneyConfig | null
+  orderId?: string | null
   onClose: () => void
   onSave: () => void
 }
 
-export default function JourneyFormModal({ journey, onClose, onSave }: JourneyFormModalProps) {
+export default function JourneyFormModal({ journey, orderId, onClose, onSave }: JourneyFormModalProps) {
   const isEditing = !!journey
   
   const [formData, setFormData] = useState({
@@ -58,7 +59,7 @@ export default function JourneyFormModal({ journey, onClose, onSave }: JourneyFo
       
       const payload = isEditing 
         ? { id: journey.id, ...formData }
-        : formData
+        : { ...formData, order_id: orderId }
 
       const response = await fetch(url, {
         method,

@@ -6,10 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 import { signOut } from '@/app/actions/auth'
 import { Button } from '@/components/ui/button'
 import { filterMenuItems, type MenuItem } from '@/lib/menu-access'
-import { 
-  Package, 
-  BarChart3, 
-  Building2, 
+import {
+  Package,
+  BarChart3,
+  Building2,
   Truck,
   Users,
   FileText,
@@ -56,15 +56,15 @@ const navigationItems: MenuItem[] = [
     icon: Package,
     description: 'Product catalog',
     submenu: [
-      { 
-        id: 'products', 
-        label: 'Product List', 
+      {
+        id: 'products',
+        label: 'Product List',
         icon: Package,
         // Accessible to all
       },
-      { 
-        id: 'product-management', 
-        label: 'Master Data', 
+      {
+        id: 'product-management',
+        label: 'Master Data',
         icon: Package,
         access: {
           // Only HQ can manage master data (categories, brands, etc)
@@ -80,12 +80,13 @@ const navigationItems: MenuItem[] = [
     icon: FileText,
     description: 'Order processing',
     submenu: [
-      { 
-        id: 'orders', 
-        label: 'Orders', 
+      {
+        id: 'orders',
+        label: 'Orders',
         icon: FileText,
-        // Accessible to all except GUEST
+        // Accessible to all except WAREHOUSE
         access: {
+          allowedOrgTypes: ['HQ', 'MANU', 'MFG', 'DIST', 'SHOP'],
           maxRoleLevel: 60
         }
       }
@@ -97,9 +98,9 @@ const navigationItems: MenuItem[] = [
     icon: QrCode,
     description: 'QR code tracking system',
     submenu: [
-      { 
-        id: 'qr-batches', 
-        label: 'QR Batches', 
+      {
+        id: 'qr-batches',
+        label: 'QR Batches',
         icon: QrCode,
         access: {
           // HQ and Manufacturers manage QR batches
@@ -107,9 +108,9 @@ const navigationItems: MenuItem[] = [
           maxRoleLevel: 30
         }
       },
-      { 
-        id: 'manufacturer-scan', 
-        label: 'Manufacturer Scan', 
+      {
+        id: 'manufacturer-scan',
+        label: 'Manufacturer Scan',
         icon: Factory,
         access: {
           // Only manufacturers
@@ -117,9 +118,9 @@ const navigationItems: MenuItem[] = [
           maxRoleLevel: 40
         }
       },
-      { 
-        id: 'warehouse-receive', 
-        label: 'Warehouse Receive', 
+      {
+        id: 'warehouse-receive',
+        label: 'Warehouse Receive',
         icon: Warehouse,
         access: {
           // Warehouses and Distributors
@@ -127,9 +128,9 @@ const navigationItems: MenuItem[] = [
           maxRoleLevel: 40
         }
       },
-      { 
-        id: 'warehouse-ship', 
-        label: 'Warehouse Ship', 
+      {
+        id: 'warehouse-ship',
+        label: 'Warehouse Ship',
         icon: Truck,
         access: {
           // Warehouses and Distributors
@@ -137,9 +138,9 @@ const navigationItems: MenuItem[] = [
           maxRoleLevel: 40
         }
       },
-      { 
-        id: 'consumer-scan', 
-        label: 'Consumer Scan', 
+      {
+        id: 'consumer-scan',
+        label: 'Consumer Scan',
         icon: Scan,
         access: {
           // Shops and HQ
@@ -147,9 +148,9 @@ const navigationItems: MenuItem[] = [
           maxRoleLevel: 50
         }
       },
-      { 
-        id: 'qr-validation', 
-        label: 'Validation Reports', 
+      {
+        id: 'qr-validation',
+        label: 'Validation Reports',
         icon: ShieldCheck,
         access: {
           // HQ and admins only
@@ -170,45 +171,54 @@ const navigationItems: MenuItem[] = [
       maxRoleLevel: 50
     },
     submenu: [
-      { 
-        id: 'journey-builder', 
-        label: 'Journey Builder', 
+      {
+        id: 'journey-builder',
+        label: 'Journey Builder',
         icon: BookOpen,
         access: {
           allowedOrgTypes: ['HQ'],
           maxRoleLevel: 30
         }
       },
-      { 
-        id: 'redemption-catalog', 
-        label: 'Redemption Catalog', 
+      {
+        id: 'point-catalog',
+        label: 'Point Catalog',
         icon: Gift,
         access: {
-          allowedOrgTypes: ['HQ', 'SHOP'],
-          maxRoleLevel: 50
+          minRoleLevel: 1,
+          maxRoleLevel: 30,
         }
       },
-      { 
-        id: 'lucky-draw', 
-        label: 'Lucky Draw', 
+      {
+        id: 'lucky-draw',
+        label: 'Lucky Draw',
         icon: Trophy,
         access: {
           allowedOrgTypes: ['HQ'],
           maxRoleLevel: 30
         }
       },
-      { 
-        id: 'consumer-activations', 
-        label: 'Consumer Activations', 
+      {
+        id: 'redeem-gift-management',
+        label: 'Redeem',
+        icon: Gift,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 30
+        }
+      },
+      {
+        id: 'consumer-activations',
+        label: 'Consumer Activations',
         icon: Scan,
         access: {
           allowedOrgTypes: ['HQ', 'SHOP'],
           maxRoleLevel: 50
         }
       },
-      { 
-        id: 'product-catalog', 
-        label: 'Product Catalog', 
+      {
+        id: 'product-catalog',
+        label: 'Product Catalog',
         icon: ShoppingCart,
         access: {
           allowedOrgTypes: ['HQ', 'DIST', 'SHOP'],
@@ -227,58 +237,49 @@ const navigationItems: MenuItem[] = [
       maxRoleLevel: 60
     },
     submenu: [
-      { 
-        id: 'inventory-list', 
-        label: 'View Inventory', 
+      {
+        id: 'inventory-list',
+        label: 'View Inventory',
         icon: Package,
         access: {
           maxRoleLevel: 60
         }
       },
-      { 
-        id: 'add-stock', 
-        label: 'Add Stock', 
+      {
+        id: 'add-stock',
+        label: 'Add Stock',
         icon: Plus,
         access: {
           allowedOrgTypes: ['HQ'],
           maxRoleLevel: 40
         }
       },
-      { 
-        id: 'stock-adjustment', 
-        label: 'Stock Adjustment', 
+      {
+        id: 'stock-adjustment',
+        label: 'Stock Adjustment',
         icon: SettingsIcon,
         access: {
           allowedOrgTypes: ['HQ'],
           maxRoleLevel: 40
         }
       },
-      { 
-        id: 'stock-transfer', 
-        label: 'Stock Transfer', 
+      {
+        id: 'stock-transfer',
+        label: 'Stock Transfer',
         icon: Truck,
         access: {
           allowedOrgTypes: ['HQ'],
           maxRoleLevel: 40
         }
       },
-      { 
-        id: 'stock-movements', 
-        label: 'Movement Reports', 
+      {
+        id: 'stock-movements',
+        label: 'Movement Reports',
         icon: ListTree,
         access: {
           maxRoleLevel: 50
         }
       },
-      { 
-        id: 'migration', 
-        label: 'Data Migration', 
-        icon: Database,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 20
-        }
-      }
     ]
   },
   {
@@ -341,15 +342,21 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
+  const [isMounted, setIsMounted] = useState(false)
   const router = useRouter()
   const supabase = createClient()
+
+  // Set mounted flag after client-side hydration
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Update date/time every second
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentDateTime(new Date())
     }, 1000)
-    
+
     return () => clearInterval(timer)
   }, [])
 
@@ -357,33 +364,33 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   const formatDateTime = () => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    
+
     const day = days[currentDateTime.getDay()]
     const date = currentDateTime.getDate()
     const month = months[currentDateTime.getMonth()]
     const year = currentDateTime.getFullYear()
-    
+
     let hours = currentDateTime.getHours()
     const minutes = currentDateTime.getMinutes()
     const ampm = hours >= 12 ? 'PM' : 'AM'
     hours = hours % 12 || 12 // Convert to 12-hour format
-    
+
     const formattedTime = `${hours}:${minutes.toString().padStart(2, '0')} ${ampm}`
     const formattedDate = `${date} ${month} ${year}`
-    
+
     return { day, date: formattedDate, time: formattedTime }
   }
 
   const { day, date, time } = formatDateTime()
 
   // Filter menu items based on user role and organization
-  const filteredNavigationItems = useMemo(() => 
-    filterMenuItems(navigationItems, userProfile), 
+  const filteredNavigationItems = useMemo(() =>
+    filterMenuItems(navigationItems, userProfile),
     [userProfile]
   )
-  
-  const filteredSecondaryItems = useMemo(() => 
-    filterMenuItems(secondaryItems, userProfile), 
+
+  const filteredSecondaryItems = useMemo(() =>
+    filterMenuItems(secondaryItems, userProfile),
     [userProfile]
   )
 
@@ -402,9 +409,8 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   }
 
   return (
-    <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
-      isCollapsed ? 'w-16' : 'w-64'
-    }`}>
+    <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
+      }`}>
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
@@ -421,15 +427,15 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                   <div className="text-[10px] text-gray-600 space-y-0.5 leading-tight">
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-gray-500">Date:</span>
-                      <span className="text-gray-700">{date}</span>
+                      <span className="text-gray-700">{isMounted ? date : '--'}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-gray-500">Day:</span>
-                      <span className="text-gray-700">{day}</span>
+                      <span className="text-gray-700">{isMounted ? day : '--'}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-gray-500">Time:</span>
-                      <span className="text-gray-700">{time}</span>
+                      <span className="text-gray-700">{isMounted ? time : '--:-- --'}</span>
                     </div>
                   </div>
                 </div>
@@ -456,7 +462,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
               const Icon = item.icon
               const isActive = currentView === item.id || (item.submenu?.some((sub: any) => sub.id === currentView))
               const isMenuOpen = expandedMenu === item.id
-              
+
               return (
                 <div key={item.id}>
                   <button
@@ -467,11 +473,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                         onViewChange(item.id)
                       }
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isActive 
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800' 
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
                         : 'text-foreground hover:bg-accent'
-                    }`}
+                      }`}
                     title={isCollapsed ? item.label : undefined}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
@@ -484,7 +489,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                       <ChevronDown className={`h-4 w-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
                     )}
                   </button>
-                  
+
                   {/* Submenu */}
                   {item.submenu && isMenuOpen && !isCollapsed && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
@@ -492,11 +497,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                         <button
                           key={subitem.id}
                           onClick={() => onViewChange(subitem.id)}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                            currentView === subitem.id
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${currentView === subitem.id
                               ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
                               : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                          }`}
+                            }`}
                         >
                           <subitem.icon className="h-4 w-4" />
                           <span>{subitem.label}</span>
@@ -517,16 +521,15 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
             {filteredSecondaryItems.map((item) => {
               const Icon = item.icon
               const isActive = currentView === item.id
-              
+
               return (
                 <button
                   key={item.id}
                   onClick={() => onViewChange(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive 
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800' 
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
                       : 'text-foreground hover:bg-accent'
-                  }`}
+                    }`}
                   title={isCollapsed ? item.label : undefined}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
@@ -561,10 +564,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
             </div>
           </div>
         )}
-        
-        <Button 
-          variant="ghost" 
-          size="sm" 
+
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={handleSignOut}
           disabled={isSigningOut}
           className="w-full justify-start gap-3 text-foreground hover:bg-accent"

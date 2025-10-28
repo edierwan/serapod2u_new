@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Clock, 
-  FileText, 
-  Package, 
+import {
+  Clock,
+  FileText,
+  Package,
   CheckCircle2,
   TruckIcon
 } from 'lucide-react'
@@ -42,9 +42,9 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
 
   useEffect(() => {
     loadRecentActivities()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.organization_id])
 
   async function loadRecentActivities() {
@@ -90,7 +90,7 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
       // Combine and sort activities
       const docActivities: Activity[] = (docs || []).flatMap((doc: any) => {
         const activities: Activity[] = []
-        
+
         // Document created
         activities.push({
           id: `doc-created-${doc.id}`,
@@ -130,7 +130,7 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
 
       const allActivities = [...docActivities, ...orderActivities]
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        .slice(0, 10)
+        .slice(0, 10) // Keep track of up to 10 for determining if View More should show
 
       setActivities(allActivities)
     } catch (error) {
@@ -221,30 +221,44 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
             No recent activities
           </div>
         ) : (
-          <div className="space-y-4">
-            {activities.map((activity) => (
-              <div key={activity.id} className="flex items-start gap-3 pb-3 border-b last:border-0">
-                <div className={`p-2 rounded-lg ${activity.color} bg-opacity-10`}>
-                  {getActivityIcon(activity.icon)}
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 text-sm">
-                    {activity.title}
-                  </p>
-                  <p className="text-sm text-gray-600 truncate">
-                    {activity.description}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Clock className="w-3 h-3 text-gray-400" />
-                    <span className="text-xs text-gray-500">
-                      {formatTimeAgo(activity.timestamp)}
-                    </span>
+          <>
+            <div className="space-y-4">
+              {activities.slice(0, 3).map((activity) => (
+                <div key={activity.id} className="flex items-start gap-3 pb-3 border-b last:border-0">
+                  <div className={`p-2 rounded-lg ${activity.color} bg-opacity-10`}>
+                    {getActivityIcon(activity.icon)}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 text-sm">
+                      {activity.title}
+                    </p>
+                    <p className="text-sm text-gray-600 truncate">
+                      {activity.description}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Clock className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-500">
+                        {formatTimeAgo(activity.timestamp)}
+                      </span>
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+
+            {/* View More Link */}
+            {activities.length > 3 && (
+              <div className="mt-4 pt-3 border-t">
+                <a
+                  href="/dashboard/activities"
+                  className="text-xs italic text-blue-400 hover:text-blue-500 transition-colors"
+                >
+                  View More
+                </a>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

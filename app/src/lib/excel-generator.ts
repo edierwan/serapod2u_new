@@ -244,8 +244,7 @@ export function generateQRExcel(data: QRExcelData): Buffer {
  * Generate filename for QR batch Excel
  */
 export function generateQRExcelFilename(orderNo: string): string {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
-  return `QR_Batch_${orderNo}_${timestamp}.xlsx`
+  return `QR_Batch_${orderNo}.xlsx`
 }
 
 /**

@@ -105,17 +105,41 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         .from('qr_batches')
         .select(`
           *,
-          orders (
+          orders!inner (
             order_no,
             status,
-            order_type
+            order_type,
+            seller_org_id
           )
         `)
-        .eq('company_id', userProfile.organizations.id)
+        .eq('orders.seller_org_id', userProfile.organization_id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setBatches(data || [])
+      
+      // Fetch packed counts for each batch
+      // Progress counts master codes that are packed or beyond (received_warehouse, shipped_distributor, opened)
+      const batchesWithProgress = await Promise.all(
+        (data || []).map(async (batch) => {
+          const { data: packedData } = await supabase
+            .from('qr_master_codes')
+            .select('id', { count: 'exact' })
+            .eq('batch_id', batch.id)
+            .in('status', ['packed', 'received_warehouse', 'shipped_distributor', 'opened'])
+          
+          const packedCount = packedData?.length || 0
+          const totalCount = batch.total_master_codes || 0
+          const progressPercentage = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
+          
+          return {
+            ...batch,
+            packed_master_codes: packedCount,
+            progress_percentage: progressPercentage
+          }
+        })
+      )
+      
+      setBatches(batchesWithProgress)
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -196,9 +220,27 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `QR_Batch_${batch.id.slice(0, 8)}.xlsx`
+      a.download = `QR_Batch_${batch.orders?.order_no || batch.id.slice(0, 8)}.xlsx`
       a.click()
       window.URL.revokeObjectURL(url)
+
+      // Update batch status to 'printing' after download
+      if (batch.status === 'generated') {
+        const { error: updateError } = await supabase
+          .from('qr_batches')
+          .update({ 
+            status: 'printing',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', batch.id)
+
+        if (updateError) {
+          console.error('Failed to update batch status:', updateError)
+        } else {
+          console.log('✅ Batch status updated to "printing"')
+          await loadBatches() // Refresh the batches list
+        }
+      }
 
       toast({
         title: 'Success',
@@ -325,14 +367,15 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                       .map((order) => {
                         const totalItems = order.order_items?.length || 0
                         const totalQuantity = order.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
-                        const qrCodes = Math.ceil(totalQuantity * (1 + (order.qr_buffer_percent || 10) / 100))
+                        const bufferQty = Math.floor(totalQuantity * (order.qr_buffer_percent || 10) / 100)
+                        const qrCodes = totalQuantity + bufferQty
                         
                         return (
                           <SelectItem key={order.id} value={order.id}>
                             <div className="flex flex-col">
                               <span className="font-medium">{order.order_no}</span>
                               <span className="text-xs text-gray-500">
-                                {totalItems} items • {totalQuantity.toLocaleString()} units • ~{qrCodes.toLocaleString()} QR codes
+                                {totalItems} items • {totalQuantity.toLocaleString()} units • {qrCodes.toLocaleString()} QR codes
                               </span>
                             </div>
                           </SelectItem>
@@ -368,7 +411,9 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               const totalItems = selectedOrder.order_items?.length || 0
               const totalQuantity = selectedOrder.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
               const bufferPercent = selectedOrder.qr_buffer_percent || 10
-              const qrCodes = Math.ceil(totalQuantity * (1 + bufferPercent / 100))
+              // Fixed calculation: base units + buffer (not multiplied)
+              const bufferQty = Math.floor(totalQuantity * bufferPercent / 100)
+              const qrCodes = totalQuantity + bufferQty
               
               return (
                 <div className="bg-white p-4 rounded-lg border border-blue-200">
@@ -388,7 +433,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                     </div>
                     <div>
                       <p className="text-gray-600">QR Codes to Generate</p>
-                      <p className="font-medium text-blue-600">{qrCodes.toLocaleString()} (with {bufferPercent}% buffer)</p>
+                      <p className="font-medium text-blue-600">{qrCodes.toLocaleString()} ({totalQuantity} + {bufferQty} buffer)</p>
                     </div>
                   </div>
                 </div>
@@ -417,7 +462,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               <div>
                 <p className="text-sm text-gray-600">Generated</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {batches.filter(b => b.status === 'generated').length}
+                  {batches.filter(b => ['generated', 'printing'].includes(b.status)).length}
                 </p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-600" />
@@ -430,7 +475,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               <div>
                 <p className="text-sm text-gray-600">In Progress</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {batches.filter(b => ['printing', 'in_production'].includes(b.status)).length}
+                  {batches.filter(b => b.status === 'in_production').length}
                 </p>
               </div>
               <Clock className="h-8 w-8 text-orange-600" />
@@ -476,7 +521,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order No</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progress</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Master Codes</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unique Codes</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -490,8 +535,37 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                       <td className="px-4 py-3 text-sm text-gray-900 font-medium">
                         {batch.orders?.order_no || 'N/A'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 font-mono">
-                        {batch.id.slice(0, 8)}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="relative w-12 h-12">
+                            <svg className="w-12 h-12 transform -rotate-90">
+                              <circle
+                                cx="24"
+                                cy="24"
+                                r="20"
+                                stroke="#E5E7EB"
+                                strokeWidth="4"
+                                fill="none"
+                              />
+                              <circle
+                                cx="24"
+                                cy="24"
+                                r="20"
+                                stroke={batch.progress_percentage === 100 ? '#10B981' : '#3B82F6'}
+                                strokeWidth="4"
+                                fill="none"
+                                strokeDasharray={`${2 * Math.PI * 20}`}
+                                strokeDashoffset={`${2 * Math.PI * 20 * (1 - batch.progress_percentage / 100)}`}
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="text-xs font-semibold text-gray-700">
+                                {batch.progress_percentage}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {batch.total_master_codes}

@@ -152,11 +152,17 @@ export async function POST(request: NextRequest) {
     console.log('✅ Uploaded to storage:', publicUrl)
 
     // 6. Create QR batch record
+    console.log('📝 Creating batch for order:', {
+      order_id: order.id,
+      company_id: order.company_id || order.seller_org.id,
+      order_no: order.order_no
+    })
+
     const { data: batch, error: batchError } = await supabase
       .from('qr_batches')
       .insert({
         order_id: order.id,
-        company_id: order.seller_org.id,
+        company_id: order.company_id || order.seller_org.id,
         total_master_codes: qrBatch.totalMasterCodes,
         total_unique_codes: qrBatch.totalUniqueCodes,
         buffer_percent: qrBatch.bufferPercent,
@@ -179,25 +185,36 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Created batch record:', batch.id)
 
-    // 7. Insert Master QR codes
-    const masterCodeInserts = qrBatch.masterCodes.map(master => ({
+    // 7. Insert master codes and individual codes
+    console.log('📝 Inserting master codes with org IDs:', {
+      manufacturer_org_id: order.seller_org_id,
+      warehouse_org_id: order.warehouse_org_id,
+      company_id: order.company_id
+    })
+
+    const masterCodesData = qrBatch.masterCodes.map(master => ({
       batch_id: batch.id,
-      company_id: order.seller_org.id,
       master_code: master.code,
       case_number: master.case_number,
+      status: 'generated',
       expected_unit_count: master.expected_unit_count,
-      status: 'pending'
+      actual_unit_count: 0,
+      manufacturer_org_id: order.seller_org_id,
+      warehouse_org_id: order.warehouse_org_id,
+      company_id: order.company_id,
+      manufacturer_scanned_at: null,
+      warehouse_received_at: null
     }))
 
     const { error: masterError } = await supabase
       .from('qr_master_codes')
-      .insert(masterCodeInserts)
+      .insert(masterCodesData)
 
     if (masterError) {
       console.error('❌ Master codes insert error:', masterError)
       // Continue despite error - batch is already created
     } else {
-      console.log(`✅ Inserted ${masterCodeInserts.length} master codes`)
+      console.log(`✅ Inserted ${masterCodesData.length} master codes`)
     }
 
     // 8. Insert Individual QR codes (in batches to avoid timeout)
@@ -206,7 +223,9 @@ export async function POST(request: NextRequest) {
       supabase,
       batch.id,
       order.id,
-      order.seller_org.id,
+      order.company_id || order.seller_org.id,
+      order.seller_org_id,
+      order.warehouse_org_id,
       qrBatch.individualCodes,
       BATCH_SIZE
     )
@@ -241,6 +260,8 @@ async function insertQRCodesInBatches(
   batchId: string,
   orderId: string,
   companyId: string,
+  manufacturerOrgId: string,
+  warehouseOrgId: string,
   codes: any[],
   batchSize: number
 ): Promise<number> {

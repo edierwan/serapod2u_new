@@ -15,6 +15,7 @@ import { toast } from '@/components/ui/use-toast'
 import DangerZoneTab from './DangerZoneTab'
 import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
+import MigrationView from '../migration/MigrationView'
 import { 
   Settings,
   User,
@@ -452,6 +453,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'preferences', label: 'Preferences', icon: Settings },
+    ...(userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? [{ id: 'migration', label: 'Data Migration', icon: Database }] : []),
     ...(userProfile.roles.role_level === 1 ? [{ id: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle }] : [])
   ]
 
@@ -1328,6 +1330,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Data Migration Tab - HQ Admin Only */}
+        {activeTab === 'migration' && userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && (
+          <MigrationView userProfile={userProfile} />
         )}
 
         {/* Danger Zone Tab - Super Admin Only */}

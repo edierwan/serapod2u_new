@@ -1,0 +1,425 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { 
+  Trophy, 
+  Plus, 
+  Users, 
+  Gift, 
+  Sparkles,
+  BarChart3,
+  UserCheck,
+  Award,
+  Zap,
+  Calendar,
+  ArrowRight,
+  Filter,
+  Search,
+  Info
+} from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+
+interface UserProfile {
+  id: string
+  organization_id: string
+  organizations: { id: string; org_name: string }
+}
+
+interface Order {
+  id: string
+  order_no: string
+  order_type: string
+  status: string
+  has_lucky_draw: boolean
+  buyer_org_name: string | null
+  seller_org_name: string | null
+  created_at: string
+}
+
+interface Campaign {
+  id: string
+  company_id: string
+  campaign_code: string
+  campaign_name: string
+  campaign_description: string
+  status: 'draft' | 'active' | 'closed' | 'drawn' | 'completed'
+  start_date: string
+  end_date: string
+  draw_date: string | null
+  prizes_json: Prize[]
+  entries_count?: number
+  drawn_at: string | null
+}
+
+interface Entry {
+  id: string
+  consumer_phone: string
+  consumer_name: string | null
+  entry_number: string
+  entry_date: string
+  is_winner: boolean
+  prize_won: any
+}
+
+interface Prize {
+  name: string
+  description: string
+  quantity: number
+  image_url?: string
+  remaining?: number
+}
+
+interface LuckyDrawViewProps {
+  userProfile: UserProfile
+  onViewChange: (view: string) => void
+}
+
+export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawViewProps) {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'participants' | 'prizes' | 'draw'>('dashboard')
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
+  const [orders, setOrders] = useState<Order[]>([])
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  useEffect(() => {
+    loadOrders()
+  }, [])
+
+  useEffect(() => {
+    if (selectedOrderId) {
+      loadCampaigns(selectedOrderId)
+    }
+  }, [selectedOrderId])
+
+  useEffect(() => {
+    if (selectedCampaignId) {
+      loadEntries(selectedCampaignId)
+    }
+  }, [selectedCampaignId])
+
+  const loadOrders = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/lucky-draw/orders')
+      const data = await response.json()
+      
+      if (data.success) {
+        setOrders(data.orders || [])
+        if (data.orders && data.orders.length > 0) {
+          setSelectedOrderId(data.orders[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading orders:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadCampaigns = async (orderId: string) => {
+    try {
+      const response = await fetch(`/api/lucky-draw/campaigns?order_id=${orderId}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setCampaigns(data.campaigns || [])
+        if (data.campaigns && data.campaigns.length > 0) {
+          setSelectedCampaignId(data.campaigns[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading campaigns:', error)
+    }
+  }
+
+  const loadEntries = async (campaignId: string) => {
+    try {
+      const response = await fetch(`/api/lucky-draw/entries?campaign_id=${campaignId}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setEntries(data.entries || [])
+      }
+    } catch (error) {
+      console.error('Error loading entries:', error)
+    }
+  }
+
+  const handleToggleCampaignStatus = async (campaignId: string, newStatus: string) => {
+    try {
+      const response = await fetch('/api/lucky-draw/campaigns', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaignId, status: newStatus })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        // Reload campaigns to reflect status change
+        if (selectedOrderId) {
+          loadCampaigns(selectedOrderId)
+        }
+      } else {
+        console.error('Error updating campaign status:', data.error)
+        alert('Failed to update campaign status: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Error toggling campaign status:', error)
+      alert('Failed to update campaign status')
+    }
+  }
+
+  const selectedOrder = orders.find(o => o.id === selectedOrderId)
+  const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId)
+
+  const filteredEntries = entries.filter(entry => 
+    entry.consumer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    entry.consumer_phone.includes(searchQuery) ||
+    entry.entry_number.includes(searchQuery)
+  )
+
+  const stats = {
+    totalCampaigns: campaigns.length,
+    activeCampaigns: campaigns.filter(c => c.status === 'active').length,
+    totalParticipants: entries.length,
+    totalWinners: entries.filter(e => e.is_winner).length,
+    totalPrizes: selectedCampaign?.prizes_json?.reduce((sum, p) => sum + p.quantity, 0) || 0,
+    remainingPrizes: selectedCampaign?.prizes_json?.reduce((sum, p) => sum + (p.remaining || p.quantity), 0) || 0
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+      <div className="bg-white border-b sticky top-0 z-10 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                <Trophy className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Lucky Draw Management</h1>
+                <p className="text-gray-600 mt-1">Manage order-specific lucky draw campaigns</p>
+              </div>
+            </div>
+            <Button 
+              className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              disabled={!selectedOrderId}
+            >
+              <Plus className="w-4 h-4" />
+              New Campaign
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <Card className="mb-6 border-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Select Order
+            </CardTitle>
+            <CardDescription>
+              Choose an order with lucky draw enabled to manage its campaigns
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-4">Loading orders...</div>
+            ) : orders.length === 0 ? (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  No orders with lucky draw feature found.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Select value={selectedOrderId || ''} onValueChange={setSelectedOrderId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select an order..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {orders.map(order => (
+                    <SelectItem key={order.id} value={order.id}>
+                      {order.order_no}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </CardContent>
+        </Card>
+
+        {selectedOrderId && campaigns.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">Select Campaign</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Select value={selectedCampaignId || ''} onValueChange={setSelectedCampaignId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a campaign..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {campaigns.map(campaign => (
+                    <SelectItem key={campaign.id} value={campaign.id}>
+                      {campaign.campaign_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedOrderId && (
+          <Card className="border-2">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+              <CardHeader className="border-b">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+                  <TabsTrigger value="participants" disabled={!selectedCampaignId}>Participants</TabsTrigger>
+                  <TabsTrigger value="prizes" disabled={!selectedCampaignId}>Prizes</TabsTrigger>
+                  <TabsTrigger value="draw" disabled={!selectedCampaignId}>Draw</TabsTrigger>
+                </TabsList>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <TabsContent value="dashboard">
+                  <div className="space-y-4">
+                    {campaigns.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Trophy className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-500">No campaigns yet</p>
+                      </div>
+                    ) : (
+                      campaigns.map(campaign => (
+                        <Card key={campaign.id} className="hover:shadow-md transition-shadow">
+                          <CardContent className="p-6">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <h3 className="font-semibold text-lg">{campaign.campaign_name}</h3>
+                                  <Badge 
+                                    className={
+                                      campaign.status === 'active' ? 'bg-green-500' :
+                                      campaign.status === 'draft' ? 'bg-gray-500' :
+                                      campaign.status === 'drawn' ? 'bg-blue-500' :
+                                      campaign.status === 'closed' ? 'bg-red-500' :
+                                      'bg-purple-500'
+                                    }
+                                  >
+                                    {campaign.status}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-gray-500 mb-3">{campaign.campaign_description}</p>
+                                <div className="flex items-center gap-4 text-xs text-gray-600">
+                                  <div className="flex items-center gap-1">
+                                    <Users className="w-4 h-4" />
+                                    <span>{campaign.entries_count || 0} entries</span>
+                                  </div>
+                                  {campaign.drawn_at && (
+                                    <div className="flex items-center gap-1">
+                                      <Zap className="w-4 h-4" />
+                                      <span>Drawn</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                {campaign.status === 'draft' && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleToggleCampaignStatus(campaign.id, 'active')}
+                                    className="bg-green-500 hover:bg-green-600"
+                                  >
+                                    <Sparkles className="w-4 h-4 mr-1" />
+                                    Activate
+                                  </Button>
+                                )}
+                                {campaign.status === 'active' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleToggleCampaignStatus(campaign.id, 'closed')}
+                                  >
+                                    Close
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                </TabsContent>
+                <TabsContent value="participants">
+                  <div className="space-y-4">
+                    <Input 
+                      placeholder="Search..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {filteredEntries.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-500">No participants yet</p>
+                      </div>
+                    ) : (
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs">Entry #</th>
+                              <th className="px-4 py-3 text-left text-xs">Name</th>
+                              <th className="px-4 py-3 text-left text-xs">Phone</th>
+                              <th className="px-4 py-3 text-left text-xs">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredEntries.map(entry => (
+                              <tr key={entry.id}>
+                                <td className="px-4 py-3">{entry.entry_number}</td>
+                                <td className="px-4 py-3">{entry.consumer_name || 'Anonymous'}</td>
+                                <td className="px-4 py-3">{entry.consumer_phone}</td>
+                                <td className="px-4 py-3">
+                                  <Badge>{entry.is_winner ? 'Winner' : 'Pending'}</Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+                <TabsContent value="prizes">
+                  <div className="text-center py-12">
+                    <Gift className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">Prizes management coming soon</p>
+                  </div>
+                </TabsContent>
+                <TabsContent value="draw">
+                  <div className="text-center py-12">
+                    <Zap className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">Lucky draw feature coming soon</p>
+                  </div>
+                </TabsContent>
+              </CardContent>
+            </Tabs>
+          </Card>
+        )}
+      </div>
+    </div>
+  )
+}

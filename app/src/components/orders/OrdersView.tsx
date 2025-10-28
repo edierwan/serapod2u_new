@@ -128,11 +128,48 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   }
 
   const handleApproveOrder = async (orderId: string, orderNo: string) => {
-    if (!confirm(`Approve order ${orderNo}?\n\nThis will:\n• Change status to "Approved"\n• Generate Purchase Order document\n• Allow production to begin\n\nThis action cannot be undone.`)) {
-      return
-    }
-
     try {
+      // 1. Check if current user has uploaded their digital signature
+      const { data: currentUserData, error: userError } = await supabase
+        .from('users')
+        .select('signature_url, full_name')
+        .eq('id', userProfile.id)
+        .single()
+
+      if (userError) throw userError
+
+      if (!currentUserData.signature_url) {
+        toast({
+          title: 'Signature Required',
+          description: 'You must upload your digital signature in My Profile before you can approve orders.',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // 2. Check if user is trying to approve their own order
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select('created_by')
+        .eq('id', orderId)
+        .single()
+
+      if (orderError) throw orderError
+
+      if (orderData.created_by === userProfile.id) {
+        toast({
+          title: 'Cannot Approve Own Order',
+          description: 'You cannot approve an order that you created. Another HQ admin must approve this order.',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // 3. Show confirmation dialog
+      if (!confirm(`Approve order ${orderNo}?\n\nThis will:\n• Change status to "Approved"\n• Generate Purchase Order document\n• Allow production to begin\n\nThis action cannot be undone.`)) {
+        return
+      }
+
       setLoading(true)
 
       // Call the orders_approve database function
@@ -216,6 +253,14 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // Navigate to create order view
     if (onViewChange) {
       onViewChange('create-order')
+    }
+  }
+
+  const handleViewOrderDetails = (orderId: string) => {
+    // Navigate to view order details (read-only)
+    if (onViewChange) {
+      sessionStorage.setItem('viewOrderId', orderId)
+      onViewChange('view-order')
     }
   }
 
@@ -405,10 +450,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
           <p className="text-gray-600 mt-1">Manage and track all your orders</p>
         </div>
-        <Button className="gap-2" onClick={handleCreateOrder}>
-          <Plus className="w-4 h-4" />
-          Create Order
-        </Button>
+        {/* Hide Create Order button for Manufacturer (MANU/MFG) organizations */}
+        {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+          <Button className="gap-2" onClick={handleCreateOrder}>
+            <Plus className="w-4 h-4" />
+            Create Order
+          </Button>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -555,12 +603,17 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 <p className="text-gray-600 mb-4">
                   {searchQuery || statusFilter !== 'all' 
                     ? 'Try adjusting your filters' 
-                    : 'Create your first order to get started'}
+                    : ['MANU', 'MFG'].includes(userProfile.organizations.org_type_code)
+                      ? 'No orders available. Manufacturers receive orders from HQ.'
+                      : 'Create your first order to get started'}
                 </p>
-                <Button className="gap-2" onClick={handleCreateOrder}>
-                  <Plus className="w-4 h-4" />
-                  Create Order
-                </Button>
+                {/* Hide Create Order button for Manufacturer organizations */}
+                {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+                  <Button className="gap-2" onClick={handleCreateOrder}>
+                    <Plus className="w-4 h-4" />
+                    Create Order
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -579,7 +632,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       {/* Left: Order Info */}
                       <div className="flex items-center gap-4 flex-1">
                         <div className="min-w-[180px]">
-                          <div className="font-bold text-blue-600 mb-1">{order.order_no}</div>
+                          <div 
+                            className="font-bold text-blue-600 mb-1 cursor-pointer hover:underline"
+                            onClick={() => handleViewOrderDetails(order.id)}
+                          >
+                            {order.order_no}
+                          </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                               {order.order_type}
@@ -663,7 +721,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             Approve
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 w-8 p-0"
+                          onClick={() => handleTrackOrder(order.id)}
+                          title="View Order Details"
+                        >
                           <Eye className="w-4 h-4" />
                         </Button>
                         {canDeleteOrder() && (order.status === 'draft' || order.status === 'submitted') && (
@@ -698,7 +762,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                     {/* Header with Order Number and Status */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <div className="font-bold text-blue-600 text-lg mb-1">
+                        <div 
+                          className="font-bold text-blue-600 text-lg mb-1 cursor-pointer hover:underline"
+                          onClick={() => handleViewOrderDetails(order.id)}
+                        >
                           {order.order_no}
                         </div>
                         <div className="flex items-center gap-2">
@@ -794,6 +861,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         size="sm"
                         className="flex-1 gap-1 text-xs h-8"
                         title="View Details"
+                        onClick={() => handleTrackOrder(order.id)}
                       >
                         <Eye className="w-3 h-3" />
                         View

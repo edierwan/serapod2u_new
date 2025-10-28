@@ -297,6 +297,19 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
         return
       }
 
+      // Check for AVIF format - not supported by Supabase Storage
+      if (file.type === 'image/avif') {
+        toast({
+          title: 'Format Not Supported',
+          description: 'AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.',
+          variant: 'destructive'
+        })
+        if (e.target) {
+          e.target.value = ''
+        }
+        return
+      }
+
       const reader = new FileReader()
       reader.onload = (event) => {
         setImagePreview({
@@ -781,7 +794,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                   <span className="text-sm text-gray-600">Click to upload product image</span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                     onChange={handleImageSelect}
                     className="hidden"
                   />

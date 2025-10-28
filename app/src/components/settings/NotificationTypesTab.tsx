@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
 import { 
   Save, 
   Bell, 
@@ -63,6 +64,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   const [notificationTypes, setNotificationTypes] = useState<NotificationType[]>([])
   const [settings, setSettings] = useState<Map<string, NotificationSetting>>(new Map())
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [activeCategory, setActiveCategory] = useState('configuration')
 
   useEffect(() => {
     if (isReady) {
@@ -347,170 +349,246 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         </div>
       )}
 
-      {/* Notification Type Groups */}
-      {Object.entries(groupedNotifications).map(([category, types]) => {
-        const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
-        const allEnabled = categorySettings.every(s => s?.enabled)
-        const someEnabled = categorySettings.some(s => s?.enabled)
-        
-        return (
-          <Card key={category} className={`border-l-4 ${getCategoryColor(category)}`}>
+      {/* Category Tabs */}
+      <TabsComponent value={activeCategory} onValueChange={setActiveCategory} className="w-full">
+        <TabsList2 className="grid w-full grid-cols-2 lg:grid-cols-5">
+          <TabsTrigger2 value="configuration">Configuration</TabsTrigger2>
+          <TabsTrigger2 value="order">Order Status Changes</TabsTrigger2>
+          <TabsTrigger2 value="inventory">Inventory & Stock Alerts</TabsTrigger2>
+          <TabsTrigger2 value="qr">QR Code & Consumer</TabsTrigger2>
+          <TabsTrigger2 value="user">User Account Activities</TabsTrigger2>
+        </TabsList2>
+
+        {/* Configuration Tab - Summary View */}
+        <TabsContent2 value="configuration" className="mt-6 space-y-6">
+          {/* Summary Card */}
+          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {getCategoryIcon(category)}
-                  <div>
-                    <CardTitle className="text-lg">
-                      {categoryLabels[category] || category.toUpperCase()}
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      Configure which {category} events trigger notifications
-                    </CardDescription>
+              <CardTitle className="text-lg">Configuration Summary</CardTitle>
+              <CardDescription>Overview of all notification event configurations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-white rounded-lg border">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {Array.from(settings.values()).filter(s => s.enabled).length}
                   </div>
+                  <div className="text-sm text-gray-600">Enabled Events</div>
                 </div>
-                
-                {/* Bulk Action Buttons */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant={allEnabled ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => toggleAllInCategory(category, true)}
-                    className="flex items-center gap-2"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Enable All
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleAllInCategory(category, false)}
-                    className="flex items-center gap-2"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Disable All
-                  </Button>
+                <div className="text-center p-3 bg-white rounded-lg border">
+                  <div className="text-2xl font-bold text-green-600">
+                    {Array.from(settings.values()).filter(s => 
+                      s.channels_enabled.includes('whatsapp')
+                    ).length}
+                  </div>
+                  <div className="text-sm text-gray-600">WhatsApp</div>
+                </div>
+                <div className="text-center p-3 bg-white rounded-lg border">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {Array.from(settings.values()).filter(s => 
+                      s.channels_enabled.includes('sms')
+                    ).length}
+                  </div>
+                  <div className="text-sm text-gray-600">SMS</div>
+                </div>
+                <div className="text-center p-3 bg-white rounded-lg border">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {Array.from(settings.values()).filter(s => 
+                      s.channels_enabled.includes('email')
+                    ).length}
+                  </div>
+                  <div className="text-sm text-gray-600">Email</div>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-            {types.map((type) => {
-              const setting = settings.get(type.event_code)
-              if (!setting) return null
+            </CardContent>
+          </Card>
 
+          {/* All Categories Overview */}
+          <div className="grid gap-4">
+            {Object.entries({
+              order: 'Order Status Changes',
+              inventory: 'Inventory & Stock Alerts',
+              qr: 'QR Code & Consumer Activities',
+              user: 'User Account Activities'
+            }).map(([categoryKey, categoryName]) => {
+              const types = notificationTypes.filter(t => t.category === categoryKey)
+              const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
+              const enabledCount = categorySettings.filter(s => s?.enabled).length
+              
               return (
-                <div 
-                  key={type.event_code}
-                  className="flex items-start gap-4 p-4 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
-                >
-                  {/* Enable/Disable Switch */}
-                  <div className="flex items-center pt-1">
-                    <Switch
-                      checked={setting.enabled}
-                      onCheckedChange={(checked) => toggleNotification(type.event_code, checked)}
-                    />
-                  </div>
-
-                  {/* Notification Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Label className="text-base font-medium text-gray-900">
-                        {type.event_name}
-                      </Label>
-                      {type.is_system && (
-                        <Badge variant="secondary" className="text-xs">
-                          <AlertCircle className="w-3 h-3 mr-1" />
-                          System
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 mb-3">
-                      {type.event_description}
-                    </p>
-
-                    {/* Channel Selection */}
-                    {setting.enabled && (
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <span className="text-sm font-medium text-gray-700">Channels:</span>
-                        {type.available_channels.map((channel) => (
-                          <label 
-                            key={channel}
-                            className="flex items-center gap-2 cursor-pointer"
-                          >
-                            <Checkbox
-                              checked={setting.channels_enabled.includes(channel)}
-                              onCheckedChange={(checked) => 
-                                toggleChannel(type.event_code, channel, checked as boolean)
-                              }
-                            />
-                            <span className="text-sm capitalize">{channel}</span>
-                          </label>
-                        ))}
+                <Card key={categoryKey} className={`border-l-4 ${getCategoryColor(categoryKey)}`}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {getCategoryIcon(categoryKey)}
+                        <div>
+                          <CardTitle className="text-base">{categoryName}</CardTitle>
+                          <CardDescription className="text-xs mt-1">
+                            {enabledCount} of {types.length} events enabled
+                          </CardDescription>
+                        </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Status Indicator */}
-                  <div className="flex-shrink-0">
-                    {setting.enabled ? (
-                      <Badge className="bg-green-100 text-green-800 border-green-200">
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-gray-600">
-                        Disabled
-                      </Badge>
-                    )}
-                  </div>
-                </div>
+                      <div className="text-2xl font-bold text-gray-400">{enabledCount}/{types.length}</div>
+                    </div>
+                  </CardHeader>
+                </Card>
               )
             })}
-          </CardContent>
-        </Card>
-        )
-      })}
-
-      {/* Summary Card */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-        <CardHeader>
-          <CardTitle className="text-lg">Configuration Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center p-3 bg-white rounded-lg border">
-              <div className="text-2xl font-bold text-blue-600">
-                {Array.from(settings.values()).filter(s => s.enabled).length}
-              </div>
-              <div className="text-sm text-gray-600">Enabled Events</div>
-            </div>
-            <div className="text-center p-3 bg-white rounded-lg border">
-              <div className="text-2xl font-bold text-green-600">
-                {Array.from(settings.values()).filter(s => 
-                  s.channels_enabled.includes('whatsapp')
-                ).length}
-              </div>
-              <div className="text-sm text-gray-600">WhatsApp</div>
-            </div>
-            <div className="text-center p-3 bg-white rounded-lg border">
-              <div className="text-2xl font-bold text-purple-600">
-                {Array.from(settings.values()).filter(s => 
-                  s.channels_enabled.includes('sms')
-                ).length}
-              </div>
-              <div className="text-sm text-gray-600">SMS</div>
-            </div>
-            <div className="text-center p-3 bg-white rounded-lg border">
-              <div className="text-2xl font-bold text-orange-600">
-                {Array.from(settings.values()).filter(s => 
-                  s.channels_enabled.includes('email')
-                ).length}
-              </div>
-              <div className="text-sm text-gray-600">Email</div>
-            </div>
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent2>
+
+        {/* Order Status Changes Tab */}
+        <TabsContent2 value="order" className="mt-6">
+          {renderCategoryContent('order')}
+        </TabsContent2>
+
+        {/* Inventory & Stock Alerts Tab */}
+        <TabsContent2 value="inventory" className="mt-6">
+          {renderCategoryContent('inventory')}
+        </TabsContent2>
+
+        {/* QR Code & Consumer Activities Tab */}
+        <TabsContent2 value="qr" className="mt-6">
+          {renderCategoryContent('qr')}
+        </TabsContent2>
+
+        {/* User Account Activities Tab */}
+        <TabsContent2 value="user" className="mt-6">
+          {renderCategoryContent('user')}
+        </TabsContent2>
+      </TabsComponent>
     </div>
   )
+
+  // Helper function to render category content
+  function renderCategoryContent(category: string) {
+    const types = notificationTypes.filter(t => t.category === category)
+    const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
+    const allEnabled = categorySettings.every(s => s?.enabled)
+    
+    const categoryLabels: Record<string, string> = {
+      order: 'Order Status Changes',
+      document: 'Document Workflow',
+      inventory: 'Inventory & Stock Alerts',
+      qr: 'QR Code & Consumer Activities',
+      user: 'User Account Activities'
+    }
+
+    return (
+      <Card className={`border-l-4 ${getCategoryColor(category)}`}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {getCategoryIcon(category)}
+              <div>
+                <CardTitle className="text-lg">
+                  {categoryLabels[category] || category.toUpperCase()}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Configure which {category} events trigger notifications
+                </CardDescription>
+              </div>
+            </div>
+            
+            {/* Bulk Action Buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={allEnabled ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => toggleAllInCategory(category, true)}
+                className="flex items-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Enable All
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => toggleAllInCategory(category, false)}
+                className="flex items-center gap-2"
+              >
+                <XCircle className="w-4 h-4" />
+                Disable All
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {types.map((type) => {
+            const setting = settings.get(type.event_code)
+            if (!setting) return null
+
+            return (
+              <div 
+                key={type.event_code}
+                className="flex items-start gap-4 p-4 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
+              >
+                {/* Enable/Disable Switch */}
+                <div className="flex items-center pt-1">
+                  <Switch
+                    checked={setting.enabled}
+                    onCheckedChange={(checked) => toggleNotification(type.event_code, checked)}
+                  />
+                </div>
+
+                {/* Notification Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Label className="text-base font-medium text-gray-900">
+                      {type.event_name}
+                    </Label>
+                    {type.is_system && (
+                      <Badge variant="secondary" className="text-xs">
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                        System
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    {type.event_description}
+                  </p>
+
+                  {/* Channel Selection */}
+                  {setting.enabled && (
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-sm font-medium text-gray-700">Channels:</span>
+                      {type.available_channels.map((channel) => (
+                        <label 
+                          key={channel}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={setting.channels_enabled.includes(channel)}
+                            onCheckedChange={(checked) => 
+                              toggleChannel(type.event_code, channel, checked as boolean)
+                            }
+                          />
+                          <span className="text-sm capitalize">{channel}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Status Indicator */}
+                <div className="flex-shrink-0">
+                  {setting.enabled ? (
+                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                      Active
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-gray-600">
+                      Disabled
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </CardContent>
+      </Card>
+    )
+  }
 }

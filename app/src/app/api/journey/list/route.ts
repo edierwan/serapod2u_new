@@ -36,20 +36,49 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch all journey configurations for this org
-    const { data: journeys, error: journeysError } = await supabase
-      .from('journey_configurations')
-      .select('*')
-      .eq('org_id', profile.organization_id)
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: false })
+    // Check for order_id filter in query params
+    const { searchParams } = new URL(request.url)
+    const orderId = searchParams.get('order_id')
 
-    if (journeysError) {
-      console.error('Error fetching journeys:', journeysError)
-      return NextResponse.json(
-        { error: 'Failed to fetch journeys' },
-        { status: 500 }
-      )
+    let journeys
+    if (orderId) {
+      // Fetch journeys linked to specific order
+      const { data: journeyLinks, error: linksError } = await supabase
+        .from('journey_order_links')
+        .select(`
+          journey_configurations (*)
+        `)
+        .eq('order_id', orderId)
+
+      if (linksError) {
+        console.error('Error fetching journey links:', linksError)
+        return NextResponse.json(
+          { error: 'Failed to fetch journeys' },
+          { status: 500 }
+        )
+      }
+
+      journeys = journeyLinks
+        ?.map(link => (link as any).journey_configurations)
+        .filter(Boolean) || []
+    } else {
+      // Fetch all journey configurations for this org
+      const { data: allJourneys, error: journeysError } = await supabase
+        .from('journey_configurations')
+        .select('*')
+        .eq('org_id', profile.organization_id)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false })
+
+      if (journeysError) {
+        console.error('Error fetching journeys:', journeysError)
+        return NextResponse.json(
+          { error: 'Failed to fetch journeys' },
+          { status: 500 }
+        )
+      }
+
+      journeys = allJourneys || []
     }
 
     return NextResponse.json({
