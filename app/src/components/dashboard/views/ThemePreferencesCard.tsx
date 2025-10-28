@@ -86,16 +86,16 @@ export default function ThemePreferencesCard() {
   const handleThemeModeChange = (mode: 'light' | 'dark' | 'system') => {
     setTheme(mode)
     toast({
-      title: "Theme Mode Updated",
-      description: `Switched to ${mode} mode`,
+      title: "✅ Theme Saved",
+      description: `Switched to ${mode} mode (auto-saved to your browser)`,
     })
   }
 
   const handleVariantChange = (variantId: string) => {
     setThemeVariant(variantId as any)
     toast({
-      title: "Theme Applied",
-      description: `${themeVariants.find(v => v.id === variantId)?.name} theme has been applied`,
+      title: "✅ Theme Saved",
+      description: `${themeVariants.find(v => v.id === variantId)?.name} theme has been applied and saved`,
     })
   }
 
@@ -209,16 +209,17 @@ export default function ThemePreferencesCard() {
         </div>
 
         {/* Info Alert */}
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 p-4">
+        <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 p-4">
           <div className="flex gap-3">
-            <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <Check className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                Personalized Experience
+              <p className="text-sm font-medium text-green-900 dark:text-green-100 mb-1">
+                ✨ Auto-Save Enabled - No Save Button Needed!
               </p>
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                Your theme preference is saved to your browser and will persist across sessions. 
-                Each user can have their own unique theme without affecting others.
+              <p className="text-xs text-green-700 dark:text-green-300">
+                Your theme changes are <strong>automatically saved instantly</strong> to your browser. 
+                Just click any theme or mode, and it will persist across sessions and logins. 
+                No manual save required! 🎉
               </p>
             </div>
           </div>

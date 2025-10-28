@@ -16,29 +16,29 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('light')
+  // Initialize from localStorage to prevent flash of wrong theme
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('theme') as Theme | null
+      return savedTheme || 'light'
+    }
+    return 'light'
+  })
+  
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
-  const [themeVariant, setThemeVariantState] = useState<ThemeVariant>('default')
+  
+  const [themeVariant, setThemeVariantState] = useState<ThemeVariant>(() => {
+    if (typeof window !== 'undefined') {
+      const savedVariant = localStorage.getItem('themeVariant') as ThemeVariant | null
+      return savedVariant || 'default'
+    }
+    return 'default'
+  })
 
   useEffect(() => {
-    // Load theme and variant from localStorage on mount
-    const savedTheme = localStorage.getItem('theme') as Theme | null
-    const savedVariant = localStorage.getItem('themeVariant') as ThemeVariant | null
+    // Note: Initial load is now handled by useState initializer
+    // This effect only runs when theme changes after mount
     
-    if (savedTheme) {
-      setThemeState(savedTheme)
-    } else {
-      // Check system preference
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-      setThemeState('system')
-    }
-    
-    if (savedVariant) {
-      setThemeVariantState(savedVariant)
-    }
-  }, [])
-
-  useEffect(() => {
     // Apply theme to document
     const root = document.documentElement
     
