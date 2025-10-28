@@ -67,6 +67,7 @@ const PROVIDERS = {
     { value: 'local_my', label: 'Local Malaysian Provider', description: 'Malaysian SMS gateway' }
   ],
   email: [
+    { value: 'gmail', label: 'Gmail', description: 'Gmail with OAuth2 (Free: 500 emails/day)' },
     { value: 'sendgrid', label: 'SendGrid', description: 'SendGrid Email API (Twilio)' },
     { value: 'aws_ses', label: 'AWS SES', description: 'Amazon Simple Email Service' },
     { value: 'resend', label: 'Resend', description: 'Resend Email API' },
@@ -86,6 +87,10 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const [smsConfig, setSmsConfig] = useState<ProviderConfig | null>(null)
   const [emailConfig, setEmailConfig] = useState<ProviderConfig | null>(null)
 
+  // Gmail usage tracking
+  const [emailUsageToday, setEmailUsageToday] = useState(0)
+  const [emailUsageLoading, setEmailUsageLoading] = useState(false)
+
   // Form states for sensitive data (not stored in state)
   const [sensitiveData, setSensitiveData] = useState<Record<string, Record<string, string>>>({
     whatsapp: {},
@@ -96,11 +101,31 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   useEffect(() => {
     if (isReady) {
       loadProviderConfigs()
+      loadEmailUsage()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
+
+  const loadEmailUsage = async () => {
+    if (!isReady) return
+
+    try {
+      setEmailUsageLoading(true)
+
+      const response = await fetch('/api/email/usage?provider=gmail')
+      const data = await response.json()
+
+      if (data.success) {
+        setEmailUsageToday(data.today_count || 0)
+      }
+    } catch (error) {
+      console.error('Error loading email usage:', error)
+    } finally {
+      setEmailUsageLoading(false)
+    }
+  }
 
   const loadProviderConfigs = async () => {
     if (!isReady) return
@@ -1081,6 +1106,223 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                 </div>
               </div>
 
+              {/* Gmail */}
+              {emailConfig.provider_name === 'gmail' && (
+                <div className="space-y-6">
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-start gap-3">
+                      <Mail className="w-5 h-5 text-blue-600 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-blue-900">Gmail OAuth2 Configuration</h4>
+                        <p className="text-sm text-blue-700 mt-1">
+                          Use your Gmail account to send up to <strong>500 emails per day</strong> for free.
+                          Perfect for small to medium volume notifications.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Usage Warning */}
+                  <div className={`p-4 rounded-lg border ${
+                    emailUsageToday >= 450 ? 'bg-red-50 border-red-200' :
+                    emailUsageToday >= 350 ? 'bg-yellow-50 border-yellow-200' :
+                    'bg-green-50 border-green-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className={`w-5 h-5 ${
+                          emailUsageToday >= 450 ? 'text-red-600' :
+                          emailUsageToday >= 350 ? 'text-yellow-600' :
+                          'text-green-600'
+                        }`} />
+                        <div>
+                          <div className="font-medium text-sm">
+                            Daily Email Usage: {emailUsageLoading ? '...' : emailUsageToday} / 500
+                          </div>
+                          <div className="text-xs text-gray-600 mt-0.5">
+                            {emailUsageToday >= 450 && 'Critical: Consider switching to a paid provider!'}
+                            {emailUsageToday >= 350 && emailUsageToday < 450 && 'Warning: Approaching daily limit'}
+                            {emailUsageToday < 350 && 'You have sufficient quota remaining'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold">
+                          {((emailUsageToday / 500) * 100).toFixed(0)}%
+                        </div>
+                        <div className="text-xs text-gray-500">Used</div>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all ${
+                          emailUsageToday >= 450 ? 'bg-red-600' :
+                          emailUsageToday >= 350 ? 'bg-yellow-500' :
+                          'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min((emailUsageToday / 500) * 100, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* OAuth2 Configuration */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Gmail Account Email</Label>
+                      <Input
+                        type="email"
+                        placeholder="your-email@gmail.com"
+                        value={emailConfig.config_public.gmail_email || ''}
+                        onChange={(e) => setEmailConfig({
+                          ...emailConfig,
+                          config_public: {
+                            ...emailConfig.config_public,
+                            gmail_email: e.target.value
+                          }
+                        })}
+                      />
+                      <p className="text-xs text-gray-600">
+                        The Gmail account you&apos;ll use to send emails
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>OAuth2 Client ID</Label>
+                      <Input
+                        type="text"
+                        placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+                        value={emailConfig.config_public.oauth_client_id || ''}
+                        onChange={(e) => setEmailConfig({
+                          ...emailConfig,
+                          config_public: {
+                            ...emailConfig.config_public,
+                            oauth_client_id: e.target.value
+                          }
+                        })}
+                      />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>OAuth2 Client Secret</Label>
+                      <div className="relative">
+                        <Input
+                          type={showSecrets['email_gmail_secret'] ? 'text' : 'password'}
+                          placeholder="GOCSPX-xxxxxxxxxxxxxxxxxxxx"
+                          value={sensitiveData.email.oauth_client_secret || ''}
+                          onChange={(e) => setSensitiveData({
+                            ...sensitiveData,
+                            email: { ...sensitiveData.email, oauth_client_secret: e.target.value }
+                          })}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0"
+                          onClick={() => setShowSecrets({
+                            ...showSecrets,
+                            email_gmail_secret: !showSecrets['email_gmail_secret']
+                          })}
+                        >
+                          {showSecrets['email_gmail_secret'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>OAuth2 Refresh Token</Label>
+                      <div className="relative">
+                        <Input
+                          type={showSecrets['email_gmail_refresh'] ? 'text' : 'password'}
+                          placeholder="1//xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                          value={sensitiveData.email.oauth_refresh_token || ''}
+                          onChange={(e) => setSensitiveData({
+                            ...sensitiveData,
+                            email: { ...sensitiveData.email, oauth_refresh_token: e.target.value }
+                          })}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0"
+                          onClick={() => setShowSecrets({
+                            ...showSecrets,
+                            email_gmail_refresh: !showSecrets['email_gmail_refresh']
+                          })}
+                        >
+                          {showSecrets['email_gmail_refresh'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Generated after OAuth2 authorization flow
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>From Name</Label>
+                      <Input
+                        placeholder="Your Company Name"
+                        value={emailConfig.config_public.from_name || ''}
+                        onChange={(e) => setEmailConfig({
+                          ...emailConfig,
+                          config_public: {
+                            ...emailConfig.config_public,
+                            from_name: e.target.value
+                          }
+                        })}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Reply-To Email (Optional)</Label>
+                      <Input
+                        type="email"
+                        placeholder="support@yourdomain.com"
+                        value={emailConfig.config_public.reply_to || ''}
+                        onChange={(e) => setEmailConfig({
+                          ...emailConfig,
+                          config_public: {
+                            ...emailConfig.config_public,
+                            reply_to: e.target.value
+                          }
+                        })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* OAuth2 Authorization Button */}
+                  {!sensitiveData.email.oauth_refresh_token && (
+                    <Card className="bg-yellow-50 border-yellow-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                          <div className="flex-1">
+                            <h4 className="font-medium text-yellow-900">Authorization Required</h4>
+                            <p className="text-sm text-yellow-700 mt-1">
+                              You need to authorize this application to send emails on your behalf.
+                            </p>
+                            <Button 
+                              variant="outline" 
+                              className="mt-3 border-yellow-300 hover:bg-yellow-100"
+                              onClick={() => {
+                                alert('OAuth2 flow would open here. In production, this would redirect to Google OAuth consent screen.')
+                                // TODO: Implement OAuth2 flow
+                                // window.location.href = `/api/gmail/oauth/authorize?org_id=${userProfile.organizations.id}`
+                              }}
+                            >
+                              <Shield className="w-4 h-4 mr-2" />
+                              Authorize Gmail Access
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
               {/* SendGrid */}
               {emailConfig.provider_name === 'sendgrid' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
@@ -1615,6 +1857,42 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <CardTitle className="text-sm">Email Provider Setup Guide</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm space-y-2">
+                  {emailConfig.provider_name === 'gmail' && (
+                    <div className="space-y-3">
+                      <p className="font-medium text-gray-900">Setting up Gmail OAuth2:</p>
+                      <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                        <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" className="text-blue-600 underline">Google Cloud Console</a></li>
+                        <li>Create a new project or select existing one</li>
+                        <li>Enable Gmail API (APIs &amp; Services → Library → Gmail API → Enable)</li>
+                        <li>Create OAuth 2.0 Credentials:
+                          <ul className="list-disc list-inside ml-6 mt-1 space-y-1 text-sm">
+                            <li>Go to APIs &amp; Services → Credentials</li>
+                            <li>Click &quot;Create Credentials&quot; → &quot;OAuth client ID&quot;</li>
+                            <li>Application type: &quot;Web application&quot;</li>
+                            <li>Add authorized redirect URI: <code className="bg-gray-100 px-1">http://localhost:3000/api/gmail/oauth/callback</code></li>
+                          </ul>
+                        </li>
+                        <li>Copy Client ID and Client Secret</li>
+                        <li>Get refresh token:
+                          <ul className="list-disc list-inside ml-6 mt-1 space-y-1 text-sm">
+                            <li>Use OAuth 2.0 Playground or custom flow</li>
+                            <li>Scopes needed: <code className="bg-gray-100 px-1">https://www.googleapis.com/auth/gmail.send</code></li>
+                          </ul>
+                        </li>
+                        <li>Enter credentials above and save configuration</li>
+                      </ol>
+                      <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                        <p className="text-sm font-medium text-yellow-900 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          Daily Limit: 500 emails/day (Gmail free tier)
+                        </p>
+                        <p className="text-xs text-yellow-700 mt-1">
+                          This limit resets at midnight Pacific Time. Monitor usage above to avoid hitting the limit.
+                          For higher volume, consider upgrading to Google Workspace or using SendGrid/AWS SES.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {emailConfig.provider_name === 'sendgrid' && (
                     <ol className="list-decimal list-inside space-y-1 text-gray-700">
                       <li>Sign up at <a href="https://signup.sendgrid.com/" target="_blank" rel="noopener" className="text-blue-600 underline">SendGrid</a></li>

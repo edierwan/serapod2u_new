@@ -529,12 +529,20 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 payment_terms: 'NET_30',
                 is_active: true,
                 is_preferred: true, // First distributor is always default
-                created_by: userProfile.id
+                approved_by: userProfile.id,
+                approved_at: new Date().toISOString(),
+                created_by: userProfile.id // Track who created this relationship
               }])
               .select()
             
             if (linkError) {
-              console.error('❌ Failed to create shop-distributor link:', linkError)
+              console.error('❌ Failed to create shop-distributor link:', {
+                error: linkError,
+                message: linkError.message,
+                details: linkError.details,
+                hint: linkError.hint,
+                code: linkError.code
+              })
               // Don't fail the whole operation, just log it
             } else {
               console.log('✅ Shop-distributor link created successfully:', linkData)
@@ -866,14 +874,13 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
               <div>
                 <Label htmlFor="state_id">State</Label>
                 <Select
-                  value={formData.state_id || 'none'}
-                  onValueChange={(value) => handleInputChange('state_id', value === 'none' ? '' : value)}
+                  value={formData.state_id || undefined}
+                  onValueChange={(value) => handleInputChange('state_id', value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select state" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Select a state...</SelectItem>
                     {states.map((state) => (
                       <SelectItem key={state.id} value={state.id}>
                         {state.state_name}
@@ -886,15 +893,14 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
               <div>
                 <Label htmlFor="district_id">District</Label>
                 <Select
-                  value={formData.district_id || 'none'}
-                  onValueChange={(value) => handleInputChange('district_id', value === 'none' ? '' : value)}
+                  value={formData.district_id || undefined}
+                  onValueChange={(value) => handleInputChange('district_id', value)}
                   disabled={!formData.state_id}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={formData.state_id ? "Select district" : "Select state first"} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Select a district...</SelectItem>
                     {districts.map((district) => (
                       <SelectItem key={district.id} value={district.id}>
                         {district.district_name}
@@ -913,7 +919,6 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.country_code}
                   onChange={(e) => handleInputChange('country_code', e.target.value)}
                   maxLength={2}
-                  defaultValue="MY"
                   placeholder="Enter 2-letter country code (e.g., MY)"
                   className="placeholder:text-gray-400 placeholder:italic"
                 />

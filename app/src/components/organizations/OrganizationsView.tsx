@@ -59,6 +59,7 @@ interface Organization {
   org_name_short: string
   org_type_code: string
   parent_org_id: string | null
+  default_warehouse_org_id: string | null
   contact_name: string
   contact_phone: string
   contact_email: string
@@ -421,6 +422,67 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     }
   }
 
+  const handleSetDefaultWarehouse = async (warehouse: Organization) => {
+    try {
+      // Find the parent HQ organization
+      const parentHQ = organizations.find(o => o.id === warehouse.parent_org_id && o.org_type_code === 'HQ')
+      
+      if (!parentHQ) {
+        toast({
+          title: "Error",
+          description: "Parent HQ not found. Only warehouses under an HQ can be set as default.",
+          variant: "destructive"
+        })
+        return
+      }
+
+      // Confirm with user
+      const isAlreadyDefault = parentHQ.default_warehouse_org_id === warehouse.id
+      if (isAlreadyDefault) {
+        toast({
+          title: "Already Default",
+          description: `${warehouse.org_name} is already the default warehouse for ${parentHQ.org_name}.`,
+        })
+        return
+      }
+
+      const confirmMsg = `Set ${warehouse.org_name} as the default warehouse for ${parentHQ.org_name}?\n\nAll new orders will be directed to this warehouse.`
+      if (!confirm(confirmMsg)) return
+
+      // Call the API to set default warehouse
+      const response = await fetch('/api/organizations/set-default-warehouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hq_org_id: parentHQ.id,
+          warehouse_org_id: warehouse.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to set default warehouse')
+      }
+
+      toast({
+        title: "✓ Default Warehouse Updated",
+        description: `${warehouse.org_name} is now the default warehouse for ${parentHQ.org_name}.`,
+      })
+
+      // Refresh organizations to show updated default status
+      fetchOrganizations()
+
+    } catch (error: any) {
+      console.error('Error setting default warehouse:', error)
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to set default warehouse',
+        variant: "destructive"
+      })
+    }
+  }
+
     const handleDeleteOrganization = async (orgId: string) => {
     try {
       const org = organizations.find(o => o.id === orgId)
@@ -438,8 +500,22 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       }
 
       // Check the response from the function
-      if (!data.success) {
-        console.error('Delete failed:', data)
+      if (!data || !data.success) {
+        console.error('Delete failed:', data || 'No response data')
+        
+        // Handle null or missing data
+        if (!data) {
+          alert(
+            `Delete Failed\n\n` +
+            `No response received from server. The organization may have related data that prevents deletion.\n\n` +
+            `Please check:\n` +
+            `• Orders associated with this organization\n` +
+            `• Child organizations\n` +
+            `• QR batches or inventory records\n\n` +
+            `You may need to delete related data first or contact support.`
+          )
+          return
+        }
         
         // Show user-friendly error messages based on error code
         if (data.error_code === 'HAS_ORDERS') {
@@ -457,7 +533,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         } else if (data.error_code === 'ORG_NOT_FOUND') {
           alert(`Organization not found. It may have already been deleted.`)
         } else {
-          alert(`Cannot delete organization: ${data.error}`)
+          alert(`Cannot delete organization: ${data.error || 'Unknown error occurred'}`)
         }
         return
       }
@@ -696,10 +772,10 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               <CardContent className="space-y-4">
                 {/* Contact Info */}
                 <div className="space-y-2 text-sm">
-                  {/* Contact Name - Editable for SHOP and DIST only */}
+                  {/* Contact Name - Editable for SHOP, DIST, WH, and MFG */}
                   <div className="flex items-center gap-2 text-gray-600">
                     <Users className="w-4 h-4 flex-shrink-0" />
-                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST') && 
+                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && 
                      editingField?.orgId === org.id && editingField?.field === 'name' ? (
                       <div className="flex items-center gap-2 flex-1">
                         <Input
@@ -737,22 +813,22 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         <span className={!org.contact_name ? 'text-gray-400 italic' : ''}>
                           {org.contact_name || 'Not updated'}
                         </span>
-                        {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST') && (
+                        {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && (
                           <button
                             onClick={() => handleQuickEdit(org.id, 'name', org.contact_name)}
-                            className="text-xs text-blue-600 hover:text-blue-700 hover:underline ml-1"
+                            className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline ml-1"
                           >
-                            edit
+                            [Edit]
                           </button>
                         )}
                       </>
                     )}
                   </div>
 
-                  {/* Contact Phone - Editable for SHOP and DIST only */}
+                  {/* Contact Phone - Editable for SHOP, DIST, WH, and MFG */}
                   <div className="flex items-center gap-2 text-gray-600">
                     <Phone className="w-4 h-4 flex-shrink-0" />
-                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST') && 
+                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && 
                      editingField?.orgId === org.id && editingField?.field === 'phone' ? (
                       <div className="flex items-center gap-2 flex-1">
                         <Input
@@ -790,12 +866,12 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         <span className={!org.contact_phone ? 'text-gray-400 italic' : ''}>
                           {org.contact_phone || 'Not updated'}
                         </span>
-                        {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST') && (
+                        {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && (
                           <button
                             onClick={() => handleQuickEdit(org.id, 'phone', org.contact_phone)}
-                            className="text-xs text-blue-600 hover:text-blue-700 hover:underline ml-1"
+                            className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline ml-1"
                           >
-                            edit
+                            [Edit]
                           </button>
                         )}
                       </>
@@ -881,6 +957,27 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         <div className="text-xs text-gray-500">Orders</div>
                       </div>
                     </>
+                  ) : org.org_type_code === 'WH' ? (
+                    <>
+                      <div className="text-center" title="This warehouse automatically receives orders from its parent HQ">
+                        <div className="text-sm font-semibold">
+                          {org.parent_org && organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? (
+                            <span className="text-blue-600">Yes</span>
+                          ) : (
+                            <span className="text-gray-400">No</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">Default</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-gray-900">{org.users_count || 0}</div>
+                        <div className="text-xs text-gray-500">Users</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-gray-900">{org.products_count || 0}</div>
+                        <div className="text-xs text-gray-500">Products</div>
+                      </div>
+                    </>
                   ) : (
                     <>
                       <div className="text-center">
@@ -931,6 +1028,18 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         className={`w-4 h-4 mr-2 ${distributorsWithShops.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`} 
                       />
                       Shops
+                    </Button>
+                  )}
+                  {org.org_type_code === 'WH' && org.parent_org_id && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => handleSetDefaultWarehouse(org)}
+                      disabled={organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id}
+                    >
+                      <Building2 className="w-4 h-4 mr-2" />
+                      {organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? 'Default ✓' : 'Set Default'}
                     </Button>
                   )}
                   <Button 

@@ -26,6 +26,7 @@ import JourneyPageEditor from './JourneyPageEditor'
 import JourneyThemeEditor from './JourneyThemeEditor'
 import MobilePreview from './MobilePreview'
 import JourneyFormModal from './JourneyFormModal'
+import OrderSelector from './OrderSelector'
 
 interface UserProfile {
   id: string
@@ -68,6 +69,7 @@ export default function JourneyBuilderView({ userProfile }: JourneyBuilderViewPr
   const [activeTab, setActiveTab] = useState<'configs' | 'pages' | 'editor' | 'theme'>('configs')
   const [journeys, setJourneys] = useState<JourneyConfig[]>([])
   const [selectedJourney, setSelectedJourney] = useState<JourneyConfig | null>(null)
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingJourney, setEditingJourney] = useState<JourneyConfig | null>(null)
@@ -78,12 +80,16 @@ export default function JourneyBuilderView({ userProfile }: JourneyBuilderViewPr
     if (isReady) {
       fetchJourneys()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const fetchJourneys = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/journey/list')
+      const url = selectedOrderId 
+        ? `/api/journey/list?order_id=${selectedOrderId}`
+        : '/api/journey/list'
+      const response = await fetch(url)
       const data = await response.json()
       
       if (data.success) {
@@ -142,12 +148,27 @@ export default function JourneyBuilderView({ userProfile }: JourneyBuilderViewPr
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel - Journey Configs */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+        {/* Order Selector - First Step */}
+        <div className="mb-6">
+          <OrderSelector
+            onOrderSelect={(order) => {
+              setSelectedOrderId(order ? order.id : null)
+              // Refresh journeys when order changes
+              if (order) {
+                fetchJourneys()
+              }
+            }}
+            selectedOrderId={selectedOrderId}
+          />
+        </div>
+
+        {selectedOrderId ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Panel - Journey Configs */}
+            <div className="lg:col-span-1">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
                   <span>Journey Configs</span>
                   <Badge variant="outline">
                     {journeys.filter(j => j.is_active).length} Active
@@ -318,12 +339,21 @@ export default function JourneyBuilderView({ userProfile }: JourneyBuilderViewPr
             </div>
           </div>
         </div>
+        ) : (
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              Please select an order to start creating or managing journeys for that order.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {/* Journey Form Modal */}
       {showModal && (
         <JourneyFormModal
           journey={editingJourney}
+          orderId={selectedOrderId}
           onClose={() => setShowModal(false)}
           onSave={handleModalSave}
         />

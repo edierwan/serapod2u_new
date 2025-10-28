@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import ThemePreferencesCard from './ThemePreferencesCard'
+import SignatureUpload from '@/components/profile/SignatureUpload'
 
 interface UserProfile {
   id: string
@@ -24,6 +25,7 @@ interface UserProfile {
   role_code: string
   organization_id: string
   avatar_url: string | null
+  signature_url: string | null
   is_active: boolean
   is_verified: boolean
   email_verified_at: string | null
@@ -146,6 +148,19 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           description: "Please select an image file.",
           variant: "destructive",
         })
+        return
+      }
+      
+      // Check for AVIF format - not supported by Supabase Storage
+      if (file.type === 'image/avif') {
+        toast({
+          title: "Format Not Supported",
+          description: "AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.",
+          variant: "destructive",
+        })
+        if (e.target) {
+          e.target.value = ''
+        }
         return
       }
       
@@ -409,7 +424,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                   onChange={handleAvatarChange}
                   className="hidden"
                 />
@@ -704,6 +719,52 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           </div>
         </CardContent>
       </Card>
+
+      {/* Digital Signature Card - Hidden for Warehouse users */}
+      {userProfile?.organizations?.org_type_code !== 'WAREHOUSE' && userProfile?.organizations?.org_type_code !== 'WH' && (
+        <Card className="shadow-lg md:col-span-2">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Digital Signature</CardTitle>
+                <CardDescription>Upload your signature for document acknowledgement</CardDescription>
+              </div>
+              {userProfile.signature_url && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Uploaded
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert className="border-blue-200 bg-blue-50">
+              <AlertCircle className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                <strong>Required for Document Acknowledgement:</strong> Upload your digital signature to acknowledge Purchase Orders, Invoices, Payments, and other documents.
+                <div className="mt-2 text-sm">
+                  <p className="font-medium mb-1">Tips for best results:</p>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li>Sign on white paper with dark ink</li>
+                    <li>Take a clear photo or scan the signature</li>
+                    <li>Use transparent PNG format (recommended)</li>
+                    <li>Ensure signature is clearly visible</li>
+                  </ul>
+                </div>
+              </AlertDescription>
+            </Alert>
+            
+            <SignatureUpload 
+              userId={userProfile.id} 
+              currentSignatureUrl={userProfile.signature_url}
+              onSignatureUpdated={(url) => {
+                setUserProfile(prev => ({ ...prev, signature_url: url || null }))
+                loadUserProfile() // Refresh the entire profile
+              }}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Theme Preferences Card */}
       <ThemePreferencesCard />

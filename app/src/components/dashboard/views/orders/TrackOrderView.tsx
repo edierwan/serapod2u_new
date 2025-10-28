@@ -34,6 +34,13 @@ interface OrderDetails {
   approved_at: string | null
   approved_by_name: string | null
   created_by_name: string | null
+  has_lucky_draw: boolean
+  has_redeem: boolean
+  has_points: boolean
+  has_rfid: boolean
+  units_per_case: number
+  qr_buffer_percent: number
+  notes?: string | null
   documents: {
     po_date: string | null
     po_created_by: string | null
@@ -55,6 +62,7 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
   const [loading, setLoading] = useState(true)
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null)
   const [showDocumentsDialog, setShowDocumentsDialog] = useState(false)
+  const [initialDocumentTab, setInitialDocumentTab] = useState<'po' | 'invoice' | 'payment' | 'receipt' | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -65,12 +73,31 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
   }, [])
 
   useEffect(() => {
+    const normalizeTab = (docType?: string | null): 'po' | 'invoice' | 'payment' | 'receipt' | null => {
+      if (!docType) return null
+      switch (docType.toUpperCase()) {
+        case 'PO':
+          return 'po'
+        case 'INVOICE':
+          return 'invoice'
+        case 'PAYMENT':
+          return 'payment'
+        case 'RECEIPT':
+          return 'receipt'
+        default:
+          return null
+      }
+    }
+
     // Check if we should auto-open the documents dialog
     const selectedDocumentId = sessionStorage.getItem('selectedDocumentId')
+    const selectedDocumentType = sessionStorage.getItem('selectedDocumentType')
     if (selectedDocumentId && orderDetails) {
+      setInitialDocumentTab(normalizeTab(selectedDocumentType) ?? 'po')
       setShowDocumentsDialog(true)
       // Clear the flag after opening
       sessionStorage.removeItem('selectedDocumentId')
+      sessionStorage.removeItem('selectedDocumentType')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -107,7 +134,14 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
           buyer_org_id,
           seller_org_id,
           created_by,
-          approved_by
+          approved_by,
+          has_lucky_draw,
+          has_redeem,
+          has_points,
+          has_rfid,
+          units_per_case,
+          qr_buffer_percent,
+          notes
         `)
         .eq('id', trackingOrderId)
         .single()
@@ -214,6 +248,13 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
         approved_at: order.approved_at,
         created_by_name: createdByUser?.full_name || 'Unknown',
         approved_by_name: approvedByUser?.full_name || null,
+        has_lucky_draw: order.has_lucky_draw || false,
+        has_redeem: order.has_redeem || false,
+        has_points: order.has_points || false,
+        has_rfid: order.has_rfid || false,
+        units_per_case: order.units_per_case || 100,
+        qr_buffer_percent: order.qr_buffer_percent || 10,
+        notes: order.notes || null,
         documents: docDates
       })
 
@@ -273,10 +314,12 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
+    return new Intl.NumberFormat('en-MY', {
       style: 'currency',
-      currency: 'INR'
-    }).format(amount)
+      currency: 'MYR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount).replace('MYR', 'RM')
   }
 
   // Timeline steps based on order workflow
@@ -502,6 +545,53 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
               </div>
             )}
           </div>
+
+          {/* Order Configuration Features */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Order Configuration</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {orderDetails.has_lucky_draw && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-purple-600 font-medium">🎁 Lucky Draw</p>
+                  <p className="text-xs text-purple-500 mt-0.5">Enabled</p>
+                </div>
+              )}
+              {orderDetails.has_redeem && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-orange-600 font-medium">🎟️ Redeem</p>
+                  <p className="text-xs text-orange-500 mt-0.5">Enabled</p>
+                </div>
+              )}
+              {orderDetails.has_points && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-blue-600 font-medium">⭐ Points</p>
+                  <p className="text-xs text-blue-500 mt-0.5">Enabled</p>
+                </div>
+              )}
+              {orderDetails.has_rfid && (
+                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-green-600 font-medium">📡 RFID</p>
+                  <p className="text-xs text-green-500 mt-0.5">Enabled</p>
+                </div>
+              )}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <p className="text-xs text-gray-600 font-medium">📦 Units/Case</p>
+                <p className="text-xs text-gray-500 mt-0.5">{orderDetails.units_per_case}</p>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <p className="text-xs text-gray-600 font-medium">📊 QR Buffer</p>
+                <p className="text-xs text-gray-500 mt-0.5">{orderDetails.qr_buffer_percent}%</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes Section */}
+          {orderDetails.notes && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Notes</h4>
+              <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{orderDetails.notes}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -627,7 +717,10 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       <AvailableActionsCard
         orderId={orderDetails.id}
         orderNo={orderDetails.order_no}
-        onViewDocuments={() => setShowDocumentsDialog(true)}
+        onViewDocuments={() => {
+          setInitialDocumentTab('po')
+          setShowDocumentsDialog(true)
+        }}
         onReportIssue={() => {
           toast({
             title: "Report Issue",
@@ -642,8 +735,10 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
           orderId={orderDetails.id}
           orderNo={orderDetails.order_no}
           userProfile={userProfile}
+          initialTab={initialDocumentTab ?? undefined}
           onClose={() => {
             setShowDocumentsDialog(false)
+            setInitialDocumentTab(null)
             // Reload order details to refresh timeline after any document changes
             loadOrderDetails()
           }}

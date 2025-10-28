@@ -31,6 +31,15 @@ export default function OrgLogoUpload({
       return
     }
 
+    // Check for AVIF format - not supported by Supabase Storage
+    if (file.type === 'image/avif') {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+      onLogoChange(null)
+      return
+    }
+
     if (file.size > 5 * 1024 * 1024) {
       onLogoChange(null)
       return

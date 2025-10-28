@@ -220,69 +220,56 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // SEND EMAIL VIA SUPABASE (or your email service)
+    // SEND EMAIL VIA CONFIGURED PROVIDER
     // ========================================
-    // Note: Supabase doesn't have built-in email sending for custom emails
-    // You would typically integrate with:
-    // - SendGrid
-    // - AWS SES
-    // - Postmark
-    // - Resend
-    // etc.
     
-    // For now, we'll log the email and return success
-    // In production, you should integrate with your email service
-    
-    console.log('📧 EMAIL TO SEND:')
-    console.log('To:', user.email)
-    console.log('Subject:', emailSubject)
-    console.log('Body length:', emailBody.length, 'chars')
-    console.log('')
-    console.log('⚠️ NOTE: Email sending not yet configured.')
-    console.log('💡 To enable email notifications, integrate with SendGrid/AWS SES/Postmark/Resend')
-
-    // ========================================
-    // EXAMPLE: SendGrid Integration (commented out)
-    // ========================================
-    /*
-    const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY
-    const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL
-    
-    if (SENDGRID_API_KEY && FROM_EMAIL) {
-      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: user.email }] }],
-          from: { email: FROM_EMAIL, name: 'Serapod2U System' },
-          subject: emailSubject,
-          content: [{ type: 'text/html', value: emailBody }],
-        }),
+    // Use the new email API to send via configured provider
+    const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/email/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': request.headers.get('cookie') || '' // Forward auth cookies
+      },
+      body: JSON.stringify({
+        to: user.email,
+        subject: emailSubject,
+        html: emailBody,
+        from_name: 'Serapod2U System'
       })
-      
-      if (!response.ok) {
-        throw new Error('Failed to send email via SendGrid')
-      }
+    })
+
+    const emailResult = await emailResponse.json()
+
+    if (!emailResponse.ok) {
+      console.error('Email send failed:', emailResult)
+      return NextResponse.json(
+        { 
+          error: 'Failed to send notification email', 
+          details: emailResult.error,
+          note: 'Please configure an email provider in Settings → Notifications → Providers'
+        },
+        { status: 500 }
+      )
     }
-    */
+
+    console.log('✅ Email sent successfully via', emailResult.provider)
+    console.log('   Message ID:', emailResult.message_id)
+    if (emailResult.usage) {
+      console.log('   Daily usage:', `${emailResult.usage.today_count}/${emailResult.usage.limit || 'unlimited'}`)
+    }
 
     // ========================================
     // RETURN SUCCESS
     // ========================================
     return NextResponse.json({
       success: true,
-      message: 'Deletion notification prepared',
+      message: 'Deletion notification sent successfully',
       recipient: user.email,
       deletionType,
       deletedCount,
-      note: 'Email service not yet configured. Integrate with SendGrid/AWS SES/Postmark/Resend to enable email notifications.',
-      emailPreview: {
-        subject: emailSubject,
-        bodyLength: emailBody.length
-      }
+      provider: emailResult.provider,
+      message_id: emailResult.message_id,
+      usage: emailResult.usage
     })
 
   } catch (error: any) {

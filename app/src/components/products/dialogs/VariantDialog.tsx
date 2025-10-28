@@ -173,6 +173,15 @@ export default function VariantDialog({
         return
       }
 
+      // Check for AVIF format - not supported by Supabase Storage
+      if (file.type === 'image/avif') {
+        setErrors(prev => ({ ...prev, image: 'AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.' }))
+        if (e.target) {
+          e.target.value = ''
+        }
+        return
+      }
+
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setErrors(prev => ({ ...prev, image: 'Image size must be less than 5MB' }))
@@ -229,14 +238,18 @@ export default function VariantDialog({
           <div className="space-y-2">
             <Label>Variant Image</Label>
             <div className="flex items-center gap-4">
-              <Avatar className="w-20 h-20 rounded-lg">
+              <Avatar className="w-20 h-20 rounded-lg border-2 border-gray-200">
                 <AvatarImage 
                   src={imagePreview || undefined} 
                   alt={`${formData.variant_name || 'Variant'} image`}
                   className="object-cover"
                 />
-                <AvatarFallback className="rounded-lg bg-gray-100 text-gray-600 text-lg font-semibold">
-                  {formData.variant_name ? getVariantInitials(formData.variant_name) : <ImageIcon className="w-8 h-8" />}
+                <AvatarFallback className="rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 text-gray-400">
+                  {formData.variant_name ? (
+                    <span className="text-lg font-semibold">{getVariantInitials(formData.variant_name)}</span>
+                  ) : (
+                    <ImageIcon className="w-8 h-8" />
+                  )}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
@@ -266,7 +279,7 @@ export default function VariantDialog({
                 <input
                   id="variant-image-upload"
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                   onChange={handleImageChange}
                   className="hidden"
                 />

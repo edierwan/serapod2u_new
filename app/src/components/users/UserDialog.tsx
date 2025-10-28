@@ -106,6 +106,15 @@ export default function UserDialog({
       return
     }
 
+    // Check for AVIF format - not supported by Supabase Storage
+    if (file.type === 'image/avif') {
+      setErrors({ avatar: 'AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.' })
+      if (e.target) {
+        e.target.value = ''
+      }
+      return
+    }
+
     if (file.size > 5 * 1024 * 1024) {
       setErrors({ avatar: 'Image must be less than 5MB' })
       return
@@ -229,7 +238,7 @@ export default function UserDialog({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                   onChange={handleAvatarChange}
                   className="hidden"
                 />
