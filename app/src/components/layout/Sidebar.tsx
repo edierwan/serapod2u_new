@@ -339,6 +339,7 @@ const secondaryItems: MenuItem[] = [
 
 export default function Sidebar({ userProfile, currentView, onViewChange }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
@@ -409,10 +410,33 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   }
 
   return (
-    <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
-      }`}>
-      {/* Header */}
-      <div className="p-4 border-b border-border">
+    <>
+      {/* Mobile Menu Button - Fixed Top Left */}
+      <button
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors"
+        aria-label="Toggle menu"
+      >
+        {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+      </button>
+
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div className={`
+        bg-card border-r border-border flex flex-col transition-all duration-300
+        fixed lg:static inset-y-0 left-0 z-40
+        ${isCollapsed ? 'w-16' : 'w-64'}
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        {/* Header */}
+        <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center gap-3 flex-1">
@@ -471,6 +495,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                         setExpandedMenu(isMenuOpen ? null : item.id)
                       } else {
                         onViewChange(item.id)
+                        setIsMobileMenuOpen(false) // Close mobile menu on navigation
                       }
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
@@ -490,13 +515,16 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                     )}
                   </button>
 
-                  {/* Submenu */}
+                                    {/* Submenu */}
                   {item.submenu && isMenuOpen && !isCollapsed && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
                       {item.submenu.map((subitem: any) => (
                         <button
                           key={subitem.id}
-                          onClick={() => onViewChange(subitem.id)}
+                          onClick={() => {
+                            onViewChange(subitem.id)
+                            setIsMobileMenuOpen(false) // Close mobile menu on navigation
+                          }}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${currentView === subitem.id
                               ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
                               : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
@@ -525,7 +553,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
               return (
                 <button
                   key={item.id}
-                  onClick={() => onViewChange(item.id)}
+                  onClick={() => {
+                    onViewChange(item.id)
+                    setIsMobileMenuOpen(false) // Close mobile menu on navigation
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
                       ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
                       : 'text-foreground hover:bg-accent'
@@ -578,5 +609,6 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
         </Button>
       </div>
     </div>
+    </>
   )
 }

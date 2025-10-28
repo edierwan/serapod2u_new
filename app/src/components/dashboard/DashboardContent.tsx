@@ -204,8 +204,9 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
         currentView={currentView}
         onViewChange={handleViewChange}
       />
-      <div className="flex-1 overflow-hidden">
-        <main className="p-6 h-full overflow-y-auto">
+      {/* Main Content - Add left padding on desktop to account for sidebar, full width on mobile */}
+      <div className="flex-1 w-full lg:ml-0">
+        <main className="p-4 sm:p-6 h-full overflow-y-auto pt-16 lg:pt-6">
           {renderCurrentView()}
         </main>
       </div>
