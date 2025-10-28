@@ -26,11 +26,15 @@ interface InventoryItem {
   reorder_point: number
   reorder_quantity: number
   average_cost: number | null
-  total_value: number | null
+  total_value?: number | null
+  computed_total_value: number
+  computed_unit_cost: number
+  cost_source: 'average' | 'base' | 'none'
   warehouse_location: string | null
   product_variants?: {
     variant_code: string
     variant_name: string
+    base_cost?: number | null
     products?: {
       product_name: string
       product_code: string
@@ -88,6 +92,7 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
           product_variants!inner (
             variant_code,
             variant_name,
+            base_cost,
             products!inner (
               product_name,
               product_code
@@ -127,14 +132,56 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
 
       if (error) throw error
       
-      // Transform the data to match our interface
-      const transformedData = (data || []).map((item: any) => ({
-        ...item,
-        product_variants: item.product_variants?.[0] || null,
-        organizations: item.organizations?.[0] || null
-      }))
+      // Transform the data to handle both array and object responses from Supabase
+      // With !inner joins, the response format can vary
+      const transformedData = (data || []).map((item: any) => {
+        const rawVariant = Array.isArray(item.product_variants)
+          ? item.product_variants[0]
+          : item.product_variants
+
+        const normalizedVariant = rawVariant
+          ? {
+              ...rawVariant,
+              base_cost: rawVariant.base_cost !== null && rawVariant.base_cost !== undefined
+                ? Number(rawVariant.base_cost)
+                : null,
+              products: Array.isArray(rawVariant.products)
+                ? rawVariant.products[0]
+                : rawVariant.products
+            }
+          : null
+
+        const normalizedOrg = Array.isArray(item.organizations)
+          ? item.organizations[0]
+          : item.organizations
+
+        const averageCost = item.average_cost !== null && item.average_cost !== undefined
+          ? Number(item.average_cost)
+          : null
+
+        const baseCost = normalizedVariant?.base_cost ?? null
+
+        const costSource: 'average' | 'base' | 'none' = averageCost !== null && !Number.isNaN(averageCost)
+          ? 'average'
+          : baseCost !== null && !Number.isNaN(baseCost)
+            ? 'base'
+            : 'none'
+
+        const computedUnitCost = costSource === 'none' ? 0 : (costSource === 'average' ? averageCost! : baseCost!)
+        const computedTotalValue = Number((Number(item.quantity_on_hand || 0) * computedUnitCost).toFixed(2))
+
+        return {
+          ...item,
+          average_cost: averageCost,
+          product_variants: normalizedVariant,
+          organizations: normalizedOrg,
+          computed_unit_cost: computedUnitCost,
+          computed_total_value: computedTotalValue,
+          cost_source: costSource
+        }
+      })
       
-      setInventory(transformedData)
+  setInventory(transformedData as InventoryItem[])
     } catch (error) {
       console.error('Error fetching inventory:', error)
     } finally {
@@ -158,6 +205,13 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
     }
   }
 
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }
+
   const getStockLevelBadge = (available: number, reorderPoint: number) => {
     if (available === 0) {
       return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Out of Stock</Badge>
@@ -176,7 +230,7 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
   }
 
   // Calculate stats
-  const totalValue = inventory.reduce((sum, item) => sum + (item.total_value || 0), 0)
+  const totalValue = inventory.reduce((sum, item) => sum + (item.computed_total_value || 0), 0)
   const inStockItems = inventory.filter(item => item.quantity_available > 0).length
   const lowStockItems = inventory.filter(item => item.quantity_available <= item.reorder_point && item.quantity_available > 0).length
   const outOfStockItems = inventory.filter(item => item.quantity_available === 0).length
@@ -216,7 +270,7 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
               </div>
             </div>
             <p className="text-gray-600 text-sm mb-1">Total Inventory Value</p>
-            <p className="text-2xl font-bold text-gray-900">RM {totalValue.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-gray-900">RM {formatCurrency(totalValue)}</p>
           </CardContent>
         </Card>
 
@@ -393,11 +447,12 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="font-medium">
-                        RM {(item.total_value || 0).toLocaleString()}
+                        RM {formatCurrency(item.computed_total_value)}
                       </span>
-                      {item.average_cost && (
+                      {item.cost_source !== 'none' && (
                         <p className="text-sm text-gray-600">
-                          @ RM {item.average_cost.toFixed(2)}
+                          @ RM {formatCurrency(item.computed_unit_cost)}{' '}
+                          {item.cost_source === 'average' ? '(Avg cost)' : '(Base cost)'}
                         </p>
                       )}
                     </TableCell>

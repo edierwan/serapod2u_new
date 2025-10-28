@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * POST /api/admin/delete-transactions
- * Delete all transaction data only (keep master data)
+ * Delete all transaction data including inventory and reset order sequences
  * SUPER ADMIN ONLY (role_level = 1)
  */
 export const dynamic = 'force-dynamic'
@@ -35,94 +35,33 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🚨 DELETING TRANSACTION DATA - Started by:', user.email)
+    console.log('🚨 DELETING ALL TRANSACTION DATA + INVENTORY - Started by:', user.email)
 
-    let deletedCount = 0
+    // Call the enhanced RPC function that deletes everything in a single transaction
+    const { data: result, error: rpcError } = await supabase
+      .rpc('delete_all_transactions_with_inventory')
 
-    // Delete in correct order (respecting foreign keys)
+    if (rpcError) {
+      console.error('❌ RPC deletion error:', rpcError)
+      return NextResponse.json(
+        { error: 'Failed to delete transactions: ' + rpcError.message, details: rpcError },
+        { status: 500 }
+      )
+    }
 
-    // 1. Delete document workflows
-    const { error: docWorkflowError, count: docWorkflowCount } = await supabase
-      .from('document_workflows')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000') // Delete all
+    if (!result) {
+      console.error('❌ RPC returned no result')
+      return NextResponse.json(
+        { error: 'RPC function returned no result' },
+        { status: 500 }
+      )
+    }
+
+    console.log('✅ Deletion result:', result)
+
+    // Delete storage files (QR codes and documents)
+    let storageDeletedCount = 0
     
-    deletedCount += docWorkflowCount || 0
-    console.log(`✓ Deleted ${docWorkflowCount || 0} document workflows`)
-
-    // 2. Delete QR codes (individual)
-    const { error: qrCodesError, count: qrCodesCount } = await supabase
-      .from('qr_codes')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += qrCodesCount || 0
-    console.log(`✓ Deleted ${qrCodesCount || 0} QR codes`)
-
-    // 3. Delete QR master codes
-    const { error: masterCodesError, count: masterCodesCount } = await supabase
-      .from('qr_master_codes')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += masterCodesCount || 0
-    console.log(`✓ Deleted ${masterCodesCount || 0} QR master codes`)
-
-    // 4. Delete QR batches
-    const { error: qrBatchesError, count: qrBatchesCount } = await supabase
-      .from('qr_batches')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += qrBatchesCount || 0
-    console.log(`✓ Deleted ${qrBatchesCount || 0} QR batches`)
-
-    // 5. Delete payments
-    const { error: paymentsError, count: paymentsCount } = await supabase
-      .from('payments')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += paymentsCount || 0
-    console.log(`✓ Deleted ${paymentsCount || 0} payments`)
-
-    // 6. Delete invoices
-    const { error: invoicesError, count: invoicesCount } = await supabase
-      .from('invoices')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += invoicesCount || 0
-    console.log(`✓ Deleted ${invoicesCount || 0} invoices`)
-
-    // 7. Delete shipments
-    const { error: shipmentsError, count: shipmentsCount } = await supabase
-      .from('shipments')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += shipmentsCount || 0
-    console.log(`✓ Deleted ${shipmentsCount || 0} shipments`)
-
-    // 8. Delete order items
-    const { error: orderItemsError, count: orderItemsCount } = await supabase
-      .from('order_items')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += orderItemsCount || 0
-    console.log(`✓ Deleted ${orderItemsCount || 0} order items`)
-
-    // 9. Delete orders
-    const { error: ordersError, count: ordersCount } = await supabase
-      .from('orders')
-      .delete({ count: 'exact' })
-      .neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    deletedCount += ordersCount || 0
-    console.log(`✓ Deleted ${ordersCount || 0} orders`)
-
-    // 10. Delete storage files
     try {
       // Delete QR code files
       const { data: qrFiles } = await supabase.storage
@@ -132,6 +71,7 @@ export async function POST(request: NextRequest) {
       if (qrFiles && qrFiles.length > 0) {
         const filePaths = qrFiles.map(file => file.name)
         await supabase.storage.from('qr-codes').remove(filePaths)
+        storageDeletedCount += filePaths.length
         console.log(`✓ Deleted ${filePaths.length} QR code files`)
       }
 
@@ -143,6 +83,7 @@ export async function POST(request: NextRequest) {
       if (docFiles && docFiles.length > 0) {
         const filePaths = docFiles.map(file => file.name)
         await supabase.storage.from('documents').remove(filePaths)
+        storageDeletedCount += filePaths.length
         console.log(`✓ Deleted ${filePaths.length} document files`)
       }
     } catch (storageError) {
@@ -150,12 +91,17 @@ export async function POST(request: NextRequest) {
       // Continue even if storage deletion fails
     }
 
-    console.log(`🎉 TRANSACTION DELETION COMPLETE - Total records deleted: ${deletedCount}`)
+    console.log(`🎉 COMPLETE DELETION FINISHED`)
+    console.log(`📊 Database records: ${result.total_records}`)
+    console.log(`📁 Storage files: ${storageDeletedCount}`)
+    console.log(`🔄 Order sequences RESET - Next order will be 01`)
 
     return NextResponse.json({
       success: true,
-      deleted_count: deletedCount,
-      message: 'All transaction data deleted successfully'
+      deleted_count: result.total_records,
+      deleted_counts: result.deleted_counts,
+      storage_files_deleted: storageDeletedCount,
+      message: result.message
     })
 
   } catch (error: any) {

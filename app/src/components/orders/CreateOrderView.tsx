@@ -86,6 +86,11 @@ interface DistributorOption {
   is_preferred: boolean
 }
 
+// Helper function to format currency with thousand separators
+const formatCurrency = (amount: number): string => {
+  return amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
 export default function CreateOrderView({ userProfile, onViewChange }: CreateOrderViewProps) {
   const supabase = createClient()
   const { toast } = useToast()
@@ -594,12 +599,46 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
       const companyId = companyData || userProfile.organization_id
 
+      // For H2M orders: Get the HQ's default warehouse
+      let warehouseOrgId: string | null = null
+      if (orderType === 'H2M' && buyerOrg) {
+        const { data: hqData, error: hqError } = await supabase
+          .from('organizations')
+          .select('default_warehouse_org_id')
+          .eq('id', buyerOrg.id)
+          .single()
+
+        if (hqError) {
+          console.error('Error fetching HQ default warehouse:', hqError)
+          toast({
+            title: 'Error',
+            description: 'Failed to determine destination warehouse',
+            variant: 'destructive'
+          })
+          setSaving(false)
+          return
+        }
+
+        if (!hqData?.default_warehouse_org_id) {
+          toast({
+            title: 'No Default Warehouse',
+            description: 'Please set a default warehouse for your HQ before creating orders.',
+            variant: 'destructive'
+          })
+          setSaving(false)
+          return
+        }
+
+        warehouseOrgId = hqData.default_warehouse_org_id
+      }
+
       // STEP 1: Always create order in 'draft' status first (required by RLS policy)
       const orderData = {
         order_type: orderType,
         company_id: companyId,
         buyer_org_id: buyerOrg!.id,
         seller_org_id: sellerOrg.id,
+        warehouse_org_id: warehouseOrgId, // Set warehouse for H2M orders
         status: 'draft', // ← Always draft first! RLS policy requires this
         units_per_case: unitsPerCase,
         qr_buffer_percent: qrBuffer,
@@ -681,7 +720,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     const total = subtotal + tax
     const totalCases = Math.ceil(orderItems.reduce((sum, item) => sum + item.qty, 0) / unitsPerCase)
     const masterQR = totalCases
-    const uniqueQR = orderItems.reduce((sum, item) => sum + item.qty, 0)
+    // Calculate unique QR per item with buffer, then sum them up (matches Product Selection logic)
+    const uniqueQR = orderItems.reduce((sum, item) => sum + Math.round(item.qty + (item.qty * qrBuffer / 100)), 0)
     
     return { subtotal, tax, total, totalCases, masterQR, uniqueQR }
   }
@@ -950,7 +990,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         const attrText = variant.attributes?.strength || variant.attributes?.nicotine || ''
                         return (
                           <option key={variant.id} value={variant.id}>
-                            {variant.product_name} - {variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {variant.suggested_retail_price.toFixed(2)}
+                            {variant.product_name} - {variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {formatCurrency(variant.suggested_retail_price)}
                           </option>
                         )
                       })}
@@ -987,7 +1027,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             <h4 className="font-medium text-gray-900">{item.product_name}</h4>
                             <p className="text-sm text-gray-600 mt-1">{item.variant_name} • {item.attributes?.strength || item.attributes?.nicotine || ''}</p>
                             <p className="text-xs text-gray-500 mt-1">
-                              RM {item.unit_price.toFixed(2)} per unit
+                              RM {formatCurrency(item.unit_price)} per unit
                               {item.manufacturer_sku && ` • SKU: ${item.manufacturer_sku}`}
                             </p>
                           </div>
@@ -1035,16 +1075,16 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             <span className="font-semibold">{Math.ceil(item.qty / unitsPerCase)} cases</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block">Unique Units (with 10% buffer):</span>
-                            <span className="font-semibold">{Math.ceil(item.qty * 1.1)} units</span>
+                            <span className="text-gray-500 block">Unique Units (with {qrBuffer}% buffer):</span>
+                            <span className="font-semibold">{Math.round(item.qty + (item.qty * qrBuffer / 100))} units</span>
                           </div>
                           <div>
                             <span className="text-gray-500 block">Line Total:</span>
-                            <span className="font-semibold text-blue-600">RM {item.line_total?.toFixed(2) || (item.qty * item.unit_price).toFixed(2)}</span>
+                            <span className="font-semibold text-blue-600">RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}</span>
                           </div>
                           <div>
                             <span className="text-gray-500 block">QR Codes:</span>
-                            <span className="font-semibold">{Math.ceil(item.qty / unitsPerCase)} master + {Math.ceil(item.qty * 1.1)} unique</span>
+                            <span className="font-semibold">{Math.ceil(item.qty / unitsPerCase)} master + {Math.round(item.qty + (item.qty * qrBuffer / 100))} unique</span>
                           </div>
                         </div>
                       </div>
@@ -1130,7 +1170,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         <div className="flex justify-between text-xs text-gray-500 mt-1">
                           <span>{item.qty} units • {Math.ceil(item.qty / unitsPerCase)} cases</span>
                           <span className="font-medium text-gray-700">
-                            RM {item.line_total?.toFixed(2) || (item.qty * item.unit_price).toFixed(2)}
+                            RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}
                           </span>
                         </div>
                       </div>
@@ -1165,15 +1205,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               <div className="border-t pt-4 space-y-2 mb-6">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-medium">RM {totals.subtotal.toFixed(2)}</span>
+                  <span className="font-medium">RM {formatCurrency(totals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Tax:</span>
-                  <span className="font-medium">RM {totals.tax.toFixed(2)}</span>
+                  <span className="font-medium">RM {formatCurrency(totals.tax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold border-t pt-2">
                   <span>Total:</span>
-                  <span>RM {totals.total.toFixed(2)}</span>
+                  <span>RM {formatCurrency(totals.total)}</span>
                 </div>
               </div>
 

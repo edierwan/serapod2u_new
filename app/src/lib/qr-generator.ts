@@ -78,25 +78,29 @@ export interface QRBatchResult {
 
 /**
  * Generate complete QR batch for an order
+ * Buffer QR codes are NOT assigned to master cases - they're spares for damaged/lost codes
  */
 export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
   const { orderNo, orderItems, bufferPercent, unitsPerCase } = params
 
-  // Calculate total base units
+  // Calculate total base units (actual order quantity)
   const totalBaseUnits = orderItems.reduce((sum, item) => sum + item.qty, 0)
 
-  // Calculate total QR codes with buffer
-  const totalUniqueCodes = Math.ceil(totalBaseUnits * (1 + bufferPercent / 100))
+  // Calculate buffer quantity (extra codes for damaged/lost QR codes)
+  const bufferQuantity = Math.floor(totalBaseUnits * bufferPercent / 100)
 
-  // Calculate number of cases
-  const totalMasterCodes = Math.ceil(totalUniqueCodes / unitsPerCase)
+  // Total unique codes = base units + buffer
+  const totalUniqueCodes = totalBaseUnits + bufferQuantity
 
-  // Generate Master QR codes for cases
+  // Calculate number of cases based on BASE units only (buffer codes are NOT in cases)
+  const totalMasterCodes = Math.ceil(totalBaseUnits / unitsPerCase)
+
+  // Generate Master QR codes for cases (only for base units, not buffer)
   const masterCodes: GeneratedMasterCode[] = []
   for (let i = 1; i <= totalMasterCodes; i++) {
     const isLastCase = i === totalMasterCodes
     const expectedCount = isLastCase 
-      ? totalUniqueCodes - ((i - 1) * unitsPerCase)
+      ? totalBaseUnits - ((i - 1) * unitsPerCase)
       : unitsPerCase
 
     masterCodes.push({
@@ -112,11 +116,9 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
   let currentCaseNumber = 1
   let codesInCurrentCase = 0
 
+  // First, generate codes for base units and assign to cases
   for (const item of orderItems) {
-    // Calculate quantity with buffer for this item
-    const itemQtyWithBuffer = Math.ceil(item.qty * (1 + bufferPercent / 100))
-
-    for (let i = 0; i < itemQtyWithBuffer; i++) {
+    for (let i = 0; i < item.qty; i++) {
       // Move to next case if current is full
       if (codesInCurrentCase >= unitsPerCase && currentCaseNumber < totalMasterCodes) {
         currentCaseNumber++
@@ -142,6 +144,64 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
 
       globalSequence++
       codesInCurrentCase++
+    }
+  }
+
+  // Then, generate buffer codes - these are NOT assigned to any case (case_number = 0)
+  // Buffer codes are distributed proportionally across items
+  let remainingBuffer = bufferQuantity
+  const totalQty = totalBaseUnits
+
+  for (const item of orderItems) {
+    // Calculate this item's share of buffer codes proportionally
+    const itemBufferQty = Math.floor((item.qty / totalQty) * bufferQuantity)
+    const actualItemBuffer = Math.min(itemBufferQty, remainingBuffer)
+    
+    for (let i = 0; i < actualItemBuffer; i++) {
+      individualCodes.push({
+        code: generateProductQRCode(
+          item.product_code,
+          item.variant_code,
+          orderNo,
+          globalSequence
+        ),
+        sequence_number: globalSequence,
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        product_code: item.product_code,
+        variant_code: item.variant_code,
+        product_name: item.product_name,
+        variant_name: item.variant_name,
+        case_number: 0 // Buffer codes are unassigned
+      })
+
+      globalSequence++
+      remainingBuffer--
+    }
+  }
+
+  // Distribute any remaining buffer codes to the first item
+  if (remainingBuffer > 0 && orderItems.length > 0) {
+    const firstItem = orderItems[0]
+    for (let i = 0; i < remainingBuffer; i++) {
+      individualCodes.push({
+        code: generateProductQRCode(
+          firstItem.product_code,
+          firstItem.variant_code,
+          orderNo,
+          globalSequence
+        ),
+        sequence_number: globalSequence,
+        product_id: firstItem.product_id,
+        variant_id: firstItem.variant_id,
+        product_code: firstItem.product_code,
+        variant_code: firstItem.variant_code,
+        product_name: firstItem.product_name,
+        variant_name: firstItem.variant_name,
+        case_number: 0 // Buffer codes are unassigned
+      })
+
+      globalSequence++
     }
   }
 

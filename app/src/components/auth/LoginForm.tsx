@@ -24,25 +24,42 @@ export default function LoginForm() {
 
     try {
       const supabase = createClient()
-      
-      console.log('🔍 LoginForm - Attempting login for:', email)
-      
+
+      // Suppress Supabase console errors by temporarily overriding console.error
+      const originalConsoleError = console.error
+      const errorMessages: any[] = []
+      console.error = (...args: any[]) => {
+        // Capture but don't display AuthApiError for invalid credentials
+        if (args.some((arg: any) => arg?.name === 'AuthApiError' ||
+          (typeof arg === 'string' && arg.includes('AuthApiError')))) {
+          errorMessages.push(args)
+          return
+        }
+        originalConsoleError(...args)
+      }
+
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
+      // Restore console.error
+      console.error = originalConsoleError
+
       if (signInError) {
-        console.error('🔴 Sign in error:', signInError)
-        
-        // Handle specific error types
+        // Only log to console in development for debugging, not the full error object
+        if (process.env.NODE_ENV === 'development') {
+          console.log('� Login failed:', signInError.message)
+        }
+
+        // Handle specific error types with user-friendly messages
         if (signInError.message.includes('Invalid login credentials')) {
           setError('Invalid email or password. Please check your credentials and try again.')
         } else if (signInError.status === 429 || signInError.message.toLowerCase().includes('rate limit')) {
           setError('Too many login attempts. Please wait a few minutes and try again.')
-        } else if (signInError.message.includes('refresh_token_not_found') || 
-                   signInError.message.includes('Invalid Refresh Token') ||
-                   signInError.message.includes('Refresh Token Not Found')) {
+        } else if (signInError.message.includes('refresh_token_not_found') ||
+          signInError.message.includes('Invalid Refresh Token') ||
+          signInError.message.includes('Refresh Token Not Found')) {
           // Clear session and allow retry
           await supabase.auth.signOut()
           setError('Your session has expired. Please try logging in again.')
@@ -54,7 +71,7 @@ export default function LoginForm() {
 
       // Get user profile after successful login
       const { data: { user: authUser } } = await supabase.auth.getUser()
-      
+
       if (!authUser) {
         setError('Authentication failed. Please try again.')
         return
@@ -81,7 +98,7 @@ export default function LoginForm() {
         console.warn('⚠️ No user profile found, waiting for trigger to create user record')
         // Wait a moment for trigger to create the user record
         await new Promise(resolve => setTimeout(resolve, 2000))
-        
+
         // Retry profile lookup
         const { data: retryProfile, error: retryError } = (await supabase
           .rpc('get_user_by_email', { p_email: authUser.email || email } as any)) as { data: any; error: any }
@@ -121,7 +138,7 @@ export default function LoginForm() {
       // This ensures server components fetch fresh data for the new user
       router.refresh()
       router.push('/dashboard')
-      
+
     } catch (err) {
       console.error('Login error:', err)
       setError('An unexpected error occurred. Please try again.')
@@ -146,7 +163,7 @@ export default function LoginForm() {
               <div className="text-sm text-red-700">{error}</div>
             </div>
           )}
-          
+
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -160,7 +177,7 @@ export default function LoginForm() {
               disabled={isLoading}
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
@@ -188,10 +205,10 @@ export default function LoginForm() {
               </button>
             </div>
           </div>
-          
-          <Button 
-            type="submit" 
-            className="w-full bg-blue-600 hover:bg-blue-700" 
+
+          <Button
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700"
             disabled={isLoading}
           >
             {isLoading ? (
@@ -204,7 +221,7 @@ export default function LoginForm() {
             )}
           </Button>
         </form>
-        
+
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <span className="w-full border-t" />
@@ -215,7 +232,7 @@ export default function LoginForm() {
             </span>
           </div>
         </div>
-        
+
         <div className="text-center text-sm text-gray-600">
           <p>For access issues, contact your system administrator</p>
         </div>

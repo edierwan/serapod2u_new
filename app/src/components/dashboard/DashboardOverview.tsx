@@ -4,6 +4,7 @@ import { useState } from 'react'
 import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
 import RecentActivities from './RecentActivities'
+import SupplyChainProgressBoard from './SupplyChainProgressBoard'
 
 interface UserProfile {
   id: string
@@ -29,11 +30,12 @@ interface DashboardOverviewProps {
 }
 
 export default function DashboardOverview({ userProfile, onViewChange }: DashboardOverviewProps) {
-  const handleViewDocument = (orderId: string, documentId: string) => {
+  const handleViewDocument = (orderId: string, documentId: string, docType: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT') => {
     // Store the order ID and document ID in session storage
     // Use 'trackingOrderId' to match what TrackOrderView expects
     sessionStorage.setItem('trackingOrderId', orderId)
     sessionStorage.setItem('selectedDocumentId', documentId)
+    sessionStorage.setItem('selectedDocumentType', docType)
     
     // Navigate to track order view
     onViewChange('track-order')
@@ -55,14 +57,18 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
       {/* Statistics Cards */}
       <DashboardStatistics userProfile={userProfile} />
 
-      {/* Action Required and Recent Activities */}
+      {/* Action Required and Recent Activities - Moved to Top */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ActionRequired 
           userProfile={userProfile}
           onViewDocument={handleViewDocument}
+          onViewChange={onViewChange}
         />
         <RecentActivities userProfile={userProfile} />
       </div>
+
+      {/* Network Supply Pipeline */}
+      <SupplyChainProgressBoard userProfile={userProfile} />
     </div>
   )
 }

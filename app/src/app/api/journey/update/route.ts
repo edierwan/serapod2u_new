@@ -26,8 +26,10 @@ export async function PATCH(request: NextRequest) {
     const { data: profile, error: profileError } = await supabase
       .from('users')
       .select(`
-        *,
-        organizations (
+        id,
+        organization_id,
+        role_code,
+        organizations!fk_users_organization (
           id,
           org_type_code
         ),
@@ -45,13 +47,17 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Only HQ admins can update journeys
-    const orgTypeCode = profile.organizations?.org_type_code
-    const roleLevel = profile.roles?.role_level
-    
-    if (orgTypeCode !== 'HQ' || roleLevel > 30) {
+    // Extract organization and role info from arrays
+    const organizations = Array.isArray(profile.organizations) ? profile.organizations : []
+    const roles = Array.isArray(profile.roles) ? profile.roles : []
+
+    const orgTypeCode = organizations.length > 0 ? organizations[0].org_type_code : null
+    const roleLevel = roles.length > 0 ? roles[0].role_level : null
+
+    // Check if user has admin permissions (role_level <= 30)
+    if (!roleLevel || roleLevel > 30) {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
+        { error: 'Insufficient permissions. Admin access required.' },
         { status: 403 }
       )
     }

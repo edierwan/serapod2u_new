@@ -52,6 +52,19 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
         return
       }
       
+      // Check for AVIF format - not supported by Supabase Storage
+      if (file.type === 'image/avif') {
+        toast({
+          title: "Format Not Supported",
+          description: "AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.",
+          variant: "destructive",
+        })
+        if (e.target) {
+          e.target.value = ''
+        }
+        return
+      }
+      
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast({
@@ -236,7 +249,7 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                 onChange={handleAvatarChange}
                 className="hidden"
               />

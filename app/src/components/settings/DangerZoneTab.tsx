@@ -159,7 +159,10 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
 
       const result = await response.json()
 
-      if (!response.ok) throw new Error(result.error || 'Deletion failed')
+      console.log('Delete response status:', response.status, 'ok:', response.ok)
+      console.log('Delete result:', result)
+
+      if (!response.ok) throw new Error(result.error || result.details || 'Deletion failed')
 
       toast({
         title: 'Transactions Deleted',
@@ -171,9 +174,8 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'transactions',
-          user_email: userProfile.email,
-          deleted_count: result.deleted_count
+          deletionType: 'transactions',
+          deletedCount: result.deleted_count
         })
       })
 
@@ -234,9 +236,8 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'full',
-          user_email: userProfile.email,
-          deleted_count: result.deleted_count
+          deletionType: 'all',
+          deletedCount: result.deleted_count
         })
       })
 
@@ -334,10 +335,10 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5 text-orange-600" />
-            <CardTitle className="text-orange-900">Delete Transaction Data Only</CardTitle>
+            <CardTitle className="text-orange-900">Delete Transaction Data + Inventory</CardTitle>
           </div>
           <CardDescription>
-            Remove all transaction records while keeping master data intact
+            Remove all transaction records and inventory while keeping master data intact
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -350,6 +351,10 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
                 <li>All invoices and payments</li>
                 <li>All shipments and tracking records</li>
                 <li>All document workflows</li>
+                <li><strong>All product inventory records</strong></li>
+                <li><strong>All stock movements (audit trail)</strong></li>
+                <li><strong>All points transactions (consumer engagement)</strong></li>
+                <li><strong>Order sequence counters (next order = 01)</strong></li>
                 <li>Storage files: QR Excel files, document PDFs</li>
               </ul>
               <h4 className="font-semibold text-green-900 mt-4 mb-2">Will KEEP:</h4>
@@ -360,6 +365,14 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
                 <li>Roles, permissions, system settings</li>
                 <li>Location data (countries, states, districts)</li>
               </ul>
+              <div className="mt-4 p-3 bg-blue-100 border border-blue-300 rounded">
+                <p className="text-sm font-semibold text-blue-900">
+                  ✨ Fresh Start: Next order will be numbered 01
+                </p>
+                <p className="text-xs text-blue-800 mt-1">
+                  All inventory counts reset to zero. Order sequences restart from the beginning.
+                </p>
+              </div>
             </div>
 
             <Button 
@@ -368,7 +381,7 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
               className="w-full bg-orange-600 hover:bg-orange-700"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Delete Transactions Only
+              Delete Transactions + Inventory
             </Button>
           </div>
         </CardContent>
@@ -434,10 +447,10 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-orange-900">
               <AlertTriangle className="w-5 h-5" />
-              Delete Transaction Data?
+              Delete Transaction Data + Inventory?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all transaction records. Master data will be preserved.
+              This will permanently delete all transaction records, inventory, and reset order sequences. Master data will be preserved.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -446,10 +459,21 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
               <p className="font-semibold text-orange-900">This action will:</p>
               <ul className="list-disc list-inside text-orange-700 mt-2 space-y-1">
                 <li>Delete all orders and order items</li>
-                <li>Delete all QR codes and batches</li>
+                <li>Delete all QR codes, master codes, and batches</li>
                 <li>Delete all invoices and payments</li>
+                <li><strong>Delete all product inventory records</strong></li>
+                <li><strong>Delete all stock movements</strong></li>
+                <li><strong>Delete all points transactions</strong></li>
+                <li><strong>Reset order sequences (next order = 01)</strong></li>
                 <li>Delete QR Excel files and document PDFs from storage</li>
               </ul>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+              <p className="font-semibold text-blue-900">✨ Fresh Start:</p>
+              <p className="text-blue-700 mt-1">
+                All inventory counts will be reset to zero. Your next order will be numbered 01, not continuing from old sequences.
+              </p>
             </div>
 
             <div className="space-y-3">
