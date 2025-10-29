@@ -94,8 +94,23 @@ export async function GET(
           })
         }
 
+        // Check if QR code has been shipped to distributor (activated)
+        // QR codes are only valid for consumer scanning after they've been shipped
+        if (qrCode.status !== 'shipped_distributor' && qrCode.status !== 'shipped_retailer') {
+          console.log('QR Code not yet activated (not shipped):', code, 'Status:', qrCode.status)
+          return NextResponse.json({
+            success: true,
+            data: {
+              is_valid: false,
+              is_blocked: false,
+              message: 'This QR code has not been activated yet. The product is still in the manufacturing or warehouse stage.',
+              status: qrCode.status
+            }
+          })
+        }
+
         // QR code is valid - extract journey config
-        console.log('QR Code found, extracting journey config for:', code, 'Status:', qrCode.status)
+        console.log('QR Code found and activated, extracting journey config for:', code, 'Status:', qrCode.status)
 
         // Extract journey config
         const batchData = Array.isArray(qrCode.qr_batches) ? qrCode.qr_batches[0] : qrCode.qr_batches

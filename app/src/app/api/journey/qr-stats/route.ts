@@ -54,19 +54,21 @@ export async function GET(request: NextRequest) {
     }
 
     const batchIds = batches.map(b => b.id)
-    const totalValidLinks = batches.reduce((sum, b) => sum + (Number(b.total_unique_codes) || 0), 0)
 
-    // Get all QR code IDs for these batches first
+    // Get all QR codes that are tied to master codes (actually used, not buffer codes)
+    // Valid Links = QR codes that were scanned during manufacturing and tied to master codes
     const { data: qrCodes, error: qrError } = await supabase
       .from('qr_codes')
       .select('id')
       .in('batch_id', batchIds)
+      .not('master_code_id', 'is', null) // Only count QR codes tied to master codes
 
     if (qrError) {
       console.error('Error fetching QR codes:', qrError)
     }
 
     const qrCodeIds = qrCodes?.map(qr => qr.id) || []
+    const totalValidLinks = qrCodes?.length || 0 // Count of QR codes tied to master codes
 
     // Initialize counters
     let uniqueConsumerScans = 0

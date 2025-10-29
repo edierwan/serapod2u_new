@@ -32,6 +32,7 @@ interface JourneyConfig {
 interface VerificationData {
   is_valid: boolean
   is_blocked: boolean
+  status?: string
   journey_config?: JourneyConfig
   product_info?: {
     product_name?: string
@@ -180,6 +181,9 @@ export default function PublicJourneyView({
 
   // Handle invalid codes (not blocked, but not valid)
   if (!data?.is_valid) {
+    // Check if it's because QR code not activated yet
+    const isNotActivated = data?.status && data.status !== 'shipped_distributor' && data.status !== 'shipped_retailer'
+    
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-gray-100">
         <Card className="max-w-md w-full shadow-lg">
@@ -189,43 +193,59 @@ export default function PublicJourneyView({
                 <AlertCircle className="h-7 w-7 text-gray-600" />
               </div>
               <div>
-                <CardTitle className="text-gray-900 text-xl">Code Not Found</CardTitle>
-                <p className="text-sm text-gray-600 mt-1">This QR code is not activated</p>
+                <CardTitle className="text-gray-900 text-xl">
+                  {isNotActivated ? 'Product Not Yet Activated' : 'Code Not Found'}
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-1">
+                  {isNotActivated ? 'Product still in transit' : 'This QR code is not activated'}
+                </p>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
             <div className="rounded-lg bg-gray-50 border-2 border-gray-200 p-4">
               <p className="text-sm font-medium text-gray-900 mb-2">
-                The QR code is not recognized
+                {isNotActivated 
+                  ? 'This product is still in the distribution process' 
+                  : 'The QR code is not recognized'}
               </p>
               <p className="text-xs text-gray-700">
-                This QR code has not been activated in our system yet, or it may not be a genuine product code.
+                {data?.message || (isNotActivated
+                  ? 'This QR code will be activated once the product is shipped to distributors. Please check back later.'
+                  : 'This QR code has not been activated in our system yet, or it may not be a genuine product code.')}
               </p>
             </div>
 
             <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
               <p className="text-xs text-gray-500 mb-1">Scanned Code:</p>
               <p className="text-xs text-gray-900 font-mono break-all">{code}</p>
+              {data?.status && (
+                <div className="mt-2 pt-2 border-t border-gray-300">
+                  <p className="text-xs text-gray-500 mb-1">Current Status:</p>
+                  <p className="text-xs text-gray-900 capitalize">{data.status.replace(/_/g, ' ')}</p>
+                </div>
+              )}
             </div>
             
-            <div className="text-sm text-gray-600 space-y-3 pt-2">
-              <p className="font-medium text-gray-900">Possible reasons:</p>
-              <ul className="space-y-2 text-xs">
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
-                  <span>QR code not yet activated by manufacturer</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
-                  <span>Invalid or corrupted QR code</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
-                  <span>Code from a different tracking system</span>
-                </li>
-              </ul>
-            </div>
+            {!isNotActivated && (
+              <div className="text-sm text-gray-600 space-y-3 pt-2">
+                <p className="font-medium text-gray-900">Possible reasons:</p>
+                <ul className="space-y-2 text-xs">
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600">•</span>
+                    <span>QR code not yet activated by manufacturer</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600">•</span>
+                    <span>Invalid or corrupted QR code</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600">•</span>
+                    <span>Code from a different tracking system</span>
+                  </li>
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
