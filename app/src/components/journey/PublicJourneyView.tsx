@@ -62,37 +62,39 @@ export default function PublicJourneyView({
   // Handle invalid or blocked codes
   if (!verificationResult.success || verificationResult.error) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-gray-100">
+        <Card className="max-w-md w-full shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-red-50 to-orange-50 border-b border-red-200">
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <XCircle className="h-6 w-6 text-red-600" />
+              <div className="flex-shrink-0 w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
+                <XCircle className="h-7 w-7 text-red-600" />
               </div>
               <div>
-                <CardTitle className="text-red-900">Verification Failed</CardTitle>
-                <p className="text-sm text-red-600 mt-1">Unable to verify this code</p>
+                <CardTitle className="text-red-900 text-xl">Product Not Verified</CardTitle>
+                <p className="text-sm text-red-600 mt-1">Unable to verify this QR code</p>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg bg-red-50 border border-red-200 p-4">
-              <p className="text-sm text-red-800">
-                <strong>Error:</strong> {verificationResult.error || 'Unknown error occurred'}
+          <CardContent className="space-y-4 pt-6">
+            <div className="rounded-lg bg-red-50 border-2 border-red-200 p-4">
+              <p className="text-sm font-medium text-red-900 mb-2">
+                This product could not be authenticated
+              </p>
+              <p className="text-xs text-red-700">
+                The QR code you scanned is not valid or has not been activated in our system yet.
               </p>
             </div>
+            
+            <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4">
+              <p className="text-xs font-semibold text-yellow-900 mb-2">⚠️ Caution</p>
+              <p className="text-xs text-yellow-800">
+                This may indicate a counterfeit product or an inactive QR code. Please contact the seller or manufacturer for verification.
+              </p>
+            </div>
+
             <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-              <p className="text-xs text-gray-600 font-mono break-all">
-                Code: {code}
-              </p>
-            </div>
-            <div className="text-center text-sm text-gray-600 space-y-2">
-              <p>This could mean:</p>
-              <ul className="text-left space-y-1 pl-6 list-disc">
-                <li>The QR code is invalid or expired</li>
-                <li>The code has been blocked</li>
-                <li>Network connectivity issues</li>
-              </ul>
+              <p className="text-xs text-gray-500 mb-1">Scanned Code:</p>
+              <p className="text-xs text-gray-900 font-mono break-all">{code}</p>
             </div>
           </CardContent>
         </Card>
@@ -105,34 +107,39 @@ export default function PublicJourneyView({
   // Handle blocked codes
   if (data?.is_blocked) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-gray-100">
+        <Card className="max-w-md w-full shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-yellow-50 to-orange-50 border-b border-yellow-200">
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
-                <AlertCircle className="h-6 w-6 text-yellow-600" />
+              <div className="flex-shrink-0 w-14 h-14 rounded-full bg-yellow-100 flex items-center justify-center">
+                <AlertCircle className="h-7 w-7 text-yellow-600" />
               </div>
               <div>
-                <CardTitle className="text-yellow-900">Code Blocked</CardTitle>
-                <p className="text-sm text-yellow-600 mt-1">This code has been blocked</p>
+                <CardTitle className="text-yellow-900 text-xl">Product Blocked</CardTitle>
+                <p className="text-sm text-yellow-600 mt-1">This QR code has been flagged</p>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4">
-              <p className="text-sm text-yellow-800">
-                {data.message || 'This QR code has been flagged and blocked from use.'}
+          <CardContent className="space-y-4 pt-6">
+            <div className="rounded-lg bg-yellow-50 border-2 border-yellow-200 p-4">
+              <p className="text-sm font-medium text-yellow-900 mb-2">
+                ⚠️ This product has been blocked
+              </p>
+              <p className="text-xs text-yellow-800">
+                {data.message || 'This QR code has been flagged and blocked from use due to security or authenticity concerns.'}
               </p>
             </div>
+            
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+              <p className="text-xs font-semibold text-red-900 mb-2">⚠️ Warning</p>
+              <p className="text-xs text-red-800">
+                This may indicate a counterfeit or recalled product. Do not proceed with any transactions. Please contact customer support immediately.
+              </p>
+            </div>
+
             <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-              <p className="text-xs text-gray-600 font-mono break-all">
-                Code: {code}
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-gray-600">
-                Please contact support if you believe this is an error.
-              </p>
+              <p className="text-xs text-gray-500 mb-1">Blocked Code:</p>
+              <p className="text-xs text-gray-900 font-mono break-all">{code}</p>
             </div>
           </CardContent>
         </Card>
@@ -143,36 +150,49 @@ export default function PublicJourneyView({
   // Handle invalid codes (not blocked, but not valid)
   if (!data?.is_valid) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 to-gray-100">
+        <Card className="max-w-md w-full shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-gray-50 to-slate-50 border-b border-gray-200">
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                <AlertCircle className="h-6 w-6 text-gray-600" />
+              <div className="flex-shrink-0 w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
+                <AlertCircle className="h-7 w-7 text-gray-600" />
               </div>
               <div>
-                <CardTitle className="text-gray-900">Invalid Code</CardTitle>
-                <p className="text-sm text-gray-600 mt-1">Code not recognized</p>
+                <CardTitle className="text-gray-900 text-xl">Code Not Found</CardTitle>
+                <p className="text-sm text-gray-600 mt-1">This QR code is not activated</p>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg bg-gray-50 border border-gray-200 p-4">
-              <p className="text-sm text-gray-700">
-                The QR code you scanned is not recognized in our system.
+          <CardContent className="space-y-4 pt-6">
+            <div className="rounded-lg bg-gray-50 border-2 border-gray-200 p-4">
+              <p className="text-sm font-medium text-gray-900 mb-2">
+                The QR code is not recognized
+              </p>
+              <p className="text-xs text-gray-700">
+                This QR code has not been activated in our system yet, or it may not be a genuine product code.
               </p>
             </div>
+
             <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-              <p className="text-xs text-gray-600 font-mono break-all">
-                Code: {code}
-              </p>
+              <p className="text-xs text-gray-500 mb-1">Scanned Code:</p>
+              <p className="text-xs text-gray-900 font-mono break-all">{code}</p>
             </div>
-            <div className="text-center text-sm text-gray-600 space-y-2">
-              <p>Possible reasons:</p>
-              <ul className="text-left space-y-1 pl-6 list-disc">
-                <li>QR code not yet activated</li>
-                <li>Invalid or corrupted code</li>
-                <li>Code from a different system</li>
+            
+            <div className="text-sm text-gray-600 space-y-3 pt-2">
+              <p className="font-medium text-gray-900">Possible reasons:</p>
+              <ul className="space-y-2 text-xs">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600">•</span>
+                  <span>QR code not yet activated by manufacturer</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600">•</span>
+                  <span>Invalid or corrupted QR code</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600">•</span>
+                  <span>Code from a different tracking system</span>
+                </li>
               </ul>
             </div>
           </CardContent>
@@ -182,9 +202,9 @@ export default function PublicJourneyView({
   }
 
   // Valid code - Show Journey Builder
-  const defaultConfig: JourneyConfig = {
+  const journeyConfig = data.journey_config || {
     welcome_title: 'Welcome!',
-    welcome_message: 'Thank you for scanning this product',
+    welcome_message: 'Thank you for scanning this product. This product is genuine and verified.',
     thank_you_message: 'Thank you for your participation!',
     primary_color: '#2563eb',
     button_color: '#3b82f6',
@@ -196,21 +216,23 @@ export default function PublicJourneyView({
     genuine_badge_style: 'gold'
   }
 
-  const journeyConfig = data.journey_config || defaultConfig
+  // Use actual journey config values
+  const welcomeTitle = journeyConfig.welcome_title || 'Welcome!'
+  const welcomeMessage = journeyConfig.welcome_message || 'Thank you for scanning our QR code'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header Banner */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                <Shield className="h-5 w-5 text-green-600" />
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <Shield className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-900">Authentic Product Verified</h1>
-                <p className="text-sm text-gray-600">
+                <h1 className="text-xl font-bold text-gray-900">{welcomeTitle}</h1>
+                <p className="text-sm text-gray-600 mt-1">
                   {data.product_info?.product_name || 'Product'} - {data.product_info?.variant_name || 'Verified'}
                 </p>
               </div>
@@ -220,6 +242,13 @@ export default function PublicJourneyView({
               Genuine
             </Badge>
           </div>
+          
+          {/* Welcome Message */}
+          {welcomeMessage && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <p className="text-sm text-blue-900">{welcomeMessage}</p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -200,6 +200,7 @@ export default function JourneyBuilderView({ userProfile }: JourneyBuilderViewPr
                       key={journey.id}
                       journey={journey}
                       isSelected={selectedJourney?.id === journey.id}
+                      orderId={selectedOrderId}
                       onSelect={() => handleSelectJourney(journey)}
                       onEdit={() => handleEditJourney(journey)}
                       onDuplicate={async () => {
