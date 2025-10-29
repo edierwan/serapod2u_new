@@ -2,6 +2,23 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  // Public paths that don't require authentication
+  const PUBLIC_PATHS = ['/auth', '/verify', '/track', '/api/verify']
+  
+  // Check if current path is public
+  const isPublicPath = PUBLIC_PATHS.some((path) => 
+    request.nextUrl.pathname.startsWith(path)
+  )
+  
+  // Allow public paths to proceed without auth check
+  if (isPublicPath) {
+    return NextResponse.next({
+      request: {
+        headers: request.headers,
+      },
+    })
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
