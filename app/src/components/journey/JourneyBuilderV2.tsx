@@ -23,11 +23,17 @@ import {
     Zap,
     ArrowRight,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Download,
+    QrCode,
+    Scan,
+    BarChart3,
+    Loader2
 } from 'lucide-react'
 import JourneyOrderSelectorV2 from './JourneyOrderSelectorV2'
 import JourneyDesignerV2 from './JourneyDesignerV2'
 import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
+import JourneyCardWithStats from './JourneyCardWithStats'
 
 interface UserProfile {
     id: string
@@ -58,7 +64,16 @@ interface JourneyConfig {
     order_info?: {
         order_no: string
         order_type: string
+        order_id: string
     }
+}
+
+interface QRStats {
+    total_valid_links: number
+    links_scanned: number
+    lucky_draw_entries: number
+    redemptions: number
+    points_collected: number
 }
 
 interface Order {
@@ -130,12 +145,15 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                 }
             }
 
-            // Build links map
+            // Build links map with order_id
             const linksMap = new Map(
-                (links || []).map(link => [
-                    link.journey_config_id,
-                    ordersMap.get(link.order_id)
-                ])
+                (links || []).map(link => {
+                    const order = ordersMap.get(link.order_id)
+                    return [
+                        link.journey_config_id,
+                        order ? { ...order, order_id: link.order_id } : null
+                    ]
+                })
             )
 
             // Transform data to include order info
@@ -398,99 +416,13 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {filteredJourneys.map((journey) => (
-                                <Card key={journey.id} className="hover:shadow-lg transition-shadow">
-                                    <CardHeader>
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <CardTitle className="text-lg">{journey.name}</CardTitle>
-                                                {journey.order_info && (
-                                                    <CardDescription className="mt-1">
-                                                        Order: {journey.order_info.order_no}
-                                                    </CardDescription>
-                                                )}
-                                            </div>
-                                            <div className="flex gap-1">
-                                                {journey.is_active && (
-                                                    <Badge variant="default" className="bg-green-500">
-                                                        Active
-                                                    </Badge>
-                                                )}
-                                                {journey.is_default && (
-                                                    <Badge variant="secondary">Default</Badge>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        {/* Features */}
-                                        <div className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">Features:</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {journey.points_enabled && (
-                                                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                                        <Coins className="w-3 h-3 mr-1" />
-                                                        Points
-                                                    </Badge>
-                                                )}
-                                                {journey.lucky_draw_enabled && (
-                                                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                                                        <Star className="w-3 h-3 mr-1" />
-                                                        Lucky Draw
-                                                    </Badge>
-                                                )}
-                                                {journey.redemption_enabled && (
-                                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                                        <Gift className="w-3 h-3 mr-1" />
-                                                        Redemption
-                                                    </Badge>
-                                                )}
-                                                {!journey.points_enabled && !journey.lucky_draw_enabled && !journey.redemption_enabled && (
-                                                    <span className="text-sm text-gray-500">No features enabled</span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Dates */}
-                                        {(journey.start_at || journey.end_at) && (
-                                            <div className="text-sm text-gray-600">
-                                                {journey.start_at && (
-                                                    <p>Starts: {new Date(journey.start_at).toLocaleDateString()}</p>
-                                                )}
-                                                {journey.end_at && (
-                                                    <p>Ends: {new Date(journey.end_at).toLocaleDateString()}</p>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* Actions */}
-                                        <div className="flex gap-2 pt-2 border-t">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleEditJourney(journey)}
-                                                className="flex-1"
-                                            >
-                                                <Edit className="w-4 h-4 mr-1" />
-                                                Edit
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleDuplicateJourney(journey)}
-                                            >
-                                                <Copy className="w-4 h-4" />
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleDeleteJourney(journey.id)}
-                                                className="text-red-600 hover:bg-red-50"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                                <JourneyCardWithStats
+                                    key={journey.id}
+                                    journey={journey}
+                                    onEdit={() => handleEditJourney(journey)}
+                                    onDuplicate={() => handleDuplicateJourney(journey)}
+                                    onDelete={() => handleDeleteJourney(journey.id)}
+                                />
                             ))}
                         </div>
                     )}
