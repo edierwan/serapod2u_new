@@ -70,6 +70,7 @@ export async function GET(
           .single()
 
         if (qrError || !qrCode) {
+          console.log('QR Code not found:', code)
           return NextResponse.json({
             success: true,
             data: {
@@ -82,6 +83,7 @@ export async function GET(
 
         // Check if blocked
         if (qrCode.is_blocked) {
+          console.log('QR Code is blocked:', code)
           return NextResponse.json({
             success: true,
             data: {
@@ -92,15 +94,39 @@ export async function GET(
           })
         }
 
+        // QR code is valid - extract journey config
+        console.log('QR Code found, extracting journey config for:', code, 'Status:', qrCode.status)
+
         // Extract journey config
         const batchData = Array.isArray(qrCode.qr_batches) ? qrCode.qr_batches[0] : qrCode.qr_batches
         const orderData = batchData?.orders ? (Array.isArray(batchData.orders) ? batchData.orders[0] : batchData.orders) : null
         const journeyLinks = orderData?.journey_order_links || []
-        const journeyConfig = journeyLinks.length > 0 
-          ? (Array.isArray(journeyLinks[0].journey_configurations) 
-              ? journeyLinks[0].journey_configurations[0] 
-              : journeyLinks[0].journey_configurations)
-          : null
+        
+        console.log('Batch Data:', batchData ? 'Found' : 'None')
+        console.log('Order Data:', orderData ? orderData.order_no : 'None')
+        console.log('Journey Links:', journeyLinks.length)
+        
+        // Find first active journey configuration
+        let journeyConfig = null
+        for (const link of journeyLinks) {
+          const config = Array.isArray(link.journey_configurations) 
+            ? link.journey_configurations[0] 
+            : link.journey_configurations
+          
+          if (config && config.is_active) {
+            journeyConfig = config
+            console.log('Found active journey:', config.name)
+            break
+          }
+        }
+        
+        // If no active journey, use first journey if exists
+        if (!journeyConfig && journeyLinks.length > 0) {
+          journeyConfig = Array.isArray(journeyLinks[0].journey_configurations) 
+            ? journeyLinks[0].journey_configurations[0] 
+            : journeyLinks[0].journey_configurations
+          console.log('Using first journey (not active):', journeyConfig?.name)
+        }
 
         return NextResponse.json({
           success: true,
