@@ -373,7 +373,7 @@ export default function PublicJourneyView({
                       
                       {/* Screen Content */}
                       <div className="h-full overflow-y-auto scrollbar-hide">
-                        <InteractiveMobilePreviewV2 config={journeyConfig} code={code} />
+                        <InteractiveMobilePreviewV2 config={journeyConfig} />
                       </div>
                     </div>
                   </div>
