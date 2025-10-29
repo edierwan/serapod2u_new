@@ -150,8 +150,7 @@ $$ LANGUAGE plpgsql;
 -- Grant permissions
 GRANT SELECT, INSERT, UPDATE ON consumer_qr_scans TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON consumer_qr_scans TO anon;
-GRANT USAGE ON SEQUENCE consumer_qr_scans_id_seq TO authenticated;
-GRANT USAGE ON SEQUENCE consumer_qr_scans_id_seq TO anon;
+-- Note: No sequence needed as we use UUID with gen_random_uuid()
 
 -- Add RLS policies
 ALTER TABLE consumer_qr_scans ENABLE ROW LEVEL SECURITY;
@@ -174,7 +173,7 @@ CREATE POLICY "Users can view their own scans"
     EXISTS (
       SELECT 1 FROM users u
       WHERE u.id = auth.uid()
-      AND u.role_level <= 20  -- Admin and managers can see all
+      AND u.role_code IN ('SA', 'HQ', 'POWER_USER')
     )
   );
 
@@ -187,7 +186,7 @@ CREATE POLICY "Admins can view all consumer scans"
     EXISTS (
       SELECT 1 FROM users u
       WHERE u.id = auth.uid()
-      AND u.role_level <= 10
+      AND u.role_code IN ('SA', 'HQ')
     )
   );
 
