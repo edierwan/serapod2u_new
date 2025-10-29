@@ -59,6 +59,37 @@ export default function PublicJourneyView({
 }: PublicJourneyViewProps) {
   const [isLoading, setIsLoading] = useState(false)
 
+  // Track consumer scan when component mounts (if valid code)
+  useEffect(() => {
+    const trackConsumerScan = async () => {
+      // Only track for valid, non-blocked codes
+      if (
+        verificationResult.success && 
+        verificationResult.data?.is_valid && 
+        !verificationResult.data?.is_blocked
+      ) {
+        try {
+          await fetch('/api/consumer/track-scan', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              qr_code: code,
+              action: 'view_journey', // Consumer viewed the journey builder
+            }),
+          })
+          console.log('Consumer scan tracked successfully')
+        } catch (error) {
+          console.error('Error tracking consumer scan:', error)
+          // Don't block the user experience if tracking fails
+        }
+      }
+    }
+
+    trackConsumerScan()
+  }, [code, verificationResult])
+
   // Handle invalid or blocked codes
   if (!verificationResult.success || verificationResult.error) {
     return (

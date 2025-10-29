@@ -56,31 +56,39 @@ export async function GET(request: NextRequest) {
     const batchIds = batches.map(b => b.id)
     const totalValidLinks = batches.reduce((sum, b) => sum + (Number(b.total_unique_codes) || 0), 0)
 
-    // Get scanned QR codes count
-    const { count: scannedCount, error: scannedError } = await supabase
-      .from('qr_codes')
-      .select('*', { count: 'exact', head: true })
-      .in('batch_id', batchIds)
-      .in('status', ['opened', 'shipped_distributor', 'received_warehouse', 'packed'])
-
-    if (scannedError) {
-      console.error('Error counting scanned codes:', scannedError)
-    }
-
-    // Get lucky draw entries from these QR codes
-    // First get all QR code IDs from this order
+    // Get all QR code IDs for these batches first
     const { data: qrCodes, error: qrError } = await supabase
       .from('qr_codes')
       .select('id')
       .in('batch_id', batchIds)
 
+    if (qrError) {
+      console.error('Error fetching QR codes:', qrError)
+    }
+
     const qrCodeIds = qrCodes?.map(qr => qr.id) || []
 
+    // Initialize counters
+    let uniqueConsumerScans = 0
     let luckyDrawCount = 0
     let redemptionCount = 0
     let pointsCollected = 0
 
     if (qrCodeIds.length > 0) {
+      // Get CONSUMER scans count (not manufacturer scans)
+      // This counts unique QR codes that consumers have scanned
+      const { data: consumerScans, error: consumerError } = await supabase
+        .from('consumer_qr_scans')
+        .select('qr_code_id')
+        .in('qr_code_id', qrCodeIds)
+
+      if (consumerError) {
+        console.error('Error counting consumer scans:', consumerError)
+      } else if (consumerScans) {
+        // Count unique QR codes scanned by consumers
+        uniqueConsumerScans = new Set(consumerScans.map(s => s.qr_code_id)).size
+      }
+
       // Get lucky draw entries
       const { count: luckyCount, error: luckyError } = await supabase
         .from('lucky_draw_entries')
@@ -117,7 +125,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         total_valid_links: totalValidLinks,
-        links_scanned: scannedCount || 0,
+        links_scanned: uniqueConsumerScans,
         lucky_draw_entries: luckyDrawCount,
         redemptions: redemptionCount,
         points_collected: pointsCollected
