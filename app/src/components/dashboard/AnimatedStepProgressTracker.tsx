@@ -76,7 +76,91 @@ export default function AnimatedStepProgressTracker({
 
   return (
     <div className="w-full">
-  <div className="space-y-7">
+      {/* Mobile View - Vertical Stack */}
+      <div className="lg:hidden space-y-4">
+        {stepsWithCompletion.map((step, idx) => {
+          const isCompleted = maxCompletedStep >= idx
+          const Icon = step.icon
+          const isActive = step.isCurrentStep && !isCompleted
+          const isAnimating = animatingSteps[idx]
+
+          return (
+            <div key={step.key} className="relative">
+              {/* Step Row */}
+              <div className="flex items-center gap-4 p-3 rounded-lg border transition-all duration-300"
+                style={{
+                  borderColor: isCompleted ? '#10b981' : isActive ? '#3b82f6' : '#e5e7eb',
+                  backgroundColor: isCompleted ? '#f0fdf4' : isActive ? '#eff6ff' : '#ffffff'
+                }}
+              >
+                {/* Icon Circle */}
+                <div
+                  className={`flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all duration-500 ${
+                    isCompleted
+                      ? 'bg-emerald-500 border-emerald-600 text-white'
+                      : isActive
+                      ? 'bg-blue-500 border-blue-600 text-white'
+                      : 'bg-gray-100 border-gray-300 text-gray-400'
+                  }`}
+                >
+                  {isCompleted ? (
+                    <svg
+                      className="w-5 h-5 text-white"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : (
+                    <Icon className="w-5 h-5" />
+                  )}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-semibold ${
+                    isCompleted ? 'text-emerald-700' : isActive ? 'text-blue-700' : 'text-gray-600'
+                  }`}>
+                    {step.label}
+                  </p>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className={`text-2xl font-bold ${
+                      isCompleted ? 'text-emerald-600' : isActive ? 'text-blue-600' : 'text-gray-400'
+                    }`}>
+                      {step.count}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      isCompleted 
+                        ? 'bg-emerald-100 text-emerald-700' 
+                        : isActive 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {step.percent}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Connecting Line - Vertical */}
+              {idx < stepsWithCompletion.length - 1 && (
+                <div className="flex justify-center py-1">
+                  <div className={`w-1 h-6 rounded-full transition-all duration-500 ${
+                    isCompleted ? 'bg-emerald-500' : 'bg-gray-200'
+                  }`} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Desktop View - Horizontal (original design) */}
+      <div className="hidden lg:block space-y-7">
         {/* Enhanced Step Progress Tracker with VISIBLE Animations */}
         <div className="relative">
           {/* Step circles and connecting lines */}

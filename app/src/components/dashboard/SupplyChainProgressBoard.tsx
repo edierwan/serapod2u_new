@@ -515,7 +515,7 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
           </p>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Total Master Cases</p>
               <p className="mt-2 text-2xl font-semibold text-slate-900">{overview.totalCases}</p>
