@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
   SelectContent,
@@ -16,6 +17,15 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import {
   CATEGORY_LABELS,
   EnrichedReward,
@@ -40,11 +50,24 @@ import {
   Search,
   ShieldAlert,
   Sparkles,
-  TrendingUp
+  TrendingUp,
+  Users,
+  Save,
+  Trophy
 } from "lucide-react"
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
+
+interface ShopUser {
+  consumer_phone: string
+  consumer_email: string | null
+  current_balance: number
+  total_earned: number
+  total_redeemed: number
+  last_transaction_date: string | null
+  transaction_count: number
+}
 
 interface AdminCatalogPageProps {
   userProfile: UserProfileWithRelations
@@ -92,12 +115,25 @@ function formatRelative(date: Date): string {
 export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [rewards, setRewards] = useState<RedeemItemRow[]>([])
   const [transactions, setTransactions] = useState<PointsTransactionRow[]>([])
+  const [shopUsers, setShopUsers] = useState<ShopUser[]>([])
   const [loading, setLoading] = useState(true)
+  const [usersLoading, setUsersLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<"all" | RewardStatus>("all")
   const [categoryFilter, setCategoryFilter] = useState<"all" | RewardCategory>("all")
   const [searchTerm, setSearchTerm] = useState("")
+  const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
+  const [activeTab, setActiveTab] = useState<"rewards" | "users">("rewards")
+  
+  // Points adjustment modal
+  const [showAdjustPointsModal, setShowAdjustPointsModal] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<ShopUser | null>(null)
+  const [pointsAdjustment, setPointsAdjustment] = useState({
+    amount: 0,
+    type: 'add' as 'add' | 'subtract',
+    description: ''
+  })
 
   const companyId = userProfile.organizations.id
 
@@ -148,6 +184,125 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       cancelled = true
     }
   }, [companyId])
+
+  // Load shop users when switching to users tab
+  useEffect(() => {
+    if (activeTab === 'users' && shopUsers.length === 0) {
+      loadShopUsers()
+    }
+  }, [activeTab])
+
+  async function loadShopUsers() {
+    setUsersLoading(true)
+    const supabaseClient = createClient()
+
+    try {
+      // Get all transactions for this company
+      const { data: allTransactions, error: txnError } = await supabaseClient
+        .from("points_transactions")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("transaction_date", { ascending: false })
+
+      if (txnError) {
+        console.error("Failed to load user transactions", txnError)
+        setUsersLoading(false)
+        return
+      }
+
+      // Aggregate by consumer_phone
+      const userMap = new Map<string, ShopUser>()
+      
+      allTransactions?.forEach((txn) => {
+        const phone = txn.consumer_phone
+        if (!userMap.has(phone)) {
+          userMap.set(phone, {
+            consumer_phone: phone,
+            consumer_email: txn.consumer_email,
+            current_balance: 0,
+            total_earned: 0,
+            total_redeemed: 0,
+            last_transaction_date: null,
+            transaction_count: 0
+          })
+        }
+
+        const user = userMap.get(phone)!
+        user.transaction_count += 1
+        
+        if (!user.last_transaction_date || txn.transaction_date > user.last_transaction_date) {
+          user.last_transaction_date = txn.transaction_date
+          user.current_balance = txn.balance_after
+        }
+
+        if (txn.transaction_type === 'earn' || txn.transaction_type === 'adjust') {
+          if (txn.points_amount > 0) {
+            user.total_earned += txn.points_amount
+          }
+        } else if (txn.transaction_type === 'redeem') {
+          user.total_redeemed += Math.abs(txn.points_amount)
+        }
+      })
+
+      setShopUsers(Array.from(userMap.values()))
+    } catch (error) {
+      console.error("Error loading shop users:", error)
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
+  async function handleAdjustPoints() {
+    if (!selectedUser || pointsAdjustment.amount === 0) {
+      alert('Please enter a valid amount')
+      return
+    }
+
+    const supabaseClient = createClient()
+    const finalAmount = pointsAdjustment.type === 'subtract' 
+      ? -Math.abs(pointsAdjustment.amount)
+      : Math.abs(pointsAdjustment.amount)
+
+    const newBalance = selectedUser.current_balance + finalAmount
+
+    if (newBalance < 0) {
+      alert('Cannot subtract more points than user has')
+      return
+    }
+
+    try {
+      const { error } = await supabaseClient
+        .from('points_transactions')
+        .insert({
+          company_id: companyId,
+          consumer_phone: selectedUser.consumer_phone,
+          consumer_email: selectedUser.consumer_email,
+          transaction_type: 'adjust',
+          points_amount: finalAmount,
+          balance_after: newBalance,
+          description: pointsAdjustment.description || 'Admin adjustment - transfer from old system',
+          transaction_date: new Date().toISOString()
+        })
+
+      if (error) {
+        console.error('Error adjusting points:', error)
+        alert('Failed to adjust points: ' + error.message)
+        return
+      }
+
+      // Reload users
+      await loadShopUsers()
+      
+      setShowAdjustPointsModal(false)
+      setSelectedUser(null)
+      setPointsAdjustment({ amount: 0, type: 'add', description: '' })
+      
+      alert(`Successfully ${pointsAdjustment.type === 'add' ? 'added' : 'subtracted'} ${Math.abs(finalAmount)} points`)
+    } catch (error) {
+      console.error('Error adjusting points:', error)
+      alert('Failed to adjust points')
+    }
+  }
 
   const enrichedRewards = useMemo<EnrichedReward[]>(() => {
     const now = new Date()
@@ -291,6 +446,18 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     })
   }, [categoryFilter, enrichedRewards, searchTerm, sortOption, statusFilter])
 
+  const filteredUsers = useMemo(() => {
+    const term = userSearchTerm.trim().toLowerCase()
+    if (!term) return shopUsers
+
+    return shopUsers.filter((user) => {
+      return (
+        user.consumer_phone.toLowerCase().includes(term) ||
+        (user.consumer_email ?? '').toLowerCase().includes(term)
+      )
+    })
+  }, [shopUsers, userSearchTerm])
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -316,6 +483,18 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users")} className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="rewards" className="gap-2">
+            <Package className="h-4 w-4" /> Manage Rewards
+          </TabsTrigger>
+          <TabsTrigger value="users" className="gap-2">
+            <Users className="h-4 w-4" /> Manage Users
+          </TabsTrigger>
+        </TabsList>
+
+        {/* MANAGE REWARDS TAB */}
+        <TabsContent value="rewards" className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
@@ -606,6 +785,184 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           </Card>
         </div>
       </div>
+        </TabsContent>
+
+        {/* MANAGE USERS TAB */}
+        <TabsContent value="users" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Users className="h-4 w-4" /> Shop Users & Points
+                  </CardTitle>
+                  <CardDescription>Manage point balances for shop users. Transfer points from old system.</CardDescription>
+                </div>
+                <div className="relative sm:min-w-[280px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                    placeholder="Search by phone or email..."
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {usersLoading ? (
+                <div className="flex items-center justify-center py-16 text-muted-foreground">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading shop users…
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="py-16 text-center text-sm text-muted-foreground">
+                  {shopUsers.length === 0 
+                    ? "No shop users with points activity yet."
+                    : "No users match your search."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-border text-sm">
+                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Consumer</th>
+                        <th className="px-4 py-3">Current Balance</th>
+                        <th className="px-4 py-3">Total Earned</th>
+                        <th className="px-4 py-3">Total Redeemed</th>
+                        <th className="px-4 py-3">Transactions</th>
+                        <th className="px-4 py-3">Last Activity</th>
+                        <th className="px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {filteredUsers.map((user) => (
+                        <tr key={user.consumer_phone} className="hover:bg-muted/40">
+                          <td className="px-4 py-4">
+                            <div className="font-medium text-foreground">{user.consumer_phone}</div>
+                            {user.consumer_email && (
+                              <div className="text-xs text-muted-foreground">{user.consumer_email}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <Trophy className="h-4 w-4 text-blue-500" />
+                              <span className="text-lg font-semibold text-blue-600">
+                                {formatNumber(user.current_balance)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-emerald-600">
+                            +{formatNumber(user.total_earned)}
+                          </td>
+                          <td className="px-4 py-4 text-amber-600">
+                            -{formatNumber(user.total_redeemed)}
+                          </td>
+                          <td className="px-4 py-4 text-muted-foreground">
+                            {user.transaction_count}
+                          </td>
+                          <td className="px-4 py-4 text-xs text-muted-foreground">
+                            {user.last_transaction_date 
+                              ? formatRelative(new Date(user.last_transaction_date))
+                              : 'Never'}
+                          </td>
+                          <td className="px-4 py-4">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1"
+                              onClick={() => {
+                                setSelectedUser(user)
+                                setShowAdjustPointsModal(true)
+                              }}
+                            >
+                              <Edit className="h-4 w-4" /> Adjust Points
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* ADJUST POINTS MODAL */}
+      <Dialog open={showAdjustPointsModal} onOpenChange={setShowAdjustPointsModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adjust Points Balance</DialogTitle>
+            <DialogDescription>
+              Modify point balance for {selectedUser?.consumer_phone}. Current balance: {formatNumber(selectedUser?.current_balance ?? 0)} points
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Adjustment Type</Label>
+              <Select 
+                value={pointsAdjustment.type} 
+                onValueChange={(value) => setPointsAdjustment(prev => ({ ...prev, type: value as 'add' | 'subtract' }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="add">Add Points</SelectItem>
+                  <SelectItem value="subtract">Subtract Points</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Amount</Label>
+              <Input
+                type="number"
+                min="0"
+                value={pointsAdjustment.amount || ''}
+                onChange={(e) => setPointsAdjustment(prev => ({ ...prev, amount: parseInt(e.target.value) || 0 }))}
+                placeholder="e.g., 100"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description (Optional)</Label>
+              <Input
+                value={pointsAdjustment.description}
+                onChange={(e) => setPointsAdjustment(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="e.g., Transfer from old system"
+              />
+            </div>
+
+            {pointsAdjustment.amount > 0 && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+                <p className="font-medium text-blue-900">
+                  New Balance: {formatNumber(
+                    (selectedUser?.current_balance ?? 0) + 
+                    (pointsAdjustment.type === 'add' ? pointsAdjustment.amount : -pointsAdjustment.amount)
+                  )} points
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowAdjustPointsModal(false)
+              setSelectedUser(null)
+              setPointsAdjustment({ amount: 0, type: 'add', description: '' })
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleAdjustPoints} disabled={pointsAdjustment.amount === 0}>
+              <Save className="h-4 w-4 mr-2" />
+              {pointsAdjustment.type === 'add' ? 'Add' : 'Subtract'} Points
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

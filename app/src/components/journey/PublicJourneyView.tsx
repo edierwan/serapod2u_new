@@ -60,6 +60,17 @@ export default function PublicJourneyView({
   verificationResult 
 }: PublicJourneyViewProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024) // lg breakpoint
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // Track consumer scan when component mounts (if valid code)
   useEffect(() => {
@@ -206,6 +217,16 @@ export default function PublicJourneyView({
   const welcomeTitle = journeyConfig.welcome_title || 'Welcome!'
   const welcomeMessage = journeyConfig.welcome_message || 'Thank you for scanning our QR code'
 
+  // Mobile view - show only the interactive preview
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <InteractiveMobilePreviewV2 config={journeyConfig} />
+      </div>
+    )
+  }
+
+  // Desktop view - show full layout with preview
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header Banner */}

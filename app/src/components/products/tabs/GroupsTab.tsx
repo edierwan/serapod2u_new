@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import GroupDialog from '../dialogs/GroupDialog'
 
 interface Category {
@@ -41,6 +41,8 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<Group | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [sortColumn, setSortColumn] = useState<string>('group_name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -237,6 +239,43 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
     return matchesSearch && matchesCategory && group.is_active
   })
 
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const getSortedGroups = () => {
+    const sorted = [...filteredGroups].sort((a, b) => {
+      let aValue: any = a[sortColumn as keyof Group]
+      let bValue: any = b[sortColumn as keyof Group]
+
+      if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = (bValue as string).toLowerCase()
+        return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
+      }
+
+      if (typeof aValue === 'boolean') {
+        aValue = aValue ? 1 : 0
+        bValue = bValue ? 1 : 0
+      }
+
+      return sortDirection === 'asc' ? (aValue || 0) - (bValue || 0) : (bValue || 0) - (aValue || 0)
+    })
+    return sorted
+  }
+
+  const renderSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 opacity-40" />
+    }
+    return sortDirection === 'asc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -294,16 +333,44 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-center">Status</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('group_name')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Name {renderSortIcon('group_name')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('category_name')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Category {renderSortIcon('category_name')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('group_description')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Description {renderSortIcon('group_description')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="text-center cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('is_active')}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  Status {renderSortIcon('is_active')}
+                </div>
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredGroups.length > 0 ? (
-              filteredGroups.map((group) => (
+            {getSortedGroups().length > 0 ? (
+              getSortedGroups().map((group) => (
                 <TableRow key={group.id} className="hover:bg-gray-50">
                   <TableCell>{group.group_name}</TableCell>
                   <TableCell className="text-sm text-gray-600">{group.category_name}</TableCell>
@@ -349,7 +416,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
       </div>
 
       <div className="text-sm text-gray-600">
-        Showing {filteredGroups.length} of {groups.filter(g => g.is_active).length} groups
+        Showing {getSortedGroups().length} of {groups.filter(g => g.is_active).length} groups
       </div>
     </div>
   )

@@ -350,7 +350,35 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   // Set mounted flag after client-side hydration
   useEffect(() => {
     setIsMounted(true)
+    // Restore expanded menu state from session storage
+    const savedExpandedMenu = typeof window !== 'undefined' 
+      ? sessionStorage.getItem('sidebarExpandedMenu') 
+      : null
+    if (savedExpandedMenu) {
+      setExpandedMenu(savedExpandedMenu)
+    }
   }, [])
+
+  // Persist expanded menu state to session storage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (expandedMenu) {
+        sessionStorage.setItem('sidebarExpandedMenu', expandedMenu)
+      } else {
+        sessionStorage.removeItem('sidebarExpandedMenu')
+      }
+    }
+  }, [expandedMenu])
+
+  // Auto-expand parent menu when navigating to a submenu item
+  useEffect(() => {
+    const parentMenu = navigationItems.find(item => 
+      item.submenu?.some(sub => sub.id === currentView)
+    )
+    if (parentMenu && expandedMenu !== parentMenu.id) {
+      setExpandedMenu(parentMenu.id)
+    }
+  }, [currentView])
 
   // Update date/time every second
   useEffect(() => {

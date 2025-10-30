@@ -198,11 +198,11 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         {[1, 2, 3, 4].map((i) => (
           <Card key={i} className="animate-pulse">
-            <CardContent className="p-6">
-              <div className="h-20 bg-gray-200 rounded"></div>
+            <CardContent className="p-3 sm:p-4 lg:p-6">
+              <div className="h-16 sm:h-20 bg-gray-200 rounded"></div>
             </CardContent>
           </Card>
         ))}
@@ -211,24 +211,24 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
       {statCards.map((stat, index) => (
         <Card key={index} className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">
+          <CardContent className="p-3 sm:p-4 lg:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
+              <div className="mb-2 sm:mb-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 mb-1">
                   {stat.title}
                 </p>
-                <p className="text-3xl font-bold text-gray-900 mb-1">
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
                   {stat.value}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 hidden sm:block">
                   {stat.description}
                 </p>
               </div>
-              <div className={`p-3 rounded-lg ${stat.bgColor}`}>
-                <stat.icon className={`w-6 h-6 ${stat.color}`} />
+              <div className={`p-2 sm:p-3 rounded-lg ${stat.bgColor}`}>
+                <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
               </div>
             </div>
           </CardContent>

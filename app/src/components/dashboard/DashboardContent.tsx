@@ -156,7 +156,7 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
 
       case 'inventory':
       case 'inventory-list':
-        return <InventoryView userProfile={userProfile} />
+        return <InventoryView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'add-stock':
         return <AddStockView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'stock-adjustment':

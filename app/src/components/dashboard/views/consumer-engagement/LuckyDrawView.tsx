@@ -316,14 +316,19 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
 
       const prizeWithImage = { ...newPrize, image_url: imageUrl }
 
+      let updatedPrizes: Prize[]
       if (editingPrizeIndex !== null) {
-        const updatedPrizes = [...prizes]
+        updatedPrizes = [...prizes]
         updatedPrizes[editingPrizeIndex] = prizeWithImage
-        setPrizes(updatedPrizes)
         setEditingPrizeIndex(null)
       } else {
-        setPrizes([...prizes, prizeWithImage])
+        updatedPrizes = [...prizes, prizeWithImage]
       }
+      
+      setPrizes(updatedPrizes)
+
+      // Save to database immediately
+      await handleSavePrizes(updatedPrizes)
 
       setNewPrize({ name: '', description: '', quantity: 1, image_url: '' })
       setPrizeImageFile(null)
@@ -348,8 +353,43 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
     setShowPrizeModal(true)
   }
 
-  const handleDeletePrize = (index: number) => {
-    setPrizes(prizes.filter((_, i) => i !== index))
+  const handleDeletePrize = async (index: number) => {
+    if (!selectedCampaignId) return
+    
+    const updatedPrizes = prizes.filter((_, i) => i !== index)
+    setPrizes(updatedPrizes)
+    
+    // Save to database immediately
+    await handleSavePrizes(updatedPrizes)
+  }
+
+  const handleSavePrizes = async (prizesToSave: Prize[]) => {
+    if (!selectedCampaignId) return
+
+    try {
+      const response = await fetch('/api/lucky-draw/campaigns', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          campaign_id: selectedCampaignId, 
+          prizes_json: prizesToSave 
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        // Reload campaigns to reflect the updated prizes
+        if (selectedOrderId) {
+          await loadCampaigns(selectedOrderId)
+        }
+      } else {
+        alert('Failed to save prizes: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Error saving prizes:', error)
+      alert('Failed to save prizes')
+    }
   }
 
   const handlePerformDraw = async () => {

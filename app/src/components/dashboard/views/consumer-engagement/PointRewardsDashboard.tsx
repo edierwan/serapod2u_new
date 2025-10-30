@@ -459,51 +459,51 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
         {isAdmin && (
           <TabsContent value="dashboard" className="space-y-6">
             {/* Statistics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Total Shops</p>
-                      <p className="text-3xl font-bold">{totalShops}</p>
+                <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-2 sm:mb-0">
+                      <p className="text-xs sm:text-sm text-gray-600">Total Shops</p>
+                      <p className="text-2xl sm:text-3xl font-bold">{totalShops}</p>
                     </div>
-                    <Users className="h-10 w-10 text-blue-500" />
+                    <Users className="h-8 w-8 sm:h-10 sm:w-10 text-blue-500" />
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Active Shops</p>
-                      <p className="text-3xl font-bold text-green-600">{activeShops}</p>
+                <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-2 sm:mb-0">
+                      <p className="text-xs sm:text-sm text-gray-600">Active Shops</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-green-600">{activeShops}</p>
                     </div>
-                    <Zap className="h-10 w-10 text-green-500" />
+                    <Zap className="h-8 w-8 sm:h-10 sm:w-10 text-green-500" />
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Total Points Awarded</p>
-                      <p className="text-3xl font-bold text-yellow-600">{totalPointsAwarded.toLocaleString()}</p>
+                <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-2 sm:mb-0">
+                      <p className="text-xs sm:text-sm text-gray-600">Total Points Awarded</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{totalPointsAwarded.toLocaleString()}</p>
                     </div>
-                    <Trophy className="h-10 w-10 text-yellow-500" />
+                    <Trophy className="h-8 w-8 sm:h-10 sm:w-10 text-yellow-500" />
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Total Rewards</p>
-                      <p className="text-3xl font-bold text-purple-600">{totalRewards}</p>
+                <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-2 sm:mb-0">
+                      <p className="text-xs sm:text-sm text-gray-600">Total Rewards</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-purple-600">{totalRewards}</p>
                     </div>
-                    <Gift className="h-10 w-10 text-purple-500" />
+                    <Gift className="h-8 w-8 sm:h-10 sm:w-10 text-purple-500" />
                   </div>
                 </CardContent>
               </Card>

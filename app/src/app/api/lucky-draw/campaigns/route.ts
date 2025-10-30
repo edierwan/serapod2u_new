@@ -187,22 +187,24 @@ export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient()
     const body = await request.json()
-    const { campaign_id, status } = body
+    const { campaign_id, status, prizes_json } = body
 
-    if (!campaign_id || !status) {
+    if (!campaign_id) {
       return NextResponse.json({ 
         success: false, 
-        error: 'campaign_id and status are required' 
+        error: 'campaign_id is required' 
       }, { status: 400 })
     }
 
-    // Validate status
-    const validStatuses = ['draft', 'active', 'closed', 'drawn', 'completed']
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json({ 
-        success: false, 
-        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
-      }, { status: 400 })
+    // Validate status if provided
+    if (status) {
+      const validStatuses = ['draft', 'active', 'closed', 'drawn', 'completed']
+      if (!validStatuses.includes(status)) {
+        return NextResponse.json({ 
+          success: false, 
+          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+        }, { status: 400 })
+      }
     }
 
     // Get user profile
@@ -233,13 +235,23 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Campaign not found' }, { status: 404 })
     }
 
-    // Update campaign status
+    // Build update object dynamically
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    }
+
+    if (status) {
+      updateData.status = status
+    }
+
+    if (prizes_json !== undefined) {
+      updateData.prizes_json = prizes_json
+    }
+
+    // Update campaign
     const { data: updatedCampaign, error: updateError } = await supabase
       .from('lucky_draw_campaigns')
-      .update({ 
-        status,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', campaign_id)
       .select()
       .single()
@@ -249,10 +261,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: updateError.message }, { status: 500 })
     }
 
+    let message = 'Campaign updated successfully'
+    if (status && prizes_json !== undefined) {
+      message = `Campaign status updated to ${status} and prizes updated`
+    } else if (status) {
+      message = `Campaign status updated to ${status}`
+    } else if (prizes_json !== undefined) {
+      message = 'Campaign prizes updated successfully'
+    }
+
     return NextResponse.json({ 
       success: true, 
       campaign: updatedCampaign,
-      message: `Campaign status updated to ${status}`
+      message
     })
   } catch (error) {
     console.error('Error in lucky-draw/campaigns PATCH:', error)

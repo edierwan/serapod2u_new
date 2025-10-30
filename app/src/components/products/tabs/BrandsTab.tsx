@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import BrandDialog from '../dialogs/BrandDialog'
 
 interface Brand {
@@ -34,6 +34,8 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [sortColumn, setSortColumn] = useState<string>('brand_name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -176,6 +178,43 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
     brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const getSortedBrands = () => {
+    const sorted = [...filteredBrands].sort((a, b) => {
+      let aValue: any = a[sortColumn as keyof Brand]
+      let bValue: any = b[sortColumn as keyof Brand]
+
+      if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = (bValue as string).toLowerCase()
+        return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
+      }
+
+      if (typeof aValue === 'boolean') {
+        aValue = aValue ? 1 : 0
+        bValue = bValue ? 1 : 0
+      }
+
+      return sortDirection === 'asc' ? (aValue || 0) - (bValue || 0) : (bValue || 0) - (aValue || 0)
+    })
+    return sorted
+  }
+
+  const renderSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 opacity-40" />
+    }
+    return sortDirection === 'asc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />
+  }
+
   const getBrandInitials = (name: string): string => {
     return name
       .split(' ')
@@ -229,15 +268,36 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Brand</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-center">Status</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('brand_name')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Brand {renderSortIcon('brand_name')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('brand_description')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Description {renderSortIcon('brand_description')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="text-center cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('is_active')}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  Status {renderSortIcon('is_active')}
+                </div>
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredBrands.length > 0 ? (
-              filteredBrands.map((brand) => (
+            {getSortedBrands().length > 0 ? (
+              getSortedBrands().map((brand) => (
                 <TableRow key={brand.id} className="hover:bg-gray-50">
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -295,7 +355,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
       </div>
 
       <div className="text-sm text-gray-600">
-        Showing {filteredBrands.length} of {brands.length} brands
+        Showing {getSortedBrands().length} of {brands.length} brands
       </div>
     </div>
   )

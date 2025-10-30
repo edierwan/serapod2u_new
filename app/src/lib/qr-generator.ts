@@ -1,34 +1,53 @@
 /**
  * QR Code Generator Utility
  * Generates unique QR code strings for products and master cases
+ * NOW WITH SECURITY: Includes HMAC-SHA256 hash to prevent sequential guessing
  */
+
+import { generateSecureQRCode, generateQRHash } from './security/qr-hash'
 
 /**
  * Generate unique QR code string for individual products
- * Format: PROD-{product_code}-{variant_code}-{order_no}-{sequence}
- * Example: PROD-VAPE001-MINT-ORD-HM-1025-11-00001
+ * Format (with hash): PROD-{product_code}-{variant_code}-{order_no}-{sequence}-{hash}
+ * Example: PROD-VAPE001-MINT-ORD-HM-1025-11-00001-a3f9c8d2e1b4
  */
 export function generateProductQRCode(
   productCode: string,
   variantCode: string,
   orderNo: string,
-  sequence: number
+  sequence: number,
+  withHash: boolean = true
 ): string {
   const paddedSequence = String(sequence).padStart(5, '0')
-  return `PROD-${productCode}-${variantCode}-${orderNo}-${paddedSequence}`
+  const baseCode = `PROD-${productCode}-${variantCode}-${orderNo}-${paddedSequence}`
+  
+  // Add security hash to prevent sequential code guessing
+  if (withHash) {
+    return generateSecureQRCode(baseCode)
+  }
+  
+  return baseCode
 }
 
 /**
  * Generate unique Master QR code string for cases/boxes
- * Format: MASTER-{order_no}-CASE-{case_number}
- * Example: MASTER-ORD-HM-1025-11-CASE-001
+ * Format (with hash): MASTER-{order_no}-CASE-{case_number}-{hash}
+ * Example: MASTER-ORD-HM-1025-11-CASE-001-b8e4d7a9f2c1
  */
 export function generateMasterQRCode(
   orderNo: string,
-  caseNumber: number
+  caseNumber: number,
+  withHash: boolean = true
 ): string {
   const paddedCaseNumber = String(caseNumber).padStart(3, '0')
-  return `MASTER-${orderNo}-CASE-${paddedCaseNumber}`
+  const baseCode = `MASTER-${orderNo}-CASE-${paddedCaseNumber}`
+  
+  // Add security hash
+  if (withHash) {
+    return generateSecureQRCode(baseCode)
+  }
+  
+  return baseCode
 }
 
 /**
@@ -51,6 +70,7 @@ export interface QRCodeGenerationParams {
 
 export interface GeneratedQRCode {
   code: string
+  hash: string  // NEW: Security hash
   sequence_number: number
   product_id: string
   variant_id: string
@@ -63,6 +83,7 @@ export interface GeneratedQRCode {
 
 export interface GeneratedMasterCode {
   code: string
+  hash: string  // NEW: Security hash
   case_number: number
   expected_unit_count: number
 }
@@ -103,8 +124,12 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
       ? totalBaseUnits - ((i - 1) * unitsPerCase)
       : unitsPerCase
 
+    const secureCode = generateMasterQRCode(orderNo, i, true)
+    const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-')) // Extract base code before hash
+    
     masterCodes.push({
-      code: generateMasterQRCode(orderNo, i),
+      code: secureCode,
+      hash: hash,
       case_number: i,
       expected_unit_count: expectedCount
     })
@@ -125,13 +150,18 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
         codesInCurrentCase = 0
       }
 
+      const secureCode = generateProductQRCode(
+        item.product_code,
+        item.variant_code,
+        orderNo,
+        globalSequence,
+        true
+      )
+      const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-'))
+
       individualCodes.push({
-        code: generateProductQRCode(
-          item.product_code,
-          item.variant_code,
-          orderNo,
-          globalSequence
-        ),
+        code: secureCode,
+        hash: hash,
         sequence_number: globalSequence,
         product_id: item.product_id,
         variant_id: item.variant_id,
@@ -158,13 +188,18 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
     const actualItemBuffer = Math.min(itemBufferQty, remainingBuffer)
     
     for (let i = 0; i < actualItemBuffer; i++) {
+      const secureCode = generateProductQRCode(
+        item.product_code,
+        item.variant_code,
+        orderNo,
+        globalSequence,
+        true
+      )
+      const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-'))
+
       individualCodes.push({
-        code: generateProductQRCode(
-          item.product_code,
-          item.variant_code,
-          orderNo,
-          globalSequence
-        ),
+        code: secureCode,
+        hash: hash,
         sequence_number: globalSequence,
         product_id: item.product_id,
         variant_id: item.variant_id,
@@ -184,13 +219,18 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
   if (remainingBuffer > 0 && orderItems.length > 0) {
     const firstItem = orderItems[0]
     for (let i = 0; i < remainingBuffer; i++) {
+      const secureCode = generateProductQRCode(
+        firstItem.product_code,
+        firstItem.variant_code,
+        orderNo,
+        globalSequence,
+        true
+      )
+      const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-'))
+
       individualCodes.push({
-        code: generateProductQRCode(
-          firstItem.product_code,
-          firstItem.variant_code,
-          orderNo,
-          globalSequence
-        ),
+        code: secureCode,
+        hash: hash,
         sequence_number: globalSequence,
         product_id: firstItem.product_id,
         variant_id: firstItem.variant_id,

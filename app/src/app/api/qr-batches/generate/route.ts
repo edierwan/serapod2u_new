@@ -277,6 +277,7 @@ async function insertQRCodesInBatches(
       product_id: code.product_id,
       variant_id: code.variant_id,
       code: code.code,
+      qr_hash: code.hash, // NEW: Store security hash
       sequence_number: code.sequence_number,
       status: 'pending',
       is_active: true

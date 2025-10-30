@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import SubGroupDialog from '../dialogs/SubGroupDialog'
 
 interface Group {
@@ -40,6 +40,8 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSubGroup, setEditingSubGroup] = useState<SubGroup | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [sortColumn, setSortColumn] = useState<string>('subgroup_name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -195,6 +197,43 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
     return matchesSearch && matchesGroup && subgroup.is_active
   })
 
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const getSortedSubGroups = () => {
+    const sorted = [...filteredSubGroups].sort((a, b) => {
+      let aValue: any = a[sortColumn as keyof SubGroup]
+      let bValue: any = b[sortColumn as keyof SubGroup]
+
+      if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = (bValue as string).toLowerCase()
+        return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
+      }
+
+      if (typeof aValue === 'boolean') {
+        aValue = aValue ? 1 : 0
+        bValue = bValue ? 1 : 0
+      }
+
+      return sortDirection === 'asc' ? (aValue || 0) - (bValue || 0) : (bValue || 0) - (aValue || 0)
+    })
+    return sorted
+  }
+
+  const renderSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 opacity-40" />
+    }
+    return sortDirection === 'asc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -252,16 +291,44 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Group</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-center">Status</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('subgroup_name')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Name {renderSortIcon('subgroup_name')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('group_name')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Group {renderSortIcon('group_name')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('subgroup_description')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Description {renderSortIcon('subgroup_description')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="text-center cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('is_active')}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  Status {renderSortIcon('is_active')}
+                </div>
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredSubGroups.length > 0 ? (
-              filteredSubGroups.map((subgroup) => (
+            {getSortedSubGroups().length > 0 ? (
+              getSortedSubGroups().map((subgroup) => (
                 <TableRow key={subgroup.id} className="hover:bg-gray-50">
                   <TableCell>{subgroup.subgroup_name}</TableCell>
                   <TableCell className="text-sm text-gray-600">{subgroup.group_name}</TableCell>
@@ -307,7 +374,7 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
       </div>
 
       <div className="text-sm text-gray-600">
-        Showing {filteredSubGroups.length} of {subgroups.filter(s => s.is_active).length} sub-groups
+        Showing {getSortedSubGroups().length} of {subgroups.filter(s => s.is_active).length} sub-groups
       </div>
     </div>
   )

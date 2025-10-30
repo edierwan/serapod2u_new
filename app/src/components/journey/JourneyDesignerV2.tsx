@@ -94,8 +94,8 @@ export default function JourneyDesignerV2({
         require_staff_otp_for_points: journey?.require_staff_otp_for_points ?? false,
         require_customer_otp_for_lucky_draw: journey?.require_customer_otp_for_lucky_draw ?? false,
         require_customer_otp_for_redemption: journey?.require_customer_otp_for_redemption ?? false,
-        start_at: journey?.start_at || new Date().toISOString().split('T')[0],
-        end_at: journey?.end_at || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        start_at: journey?.start_at ? journey.start_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        end_at: journey?.end_at ? journey.end_at.split('T')[0] : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         welcome_title: journey?.welcome_title || 'Welcome!',
         welcome_message: journey?.welcome_message || 'Thank you for scanning our QR code. Enjoy exclusive rewards and benefits!',
         thank_you_message: journey?.thank_you_message || 'Thank you for your participation!',
@@ -165,7 +165,7 @@ export default function JourneyDesignerV2({
             }
 
             // Create or update journey configuration
-            const journeyData = {
+            const journeyData: any = {
                 org_id: userProfile.organization_id,
                 name: config.name,
                 is_active: config.is_active,
@@ -180,6 +180,18 @@ export default function JourneyDesignerV2({
                 end_at: config.end_at || null,
                 created_by: userProfile.id
             }
+            
+            // Add theme fields if they exist in the schema
+            // These will be ignored if columns don't exist yet (migration not run)
+            if (config.welcome_title !== undefined) journeyData.welcome_title = config.welcome_title
+            if (config.welcome_message !== undefined) journeyData.welcome_message = config.welcome_message
+            if (config.thank_you_message !== undefined) journeyData.thank_you_message = config.thank_you_message
+            if (config.primary_color !== undefined) journeyData.primary_color = config.primary_color
+            if (config.button_color !== undefined) journeyData.button_color = config.button_color
+            if (config.show_product_image !== undefined) journeyData.show_product_image = config.show_product_image
+            if (config.product_image_source !== undefined) journeyData.product_image_source = config.product_image_source
+            if (config.custom_image_url !== undefined) journeyData.custom_image_url = config.custom_image_url
+            if (config.genuine_badge_style !== undefined) journeyData.genuine_badge_style = config.genuine_badge_style
 
             let journeyId = config.id
 
@@ -190,7 +202,10 @@ export default function JourneyDesignerV2({
                     .update(journeyData)
                     .eq('id', config.id)
 
-                if (error) throw error
+                if (error) {
+                    console.error('Supabase update error:', error)
+                    throw new Error(error.message || 'Failed to update journey')
+                }
             } else {
                 // Create new journey
                 const { data, error } = await supabase
@@ -199,7 +214,10 @@ export default function JourneyDesignerV2({
                     .select()
                     .single()
 
-                if (error) throw error
+                if (error) {
+                    console.error('Supabase insert error:', error)
+                    throw new Error(error.message || 'Failed to create journey')
+                }
 
                 journeyId = data.id
 
@@ -211,14 +229,18 @@ export default function JourneyDesignerV2({
                         order_id: order.id
                     })
 
-                if (linkError) throw linkError
+                if (linkError) {
+                    console.error('Supabase link error:', linkError)
+                    throw new Error(linkError.message || 'Failed to link journey to order')
+                }
             }
 
             alert(config.id ? 'Journey updated successfully!' : 'Journey created successfully!')
             onSuccess()
         } catch (error: any) {
             console.error('Error saving journey:', error)
-            alert('Failed to save journey: ' + error.message)
+            const errorMessage = error?.message || error?.toString() || 'Unknown error occurred'
+            alert('Failed to save journey: ' + errorMessage)
         } finally {
             setSaving(false)
         }

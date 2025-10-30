@@ -15,7 +15,10 @@ import {
   AlertTriangle,
   TrendingUp,
   Warehouse,
-  BarChart3
+  BarChart3,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react'
 
 interface InventoryItem {
@@ -48,9 +51,10 @@ interface InventoryItem {
 
 interface InventoryViewProps {
   userProfile: any
+  onViewChange?: (view: string) => void
 }
 
-export default function InventoryView({ userProfile }: InventoryViewProps) {
+export default function InventoryView({ userProfile, onViewChange }: InventoryViewProps) {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -58,6 +62,8 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [locations, setLocations] = useState<any[]>([])
+  const [sortColumn, setSortColumn] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 15
@@ -71,6 +77,85 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, searchQuery, locationFilter, statusFilter, currentPage])
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // New column, start with ascending
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+    setCurrentPage(1) // Reset to first page
+  }
+
+  const getSortedInventory = () => {
+    if (!sortColumn) return inventory
+
+    const sorted = [...inventory].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortColumn) {
+        case 'variant_code':
+          aValue = a.product_variants?.variant_code || ''
+          bValue = b.product_variants?.variant_code || ''
+          break
+        case 'product_name':
+          aValue = a.product_variants?.products?.product_name || ''
+          bValue = b.product_variants?.products?.product_name || ''
+          break
+        case 'location':
+          aValue = a.organizations?.org_name || ''
+          bValue = b.organizations?.org_name || ''
+          break
+        case 'on_hand':
+          aValue = a.quantity_on_hand
+          bValue = b.quantity_on_hand
+          break
+        case 'allocated':
+          aValue = a.quantity_allocated
+          bValue = b.quantity_allocated
+          break
+        case 'available':
+          aValue = a.quantity_available
+          bValue = b.quantity_available
+          break
+        case 'total_value':
+          aValue = a.computed_total_value || 0
+          bValue = b.computed_total_value || 0
+          break
+        default:
+          return 0
+      }
+
+      // Handle string comparison
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortDirection === 'asc' 
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue)
+      }
+
+      // Handle number comparison
+      if (sortDirection === 'asc') {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
+      } else {
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+      }
+    })
+
+    return sorted
+  }
+
+  const renderSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 ml-1 opacity-40" />
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="w-4 h-4 ml-1" />
+      : <ArrowDown className="w-4 h-4 ml-1" />
+  }
 
   const fetchInventory = async () => {
     if (!isReady) return
@@ -191,10 +276,10 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
 
   const fetchLocations = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error} = await supabase
         .from('organizations')
         .select('id, org_name, org_code')
-        .in('org_type_code', ['WAREHOUSE', 'DIST', 'HQ'])
+        .in('org_type_code', ['WH', 'HQ'])
         .eq('is_active', true)
         .order('org_name')
 
@@ -249,7 +334,7 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => onViewChange?.('stock-adjustment')}>
             <Package className="w-4 h-4 mr-2" />
             Stock Adjustment
           </Button>
@@ -369,14 +454,70 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Variant Code</TableHead>
-                <TableHead>Product Name</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>On Hand</TableHead>
-                <TableHead>Allocated</TableHead>
-                <TableHead>Available</TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('variant_code')}
+                >
+                  <div className="flex items-center">
+                    Variant Code
+                    {renderSortIcon('variant_code')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('product_name')}
+                >
+                  <div className="flex items-center">
+                    Product Name
+                    {renderSortIcon('product_name')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('location')}
+                >
+                  <div className="flex items-center">
+                    Location
+                    {renderSortIcon('location')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('on_hand')}
+                >
+                  <div className="flex items-center">
+                    On Hand
+                    {renderSortIcon('on_hand')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('allocated')}
+                >
+                  <div className="flex items-center">
+                    Allocated
+                    {renderSortIcon('allocated')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('available')}
+                >
+                  <div className="flex items-center">
+                    Available
+                    {renderSortIcon('available')}
+                  </div>
+                </TableHead>
                 <TableHead>Stock Level</TableHead>
-                <TableHead className="text-right">Total Value</TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                  onClick={() => handleSort('total_value')}
+                >
+                  <div className="flex items-center justify-end">
+                    Total Value
+                    {renderSortIcon('total_value')}
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -393,7 +534,7 @@ export default function InventoryView({ userProfile }: InventoryViewProps) {
                   </TableCell>
                 </TableRow>
               ) : (
-                inventory.map((item) => (
+                getSortedInventory().map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-mono text-sm">
                       {item.product_variants?.variant_code || 'N/A'}

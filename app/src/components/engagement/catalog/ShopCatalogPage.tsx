@@ -49,8 +49,10 @@ import {
   Clock,
   History,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Settings
 } from "lucide-react"
+import Link from "next/link"
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
@@ -298,6 +300,11 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button asChild variant="default" className="gap-2">
+            <Link href="/engagement/catalog/admin">
+              <Settings className="h-4 w-4" /> Admin View
+            </Link>
+          </Button>
           <Button variant="outline" className="gap-2" onClick={() => setOnlyAvailable(true)}>
             <Sparkles className="h-4 w-4" /> Highlight Available
           </Button>

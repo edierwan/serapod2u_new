@@ -285,60 +285,60 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-                <Package className="w-6 h-6 text-blue-600" />
+          <CardContent className="p-3 sm:p-4 lg:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-blue-50 flex items-center justify-center mb-2 sm:mb-0">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
-              <div className="flex items-center gap-1 text-sm text-green-600">
-                <TrendingUp className="w-4 h-4" />
+              <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
+                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>+12.5%</span>
               </div>
             </div>
-            <p className="text-gray-600 text-sm mb-1">Total Products</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalProducts}</p>
+            <p className="text-gray-600 text-xs sm:text-sm mb-1">Total Products</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalProducts}</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
-                <Package className="w-6 h-6 text-green-600" />
+          <CardContent className="p-3 sm:p-4 lg:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-green-50 flex items-center justify-center mb-2 sm:mb-0">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
-              <div className="flex items-center gap-1 text-sm text-green-600">
-                <TrendingUp className="w-4 h-4" />
+              <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
+                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>+8.1%</span>
               </div>
             </div>
-            <p className="text-gray-600 text-sm mb-1">Active Products</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.activeProducts}</p>
+            <p className="text-gray-600 text-xs sm:text-sm mb-1">Active Products</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activeProducts}</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
-                <Filter className="w-6 h-6 text-purple-600" />
+          <CardContent className="p-3 sm:p-4 lg:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-purple-50 flex items-center justify-center mb-2 sm:mb-0">
+                <Filter className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
               </div>
             </div>
-            <p className="text-gray-600 text-sm mb-1">Categories</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalCategories}</p>
+            <p className="text-gray-600 text-xs sm:text-sm mb-1">Categories</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalCategories}</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-orange-50 flex items-center justify-center">
-                <Package className="w-6 h-6 text-orange-600" />
+          <CardContent className="p-3 sm:p-4 lg:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-orange-50 flex items-center justify-center mb-2 sm:mb-0">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
               </div>
             </div>
-            <p className="text-gray-600 text-sm mb-1">Brands</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalBrands}</p>
+            <p className="text-gray-600 text-xs sm:text-sm mb-1">Brands</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalBrands}</p>
           </CardContent>
         </Card>
       </div>

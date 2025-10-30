@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { validateQRCodeSecurity, getBaseCode } from '@/lib/security/qr-hash'
 
 /**
  * Track consumer QR code scan
@@ -24,6 +25,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // ===== NEW: Validate QR code security hash =====
+    const securityCheck = validateQRCodeSecurity(qr_code, true) // Allow legacy codes
+    
+    if (!securityCheck.isValid) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Invalid or tampered QR code',
+          details: securityCheck.reason 
+        },
+        { status: 400 }
+      )
+    }
+    
+    // Use base code (without hash) for database lookup
+    const baseCode = securityCheck.baseCode
+    console.log('🔐 Security check passed. Using base code:', baseCode)
+    // ===== END SECURITY CHECK =====
+
     // Use service role for server-side operations
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,11 +56,11 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    // Get QR code ID
+    // Get QR code ID - use base code
     const { data: qrCodeData, error: qrError } = await supabaseAdmin
       .from('qr_codes')
       .select('id')
-      .eq('code', qr_code)
+      .eq('code', baseCode) // Use base code for lookup
       .single()
 
     if (qrError || !qrCodeData) {

@@ -35,6 +35,41 @@ export function EngagementShell({ userProfile, activeView = 'point-catalog', chi
       return
     }
 
+    if (view === 'lucky-draw') {
+      if (pathname !== '/engagement/lucky-draw') {
+        router.push('/engagement/lucky-draw')
+      }
+      return
+    }
+
+    if (view === 'redeem-gift-management') {
+      if (pathname !== '/engagement/redeem') {
+        router.push('/engagement/redeem')
+      }
+      return
+    }
+
+    if (view === 'journey-builder') {
+      if (pathname !== '/engagement/journey-builder') {
+        router.push('/engagement/journey-builder')
+      }
+      return
+    }
+
+    if (view === 'consumer-activations') {
+      if (pathname !== '/engagement/consumer-activations') {
+        router.push('/engagement/consumer-activations')
+      }
+      return
+    }
+
+    if (view === 'product-catalog') {
+      if (pathname !== '/engagement/product-catalog') {
+        router.push('/engagement/product-catalog')
+      }
+      return
+    }
+
     // Default fallback: return to dashboard and let dashboard content pick up stored view
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem('dashboardView', view)

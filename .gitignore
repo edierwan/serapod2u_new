@@ -242,6 +242,16 @@ WHICH_*.md
 
 # Shell scripts (development only)
 run_*.sh
+restart-clean.sh
+diagnose-db.js
+test-supabase.js
+generate-*.js
+run-*.js
+
+# Text files (internal notes)
+*.txt
+!package.txt
+!robots.txt
 
 # macOS
 .DS_Store

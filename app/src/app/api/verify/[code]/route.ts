@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseQRCode } from '@/lib/qr-code-utils'
 import { Database } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { validateQRCodeSecurity, getBaseCode } from '@/lib/security/qr-hash'
 
 type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 
@@ -221,6 +222,28 @@ async function handleProductCodeVerification(
 ) {
   console.log('🔍 handleProductCodeVerification - Starting for code:', code)
   
+  // ===== NEW: Validate QR code security hash =====
+  const securityCheck = validateQRCodeSecurity(code, true) // Allow legacy codes
+  
+  if (!securityCheck.isValid) {
+    console.log('❌ Security validation failed:', securityCheck.reason)
+    return buildInvalidResponse(
+      'Invalid or tampered QR code. Please use the original QR code from the product.',
+      null
+    )
+  }
+  
+  if (securityCheck.hasHash) {
+    console.log('✅ Security hash validated successfully')
+  } else {
+    console.log('⚠️ Legacy code without hash (backward compatibility mode)')
+  }
+  
+  // Use base code (without hash) for database lookup
+  const baseCode = securityCheck.baseCode
+  console.log('🔍 Looking up base code:', baseCode)
+  // ===== END SECURITY CHECK =====
+  
   const { data: qrRowsRaw, error: qrError } = await supabaseAdmin
     .from('qr_codes')
     .select(
@@ -241,7 +264,7 @@ async function handleProductCodeVerification(
         )
       `
     )
-    .eq('code', code)
+    .eq('code', baseCode) // Use base code for lookup
     .limit(1)
 
   if (qrError) {

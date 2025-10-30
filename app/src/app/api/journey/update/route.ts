@@ -121,7 +121,17 @@ export async function PATCH(request: NextRequest) {
       'require_customer_otp_for_lucky_draw',
       'require_customer_otp_for_redemption',
       'start_at',
-      'end_at'
+      'end_at',
+      // Theme/Appearance fields
+      'welcome_title',
+      'welcome_message',
+      'thank_you_message',
+      'primary_color',
+      'button_color',
+      'show_product_image',
+      'product_image_source',
+      'custom_image_url',
+      'genuine_badge_style'
     ]
 
     const updateData: any = {}

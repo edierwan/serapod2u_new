@@ -16,7 +16,10 @@ import {
   TrendingUp,
   TrendingDown,
   RefreshCw,
-  Calendar
+  Calendar,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react'
 
 interface StockMovement {
@@ -65,6 +68,8 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [sortColumn, setSortColumn] = useState<string | null>('created_at')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 20
@@ -143,9 +148,9 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       const transformedData: StockMovement[] = (data || []).map((item: any) => ({
         ...item,
         product_variants: Array.isArray(item.product_variants) ? item.product_variants[0] : item.product_variants,
-        organizations: Array.isArray(item.organizations) ? item.organizations[0] : item.organizations,
-        manufacturers: Array.isArray(item.manufacturers) ? item.manufacturers[0] : item.manufacturers,
-        users: Array.isArray(item.users) ? item.users[0] : item.users,
+        organizations: Array.isArray(item.to_organization_id) ? item.to_organization_id[0] : item.to_organization_id,
+        manufacturers: Array.isArray(item.manufacturer_id) ? item.manufacturer_id[0] : item.manufacturer_id,
+        users: Array.isArray(item.created_by) ? item.created_by[0] : item.created_by,
         // Handle nested products array
         ...(item.product_variants && Array.isArray(item.product_variants) && item.product_variants[0] && {
           product_variants: {
@@ -163,6 +168,101 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // New column, start with ascending
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+    setCurrentPage(1) // Reset to first page
+  }
+
+  const getSortedMovements = () => {
+    if (!sortColumn) return movements
+
+    const sorted = [...movements].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortColumn) {
+        case 'created_at':
+          aValue = new Date(a.created_at).getTime()
+          bValue = new Date(b.created_at).getTime()
+          break
+        case 'movement_type':
+          aValue = a.movement_type || ''
+          bValue = b.movement_type || ''
+          break
+        case 'product_name':
+          aValue = a.product_variants?.products?.product_name || ''
+          bValue = b.product_variants?.products?.product_name || ''
+          break
+        case 'variant_code':
+          aValue = a.product_variants?.variant_code || ''
+          bValue = b.product_variants?.variant_code || ''
+          break
+        case 'location':
+          aValue = a.organizations?.org_name || ''
+          bValue = b.organizations?.org_name || ''
+          break
+        case 'quantity_change':
+          aValue = a.quantity_change
+          bValue = b.quantity_change
+          break
+        case 'quantity_before':
+          aValue = a.quantity_before
+          bValue = b.quantity_before
+          break
+        case 'quantity_after':
+          aValue = a.quantity_after
+          bValue = b.quantity_after
+          break
+        case 'unit_cost':
+          aValue = a.unit_cost || 0
+          bValue = b.unit_cost || 0
+          break
+        case 'reference_no':
+          aValue = a.reference_no || ''
+          bValue = b.reference_no || ''
+          break
+        case 'reason':
+          aValue = a.reason || ''
+          bValue = b.reason || ''
+          break
+        default:
+          return 0
+      }
+
+      // Handle string comparison
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortDirection === 'asc' 
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue)
+      }
+
+      // Handle number comparison
+      if (sortDirection === 'asc') {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
+      } else {
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+      }
+    })
+
+    return sorted
+  }
+
+  const renderSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 ml-1 opacity-40" />
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="w-4 h-4 ml-1" />
+      : <ArrowDown className="w-4 h-4 ml-1" />
   }
 
   const getMovementTypeBadge = (type: string) => {
@@ -386,17 +486,105 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date/Time</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Variant</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead className="text-right">Change</TableHead>
-                  <TableHead className="text-right">Before</TableHead>
-                  <TableHead className="text-right">After</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Reason</TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('created_at')}
+                  >
+                    <div className="flex items-center">
+                      Date/Time
+                      {renderSortIcon('created_at')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('movement_type')}
+                  >
+                    <div className="flex items-center">
+                      Type
+                      {renderSortIcon('movement_type')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('product_name')}
+                  >
+                    <div className="flex items-center">
+                      Product
+                      {renderSortIcon('product_name')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('variant_code')}
+                  >
+                    <div className="flex items-center">
+                      Variant
+                      {renderSortIcon('variant_code')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('location')}
+                  >
+                    <div className="flex items-center">
+                      Location
+                      {renderSortIcon('location')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    onClick={() => handleSort('quantity_change')}
+                  >
+                    <div className="flex items-center justify-end">
+                      Change
+                      {renderSortIcon('quantity_change')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    onClick={() => handleSort('quantity_before')}
+                  >
+                    <div className="flex items-center justify-end">
+                      Before
+                      {renderSortIcon('quantity_before')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    onClick={() => handleSort('quantity_after')}
+                  >
+                    <div className="flex items-center justify-end">
+                      After
+                      {renderSortIcon('quantity_after')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    onClick={() => handleSort('unit_cost')}
+                  >
+                    <div className="flex items-center justify-end">
+                      Cost
+                      {renderSortIcon('unit_cost')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('reference_no')}
+                  >
+                    <div className="flex items-center">
+                      Reference
+                      {renderSortIcon('reference_no')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('reason')}
+                  >
+                    <div className="flex items-center">
+                      Reason
+                      {renderSortIcon('reason')}
+                    </div>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -413,7 +601,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                     </TableCell>
                   </TableRow>
                 ) : (
-                  movements.map((movement) => (
+                  getSortedMovements().map((movement) => (
                     <TableRow key={movement.id}>
                       <TableCell className="text-sm">
                         {formatDate(movement.created_at)}

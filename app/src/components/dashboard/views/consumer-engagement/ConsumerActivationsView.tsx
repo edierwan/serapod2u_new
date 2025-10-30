@@ -116,51 +116,51 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       </div>
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Scans</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.total_scans}</p>
+          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-2 sm:mb-0">
+                <p className="text-xs sm:text-sm text-gray-600">Total Scans</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_scans}</p>
               </div>
-              <Scan className="h-8 w-8 text-blue-600" />
+              <Scan className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Unique Consumers</p>
-                <p className="text-2xl font-bold text-green-600">{stats.unique_consumers}</p>
+          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-2 sm:mb-0">
+                <p className="text-xs sm:text-sm text-gray-600">Unique Consumers</p>
+                <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.unique_consumers}</p>
               </div>
-              <Users className="h-8 w-8 text-green-600" />
+              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Points Distributed</p>
-                <p className="text-2xl font-bold text-purple-600">{stats.total_points}</p>
+          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-2 sm:mb-0">
+                <p className="text-xs sm:text-sm text-gray-600">Points Distributed</p>
+                <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.total_points}</p>
               </div>
-              <TrendingUp className="h-8 w-8 text-purple-600" />
+              <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600" />
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Today&apos;s Scans</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.today_scans}</p>
+          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-2 sm:mb-0">
+                <p className="text-xs sm:text-sm text-gray-600">Today&apos;s Scans</p>
+                <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.today_scans}</p>
               </div>
-              <Calendar className="h-8 w-8 text-orange-600" />
+              <Calendar className="h-6 w-6 sm:h-8 sm:w-8 text-orange-600" />
             </div>
           </CardContent>
         </Card>

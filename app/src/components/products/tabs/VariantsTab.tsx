@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2, Package } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, Package, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import VariantDialog from '../dialogs/VariantDialog'
 
 interface Product {
@@ -47,6 +47,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVariant, setEditingVariant] = useState<Variant | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [sortColumn, setSortColumn] = useState<string>('variant_name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -218,6 +220,43 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     return matchesSearch && matchesProduct && variant.is_active
   })
 
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const getSortedVariants = () => {
+    const sorted = [...filteredVariants].sort((a, b) => {
+      let aValue: any = a[sortColumn as keyof Variant]
+      let bValue: any = b[sortColumn as keyof Variant]
+
+      if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = (bValue as string).toLowerCase()
+        return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
+      }
+
+      if (typeof aValue === 'boolean') {
+        aValue = aValue ? 1 : 0
+        bValue = bValue ? 1 : 0
+      }
+
+      return sortDirection === 'asc' ? (aValue || 0) - (bValue || 0) : (bValue || 0) - (aValue || 0)
+    })
+    return sorted
+  }
+
+  const renderSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 opacity-40" />
+    }
+    return sortDirection === 'asc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -276,19 +315,68 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           <TableHeader>
             <TableRow>
               <TableHead>Image</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Product</TableHead>
-              <TableHead>Barcode</TableHead>
-              <TableHead className="text-right">Base Cost</TableHead>
-              <TableHead className="text-right">Retail Price</TableHead>
-              <TableHead className="text-center">Default</TableHead>
-              <TableHead className="text-center">Status</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('variant_name')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Name {renderSortIcon('variant_name')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('product_name')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Product {renderSortIcon('product_name')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('barcode')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  Barcode {renderSortIcon('barcode')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="text-right cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('base_cost')}
+              >
+                <div className="flex items-center justify-end gap-2">
+                  Base Cost {renderSortIcon('base_cost')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="text-right cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('suggested_retail_price')}
+              >
+                <div className="flex items-center justify-end gap-2">
+                  Retail Price {renderSortIcon('suggested_retail_price')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="text-center cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('is_default')}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  Default {renderSortIcon('is_default')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="text-center cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('is_active')}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  Status {renderSortIcon('is_active')}
+                </div>
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredVariants.length > 0 ? (
-              filteredVariants.map((variant) => (
+            {getSortedVariants().length > 0 ? (
+              getSortedVariants().map((variant) => (
                 <TableRow key={variant.id} className="hover:bg-gray-50">
                   <TableCell>
                     <Avatar className="w-10 h-10 rounded-lg" key={variant.image_url || variant.id}>
@@ -353,7 +441,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       </div>
 
       <div className="text-sm text-gray-600">
-        Showing {filteredVariants.length} of {variants.filter(v => v.is_active).length} variants
+        Showing {getSortedVariants().length} of {variants.filter(v => v.is_active).length} variants
       </div>
     </div>
   )
