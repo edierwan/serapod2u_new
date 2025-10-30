@@ -96,7 +96,7 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {steps.map((step, index) => {
           const status = getStepStatus(step.document)
           const StepIcon = step.icon
@@ -105,22 +105,22 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
             <div key={step.key} className="relative">
               <button
                 onClick={() => onTabChange?.(step.key)}
-                className={`w-full border-2 rounded-lg p-4 transition-all ${getStepColor(status, step.color)} ${
+                className={`w-full border-2 rounded-lg p-3 sm:p-4 transition-all ${getStepColor(status, step.color)} ${
                   onTabChange ? 'cursor-pointer hover:shadow-lg hover:scale-105 active:scale-100' : ''
                 }`}
               >
                 <div className="flex flex-col items-center text-center">
                   <div className={`mb-2 ${getIconColor(status, step.color)}`}>
                     {status === 'completed' ? (
-                      <CheckCircle2 className="w-8 h-8" />
+                      <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8" />
                     ) : status === 'pending' ? (
-                      <Clock className="w-8 h-8" />
+                      <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
                     ) : (
-                      <StepIcon className="w-8 h-8" />
+                      <StepIcon className="w-6 h-6 sm:w-8 sm:h-8" />
                     )}
                   </div>
                   
-                  <p className="font-semibold text-sm mb-1">{step.label}</p>
+                  <p className="font-semibold text-xs sm:text-sm mb-1">{step.label}</p>
                   
                   {step.document ? (
                     <>
@@ -128,14 +128,14 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
                         variant="outline" 
                         className="text-xs mb-1"
                       >
-                        {step.document.doc_no}
+                        <span className="truncate max-w-full block">{step.document.doc_no}</span>
                       </Badge>
-                      <span className="text-xs">
+                      <span className="text-xs hidden sm:block">
                         {getDocumentStatusText(step.document)}
                       </span>
                     </>
                   ) : (
-                    <span className="text-xs">Not Created</span>
+                    <span className="text-xs hidden sm:block">Not Created</span>
                   )}
                 </div>
               </button>

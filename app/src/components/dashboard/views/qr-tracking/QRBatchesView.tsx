@@ -444,54 +444,54 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       )}
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Batches</p>
-                <p className="text-2xl font-bold text-gray-900">{batches.length}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Total Batches</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{batches.length}</p>
               </div>
-              <QrCode className="h-8 w-8 text-blue-600" />
+              <QrCode className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Generated</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-xs sm:text-sm text-gray-600">Generated</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
                   {batches.filter(b => ['generated', 'printing'].includes(b.status)).length}
                 </p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-600" />
+              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">In Progress</p>
-                <p className="text-2xl font-bold text-orange-600">
+                <p className="text-xs sm:text-sm text-gray-600">In Progress</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
                   {batches.filter(b => b.status === 'in_production').length}
                 </p>
               </div>
-              <Clock className="h-8 w-8 text-orange-600" />
+              <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-orange-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Completed</p>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-xs sm:text-sm text-gray-600">Completed</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">
                   {batches.filter(b => b.status === 'completed').length}
                 </p>
               </div>
-              <CheckCircle className="h-8 w-8 text-blue-600" />
+              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>

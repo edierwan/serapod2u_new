@@ -639,21 +639,21 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
       </div>
 
       {/* Key Metrics with Comparison */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         {metrics.map((metric, index) => {
           const Icon = metric.icon
           const TrendIcon = metric.trend === 'up' ? ArrowUpRight : metric.trend === 'down' ? ArrowDownRight : Minus
           return (
             <Card key={index} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${
+              <CardContent className="p-3 sm:p-4 lg:p-6">
+                <div className="flex items-start justify-between mb-2 sm:mb-4">
+                  <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br ${
                     metric.color === 'text-green-600' ? 'from-green-50 to-green-100' :
                     metric.color === 'text-blue-600' ? 'from-blue-50 to-blue-100' :
                     metric.color === 'text-purple-600' ? 'from-purple-50 to-purple-100' :
                     'from-red-50 to-red-100'
                   } flex items-center justify-center`}>
-                    <Icon className={`w-6 h-6 ${metric.color}`} />
+                    <Icon className={`w-5 h-5 sm:w-6 sm:h-6 ${metric.color}`} />
                   </div>
                   {metric.changePercent && (
                     <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${
@@ -662,12 +662,12 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
                       'bg-gray-100 text-gray-700'
                     }`}>
                       <TrendIcon className="w-3 h-3" />
-                      <span>{metric.changePercent}</span>
+                      <span className="hidden sm:inline">{metric.changePercent}</span>
                     </div>
                   )}
                 </div>
-                <p className="text-gray-600 text-sm font-medium mb-1">{metric.title}</p>
-                <p className="text-2xl font-bold text-gray-900 mb-1">{metric.value}</p>
+                <p className="text-gray-600 text-xs sm:text-sm font-medium mb-1 line-clamp-1">{metric.title}</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-1">{metric.value}</p>
                 {metric.previousValue !== undefined && enableComparison && (
                   <p className="text-xs text-gray-500">
                     Previous: {metric.title === 'Total Revenue' 

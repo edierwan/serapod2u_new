@@ -335,43 +335,43 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Movements</CardTitle>
+          <CardHeader className="pb-2 sm:pb-3">
+            <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">Total Movements</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-600" />
-              <span className="text-2xl font-bold">{movements.length}</span>
+              <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+              <span className="text-xl sm:text-2xl font-bold">{movements.length}</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">Current page records</p>
+            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Current page records</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Stock Additions</CardTitle>
+          <CardHeader className="pb-2 sm:pb-3">
+            <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">Stock Additions</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-              <span className="text-2xl font-bold text-green-600">+{totalIncrease}</span>
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+              <span className="text-xl sm:text-2xl font-bold text-green-600">+{totalIncrease}</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">Units added</p>
+            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Units added</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Stock Reductions</CardTitle>
+          <CardHeader className="pb-2 sm:pb-3">
+            <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">Stock Reductions</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex items-center gap-2">
-              <TrendingDown className="w-5 h-5 text-red-600" />
-              <span className="text-2xl font-bold text-red-600">-{totalDecrease}</span>
+              <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
+              <span className="text-xl sm:text-2xl font-bold text-red-600">-{totalDecrease}</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">Units removed</p>
+            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Units removed</p>
           </CardContent>
         </Card>
       </div>

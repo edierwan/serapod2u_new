@@ -461,68 +461,68 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Orders</p>
-                  <p className="text-2xl font-bold">{summary.total_orders}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Total Orders</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.total_orders}</p>
                 </div>
-                <FileText className="w-8 h-8 text-blue-600" />
+                <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Draft</p>
-                  <p className="text-2xl font-bold">{summary.draft_orders}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Draft</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.draft_orders}</p>
                 </div>
-                <Edit className="w-8 h-8 text-gray-600" />
+                <Edit className="w-6 h-6 sm:w-8 sm:h-8 text-gray-600" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Submitted</p>
-                  <p className="text-2xl font-bold">{summary.submitted_orders}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Submitted</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.submitted_orders}</p>
                 </div>
-                <Clock className="w-8 h-8 text-blue-600" />
+                <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Approved</p>
-                  <p className="text-2xl font-bold">{summary.approved_orders}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Approved</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.approved_orders}</p>
                 </div>
-                <CheckCircle className="w-8 h-8 text-green-600" />
+                <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Amount</p>
-                  <p className="text-2xl font-bold">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground">Total Amount</p>
+                  <p className="text-base sm:text-lg lg:text-2xl font-bold truncate">
                     RM {summary.total_amount.toLocaleString('en-MY', { 
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2 
                     })}
                   </p>
                 </div>
-                <DollarSign className="w-8 h-8 text-green-600" />
+                <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
               </div>
             </CardContent>
           </Card>

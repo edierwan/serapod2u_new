@@ -337,55 +337,55 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
             )}
 
             {/* Statistics Dashboard */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <Card>
-                    <CardContent className="pt-6">
+                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-600">Total Gifts Defined</p>
-                                <p className="text-3xl font-bold">{totalGifts}</p>
+                                <p className="text-xs sm:text-sm text-gray-600">Total Gifts Defined</p>
+                                <p className="text-xl sm:text-2xl lg:text-3xl font-bold">{totalGifts}</p>
                             </div>
-                            <Gift className="h-10 w-10 text-blue-500" />
+                            <Gift className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-blue-500" />
                         </div>
                     </CardContent>
                 </Card>
 
                 <Card>
-                    <CardContent className="pt-6">
+                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-600">Total Redemptions</p>
-                                <p className="text-3xl font-bold text-green-600">{totalRedemptions}</p>
+                                <p className="text-xs sm:text-sm text-gray-600">Total Redemptions</p>
+                                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{totalRedemptions}</p>
                             </div>
-                            <TrendingUp className="h-10 w-10 text-green-500" />
+                            <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-green-500" />
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">All time</p>
+                        <p className="text-xs text-gray-500 mt-2 hidden sm:block">All time</p>
                     </CardContent>
                 </Card>
 
                 <Card>
-                    <CardContent className="pt-6">
+                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-600">This Month</p>
-                                <p className="text-3xl font-bold text-purple-600">{redemptionsThisMonth}</p>
+                                <p className="text-xs sm:text-sm text-gray-600">This Month</p>
+                                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600">{redemptionsThisMonth}</p>
                             </div>
-                            <Calendar className="h-10 w-10 text-purple-500" />
+                            <Calendar className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-purple-500" />
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">Redemptions</p>
+                        <p className="text-xs text-gray-500 mt-2 hidden sm:block">Redemptions</p>
                     </CardContent>
                 </Card>
 
                 <Card>
-                    <CardContent className="pt-6">
+                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
                         <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-gray-600">Most Popular</p>
-                                <p className="text-lg font-bold text-yellow-600 truncate">{mostPopularGift}</p>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-xs sm:text-sm text-gray-600">Most Popular</p>
+                                <p className="text-base sm:text-lg font-bold text-yellow-600 truncate">{mostPopularGift}</p>
                             </div>
-                            <BarChart3 className="h-10 w-10 text-yellow-500" />
+                            <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-yellow-500 flex-shrink-0" />
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">Gift item</p>
+                        <p className="text-xs text-gray-500 mt-2 hidden sm:block">Gift item</p>
                     </CardContent>
                 </Card>
             </div>

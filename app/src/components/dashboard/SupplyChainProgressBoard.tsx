@@ -411,22 +411,22 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 sm:p-4">
                 <p className="text-xs uppercase tracking-wide text-blue-500">Total Master Cases</p>
-                <p className="mt-2 text-2xl font-semibold text-blue-900">{overview.totalCases}</p>
-                <p className="text-xs text-blue-600">Across {overview.orders.length} recent orders</p>
+                <p className="mt-2 text-xl sm:text-2xl font-semibold text-blue-900">{overview.totalCases}</p>
+                <p className="text-xs text-blue-600 hidden sm:block">Across {overview.orders.length} recent orders</p>
               </div>
-              <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 sm:p-4">
                 <p className="text-xs uppercase tracking-wide text-indigo-500">Units Accounted For</p>
-                <p className="mt-2 text-2xl font-semibold text-indigo-900">{overview.totalUnits.toLocaleString()}</p>
-                <p className="text-xs text-indigo-600">Expected &amp; scanned unit totals</p>
+                <p className="mt-2 text-xl sm:text-2xl font-semibold text-indigo-900">{overview.totalUnits.toLocaleString()}</p>
+                <p className="text-xs text-indigo-600 hidden sm:block">Expected &amp; scanned unit totals</p>
               </div>
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 sm:p-4">
                 <p className="text-xs uppercase tracking-wide text-emerald-500">Overall Completion</p>
-                <p className="mt-2 text-2xl font-semibold text-emerald-900">{overview.overallCompletion}%</p>
+                <p className="mt-2 text-xl sm:text-2xl font-semibold text-emerald-900">{overview.overallCompletion}%</p>
                 <Progress value={overview.overallCompletion} className="mt-3 h-2" />
-                <p className="text-xs text-emerald-600 mt-2">Weighted across all master cases</p>
+                <p className="text-xs text-emerald-600 mt-2 hidden sm:block">Weighted across all master cases</p>
               </div>
             </div>
 

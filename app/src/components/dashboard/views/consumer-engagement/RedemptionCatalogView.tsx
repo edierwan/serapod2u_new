@@ -100,7 +100,7 @@ export default function RedemptionCatalogView({ userProfile, onViewChange }: Red
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Item Code</label>
                   <input
@@ -134,7 +134,7 @@ export default function RedemptionCatalogView({ userProfile, onViewChange }: Red
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Points Required</label>
                   <input

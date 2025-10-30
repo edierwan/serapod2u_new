@@ -244,29 +244,29 @@ export default function DistributorsView({ userProfile }: DistributorsViewProps)
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                <Truck className="w-5 h-5 text-blue-600" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total Distributors</p>
-                <p className="text-xl font-bold">{relationships.length}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Total Distributors</p>
+                <p className="text-lg sm:text-xl font-bold">{relationships.length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-green-600" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Active</p>
-                <p className="text-xl font-bold">
+                <p className="text-xs sm:text-sm text-gray-600">Active</p>
+                <p className="text-lg sm:text-xl font-bold">
                   {relationships.filter(r => r.status === 'active').length}
                 </p>
               </div>
@@ -274,14 +274,14 @@ export default function DistributorsView({ userProfile }: DistributorsViewProps)
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-yellow-50 flex items-center justify-center">
-                <Package className="w-5 h-5 text-yellow-600" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-yellow-50 flex items-center justify-center">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total Orders</p>
-                <p className="text-xl font-bold">
+                <p className="text-xs sm:text-sm text-gray-600">Total Orders</p>
+                <p className="text-lg sm:text-xl font-bold">
                   {relationships.reduce((sum, r) => sum + (r.total_orders || 0), 0)}
                 </p>
               </div>
@@ -289,14 +289,14 @@ export default function DistributorsView({ userProfile }: DistributorsViewProps)
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
-                <Star className="w-5 h-5 text-purple-600" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                <Star className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Avg. Rating</p>
-                <p className="text-xl font-bold">
+                <p className="text-xs sm:text-sm text-gray-600">Avg. Rating</p>
+                <p className="text-lg sm:text-xl font-bold">
                   {(relationships.reduce((sum, r) => sum + r.performance_rating, 0) / relationships.length || 0).toFixed(1)}
                 </p>
               </div>
