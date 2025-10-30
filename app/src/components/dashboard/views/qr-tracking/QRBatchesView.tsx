@@ -352,7 +352,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-4 items-end">
+            <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-end">
               <div className="flex-1">
                 <label className="text-sm font-medium text-gray-700 mb-2 block">
                   Select Order
@@ -387,7 +387,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               <Button 
                 onClick={handleGenerateBatchForSelectedOrder}
                 disabled={!selectedOrderId || generating !== null}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
               >
                 {generating === selectedOrderId ? (
                   <>
@@ -418,22 +418,22 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               return (
                 <div className="bg-white p-4 rounded-lg border border-blue-200">
                   <h4 className="font-medium text-gray-900 mb-3">Order Details</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm">
                     <div>
-                      <p className="text-gray-600">Order Number</p>
-                      <p className="font-medium text-gray-900">{selectedOrder.order_no}</p>
+                      <p className="text-gray-600 text-xs sm:text-sm">Order Number</p>
+                      <p className="font-medium text-gray-900 truncate">{selectedOrder.order_no}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Total Items</p>
+                      <p className="text-gray-600 text-xs sm:text-sm">Total Items</p>
                       <p className="font-medium text-gray-900">{totalItems} products</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Total Units</p>
+                      <p className="text-gray-600 text-xs sm:text-sm">Total Units</p>
                       <p className="font-medium text-gray-900">{totalQuantity.toLocaleString()} pieces</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">QR Codes to Generate</p>
-                      <p className="font-medium text-blue-600">{qrCodes.toLocaleString()} ({totalQuantity} + {bufferQty} buffer)</p>
+                      <p className="text-gray-600 text-xs sm:text-sm">QR Codes to Generate</p>
+                      <p className="font-medium text-blue-600 text-xs sm:text-sm">{qrCodes.toLocaleString()} ({totalQuantity} + {bufferQty} buffer)</p>
                     </div>
                   </div>
                 </div>

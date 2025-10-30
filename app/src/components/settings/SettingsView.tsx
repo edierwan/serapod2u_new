@@ -468,16 +468,16 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         <p className="text-gray-600">Manage your account and system preferences</p>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+      {/* Tabs - Sticky and Scrollable on Mobile */}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`py-2 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -485,7 +485,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               >
                 <div className="flex items-center gap-2">
                   <Icon className="w-4 h-4" />
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
                 </div>
               </button>
             )
