@@ -134,6 +134,29 @@ export default function LoginForm() {
         // Don't fail login if this fails
       }
 
+      // Capture and store client IP address
+      try {
+        console.log('🌐 Capturing client IP address...')
+        const ipResponse = await fetch('/api/update-login-ip', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        
+        if (ipResponse.ok) {
+          const ipData = await ipResponse.json()
+          const friendlyIp = ipData.displayIp || ipData.ip || 'Unknown'
+          console.log('🌐 IP captured:', friendlyIp)
+        } else {
+          const errorText = await ipResponse.text()
+          console.error('🌐 Failed to capture IP:', errorText)
+        }
+      } catch (ipError) {
+        console.error('🌐 Exception capturing IP:', ipError)
+        // Don't fail login if IP capture fails
+      }
+
       // Successful login - force refresh and redirect to dashboard
       // This ensures server components fetch fresh data for the new user
       router.refresh()

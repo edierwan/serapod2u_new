@@ -103,14 +103,22 @@ export async function login(formData: FormData) {
     redirect('/error')
   }
 
-  // Update last_login_at immediately after successful login
+  // Update last_login_at and capture IP immediately after successful login
   if (authData?.user?.id) {
     try {
+      // Capture client IP address from headers
+      let clientIp: string | null = null
+      
+      // Note: In server actions, we can't directly access request headers
+      // The IP will be captured via middleware or we'll use a client-side approach
+      // For now, we'll set a placeholder and update it via a client-side call
+      // after successful login
+      
       await supabase
         .from('users')
         .update({ 
           last_login_at: new Date().toISOString(),
-          last_login_ip: null // You can capture IP if needed
+          last_login_ip: clientIp // Will be updated by client-side IP capture
         })
         .eq('id', authData.user.id)
     } catch (loginError) {

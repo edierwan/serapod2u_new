@@ -145,10 +145,10 @@ export default function OrderDocumentsDialog({
   }
 
   const tabs = [
-    { id: 'order' as TabType, label: 'Order', icon: FileText },
-    { id: 'purchase_order' as TabType, label: 'Purchase Order', icon: FileText },
-    { id: 'invoice' as TabType, label: 'Invoice', icon: FileText },
-    { id: 'receipt' as TabType, label: 'Receipt', icon: FileText }
+    { id: 'order' as TabType, label: 'Order', mobileLabel: 'Order', icon: FileText },
+    { id: 'purchase_order' as TabType, label: 'Purchase Order', mobileLabel: 'PO', icon: FileText },
+    { id: 'invoice' as TabType, label: 'Invoice', mobileLabel: 'Invoice', icon: FileText },
+    { id: 'receipt' as TabType, label: 'Receipt', mobileLabel: 'Receipt', icon: FileText }
   ]
 
   const renderOrderDocument = () => {
@@ -430,7 +430,8 @@ export default function OrderDocumentsDialog({
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                {tab.label}
+                <span className="sm:hidden">{tab.mobileLabel ?? tab.label}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
               </button>
             )
           })}

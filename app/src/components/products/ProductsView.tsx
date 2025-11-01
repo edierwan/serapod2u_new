@@ -471,7 +471,15 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                     </div>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{product.product_name}</CardTitle>
+                        <CardTitle className="text-lg mb-1">
+                          <button
+                            type="button"
+                            onClick={() => handleViewProduct(product)}
+                            className="w-full text-left text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded"
+                          >
+                            {product.product_name}
+                          </button>
+                        </CardTitle>
                         <CardDescription>{product.product_code}</CardDescription>
                       </div>
                     </div>
@@ -616,7 +624,13 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         {/* Product Info */}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{product.product_name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleViewProduct(product)}
+                              className="font-medium text-left text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded"
+                            >
+                              {product.product_name}
+                            </button>
                             {product.is_vape && (
                               <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
                                 Vape

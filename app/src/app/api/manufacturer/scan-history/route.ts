@@ -34,7 +34,7 @@ export async function GET() {
     }
 
     // Query qr_master_codes table
-    // Include 'generated' status to show partially filled master cases
+    // Include 'generated', 'packed', and 'ready_to_ship' statuses to show all manufacturer scans
     const { data: masterCodes, error: queryError } = await supabase
       .from('qr_master_codes')
       .select(`
@@ -55,7 +55,7 @@ export async function GET() {
         )
       `)
       .eq('manufacturer_org_id', profile.organization_id)
-      .in('status', ['generated', 'packed', 'received_warehouse', 'shipped_distributor', 'opened'])
+      .in('status', ['generated', 'packed', 'ready_to_ship', 'received_warehouse', 'shipped_distributor', 'opened'])
       .not('manufacturer_scanned_at', 'is', null)
       .gt('actual_unit_count', 0)
       .order('manufacturer_scanned_at', { ascending: false })

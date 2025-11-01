@@ -288,6 +288,12 @@ const receiveSingleMaster = async (
     }
 
     if (!['packed', 'ready_to_ship'].includes(masterRecord.status)) {
+      console.warn('⚠️ [Warehouse Receive] Invalid status attempt:', {
+        master_code: masterRecord.master_code,
+        current_status: masterRecord.status,
+        required_status: ['packed', 'ready_to_ship'],
+        order_id: resolvedOrderId
+      })
       return {
         master_code: masterRecord.master_code,
         normalized_code: normalizedMasterCode,
@@ -316,6 +322,14 @@ const receiveSingleMaster = async (
 
     const receivedAt = new Date().toISOString()
 
+    console.log('✅ [Warehouse Receive] Setting warehouse_received_at:', {
+      master_code: masterRecord.master_code,
+      master_id: masterRecord.id,
+      warehouse_org_id: resolvedWarehouseOrgId,
+      warehouse_received_at: receivedAt,
+      order_id: resolvedOrderId
+    })
+
     const { error: masterUpdateError } = await supabase
       .from('qr_master_codes')
       .update({
@@ -338,6 +352,12 @@ const receiveSingleMaster = async (
         details: masterUpdateError
       }
     }
+
+    console.log('✅ [Warehouse Receive] Successfully updated master case:', {
+      master_code: masterRecord.master_code,
+      master_id: masterRecord.id,
+      new_status: 'received_warehouse'
+    })
 
     const { error: codesUpdateError } = await supabase
       .from('qr_codes')

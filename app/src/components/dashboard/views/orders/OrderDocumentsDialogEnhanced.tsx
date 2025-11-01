@@ -442,7 +442,10 @@ export default function OrderDocumentsDialogEnhanced({
             {/* Document Tabs */}
             <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="po">Purchase Order</TabsTrigger>
+                <TabsTrigger value="po">
+                  <span className="sm:hidden">PO</span>
+                  <span className="hidden sm:inline">Purchase Order</span>
+                </TabsTrigger>
                 <TabsTrigger value="invoice">Invoice</TabsTrigger>
                 <TabsTrigger value="payment">Payment</TabsTrigger>
                 <TabsTrigger value="receipt">Receipt</TabsTrigger>

@@ -61,6 +61,8 @@ interface JourneyConfig {
     start_at: string | null
     end_at: string | null
     created_at: string
+    activation_status?: string | null
+    activation_mode?: string | null
     order_info?: {
         order_no: string
         order_type: string

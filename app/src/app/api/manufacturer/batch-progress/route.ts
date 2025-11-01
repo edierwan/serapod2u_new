@@ -73,11 +73,12 @@ export async function GET(request: NextRequest) {
           .eq('batch_id', batch.id)
 
         // Count actual linked QR codes per master (restrict to packed-like statuses)
+        // Include 'ready_to_ship' status - set by Production Complete button
         const { data: qrCodesForMasters } = await supabase
           .from('qr_codes')
           .select('master_code_id, status, sequence_number')
           .eq('batch_id', batch.id)
-          .in('status', ['packed', 'received_warehouse', 'shipped_distributor', 'opened'])
+          .in('status', ['packed', 'ready_to_ship', 'received_warehouse', 'shipped_distributor', 'opened'])
           .not('master_code_id', 'is', null)
 
         const masterLinkedCounts = new Map<string, number>()
@@ -107,13 +108,14 @@ export async function GET(request: NextRequest) {
           return linkedCount >= expected
         }).length
 
-        // Get packed unique codes count (status = 'packed')
+        // Get packed unique codes count (includes 'ready_to_ship' status)
         const { count: packedUniquesRaw } = await supabase
           .from('qr_codes')
           .select('*', { count: 'exact', head: true })
           .eq('batch_id', batch.id)
-          .in('status', ['packed', 'received_warehouse', 'shipped_distributor', 'opened'])
+          .in('status', ['packed', 'ready_to_ship', 'received_warehouse', 'shipped_distributor', 'opened'])
 
+        // Count master codes that have left manufacturer (warehouse and beyond)
         const { count: warehouseReceivedMasters } = await supabase
           .from('qr_master_codes')
           .select('*', { count: 'exact', head: true })

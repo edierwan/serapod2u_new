@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,9 +9,10 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Scan, Truck, ShieldCheck, AlertTriangle, ListChecks, ClipboardPaste, X, Check } from 'lucide-react'
+import { Scan, Truck, ShieldCheck, AlertTriangle, ListChecks, ClipboardPaste, X, History, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
+import BatchProcessingModal from './BatchProcessingModal'
 
 interface UserProfile {
   id: string
@@ -136,6 +137,61 @@ type Organization = {
   org_name: string
 }
 
+type ScannedCodeDetail = {
+  code: string
+  codeType: 'master' | 'unique'
+  productName: string | null
+  variantName: string | null
+  variantId: string | null
+  quantity: number
+  scannedAt: string
+}
+
+type ShipmentHistoryEntry = {
+  sessionId: string
+  orderId: string | null
+  orderNo: string
+  distributorOrgId: string | null
+  distributorName: string | null
+  scannedSummary: {
+    totalCases: number
+    totalUnits: number
+  }
+  expectedSummary: {
+    totalCases: number | null
+    totalUnits: number | null
+  }
+  status: string
+  hasDiscrepancy: boolean
+  warnings: string[]
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+type ShipmentHistoryPageInfo = {
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+  hasMore: boolean
+}
+
+const HISTORY_PAGE_SIZE = 10
+const HISTORY_STATUS_BADGES: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+  shipped: { label: 'Shipped', variant: 'default' },
+  matched: { label: 'Matched', variant: 'secondary' },
+  approved: { label: 'Approved', variant: 'default' },
+  discrepancy: { label: 'Discrepancy', variant: 'destructive' },
+  pending: { label: 'Pending', variant: 'outline' }
+}
+
+const HISTORY_RANGE_OPTIONS: Array<{ value: '30d' | '90d' | '180d' | 'all'; label: string }> = [
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+  { value: '180d', label: 'Last 180 days' },
+  { value: 'all', label: 'All time' }
+]
+
 const createEmptyScannedQuantities = (): ScannedQuantities => ({
   total_units: 0,
   total_cases: 0,
@@ -198,8 +254,40 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
   const [showBatchInput, setShowBatchInput] = useState(false)
   const [batchInput, setBatchInput] = useState('')
   const [batchProcessing, setBatchProcessing] = useState(false)
-  const [batchPreview, setBatchPreview] = useState<Array<{ code: string; type: CodeType }>>([])
+  const [batchPreview, setBatchPreview] = useState<Array<{ 
+    code: string; 
+    type: CodeType;
+  }>>([])
   const [showPreview, setShowPreview] = useState(false)
+
+  const [shipmentHistory, setShipmentHistory] = useState<ShipmentHistoryEntry[]>([])
+  const [historyPageInfo, setHistoryPageInfo] = useState<ShipmentHistoryPageInfo>({
+    page: 1,
+    pageSize: HISTORY_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false
+  })
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historySearchInput, setHistorySearchInput] = useState('')
+  const [historySearchTerm, setHistorySearchTerm] = useState('')
+  const [historyRange, setHistoryRange] = useState<'30d' | '90d' | '180d' | 'all'>('90d')
+
+  // Batch processing progress states
+  const [batchProgress, setBatchProgress] = useState({
+    currentIndex: 0,
+    successCount: 0,
+    duplicateCount: 0,
+    errorCount: 0,
+    currentCode: ''
+  })
+  const [showBatchModal, setShowBatchModal] = useState(false)
+
+  // Scanned codes list
+  const [scannedCodes, setScannedCodes] = useState<ScannedCodeDetail[]>([])
+  const [loadingScannedCodes, setLoadingScannedCodes] = useState(false)
 
   useEffect(() => {
     const loadDistributors = async () => {
@@ -250,6 +338,140 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
     loadDistributors()
   }, [supabase, toast, userProfile.organization_id])
 
+  const loadScannedCodes = useCallback(
+    async (sessionId: string) => {
+      setLoadingScannedCodes(true)
+      try {
+        const response = await fetch(`/api/warehouse/scanned-codes?session_id=${sessionId}`, {
+          cache: 'no-store'
+        })
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to load scanned codes')
+        }
+
+        const codes: ScannedCodeDetail[] = Array.isArray(payload?.scanned_codes) ? payload.scanned_codes : []
+        setScannedCodes(codes)
+      } catch (error: any) {
+        console.error('❌ Failed to load scanned codes:', error)
+        toast({
+          title: 'Unable to load scanned codes',
+          description: error?.message || 'Please try again',
+          variant: 'destructive'
+        })
+      } finally {
+        setLoadingScannedCodes(false)
+      }
+    },
+    [toast]
+  )
+
+  const loadShipmentHistory = useCallback(
+    async (pageParam: number) => {
+      if (!userProfile.organization_id) return
+
+      const targetPage = Math.max(pageParam, 1)
+
+      setHistoryLoading(true)
+      setHistoryError(null)
+
+      try {
+        const params = new URLSearchParams({
+          warehouse_org_id: userProfile.organization_id,
+          page: String(targetPage),
+          pageSize: String(HISTORY_PAGE_SIZE),
+          range: historyRange,
+          statuses: 'matched,approved,discrepancy',
+          include_pending: 'false'
+        })
+
+        if (historySearchTerm) {
+          params.set('search', historySearchTerm)
+        }
+
+        const response = await fetch(`/api/warehouse/shipping-history?${params.toString()}`, {
+          cache: 'no-store'
+        })
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to load shipment history')
+        }
+
+        const entries: ShipmentHistoryEntry[] = Array.isArray(payload?.data) ? payload.data : []
+        setShipmentHistory(entries)
+
+        const nextPageInfo: ShipmentHistoryPageInfo = payload?.pageInfo
+          ? {
+              page: payload.pageInfo.page ?? targetPage,
+              pageSize: payload.pageInfo.pageSize ?? HISTORY_PAGE_SIZE,
+              total: payload.pageInfo.total ?? entries.length,
+              totalPages: payload.pageInfo.totalPages ?? 1,
+              hasMore: Boolean(payload.pageInfo.hasMore)
+            }
+          : {
+              page: targetPage,
+              pageSize: HISTORY_PAGE_SIZE,
+              total: entries.length,
+              totalPages: 1,
+              hasMore: false
+            }
+
+        setHistoryPageInfo(nextPageInfo)
+
+        if (nextPageInfo.page !== historyPage) {
+          setHistoryPage(nextPageInfo.page)
+        }
+      } catch (error: any) {
+        console.error('❌ Failed to load shipment history:', error)
+        setHistoryError(error?.message || 'Failed to load shipment history')
+        setShipmentHistory([])
+      } finally {
+        setHistoryLoading(false)
+      }
+    },
+    [historyPage, historyRange, historySearchTerm, userProfile.organization_id]
+  )
+
+  useEffect(() => {
+    void loadShipmentHistory(historyPage)
+  }, [historyPage, loadShipmentHistory])
+
+  const handleHistorySearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const trimmed = historySearchInput.trim()
+    setHistorySearchTerm(trimmed)
+    setHistoryPage(1)
+  }
+
+  const handleHistoryRangeChange = (value: '30d' | '90d' | '180d' | 'all') => {
+    setHistoryRange(value)
+    setHistoryPage(1)
+  }
+
+  const handleHistorySearchClear = () => {
+    setHistorySearchInput('')
+    setHistorySearchTerm('')
+    setHistoryPage(1)
+  }
+
+  const handleHistoryRefresh = () => {
+    void loadShipmentHistory(historyPage)
+  }
+
+  const handleHistoryPageChange = (direction: 'previous' | 'next') => {
+    const { page, totalPages } = historyPageInfo
+    if (direction === 'previous' && page > 1) {
+      const target = page - 1
+      setHistoryPage(target)
+    }
+    if (direction === 'next' && page < totalPages) {
+      const target = page + 1
+      setHistoryPage(target)
+    }
+  }
+
   const resetSession = () => {
     setSessionInfo(null)
     setScanLog([])
@@ -282,7 +504,11 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
 
   const handleStartShipment = async () => {
     if (!selectedDistributor) {
-      toast({ title: 'Select a distributor', description: 'Choose a distributor to begin.', variant: 'destructive' })
+      toast({ 
+        title: 'Select a distributor', 
+        description: 'Please choose a distributor to start the shipment session.', 
+        variant: 'destructive' 
+      })
       return
     }
 
@@ -301,11 +527,18 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
       const data = (await response.json()) as StartShipmentResponse & { message?: string }
 
       if (!response.ok) {
-        throw new Error(data?.message || 'Failed to start shipment session')
+        toast({
+          title: 'Unable to start session',
+          description: data?.message || 'Failed to create shipment session. Please try again.',
+          variant: 'destructive'
+        })
+        return
       }
 
+      const newSessionId = data.shipment_session_id
+      
       setSessionInfo({
-        id: data.shipment_session_id,
+        id: newSessionId,
         expectedSummary: data.expected_summary,
         scannedSummary: data.scanned_summary || createEmptyScannedQuantities(),
         discrepancyDetails: undefined,
@@ -314,17 +547,20 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
         validationStatus: 'pending'
       })
       setScanLog([])
+      setScannedCodes([])
       setApproveDiscrepancy(false)
 
       toast({
-        title: 'Shipment session started',
-        description: 'You can begin scanning master or unique codes.'
+        title: '✓ Session started',
+        description: 'You can now begin scanning master cases or individual products.'
       })
+      
+      void loadScannedCodes(newSessionId)
     } catch (error: any) {
       console.error('❌ Failed to start shipment session:', error)
       toast({
-        title: 'Unable to start session',
-        description: error?.message || 'Unexpected error occurred.',
+        title: 'Connection error',
+        description: 'Unable to connect to the server. Please check your connection and try again.',
         variant: 'destructive'
       })
     } finally {
@@ -334,7 +570,11 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
 
   const handleScan = async () => {
     if (!sessionInfo) {
-      toast({ title: 'Start a session first', description: 'Create a shipment session before scanning.', variant: 'destructive' })
+      toast({ 
+        title: 'No active session', 
+        description: 'Please start a shipment session first before scanning.', 
+        variant: 'destructive' 
+      })
       return
     }
 
@@ -359,7 +599,23 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
       const data = (await response.json()) as ShipmentScanResult & { message?: string }
 
       if (!response.ok) {
-        throw new Error(data?.message || 'Failed to process scan')
+        // Provide user-friendly error messages
+        const errorTitle = response.status === 404 
+          ? 'Code not found'
+          : response.status === 400
+            ? 'Invalid code'
+            : response.status === 403
+              ? 'Wrong warehouse'
+              : 'Scan failed'
+        
+        toast({
+          title: errorTitle,
+          description: data?.message || 'Unable to process this QR code. Please try again.',
+          variant: 'destructive'
+        })
+        
+        setQrInput('')
+        return
       }
 
       const entry: ScanLogEntry = {
@@ -373,16 +629,37 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
 
       setQrInput('')
 
+      // Provide clear success/warning feedback
+      const toastVariant = data.outcome === 'shipped' 
+        ? 'default' 
+        : data.outcome === 'duplicate' || data.outcome === 'already_shipped'
+          ? 'default' 
+          : 'destructive'
+      
+      const toastTitle = data.outcome === 'shipped'
+        ? '✓ Shipment recorded'
+        : data.outcome === 'duplicate'
+          ? 'Already scanned'
+          : data.outcome === 'already_shipped'
+            ? 'Already shipped'
+            : 'Cannot ship this code'
+
       toast({
-        title: data.outcome === 'shipped' ? 'Shipment recorded' : 'Scan processed',
+        title: toastTitle,
         description: data.message,
-        variant: data.outcome === 'shipped' ? 'success' : data.outcome === 'duplicate' ? 'default' : 'destructive'
+        variant: toastVariant
       })
+
+      if (data.outcome === 'shipped' && sessionInfo) {
+        setHistoryPage(1)
+        void loadShipmentHistory(1)
+        void loadScannedCodes(sessionInfo.id)
+      }
     } catch (error: any) {
       console.error('❌ Failed to scan code for shipment:', error)
       toast({
-        title: 'Scan failed',
-        description: error?.message || 'Unexpected error occurred.',
+        title: 'Connection error',
+        description: 'Unable to connect to the server. Please check your connection and try again.',
         variant: 'destructive'
       })
     } finally {
@@ -392,7 +669,11 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
 
   const handleCompleteShipment = async () => {
     if (!sessionInfo) {
-      toast({ title: 'No active session', description: 'Start a shipment session before completing.', variant: 'destructive' })
+      toast({ 
+        title: 'No active session', 
+        description: 'Please start a shipment session before completing.', 
+        variant: 'destructive' 
+      })
       return
     }
 
@@ -411,10 +692,20 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
       const data = (await response.json()) as CompleteShipmentResponse & { message?: string }
 
       if (!response.ok) {
-        throw new Error(data?.message || 'Failed to complete shipment session')
+        toast({
+          title: 'Unable to complete shipment',
+          description: data?.message || 'Failed to finalize the shipment. Please try again.',
+          variant: 'destructive'
+        })
+        return
       }
 
-      toast({ title: 'Shipment session updated', description: data.message })
+      toast({ 
+        title: '✓ Shipment updated', 
+        description: data.message 
+      })
+
+      void loadShipmentHistory(1)
 
       const shouldReset = data.validation_status === 'approved' || (data.validation_status === 'matched' && !data.has_discrepancy)
 
@@ -441,8 +732,8 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
     } catch (error: any) {
       console.error('❌ Failed to complete shipment session:', error)
       toast({
-        title: 'Completion failed',
-        description: error?.message || 'Unexpected error occurred.',
+        title: 'Connection error',
+        description: 'Unable to connect to the server. Please check your connection and try again.',
         variant: 'destructive'
       })
     } finally {
@@ -489,14 +780,31 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
     }
 
     setBatchProcessing(true)
+    setBatchProgress({
+      currentIndex: 0,
+      successCount: 0,
+      duplicateCount: 0,
+      errorCount: 0,
+      currentCode: ''
+    })
+    setShowBatchModal(true)
+
     let successCount = 0
+    let duplicateCount = 0
     let errorCount = 0
+    const failureDetails: string[] = []
     const newLogs: ScanLogEntry[] = []
 
     try {
       for (let i = 0; i < batchPreview.length; i++) {
         const { code, type } = batchPreview[i]
         
+        setBatchProgress(prev => ({
+          ...prev,
+          currentIndex: i + 1,
+          currentCode: code
+        }))
+
         try {
           const response = await fetch('/api/warehouse/scan-for-shipment', {
             method: 'POST',
@@ -511,34 +819,64 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
 
           const data = (await response.json()) as ShipmentScanResult & { message?: string }
 
+          const entry: ScanLogEntry = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            timestamp: new Date().toISOString(),
+            result: data
+          }
+          newLogs.push(entry)
+
           if (response.ok && data.outcome === 'shipped') {
             successCount++
-            
-            const entry: ScanLogEntry = {
-              id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              timestamp: new Date().toISOString(),
-              result: data
-            }
-            newLogs.push(entry)
+            setBatchProgress(prev => ({ ...prev, successCount: prev.successCount + 1 }))
             updateSessionFromScan(data)
+          } else if (data.outcome === 'duplicate' || data.outcome === 'already_shipped') {
+            duplicateCount++
+            setBatchProgress(prev => ({ ...prev, duplicateCount: prev.duplicateCount + 1 }))
+            const detail = data?.message || `Duplicate: ${data?.normalized_code || code}`
+            failureDetails.push(detail)
           } else {
             errorCount++
+            setBatchProgress(prev => ({ ...prev, errorCount: prev.errorCount + 1 }))
+            const detail = data?.message || `Unable to process ${data?.normalized_code || code}`
+            failureDetails.push(detail)
           }
           
           // Small delay to prevent overwhelming the server
           await new Promise(resolve => setTimeout(resolve, 100))
         } catch (error) {
           errorCount++
+          setBatchProgress(prev => ({ ...prev, errorCount: prev.errorCount + 1 }))
+          const detail = error instanceof Error ? error.message : 'Unexpected error occurred during batch processing.'
+          failureDetails.push(detail)
         }
       }
 
       setScanLog(prev => [...newLogs, ...prev])
       
+      // Wait a moment to show final counts
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      const summaryMessage = errorCount === 0 && duplicateCount === 0
+        ? `Processed ${successCount} codes successfully.`
+        : [`Processed ${successCount} codes successfully${duplicateCount > 0 ? `, ${duplicateCount} duplicates` : ''}${errorCount > 0 ? `, ${errorCount} errors` : ''}.`, failureDetails.length ? `
+${failureDetails.slice(0, 3).map(detail => `• ${detail}`).join('\n')}${failureDetails.length > 3 ? '\n• View scan history for more details.' : ''}` : '', !failureDetails.length && errorCount > 0 ? 'Check scan history for details.' : '']
+            .filter(Boolean)
+            .join(' ')
+
       toast({
         title: 'Batch processing complete',
-        description: `Processed ${successCount} codes successfully, ${errorCount} failed.`,
-        variant: errorCount === 0 ? 'success' : 'default'
+        description: summaryMessage,
+        variant: errorCount === 0 ? 'default' : 'default'
       })
+
+      if (successCount > 0) {
+        setHistoryPage(1)
+        void loadShipmentHistory(1)
+        if (sessionInfo) {
+          void loadScannedCodes(sessionInfo.id)
+        }
+      }
 
       // Clear batch input
       setBatchInput('')
@@ -553,6 +891,7 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
         variant: 'destructive'
       })
     } finally {
+      setShowBatchModal(false)
       setBatchProcessing(false)
     }
   }
@@ -570,6 +909,9 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
   const shortfalls = sessionInfo?.discrepancyDetails?.inventory_shortfalls || []
 
   const hasDiscrepancy = Boolean(activeWarnings.length || shortfalls.length)
+
+  const historyStartIndex = historyPageInfo.total === 0 ? 0 : (historyPageInfo.page - 1) * historyPageInfo.pageSize + 1
+  const historyEndIndex = historyStartIndex === 0 ? 0 : historyStartIndex + shipmentHistory.length - 1
 
   return (
     <div className="space-y-6">
@@ -710,29 +1052,31 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
 
                   {/* Preview Section */}
                   {showPreview && batchPreview.length > 0 && (
-                    <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-[300px] overflow-y-auto">
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 space-y-3">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-sm font-semibold text-gray-900">
                           Preview ({batchPreview.length} codes)
                         </h4>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs bg-white">
                           {batchPreview.filter(c => c.type === 'master').length} Master | {batchPreview.filter(c => c.type === 'unique').length} Unique
                         </Badge>
                       </div>
-                      <div className="space-y-1">
+
+                      {/* Code List */}
+                      <div className="space-y-1 max-h-60 overflow-y-auto">
                         {batchPreview.map((item, index) => (
-                          <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded text-xs hover:bg-gray-100">
+                          <div key={index} className="flex items-center justify-between gap-2 p-2 bg-white rounded text-xs hover:bg-gray-50 border border-gray-200">
                             <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <Badge variant={item.type === 'master' ? 'default' : 'secondary'} className="text-xs shrink-0">
+                              <Badge variant={item.type === 'master' ? 'default' : 'secondary'} className="text-[10px] shrink-0 h-5">
                                 {item.type === 'master' ? 'Master' : 'Unique'}
                               </Badge>
-                              <span className="font-mono truncate">{item.code}</span>
+                              <span className="font-mono text-[10px] truncate flex-1 text-gray-600">{item.code}</span>
                             </div>
                             <Button
                               size="sm"
                               variant="ghost"
                               onClick={() => removeFromPreview(index)}
-                              className="h-6 w-6 p-0"
+                              className="h-6 w-6 p-0 hover:bg-red-50 hover:text-red-600"
                               disabled={batchProcessing}
                             >
                               <X className="h-3 w-3" />
@@ -759,6 +1103,51 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
                   <p className="mt-2 text-2xl font-semibold">{formatNumber(sessionInfo.scannedSummary.total_units)}</p>
                 </div>
               </div>
+
+              {(sessionInfo.masterCodes.length > 0 || sessionInfo.uniqueCodes.length > 0) && (
+                <div className="rounded-lg border bg-background p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">Scanned Codes ({scannedCodes.length})</h3>
+                    {loadingScannedCodes && (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Review scanned items before completing shipment</p>
+                  
+                  {loadingScannedCodes ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 3 }).map((_, idx) => (
+                        <div key={idx} className="h-16 w-full animate-pulse rounded-md bg-muted/30" />
+                      ))}
+                    </div>
+                  ) : scannedCodes.length === 0 ? (
+                    <div className="rounded-md border border-dashed bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                      No scanned codes to display
+                    </div>
+                  ) : (
+                    <div className="max-h-80 space-y-2 overflow-y-auto">
+                      {scannedCodes.map((item, index) => (
+                        <div
+                          key={`${item.code}-${index}`}
+                          className="flex items-start justify-between gap-3 rounded-md border bg-white p-3 hover:bg-muted/30"
+                        >
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={item.codeType === 'master' ? 'default' : 'secondary'} className="text-xs">
+                                {item.codeType === 'master' ? 'Master' : 'Unique'}
+                              </Badge>
+                              <p className="font-semibold text-sm">{item.productName || 'Unknown Product'}</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{item.variantName || 'N/A'}</p>
+                            <p className="text-xs font-mono text-muted-foreground break-all">{item.code}</p>
+                            <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col gap-3 rounded-lg border bg-background p-4">
                 <div className="flex items-center justify-between">
@@ -882,6 +1271,218 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
         </Card>
       )}
 
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <History className="h-5 w-5" /> Shipment history
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Review completed shipments by order number and distributor.
+            </p>
+          </div>
+          <Badge variant="outline" className="self-start sm:self-auto">
+            {historyPageInfo.total} session{historyPageInfo.total === 1 ? '' : 's'}
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <form onSubmit={handleHistorySearchSubmit} className="flex w-full flex-col gap-2 lg:max-w-xl">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <Label htmlFor="history-search" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Search by order number
+                  </Label>
+                  <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="history-search"
+                      value={historySearchInput}
+                      placeholder="ORD-HM-1025-03"
+                      onChange={event => setHistorySearchInput(event.target.value)}
+                    />
+                    <Button type="submit" disabled={historyLoading || (!historySearchInput.trim() && !historySearchTerm)} className="sm:w-28">
+                      Search
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="sm:w-24"
+                      onClick={handleHistorySearchClear}
+                      disabled={historyLoading || (!historySearchInput && !historySearchTerm)}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="history-range" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Range
+                </Label>
+                <select
+                  id="history-range"
+                  value={historyRange}
+                  onChange={event => handleHistoryRangeChange(event.target.value as '30d' | '90d' | '180d' | 'all')}
+                  className="rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  disabled={historyLoading}
+                >
+                  {HISTORY_RANGE_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button type="button" variant="outline" onClick={handleHistoryRefresh} disabled={historyLoading} className="sm:w-32">
+                {historyLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Refreshing
+                  </span>
+                ) : (
+                  'Refresh'
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {historyError && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p className="font-semibold">Unable to load shipment history</p>
+              <p className="mt-1">{historyError}</p>
+            </div>
+          )}
+
+          {historyLoading && shipmentHistory.length === 0 ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div
+                  key={`history-skeleton-${index}`}
+                  className="h-16 w-full animate-pulse rounded-md border border-dashed border-muted-foreground/30 bg-muted/20"
+                />
+              ))}
+            </div>
+          ) : shipmentHistory.length === 0 ? (
+            <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+              {historySearchTerm || historyRange !== '90d'
+                ? 'No shipments matched your filters. Try adjusting the search or date range.'
+                : 'No completed shipments recorded yet. Scanned shipments will appear here once completed.'}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[160px]">Order</TableHead>
+                      <TableHead className="min-w-[160px]">Distributor</TableHead>
+                      <TableHead className="min-w-[120px]">Cases shipped</TableHead>
+                      <TableHead className="min-w-[120px]">Units shipped</TableHead>
+                      <TableHead className="min-w-[120px]">Status</TableHead>
+                      <TableHead className="min-w-[160px]">Last updated</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {shipmentHistory.map(entry => {
+                      const statusKey = entry.status.toLowerCase()
+                      const badge = HISTORY_STATUS_BADGES[statusKey] || {
+                        label: entry.status,
+                        variant: 'outline' as const
+                      }
+
+                      return (
+                        <TableRow key={entry.sessionId} className="align-top">
+                          <TableCell>
+                            <div className="space-y-1">
+                              <p className="font-medium text-sm">{entry.orderNo}</p>
+                              <p className="text-xs text-muted-foreground">Session • {entry.sessionId.slice(0, 8)}…</p>
+                              {entry.orderId && (
+                                <p className="text-xs text-muted-foreground">Order ID • {entry.orderId.slice(0, 8)}…</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">{entry.distributorName || 'Unknown distributor'}</p>
+                              {entry.distributorOrgId && (
+                                <p className="text-xs text-muted-foreground">{entry.distributorOrgId}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p className="font-medium">{formatNumber(entry.scannedSummary.totalCases)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Expected {entry.expectedSummary.totalCases != null ? formatNumber(entry.expectedSummary.totalCases) : '—'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p className="font-medium">{formatNumber(entry.scannedSummary.totalUnits)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Expected {entry.expectedSummary.totalUnits != null ? formatNumber(entry.expectedSummary.totalUnits) : '—'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Badge variant={badge.variant}>{badge.label}</Badge>
+                              {entry.hasDiscrepancy && (
+                                <p className="text-xs text-amber-700">Discrepancy flagged</p>
+                              )}
+                              {entry.warnings.length > 0 && (
+                                <p className="text-xs text-amber-600">{entry.warnings.length} warning{entry.warnings.length === 1 ? '' : 's'}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p className="font-medium">{formatTimestamp(entry.updatedAt || entry.createdAt || undefined)}</p>
+                              {entry.createdAt && (
+                                <p className="text-xs text-muted-foreground">Created {formatTimestamp(entry.createdAt)}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Showing {historyStartIndex ? `${historyStartIndex}-${historyEndIndex}` : '0'} of {historyPageInfo.total}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleHistoryPageChange('previous')}
+                    disabled={historyLoading || historyPageInfo.page <= 1}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleHistoryPageChange('next')}
+                    disabled={historyLoading || historyPageInfo.page >= historyPageInfo.totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {scanLog.length > 0 && (
         <Card>
           <CardHeader>
@@ -932,6 +1533,16 @@ export default function WarehouseShipView({ userProfile, onViewChange }: Warehou
           </CardContent>
         </Card>
       )}
+
+      <BatchProcessingModal
+        open={showBatchModal}
+        total={batchPreview.length}
+        successCount={batchProgress.successCount}
+        duplicateCount={batchProgress.duplicateCount}
+        errorCount={batchProgress.errorCount}
+        currentIndex={batchProgress.currentIndex}
+        currentCode={batchProgress.currentCode}
+      />
     </div>
   )
 }

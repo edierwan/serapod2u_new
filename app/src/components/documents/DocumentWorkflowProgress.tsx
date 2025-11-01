@@ -120,15 +120,18 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
                     )}
                   </div>
                   
-                  <p className="font-semibold text-xs sm:text-sm mb-1">{step.label}</p>
+                  <p className="font-semibold text-xs sm:text-sm mb-1">
+                    <span className="sm:hidden">{step.key === 'po' ? 'PO' : step.label}</span>
+                    <span className="hidden sm:inline">{step.label}</span>
+                  </p>
                   
                   {step.document ? (
                     <>
                       <Badge 
                         variant="outline" 
-                        className="text-xs mb-1"
+                        className="text-[10px] sm:text-xs mb-1"
                       >
-                        <span className="truncate max-w-full block">{step.document.doc_no}</span>
+                        <span className="truncate max-w-full block leading-tight">{step.document.doc_no}</span>
                       </Badge>
                       <span className="text-xs hidden sm:block">
                         {getDocumentStatusText(step.document)}

@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import AnimatedStepProgressTracker from '@/components/dashboard/AnimatedStepProgressTracker'
+import SimpleProgressTracker from '@/components/dashboard/SimpleProgressTracker'
 import type { LucideIcon } from 'lucide-react'
 import { 
   Warehouse,
@@ -65,7 +65,7 @@ interface WarehouseReceiveViewProps {
   onViewChange: (view: string) => void
 }
 
-type StageKey = 'pending' | 'printed' | 'packed' | 'received_warehouse' | 'shipped_distributor' | 'opened'
+type StageKey = 'pending' | 'printed' | 'packed' | 'ready_to_ship' | 'received_warehouse' | 'shipped_distributor' | 'opened'
 
 type OrderSource = 'pending' | 'recent'
 
@@ -94,12 +94,13 @@ interface OrderMovementOverview {
   completionScore: number
 }
 
-const STAGE_ORDER: StageKey[] = ['pending', 'printed', 'packed', 'received_warehouse', 'shipped_distributor', 'opened']
+const STAGE_ORDER: StageKey[] = ['pending', 'printed', 'packed', 'ready_to_ship', 'received_warehouse', 'shipped_distributor', 'opened']
 
 const STAGE_WEIGHTS: Record<StageKey, number> = {
   pending: 0,
   printed: 0.15,
   packed: 0.45,
+  ready_to_ship: 0.45, // Same as packed - both represent completed manufacturing
   received_warehouse: 0.7,
   shipped_distributor: 0.9,
   opened: 1
@@ -165,6 +166,7 @@ function createEmptyStageCounts(): Record<StageKey, number> {
     pending: 0,
     printed: 0,
     packed: 0,
+    ready_to_ship: 0,
     received_warehouse: 0,
     shipped_distributor: 0,
     opened: 0
@@ -332,7 +334,7 @@ const BATCH_RESULT_PRESENTATION: Record<ReceiveOutcomeType, { label: string; bad
   }
 }
 
-type HistoryPreset = 'today' | 'last7' | 'last30'
+type HistoryPreset = 'today' | 'last7' | 'last30' | 'all'
 
 interface IntakeHistoryRow {
   orderId: string
@@ -347,7 +349,8 @@ interface IntakeHistoryRow {
 const HISTORY_PRESETS: Array<{ value: HistoryPreset; label: string }> = [
   { value: 'today', label: 'Today' },
   { value: 'last7', label: 'Last 7 days' },
-  { value: 'last30', label: 'Last 30 days' }
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'all', label: 'All time' }
 ]
 
 const buildPresetRange = (preset: HistoryPreset) => {
@@ -364,6 +367,14 @@ const buildPresetRange = (preset: HistoryPreset) => {
       start.setHours(0, 0, 0, 0)
       break
     case 'last30':
+      start.setDate(start.getDate() - 29)
+      start.setHours(0, 0, 0, 0)
+      break
+    case 'all':
+      // Go back 10 years for "all time"
+      start.setFullYear(start.getFullYear() - 10)
+      start.setHours(0, 0, 0, 0)
+      break
     default:
       start.setDate(start.getDate() - 29)
       start.setHours(0, 0, 0, 0)
@@ -550,7 +561,8 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
 
   const totalCases = orderOverview?.totalCases ?? (fallbackReceivedCases || fallbackReadyCases)
   const receivedCases = orderOverview?.stageCounts.received_warehouse ?? fallbackReceivedCases
-  const readyCases = orderOverview?.stageCounts.packed ?? fallbackReadyCases
+  // Combine 'packed' and 'ready_to_ship' - both represent cases completed at manufacturer
+  const readyCases = orderOverview ? (orderOverview.stageCounts.packed + orderOverview.stageCounts.ready_to_ship) : fallbackReadyCases
   const totalUnits = orderOverview?.totalUnits ?? fallbackTotalUnits
   const warehouseCompletion = totalCases > 0 ? Math.round((receivedCases / totalCases) * 100) : 0
   const batchInputStats = useMemo(() => parseBatchMasterInput(batchInput), [batchInput])
@@ -785,7 +797,8 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
 
             const downstreamCases = overview.stageCounts.received_warehouse + overview.stageCounts.shipped_distributor + overview.stageCounts.opened
             const manufacturingComplete = overview.stageCounts.pending === 0 && overview.stageCounts.printed === 0
-            const readyCases = overview.stageCounts.packed
+            // Combine 'packed' and 'ready_to_ship' - both represent cases completed at manufacturer
+            const readyCases = overview.stageCounts.packed + overview.stageCounts.ready_to_ship
 
             return {
               ...order,
@@ -1001,6 +1014,15 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
         params.set('search', historySearch)
       }
 
+      console.log('🔍 [Frontend] Loading intake history with params:', {
+        warehouse_org_id: userProfile.organization_id,
+        page: nextPage,
+        preset: historyPreset,
+        start: historyRangeParams.start,
+        end: historyRangeParams.end,
+        search: historySearch
+      })
+
       const response = await fetch(`/api/warehouse/intake-history?${params.toString()}`)
 
       if (!response.ok) {
@@ -1024,6 +1046,13 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
         1
       )
       const resolvedPage = typeof payload?.pageInfo?.page === 'number' ? payload.pageInfo.page : nextPage
+
+      console.log('🔍 [Frontend] Intake history response:', {
+        rowCount: rows.length,
+        total,
+        totalPages,
+        page: resolvedPage
+      })
 
       setHistoryRows(rows)
       setHistoryTotal(total)
@@ -1177,6 +1206,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
       await loadReceivedToday()
       await loadPendingBatches()
       await loadOrderMovement(selectedOrderId)
+      await loadIntakeHistory(undefined, { silent: true }) // Refresh history after receiving
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -1249,6 +1279,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
         if (selectedOrderId) {
           await loadOrderMovement(selectedOrderId)
         }
+        await loadIntakeHistory(undefined, { silent: true }) // Refresh history after batch receive
       } else {
         const firstMessage = results[0]?.message || payload?.message || 'No master cases were received.'
         toast({
@@ -1441,7 +1472,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
               )}
             </div>
             {pipelineSteps.length > 0 ? (
-              <AnimatedStepProgressTracker
+              <SimpleProgressTracker
                 steps={pipelineSteps}
                 totalCases={orderOverview?.totalCases || 0}
               />
@@ -1722,13 +1753,30 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
 
       <Card className="border-indigo-100">
         <CardHeader className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-indigo-900">
-              <HistoryIcon className="h-5 w-5" />
-              Warehouse intake history
-            </CardTitle>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 justify-between">
+              <CardTitle className="flex items-center gap-2 text-indigo-900">
+                <HistoryIcon className="h-5 w-5" />
+                Warehouse intake history
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const debugUrl = `/api/warehouse/debug-history`
+                  console.log('🔍 Opening debug endpoint for warehouse:', userProfile.organization_id)
+                  window.open(debugUrl, '_blank')
+                }}
+                className="text-xs"
+              >
+                🔍 Debug
+              </Button>
+            </div>
             <p className="text-sm text-gray-500">
               Showing orders received between {formatDateOnly(historyRange.start)} and {formatDateOnly(historyRange.end)}
+            </p>
+            <p className="text-xs text-gray-400 font-mono">
+              Warehouse Org ID: {userProfile.organization_id}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">

@@ -340,6 +340,19 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     } catch { return 'Invalid date' }
   }
 
+  const formatLoginIp = (ip: string | null): string | null => {
+    if (!ip) return null
+
+    const normalized = ip.trim()
+    if (!normalized) return null
+
+    if (normalized === '127.0.0.1' || normalized === '::1' || normalized.toLowerCase() === 'localhost') {
+      return '127.0.0.1 (localhost)'
+    }
+
+    return normalized
+  }
+
   const getOrgTypeName = (orgTypeCode: string): string => {
     const typeNames: Record<string, string> = {
       'HQ': 'Headquarters',
@@ -358,6 +371,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       </div>
     )
   }
+
+  const displayLastLoginIp = formatLoginIp(userProfile.last_login_ip)
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto p-6">
@@ -669,7 +684,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               <div className="flex-1">
                 <p className="text-sm text-gray-500 font-medium">Last Login IP</p>
                 <p className="text-base font-medium text-gray-900 mt-1">
-                  {userProfile.last_login_ip || (
+                  {displayLastLoginIp ? (
+                    displayLastLoginIp
+                  ) : (
                     <span className="text-gray-400 italic">Not available</span>
                   )}
                 </p>

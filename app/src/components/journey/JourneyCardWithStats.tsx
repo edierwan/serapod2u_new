@@ -15,7 +15,9 @@ import {
     QrCode,
     Scan,
     BarChart3,
-    Loader2
+    Loader2,
+    Clock,
+    Truck
 } from 'lucide-react'
 
 interface JourneyConfig {
@@ -28,6 +30,8 @@ interface JourneyConfig {
     redemption_enabled: boolean
     start_at: string | null
     end_at: string | null
+    activation_status?: string | null
+    activation_mode?: string | null
     order_info?: {
         order_no: string
         order_type: string
@@ -127,10 +131,21 @@ export default function JourneyCardWithStats({
                             </CardDescription>
                         )}
                     </div>
-                    <div className="flex gap-1">
-                        {journey.is_active && (
+                    <div className="flex gap-1 flex-wrap">
+                        {/* Show activation status */}
+                        {journey.activation_mode === 'auto' && journey.activation_status === 'pending_ship' ? (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                                <Clock className="w-3 h-3 mr-1" />
+                                Pending Shipment
+                            </Badge>
+                        ) : journey.is_active ? (
                             <Badge variant="default" className="bg-green-500">
+                                <Truck className="w-3 h-3 mr-1" />
                                 Active
+                            </Badge>
+                        ) : (
+                            <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                                Inactive
                             </Badge>
                         )}
                         {journey.is_default && (

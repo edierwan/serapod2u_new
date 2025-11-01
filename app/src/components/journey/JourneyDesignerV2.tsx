@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useToast } from '@/components/ui/use-toast'
 import {
     ArrowLeft,
     Save,
@@ -21,7 +23,10 @@ import {
     CheckCircle2,
     Settings,
     Palette,
-    Layout
+    Layout,
+    Info,
+    Truck,
+    Clock
 } from 'lucide-react'
 import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
 import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
@@ -82,6 +87,9 @@ export default function JourneyDesignerV2({
     const [saving, setSaving] = useState(false)
     const [showPreview, setShowPreview] = useState(true)
     const [uploadingImage, setUploadingImage] = useState(false)
+    const [productsShipped, setProductsShipped] = useState(false)
+    const [checkingShipment, setCheckingShipment] = useState(true)
+    const { toast } = useToast()
 
     const [config, setConfig] = useState<JourneyConfig>({
         id: journey?.id,
@@ -109,6 +117,48 @@ export default function JourneyDesignerV2({
 
     const supabase = createClient()
 
+    // Check if products have been shipped to distributor
+    useEffect(() => {
+        async function checkShipmentStatus() {
+            try {
+                setCheckingShipment(true)
+                
+                // Query QR master codes for this order via qr_batches
+                // Need to join through qr_batches to get to the order
+                const { data, error } = await supabase
+                    .from('qr_master_codes')
+                    .select(`
+                        id,
+                        status,
+                        qr_batches!inner (
+                            order_id
+                        )
+                    `)
+                    .eq('qr_batches.order_id', order.id)
+                    .eq('status', 'shipped_distributor')
+                    .limit(1)
+                
+                if (error) {
+                    console.error('[Journey] Error checking shipment status:', error)
+                    // Default to false if error - safer to assume not shipped
+                    setProductsShipped(false)
+                } else {
+                    // If at least one product has shipped, consider order as shipped
+                    const hasShipped = (data?.length || 0) > 0
+                    setProductsShipped(hasShipped)
+                    console.log(`[Journey] Shipment check for order ${order.order_no}:`, hasShipped ? 'Products shipped ✅' : 'Awaiting shipment 🕐')
+                }
+            } catch (error) {
+                console.error('[Journey] Error checking shipment:', error)
+                setProductsShipped(false)
+            } finally {
+                setCheckingShipment(false)
+            }
+        }
+        
+        checkShipmentStatus()
+    }, [order.id, order.order_no, supabase])
+
     const handleImageUpload = async (file: File) => {
         try {
             setUploadingImage(true)
@@ -135,10 +185,17 @@ export default function JourneyDesignerV2({
             // Update config with the uploaded image URL
             setConfig({ ...config, custom_image_url: urlData.publicUrl })
 
-            alert('Image uploaded successfully!')
+            toast({
+                title: "Image uploaded",
+                description: "Journey image has been uploaded successfully",
+            })
         } catch (error: any) {
-            console.error('Error uploading image:', error)
-            alert('Failed to upload image: ' + error.message)
+            console.error('[Journey] Error uploading image:', error)
+            toast({
+                title: "Upload failed",
+                description: error.message || "Failed to upload image",
+                variant: "destructive"
+            })
         } finally {
             setUploadingImage(false)
         }
@@ -150,25 +207,59 @@ export default function JourneyDesignerV2({
 
             // Validate
             if (!config.name.trim()) {
-                alert('Please enter a journey name')
+                toast({
+                    title: "Validation Error",
+                    description: "Please enter a journey name",
+                    variant: "destructive",
+                })
                 return
             }
 
             if (!config.points_enabled && !config.lucky_draw_enabled && !config.redemption_enabled) {
-                alert('Please enable at least one feature (Points, Lucky Draw, or Redemption)')
+                toast({
+                    title: "Validation Error",
+                    description: "Please enable at least one feature (Points, Lucky Draw, or Redemption)",
+                    variant: "destructive",
+                })
                 return
             }
 
             if (config.start_at && config.end_at && new Date(config.start_at) >= new Date(config.end_at)) {
-                alert('End date must be after start date')
+                toast({
+                    title: "Validation Error",
+                    description: "End date must be after start date",
+                    variant: "destructive",
+                })
                 return
+            }
+
+            // Determine activation status
+            let activationStatus = 'ready'
+            let finalIsActive = config.is_active
+            
+            if (!productsShipped) {
+                // Products haven't shipped yet
+                if (config.is_active) {
+                    // User wants to activate but products not shipped - set to pending
+                    activationStatus = 'pending_ship'
+                    finalIsActive = false // Keep inactive until products ship
+                } else {
+                    activationStatus = 'ready'
+                }
+            } else {
+                // Products have shipped
+                if (config.is_active) {
+                    activationStatus = 'auto_activated'
+                } else {
+                    activationStatus = 'manually_deactivated'
+                }
             }
 
             // Create or update journey configuration
             const journeyData: any = {
                 org_id: userProfile.organization_id,
                 name: config.name,
-                is_active: config.is_active,
+                is_active: finalIsActive,
                 is_default: config.is_default,
                 points_enabled: config.points_enabled,
                 lucky_draw_enabled: config.lucky_draw_enabled,
@@ -178,7 +269,8 @@ export default function JourneyDesignerV2({
                 require_customer_otp_for_redemption: config.require_customer_otp_for_redemption,
                 start_at: config.start_at || null,
                 end_at: config.end_at || null,
-                created_by: userProfile.id
+                created_by: userProfile.id,
+                activation_status: activationStatus
             }
             
             // Add theme fields if they exist in the schema
@@ -235,12 +327,37 @@ export default function JourneyDesignerV2({
                 }
             }
 
-            alert(config.id ? 'Journey updated successfully!' : 'Journey created successfully!')
+            // Show success message based on activation status
+            if (!productsShipped && config.is_active) {
+                toast({
+                    title: "Journey created successfully!",
+                    description: `Journey will auto-activate when products from order ${order.order_no} are shipped to distributor.`,
+                    variant: "default",
+                })
+            } else if (config.id) {
+                toast({
+                    title: "Journey updated!",
+                    description: "Your changes have been saved successfully.",
+                    variant: "default",
+                })
+            } else {
+                toast({
+                    title: "Journey created!",
+                    description: "Your journey is now ready for consumers.",
+                    variant: "default",
+                })
+            }
+            
             onSuccess()
         } catch (error: any) {
-            console.error('Error saving journey:', error)
+            console.error('[Journey] Error saving journey:', error)
             const errorMessage = error?.message || error?.toString() || 'Unknown error occurred'
-            alert('Failed to save journey: ' + errorMessage)
+            
+            toast({
+                title: "Failed to save journey",
+                description: errorMessage,
+                variant: "destructive",
+            })
         } finally {
             setSaving(false)
         }
@@ -323,15 +440,63 @@ export default function JourneyDesignerV2({
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label>Active</Label>
-                                    <p className="text-sm text-gray-600">Enable this journey</p>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <Label>Active</Label>
+                                            {!productsShipped && !checkingShipment && (
+                                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                                                    <Clock className="w-3 h-3 mr-1" />
+                                                    Pending Shipment
+                                                </Badge>
+                                            )}
+                                            {productsShipped && (
+                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                                                    <Truck className="w-3 h-3 mr-1" />
+                                                    Products Shipped
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-gray-600">Enable this journey for consumers</p>
+                                    </div>
+                                    <Switch
+                                        checked={config.is_active}
+                                        disabled={!productsShipped && !config.is_active}
+                                        onCheckedChange={(checked) => {
+                                            if (checked && !productsShipped) {
+                                                // User is trying to activate before products ship
+                                                toast({
+                                                    title: "Cannot activate journey yet",
+                                                    description: `Products from order ${order.order_no} must be shipped to distributor first. The journey will auto-activate once products ship.`,
+                                                    variant: "default",
+                                                })
+                                                return
+                                            }
+                                            setConfig({ ...config, is_active: checked })
+                                        }}
+                                    />
                                 </div>
-                                <Switch
-                                    checked={config.is_active}
-                                    onCheckedChange={(checked) => setConfig({ ...config, is_active: checked })}
-                                />
+                                
+                                {!productsShipped && !checkingShipment && (
+                                    <Alert className="bg-blue-50 border-blue-200">
+                                        <Info className="h-4 w-4 text-blue-600" />
+                                        <AlertDescription className="text-sm text-blue-800">
+                                            <strong>Journey will auto-activate when products ship to distributor.</strong>
+                                            <br />
+                                            You can create this journey now, but it will remain inactive until at least one product from order <strong>{order.order_no}</strong> reaches &quot;Shipped to Distributor&quot; status. Once shipped, the journey will automatically become active.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
+                                
+                                {productsShipped && config.is_active && (
+                                    <Alert className="bg-amber-50 border-amber-200">
+                                        <Info className="h-4 w-4 text-amber-600" />
+                                        <AlertDescription className="text-sm text-amber-800">
+                                            <strong>Journey Control:</strong> You can deactivate this journey anytime. When deactivated, consumers will only be able to verify product authenticity and collect points. Lucky Draw and Redemption features will be disabled.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-between">
