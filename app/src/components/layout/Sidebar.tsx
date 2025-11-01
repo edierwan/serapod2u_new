@@ -120,6 +120,16 @@ const navigationItems: MenuItem[] = [
         }
       },
       {
+        id: 'manufacturer-scan-v2',
+        label: 'Manufacturer ScanV2',
+        icon: Factory,
+        access: {
+          // Only manufacturers
+          allowedOrgTypes: ['MANU', 'MFG'],
+          maxRoleLevel: 40
+        }
+      },
+      {
         id: 'warehouse-receive',
         label: 'Warehouse Receive',
         icon: Warehouse,

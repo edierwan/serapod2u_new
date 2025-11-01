@@ -30,6 +30,7 @@ import DashboardOverview from '@/components/dashboard/DashboardOverview'
 // QR Tracking Components
 import QRBatchesView from '@/components/dashboard/views/qr-tracking/QRBatchesView'
 import ManufacturerScanView from '@/components/dashboard/views/qr-tracking/ManufacturerScanView'
+import ManufacturerScanViewV2 from '@/components/dashboard/views/qr-tracking/ManufacturerScanViewV2'
 import WarehouseReceiveView from '@/components/dashboard/views/qr-tracking/WarehouseReceiveView'
 import WarehouseShipView from '@/components/dashboard/views/qr-tracking/WarehouseShipView'
 import ConsumerScanView from '@/components/dashboard/views/qr-tracking/ConsumerScanView'
@@ -133,6 +134,8 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
         return <QRBatchesView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'manufacturer-scan':
         return <ManufacturerScanView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'manufacturer-scan-v2':
+        return <ManufacturerScanViewV2 userProfile={userProfile} onViewChange={handleViewChange} />
       case 'warehouse-receive':
         return <WarehouseReceiveView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'warehouse-ship':
