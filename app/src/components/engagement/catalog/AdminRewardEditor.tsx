@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { FormEvent, useEffect, useMemo, useState } from "react"
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import type { Database } from "@/types/database"
@@ -40,7 +40,8 @@ import {
   ShieldCheck,
   Sparkles,
   UploadCloud,
-  Wand2
+  Wand2,
+  X
 } from "lucide-react"
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
@@ -108,6 +109,10 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   const [loading, setLoading] = useState(mode === "edit")
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (mode !== "edit" || !rewardId) return
@@ -165,6 +170,86 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
 
   const updateForm = <K extends keyof RewardFormState>(field: K, value: RewardFormState[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select an image file (JPG, PNG, GIF, or WebP).",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Image must be less than 5MB.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setImageFile(file)
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRemoveImage = () => {
+    setImageFile(null)
+    setImagePreview(null)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+  }
+
+  const uploadImageToStorage = async (): Promise<string | null> => {
+    if (!imageFile) return null
+
+    try {
+      setUploadingImage(true)
+      const fileExt = imageFile.name.split('.').pop()
+      const fileName = `reward-${userProfile.organizations.id}-${Date.now()}.${fileExt}`
+
+      // Upload to avatars bucket
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, imageFile, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(uploadData.path)
+
+      // Add cache-busting parameter
+      return `${publicUrl}?v=${Date.now()}`
+    } catch (error: any) {
+      console.error('Failed to upload image', error)
+      toast({
+        title: "Upload failed",
+        description: error?.message ?? "Could not upload image. Please try again.",
+        variant: "destructive"
+      })
+      return null
+    } finally {
+      setUploadingImage(false)
+    }
   }
 
   const parsedPoints = Number(form.points)
@@ -230,12 +315,27 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       return
     }
 
+    setSaving(true)
+
+    // Upload image if a new file was selected
+    let finalImageUrl = form.imageUrl.trim() ? form.imageUrl.trim() : null
+    if (imageFile) {
+      const uploadedUrl = await uploadImageToStorage()
+      if (uploadedUrl) {
+        finalImageUrl = uploadedUrl
+      } else {
+        // Upload failed, abort save
+        setSaving(false)
+        return
+      }
+    }
+
     const normalizedCode = form.itemCode.trim().toUpperCase()
     const payload = {
       item_name: form.itemName.trim(),
       item_code: normalizedCode,
       item_description: form.description.trim() ? form.description.trim() : null,
-      item_image_url: form.imageUrl.trim() ? form.imageUrl.trim() : null,
+      item_image_url: finalImageUrl,
       points_required: parsedPoints,
       stock_quantity: parsedStock,
       max_redemptions_per_consumer: requiresVerification
@@ -246,8 +346,6 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       valid_until: form.validUntil ? new Date(form.validUntil).toISOString() : null,
       terms_and_conditions: form.terms.trim() ? form.terms.trim() : null
     }
-
-    setSaving(true)
 
     try {
       if (mode === "edit" && rewardId) {
@@ -462,19 +560,78 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="imageUrl">Image URL</Label>
-                    <Input
-                      id="imageUrl"
-                      placeholder="https://…"
-                      value={form.imageUrl}
-                      onChange={(event) => updateForm("imageUrl", event.target.value)}
-                    />
-                  </div>
-                  <div className="flex items-center gap-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm">
-                    <UploadCloud className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-muted-foreground">Upload via Supabase Storage and paste the public URL here.</span>
+                <div>
+                  <Label>Reward Image</Label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      {(imagePreview || form.imageUrl) && (
+                        <div className="relative h-32 w-full overflow-hidden rounded-lg border border-muted-foreground/20 bg-muted">
+                          <Image 
+                            src={imagePreview || form.imageUrl} 
+                            alt="Reward preview" 
+                            fill 
+                            className="object-cover"
+                          />
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-2"
+                          onClick={() => imageInputRef.current?.click()}
+                          disabled={uploadingImage}
+                        >
+                          {uploadingImage ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <UploadCloud className="h-4 w-4" />
+                          )}
+                          {imagePreview || form.imageUrl ? 'Change Image' : 'Upload Image'}
+                        </Button>
+                        {(imagePreview || imageFile) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRemoveImage}
+                            disabled={uploadingImage}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                        onChange={handleImageFileChange}
+                        className="hidden"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Recommended: 1:1 ratio, max 5MB (JPG, PNG, GIF, WebP)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="imageUrl" className="text-xs text-muted-foreground">Or paste image URL</Label>
+                      <Input
+                        id="imageUrl"
+                        placeholder="https://…"
+                        value={form.imageUrl}
+                        onChange={(event) => {
+                          updateForm("imageUrl", event.target.value)
+                          // Clear file selection if URL is manually entered
+                          if (event.target.value.trim()) {
+                            handleRemoveImage()
+                          }
+                        }}
+                        className="text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Alternative: Enter an external image URL
+                      </p>
+                    </div>
                   </div>
                 </div>
 

@@ -1,6 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import LoginForm from '@/components/auth/LoginForm'
+import { Package } from 'lucide-react'
+import Image from 'next/image'
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function LoginPage() {
   const supabase = await createClient()
@@ -19,29 +24,98 @@ export default async function LoginPage() {
     redirect('/dashboard')
   }
 
+  // Load branding settings from HQ organization
+  let branding = {
+    logoUrl: null as string | null,
+    loginTitle: 'Welcome to Serapod2U',
+    loginSubtitle: 'Supply Chain Management System',
+    copyrightText: '© 2025 Serapod2U. All rights reserved.'
+  }
+
+  const applyBranding = (data: any) => {
+    if (!data) return
+
+    const {
+      logoUrl,
+      loginTitle,
+      loginSubtitle,
+      copyrightText,
+      updatedAt
+    } = data as {
+      logoUrl?: string | null
+      loginTitle?: string | null
+      loginSubtitle?: string | null
+      copyrightText?: string | null
+      updatedAt?: string | null
+    }
+
+    if (loginTitle) {
+      branding.loginTitle = loginTitle
+    }
+    if (loginSubtitle) {
+      branding.loginSubtitle = loginSubtitle
+    }
+    if (copyrightText) {
+      branding.copyrightText = copyrightText
+    }
+
+    if (logoUrl) {
+      const trimmedLogo = logoUrl.trim()
+      if (trimmedLogo) {
+        if (/^https?:/i.test(trimmedLogo)) {
+          const version = updatedAt ? new Date(updatedAt).getTime() : Date.now()
+          branding.logoUrl = `${trimmedLogo.split('?')[0]}?t=${version}`
+        } else {
+          // Allow data URLs or other non-HTTP sources
+          branding.logoUrl = trimmedLogo
+        }
+      }
+    }
+  }
+
+  const logError = (label: string, err: unknown) => {
+    if (err instanceof Error) {
+      console.error(label, { message: err.message, stack: err.stack })
+    } else {
+      console.error(label, err)
+    }
+  }
+
+  try {
+    const { data: brandingData, error: brandingError } = await supabase.rpc('get_public_branding')
+
+    if (brandingError) {
+      throw brandingError
+    }
+
+    applyBranding(brandingData)
+  } catch (error) {
+    logError('Failed to load branding settings', error)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
-            <svg
-              className="h-8 w-8 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+          {branding.logoUrl ? (
+            <div className="mx-auto h-12 w-12 mb-4 relative">
+              <Image
+                src={branding.logoUrl}
+                alt="Logo"
+                width={48}
+                height={48}
+                className="rounded-lg object-cover"
+                priority
               />
-            </svg>
-          </div>
-          <h2 className="text-3xl font-bold text-gray-900">Welcome to Serapod2U</h2>
+            </div>
+          ) : (
+            <div className="mx-auto h-12 w-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
+              <Package className="h-8 w-8 text-white" />
+            </div>
+          )}
+          <h2 className="text-3xl font-bold text-gray-900">{branding.loginTitle}</h2>
           <p className="mt-2 text-sm text-gray-600">
-            Supply Chain Management System
+            {branding.loginSubtitle}
           </p>
         </div>
         
@@ -49,7 +123,7 @@ export default async function LoginPage() {
         
         <div className="text-center">
           <p className="text-xs text-gray-500">
-            © 2025 Serapod2U. All rights reserved.
+            {branding.copyrightText}
           </p>
         </div>
       </div>

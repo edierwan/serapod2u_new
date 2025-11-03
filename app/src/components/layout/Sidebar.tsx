@@ -33,6 +33,7 @@ import {
   ListTree,
   Database
 } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 interface SidebarProps {
   userProfile: any
@@ -111,6 +112,16 @@ const navigationItems: MenuItem[] = [
       {
         id: 'manufacturer-scan',
         label: 'Manufacturer Scan',
+        icon: Factory,
+        access: {
+          // Only manufacturers
+          allowedOrgTypes: ['MANU', 'MFG'],
+          maxRoleLevel: 40
+        }
+      },
+      {
+        id: 'manufacturer-scan-v2',
+        label: 'Manufacturer ScanV2',
         icon: Factory,
         access: {
           // Only manufacturers
@@ -344,6 +355,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [isMounted, setIsMounted] = useState(false)
+  const [brandingSettings, setBrandingSettings] = useState<any>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -358,6 +370,32 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
       setExpandedMenu(savedExpandedMenu)
     }
   }, [])
+  
+  // Load branding settings from organization
+  useEffect(() => {
+    const loadBranding = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('settings, logo_url, updated_at')
+          .eq('id', userProfile.organization_id)
+          .single()
+        
+        if (!error && data) {
+          const logoUrl = data.settings?.branding?.logoUrl || data.logo_url
+          setBrandingSettings({
+            appName: data.settings?.branding?.appName || 'Serapod2U',
+            appTagline: data.settings?.branding?.appTagline || 'Supply Chain',
+            logoUrl: logoUrl ? `${logoUrl.split('?')[0]}?t=${new Date(data.updated_at || Date.now()).getTime()}` : null
+          })
+        }
+      } catch (error) {
+        console.error('Failed to load branding:', error)
+      }
+    }
+    
+    loadBranding()
+  }, [supabase, userProfile.organization_id])
 
   // Persist expanded menu state to session storage whenever it changes
   useEffect(() => {
@@ -437,6 +475,22 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
     }
   }
 
+  // Helper function to get user initials from name or email
+  const getInitials = (fullName: string | null | undefined, email: string | null | undefined): string => {
+    if (fullName) {
+      return fullName
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    }
+    if (email) {
+      return email.substring(0, 2).toUpperCase()
+    }
+    return 'U'
+  }
+
   return (
     <>
       {/* Mobile Menu Button - Fixed Top Left */}
@@ -468,12 +522,29 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
         <div className="flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center gap-3 flex-1">
-              <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              {brandingSettings?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img 
+                  src={brandingSettings.logoUrl}
+                  alt="Logo" 
+                  className="h-8 w-8 rounded-lg object-cover flex-shrink-0"
+                  onError={(e) => {
+                    // Fallback to default icon if image fails to load
+                    e.currentTarget.style.display = 'none'
+                    e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                  }}
+                />
+              ) : null}
+              <div className={`h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 ${brandingSettings?.logoUrl ? 'hidden' : ''}`}>
                 <Package className="h-5 w-5 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <h1 className="font-semibold text-foreground">Serapod2U</h1>
-                <p className="text-xs text-muted-foreground">Supply Chain</p>
+                <h1 className="font-semibold text-foreground">
+                  {brandingSettings?.appName || 'Serapod2U'}
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  {brandingSettings?.appTagline || 'Supply Chain'}
+                </p>
                 {/* Date & Time Display */}
                 <div className="mt-1.5 pt-1.5 border-t border-gray-200">
                   <div className="text-[10px] text-gray-600 space-y-0.5 leading-tight">
@@ -609,9 +680,17 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
         {!isCollapsed && (
           <div className="mb-3">
             <div className="flex items-center gap-3 p-2 rounded-lg bg-accent">
-              <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <User className="h-4 w-4 text-white" />
-              </div>
+              <Avatar className="h-8 w-8">
+                {userProfile?.avatar_url && (
+                  <AvatarImage 
+                    src={`${userProfile.avatar_url.split('?')[0]}?t=${new Date(userProfile.updated_at || Date.now()).getTime()}`}
+                    alt={userProfile.full_name || 'User'}
+                  />
+                )}
+                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-semibold">
+                  {getInitials(userProfile?.full_name, userProfile?.email)}
+                </AvatarFallback>
+              </Avatar>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">
                   {userProfile?.email || 'User'}

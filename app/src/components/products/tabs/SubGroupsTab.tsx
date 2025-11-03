@@ -114,10 +114,22 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
           description: 'Sub-group updated successfully'
         })
       } else {
-        const { error } = await supabase
+        const { data: newSubGroup, error } = await supabase
           .from('product_subgroups')
           .insert([subgroupData])
+          .select('*, product_groups(group_name)')
+          .single()
         if (error) throw error
+        
+        // Immediately add the new sub-group to the list for instant feedback
+        if (newSubGroup) {
+          const newSubGroupWithGroup = {
+            ...newSubGroup,
+            group_name: newSubGroup.product_groups?.group_name || '-'
+          }
+          setSubGroups(prev => [...prev, newSubGroupWithGroup as SubGroup])
+        }
+        
         toast({
           title: 'Success',
           description: 'Sub-group created successfully'
@@ -125,7 +137,8 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
       }
       setDialogOpen(false)
       setEditingSubGroup(null)
-      loadSubGroups()
+      // Refresh to ensure consistency
+      await loadSubGroups()
     } catch (error) {
       console.error('Error saving subgroup:', error)
       toast({

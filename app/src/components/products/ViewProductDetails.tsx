@@ -81,7 +81,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             barcode,
             suggested_retail_price,
             base_cost,
-            is_active
+            is_active,
+            image_url
           )
         `)
         .eq('id', productId)
@@ -356,25 +357,46 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             <CardDescription>Different variants of this product</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
               {product.product_variants.map((variant: any) => (
-                <Card key={variant.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium">{variant.variant_name}</h4>
-                      <Badge variant="outline" className={variant.is_active ? 
-                        'bg-green-50 text-green-700 border-green-200' : 
-                        'bg-gray-50 text-gray-700 border-gray-200'
-                      }>
-                        {variant.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1 text-sm">
-                      <p className="text-gray-600">Code: <span className="text-gray-900">{variant.variant_code}</span></p>
-                      <p className="text-gray-600">Mfg SKU: <span className="text-gray-900">{variant.manufacturer_sku || 'N/A'}</span></p>
-                      <p className="text-gray-600">Barcode: <span className="text-gray-900">{variant.barcode || 'N/A'}</span></p>
-                      <p className="text-gray-600">Retail Price: <span className="text-gray-900 font-medium">RM {variant.suggested_retail_price?.toFixed(2) || '0.00'}</span></p>
-                      <p className="text-gray-600">Base Cost: <span className="text-gray-900">RM {variant.base_cost?.toFixed(2) || '0.00'}</span></p>
+                <Card key={variant.id} className="overflow-hidden">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex flex-col gap-3 md:flex-row">
+                      <div className="w-full overflow-hidden rounded-lg border border-gray-100 bg-gray-50 md:w-32 md:flex-shrink-0">
+                        {variant.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={variant.image_url}
+                            alt={variant.variant_name}
+                            className="h-32 w-full object-cover md:h-full"
+                          />
+                        ) : (
+                          <div className="flex h-32 w-full items-center justify-center text-gray-400 md:h-24">
+                            <ImageIcon className="h-8 w-8" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-medium text-gray-900">{variant.variant_name}</h4>
+                          <Badge
+                            variant="outline"
+                            className={variant.is_active
+                              ? 'bg-green-50 text-green-700 border-green-200'
+                              : 'bg-gray-50 text-gray-700 border-gray-200'
+                            }
+                          >
+                            {variant.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 space-y-1.5 text-sm">
+                          <p className="text-gray-600">Code: <span className="text-gray-900">{variant.variant_code}</span></p>
+                          <p className="text-gray-600">Mfg SKU: <span className="text-gray-900">{variant.manufacturer_sku || 'N/A'}</span></p>
+                          <p className="text-gray-600">Barcode: <span className="text-gray-900">{variant.barcode || 'N/A'}</span></p>
+                          <p className="text-gray-600">Retail Price: <span className="text-gray-900 font-medium">RM {variant.suggested_retail_price?.toFixed(2) || '0.00'}</span></p>
+                          <p className="text-gray-600">Base Cost: <span className="text-gray-900">RM {variant.base_cost?.toFixed(2) || '0.00'}</span></p>
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Package, Building2, Calendar, DollarSign } from 'lucide-react'
+import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 
 interface UserProfile {
@@ -29,6 +29,8 @@ interface ViewOrderDetailsViewProps {
 
 export default function ViewOrderDetailsView({ userProfile, onViewChange }: ViewOrderDetailsViewProps) {
   const [orderData, setOrderData] = useState<any>(null)
+  const [journeyData, setJourneyData] = useState<any>(null)
+  const [qrStats, setQrStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
   const { toast } = useToast()
@@ -37,6 +39,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
     const orderId = sessionStorage.getItem('viewOrderId')
     if (orderId) {
       loadOrderData(orderId)
+      loadJourneyData(orderId)
+      loadQRStats(orderId)
     } else {
       toast({
         title: 'Error',
@@ -80,6 +84,89 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       })
     } finally {
       setLoading(false)
+    }
+  }
+  
+  async function loadJourneyData(orderId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('consumer_journeys')
+        .select('*')
+        .eq('order_id', orderId)
+        .eq('is_active', true)
+        .maybeSingle()
+      
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error loading journey data:', error)
+        return
+      }
+      setJourneyData(data)
+    } catch (error: any) {
+      console.error('Error loading journey data:', error)
+    }
+  }
+  
+  async function loadQRStats(orderId: string) {
+    try {
+      // Get batch ID from order
+      const { data: batch, error: batchError } = await supabase
+        .from('qr_batches')
+        .select('id')
+        .eq('order_id', orderId)
+        .maybeSingle()
+      
+      if (batchError && batchError.code !== 'PGRST116') {
+        console.error('Error loading batch:', batchError)
+        return
+      }
+      
+      if (!batch) {
+        // No batch found, set default stats
+        setQrStats({
+          validLinks: 0,
+          scanned: 0,
+          redemptions: 0,
+          luckyDraws: 0
+        })
+        return
+      }
+      
+      // Get QR codes stats
+      const { data: codes, error } = await supabase
+        .from('qr_codes')
+        .select('id, status, is_redemption_completed')
+        .eq('batch_id', batch.id)
+      
+      if (error) {
+        console.error('Error loading QR codes:', error)
+        return
+      }
+      
+      const validLinks = codes?.length || 0
+      const scanned = codes?.filter(c => c.status !== 'pending' && c.status !== 'printed').length || 0
+      const redemptions = codes?.filter(c => c.is_redemption_completed).length || 0
+      
+      // Get lucky draw entries
+      const { count: luckyDrawCount } = await supabase
+        .from('lucky_draw_entries')
+        .select('id', { count: 'exact', head: true })
+        .in('qr_code_id', codes?.map(c => c.id) || [])
+      
+      setQrStats({
+        validLinks,
+        scanned,
+        redemptions,
+        luckyDraws: luckyDrawCount || 0
+      })
+    } catch (error: any) {
+      console.error('Error loading QR stats:', error)
+      // Set default stats on error
+      setQrStats({
+        validLinks: 0,
+        scanned: 0,
+        redemptions: 0,
+        luckyDraws: 0
+      })
     }
   }
 
@@ -278,6 +365,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
 
       {/* Summary */}
       <div className="grid md:grid-cols-2 gap-6">
+        {/* Order Summary Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -296,12 +384,63 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                 <span className="text-lg font-bold text-blue-600">{formatCurrency(subtotal)}</span>
               </div>
             </div>
+            
+            {/* Journey Features - if active */}
+            {journeyData && (
+              <div className="mt-6 pt-6 border-t">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  Features
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {journeyData.enable_points && (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <Package className="w-3 h-3 mr-1" />
+                      Points
+                    </Badge>
+                  )}
+                  {journeyData.enable_lucky_draw && (
+                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                      <Trophy className="w-3 h-3 mr-1" />
+                      Lucky Draw
+                    </Badge>
+                  )}
+                  {journeyData.enable_redemption && (
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                      <Gift className="w-3 h-3 mr-1" />
+                      Redemption
+                    </Badge>
+                  )}
+                  {!journeyData.enable_points && !journeyData.enable_lucky_draw && !journeyData.enable_redemption && (
+                    <span className="text-xs text-gray-500">Points (default)</span>
+                  )}
+                </div>
+              </div>
+            )}
+            {!journeyData && (
+              <div className="mt-6 pt-6 border-t">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  Features
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                    <Package className="w-3 h-3 mr-1" />
+                    Points (default)
+                  </Badge>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
+        {/* QR Code Requirements & Statistics Combined */}
         <Card>
           <CardHeader>
-            <CardTitle>QR Code Requirements</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <QrCode className="w-5 h-5" />
+              QR Code Requirements
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -321,6 +460,47 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                 <span className="text-gray-700 font-medium">Master QR Codes (Cases):</span>
                 <span className="font-bold text-green-600">{masterQR} cases</span>
               </div>
+              
+              {/* QR Code Statistics */}
+              {qrStats && (
+                <div className="mt-6 pt-6 border-t">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">QR Code Statistics</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <QrCode className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs text-blue-700 font-medium">Valid Links</span>
+                      </div>
+                      <p className="text-2xl font-bold text-blue-900">{qrStats.validLinks}</p>
+                    </div>
+                    
+                    <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Package className="w-4 h-4 text-green-600" />
+                        <span className="text-xs text-green-700 font-medium">Scanned</span>
+                      </div>
+                      <p className="text-2xl font-bold text-green-900">{qrStats.scanned}</p>
+                    </div>
+                    
+                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Gift className="w-4 h-4 text-purple-600" />
+                        <span className="text-xs text-purple-700 font-medium">Redemptions</span>
+                      </div>
+                      <p className="text-2xl font-bold text-purple-900">{qrStats.redemptions}</p>
+                    </div>
+                    
+                    <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Trophy className="w-4 h-4 text-amber-600" />
+                        <span className="text-xs text-amber-700 font-medium">Lucky Draw</span>
+                      </div>
+                      <p className="text-2xl font-bold text-amber-900">{qrStats.luckyDraws}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-3">
                 <p className="text-xs text-amber-800">
                   <strong>Note:</strong> Buffer codes ({bufferQty}) are unassigned spares for damaged/lost QR codes. 

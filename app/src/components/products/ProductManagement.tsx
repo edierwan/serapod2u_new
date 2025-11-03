@@ -28,49 +28,69 @@ export default function ProductManagement({ userProfile, onViewChange }: Product
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onViewChange?.('products')}
-              className="h-8 w-8 p-0"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Product Management</h1>
-              <p className="text-gray-600">Manage categories, brands, groups, variants, and create products</p>
-            </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onViewChange?.('products')}
+            className="h-9 w-9 sm:h-8 sm:w-8 p-0 rounded-full border border-gray-200 shadow-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">Product Management</h1>
+            <p className="text-sm text-gray-600 sm:text-base">
+              Manage categories, brands, groups, variants, and create products
+            </p>
           </div>
         </div>
-        <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-          <Package className="w-6 h-6 text-blue-600" />
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 sm:h-12 sm:w-12">
+            <Package className="h-5 w-5 text-blue-600 sm:h-6 sm:w-6" />
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-6 lg:grid-cols-6 mb-6">
-              <TabsTrigger value="categories" className="text-xs sm:text-sm">
+            <TabsList className="grid w-full grid-cols-3 gap-2 rounded-2xl bg-transparent p-0 sm:grid-cols-6 sm:gap-3 mb-6">
+              <TabsTrigger
+                value="categories"
+                className="rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-medium text-gray-600 shadow-sm transition data-[state=active]:border-blue-500 data-[state=active]:bg-blue-500 data-[state=active]:text-white sm:text-sm"
+              >
                 Categories
               </TabsTrigger>
-              <TabsTrigger value="brands" className="text-xs sm:text-sm">
+              <TabsTrigger
+                value="brands"
+                className="rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-medium text-gray-600 shadow-sm transition data-[state=active]:border-blue-500 data-[state=active]:bg-blue-500 data-[state=active]:text-white sm:text-sm"
+              >
                 Brands
               </TabsTrigger>
-              <TabsTrigger value="groups" className="text-xs sm:text-sm">
+              <TabsTrigger
+                value="groups"
+                className="rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-medium text-gray-600 shadow-sm transition data-[state=active]:border-blue-500 data-[state=active]:bg-blue-500 data-[state=active]:text-white sm:text-sm"
+              >
                 Groups
               </TabsTrigger>
-              <TabsTrigger value="subgroups" className="text-xs sm:text-sm">
+              <TabsTrigger
+                value="subgroups"
+                className="rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-medium text-gray-600 shadow-sm transition data-[state=active]:border-blue-500 data-[state=active]:bg-blue-500 data-[state=active]:text-white sm:text-sm"
+              >
                 Sub-Groups
               </TabsTrigger>
-              <TabsTrigger value="variants" className="text-xs sm:text-sm">
+              <TabsTrigger
+                value="variants"
+                className="rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-medium text-gray-600 shadow-sm transition data-[state=active]:border-blue-500 data-[state=active]:bg-blue-500 data-[state=active]:text-white sm:text-sm"
+              >
                 Variants
               </TabsTrigger>
-              <TabsTrigger value="create-product" className="text-xs sm:text-sm">
+              <TabsTrigger
+                value="create-product"
+                className="rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-medium text-gray-600 shadow-sm transition data-[state=active]:border-blue-500 data-[state=active]:bg-blue-500 data-[state=active]:text-white sm:text-sm"
+              >
                 New Product
               </TabsTrigger>
             </TabsList>

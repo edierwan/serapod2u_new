@@ -185,8 +185,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       
       // Auto-fill customer information from organization
       setCustomerName(userOrgData.contact_person || userOrgData.org_name)
-      setPhoneNumber(userOrgData.phone_number || '')
-      setDeliveryAddress(userOrgData.address || '')
+      setPhoneNumber(userOrgData.contact_phone || '')
+      
+      // Combine address and address_line2 for delivery address
+      const fullAddress = [
+        userOrgData.address,
+        userOrgData.address_line2
+      ].filter(Boolean).join(', ')
+      
+      setDeliveryAddress(fullAddress || '')
       
     } catch (error) {
       console.error('Error initializing order:', error)
@@ -531,6 +538,35 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   }
 
   const handleUpdateQuantity = (variantId: string, qty: number) => {
+    // Available units per case options
+    const availableUnitsPerCase = [50, 100, 200]
+    
+    // Check if quantity is divisible by current units per case
+    if (qty > 0 && qty % unitsPerCase !== 0) {
+      // Check if quantity itself could be a valid units per case
+      if (availableUnitsPerCase.includes(qty)) {
+        // Automatically adjust units per case to match the quantity
+        setUnitsPerCase(qty)
+        toast({
+          title: 'Units Per Case Adjusted',
+          description: `Units per case automatically changed to ${qty} to match your quantity.`,
+        })
+      } else {
+        // Quantity doesn't match any standard case size
+        // Find if it's a multiple of any available units per case
+        const validOption = availableUnitsPerCase.find(units => qty % units === 0)
+        
+        if (validOption) {
+          // It's a valid multiple - suggest or auto-adjust
+          toast({
+            title: 'Quantity Accepted',
+            description: `Quantity ${qty} is valid (${qty / validOption} cases of ${validOption} units each).`,
+          })
+        }
+        // If not divisible by any option, we'll show validation error in UI
+      }
+    }
+    
     setOrderItems(orderItems.map(item => 
       item.variant_id === variantId 
         ? { ...item, qty, line_total: qty * item.unit_price } 
@@ -1050,8 +1086,13 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               value={item.qty}
                               onChange={(e) => handleUpdateQuantity(item.variant_id, parseInt(e.target.value) || 0)}
                               min="1"
-                              className="text-sm"
+                              className={`text-sm ${item.qty > 0 && item.qty % unitsPerCase !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 ? 'border-red-500' : ''}`}
                             />
+                            {item.qty > 0 && item.qty % unitsPerCase !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 && (
+                              <p className="text-xs text-red-600 mt-1">
+                                Please enter multiples of {unitsPerCase} (e.g., {unitsPerCase}, {unitsPerCase * 2}, {unitsPerCase * 3}) or exact case sizes (50, 100, 200)
+                              </p>
+                            )}
                           </div>
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">

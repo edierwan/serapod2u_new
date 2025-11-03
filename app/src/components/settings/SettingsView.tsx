@@ -203,6 +203,25 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
       
       // Set initial logo preview
       setLogoPreview(orgData.logo_url || null)
+      
+      // Load branding settings from database
+      if (orgData.settings?.branding) {
+        setBrandingSettings({
+          appName: orgData.settings.branding.appName || 'Serapod2U',
+          appTagline: orgData.settings.branding.appTagline || 'Supply Chain',
+          loginTitle: orgData.settings.branding.loginTitle || 'Welcome to Serapod2U',
+          loginSubtitle: orgData.settings.branding.loginSubtitle || 'Supply Chain Management System',
+          copyrightYear: orgData.settings.branding.copyrightYear || '2025',
+          companyName: orgData.settings.branding.companyName || 'Serapod2U',
+          copyrightText: orgData.settings.branding.copyrightText || '© 2025 Serapod2U. All rights reserved.'
+        })
+        
+        // Set branding logo preview from database
+        const logoUrl = orgData.settings.branding.logoUrl || orgData.logo_url
+        if (logoUrl) {
+          setBrandingLogoPreview(logoUrl)
+        }
+      }
     } catch (error) {
       console.error('Error loading settings:', error)
     } finally {
@@ -468,25 +487,24 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         <p className="text-gray-600">Manage your account and system preferences</p>
       </div>
 
-      {/* Tabs - Sticky and Scrollable on Mobile */}
+      {/* Tabs - Mobile grid, desktop scroll */}
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 -mx-4 px-4 sm:mx-0 sm:px-0">
-        <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto scrollbar-hide">
+        <nav className="-mb-px grid grid-cols-2 gap-2 overflow-visible sm:flex sm:space-x-8 sm:gap-0 sm:overflow-x-auto sm:scrollbar-hide">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`py-2 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
+                className={`flex items-center gap-2 justify-start rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium transition sm:rounded-none sm:border-0 sm:border-b-2 sm:border-transparent sm:px-2 sm:py-2 sm:flex-shrink-0 sm:justify-center ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'bg-blue-50 text-blue-600 sm:bg-transparent sm:border-blue-500'
+                    : 'text-gray-600 hover:bg-gray-50 sm:text-gray-500 sm:hover:text-gray-700 sm:hover:border-gray-300'
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <Icon className="w-4 h-4" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
+                  <span className="text-sm sm:text-base">{tab.label}</span>
                 </div>
               </button>
             )
@@ -573,7 +591,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               {canEditOrganization && (
                 <div className="pb-6 border-b border-gray-200">
                   <Label className="text-base font-semibold mb-4 block">Organization Logo</Label>
-                  <div className="flex items-start gap-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
                     {/* Logo Preview */}
                     <div className="flex-shrink-0">
                       <Avatar className="w-24 h-24 rounded-lg" key={logoPreview || 'no-logo'}>
@@ -590,7 +608,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
                     {/* Upload Controls */}
                     <div className="flex-1 space-y-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -1066,27 +1084,103 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                 <Button 
                   type="button"
                   className="bg-blue-600 hover:bg-blue-700"
-                  onClick={() => {
-                    // TODO: Implement save to database
-                    // Simulate save operation
-                    const isSuccess = Math.random() > 0.1 // 90% success rate for demo
-                    
-                    if (isSuccess) {
+                  onClick={async () => {
+                    try {
+                      setLoading(true)
+                      
+                      let logoUrl = brandingLogoPreview
+                      
+                      // Upload logo to Supabase storage if new file selected
+                      if (brandingLogoFile) {
+                        const timestamp = Date.now()
+                        const fileExt = brandingLogoFile.name.split('.').pop()
+                        const fileName = `branding/${userProfile.organizations.id}-logo-${timestamp}.${fileExt}`
+                        
+                        // Upload to existing avatars bucket (same bucket used for user avatars and org logos)
+                        const { data: uploadData, error: uploadError } = await supabase.storage
+                          .from('avatars')
+                          .upload(fileName, brandingLogoFile, {
+                            cacheControl: '3600',
+                            upsert: true
+                          })
+                        
+                        if (uploadError) {
+                          console.error('Storage upload error:', uploadError)
+                          
+                          // Fallback: convert to base64 and save directly
+                          const reader = new FileReader()
+                          logoUrl = await new Promise<string>((resolve, reject) => {
+                            reader.onloadend = () => resolve(reader.result as string)
+                            reader.onerror = reject
+                            reader.readAsDataURL(brandingLogoFile)
+                          })
+                          
+                          toast({
+                            title: "⚠️ Note",
+                            description: "Logo saved as base64. For better performance, please configure storage permissions.",
+                          })
+                        } else {
+                          // Get public URL with timestamp to bust cache
+                          const { data: urlData } = supabase.storage
+                            .from('avatars')
+                            .getPublicUrl(fileName)
+                          
+                          logoUrl = `${urlData.publicUrl}?t=${timestamp}`
+                        }
+                      }
+                      
+                      // Save branding settings to organization settings
+                      const settings = {
+                        branding: {
+                          appName: brandingSettings.appName,
+                          appTagline: brandingSettings.appTagline,
+                          loginTitle: brandingSettings.loginTitle,
+                          loginSubtitle: brandingSettings.loginSubtitle,
+                          copyrightYear: brandingSettings.copyrightYear,
+                          companyName: brandingSettings.companyName,
+                          copyrightText: brandingSettings.copyrightText,
+                          logoUrl: logoUrl
+                        }
+                      }
+                      
+                      const { error: updateError } = await supabase
+                        .from('organizations')
+                        .update({ 
+                          settings,
+                          logo_url: logoUrl,
+                          updated_at: new Date().toISOString()
+                        })
+                        .eq('id', userProfile.organizations.id)
+                      
+                      if (updateError) {
+                        throw updateError
+                      }
+                      
                       toast({
                         title: "✅ Success!",
                         description: "Branding settings have been saved successfully.",
                       })
-                    } else {
+                      
+                      // Reload page to apply changes
+                      setTimeout(() => {
+                        window.location.reload()
+                      }, 1500)
+                      
+                    } catch (error: any) {
+                      console.error('Failed to save branding:', error)
                       toast({
                         title: "❌ Error",
-                        description: "Failed to save branding settings. Please try again.",
+                        description: error?.message || "Failed to save branding settings. Please try again.",
                         variant: "destructive",
                       })
+                    } finally {
+                      setLoading(false)
                     }
                   }}
+                  disabled={loading}
                 >
                   <Save className="w-4 h-4 mr-2" />
-                  Save Branding Settings
+                  {loading ? 'Saving...' : 'Save Branding Settings'}
                 </Button>
               </div>
 

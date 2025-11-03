@@ -70,6 +70,13 @@ export async function GET(request: NextRequest) {
     const startIso = startDate.toISOString()
     const endIso = endDate.toISOString()
 
+    console.log('🔍 [Intake History] Query parameters:', {
+      warehouseOrgId,
+      startIso,
+      endIso,
+      searchTerm
+    })
+
     const { data, error } = await supabase
       .from('qr_master_codes')
       .select(
@@ -77,6 +84,7 @@ export async function GET(request: NextRequest) {
           id,
           master_code,
           warehouse_received_at,
+          warehouse_org_id,
           actual_unit_count,
           expected_unit_count,
           qr_batches!inner (
@@ -99,9 +107,46 @@ export async function GET(request: NextRequest) {
   .order('warehouse_received_at', { ascending: false })
   .limit(2000)
 
+    console.log('🔍 [Intake History] Query result:', {
+      recordCount: data?.length || 0,
+      hasError: !!error,
+      errorMessage: error?.message
+    })
+
+    if (data && data.length > 0) {
+      console.log('🔍 [Intake History] Sample records:', data.slice(0, 3).map(r => ({
+        master_code: r.master_code,
+        warehouse_org_id: r.warehouse_org_id,
+        warehouse_received_at: r.warehouse_received_at
+      })))
+    }
+
     if (error) {
       console.error('❌ Intake history query error', error)
       return NextResponse.json({ error: error.message || 'Failed to load intake history' }, { status: 500 })
+    }
+
+    // If no data found, check if ANY data exists for this warehouse
+    if (!data || data.length === 0) {
+      console.log('⚠️ [Intake History] No records found, running diagnostics...')
+      
+      const { count: totalForWarehouse } = await supabase
+        .from('qr_master_codes')
+        .select('*', { count: 'exact', head: true })
+        .eq('warehouse_org_id', warehouseOrgId)
+        .not('warehouse_received_at', 'is', null)
+      
+      const { count: totalAnyWarehouse } = await supabase
+        .from('qr_master_codes')
+        .select('*', { count: 'exact', head: true })
+        .not('warehouse_received_at', 'is', null)
+      
+      console.log('🔍 [Intake History] Diagnostics:', {
+        totalForYourWarehouse: totalForWarehouse,
+        totalAnyWarehouse: totalAnyWarehouse,
+        warehouseOrgId,
+        dateRange: { start: startIso, end: endIso }
+      })
     }
 
     const historyMap = new Map<string, HistoryRow>()

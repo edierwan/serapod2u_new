@@ -303,7 +303,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       {/* Header */}
       <Card>
         <CardHeader>
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Bell className="w-5 h-5" />
@@ -316,7 +316,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
             <Button 
               onClick={handleSaveSettings} 
               disabled={saving}
-              className="flex items-center gap-2"
+              className="flex w-full items-center justify-center gap-2 sm:w-auto"
             >
               {saving ? (
                 <>
@@ -477,8 +477,8 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     return (
       <Card className={`border-l-4 ${getCategoryColor(category)}`}>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 sm:items-center">
               {getCategoryIcon(category)}
               <div>
                 <CardTitle className="text-lg">
@@ -491,13 +491,13 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
             </div>
             
             {/* Bulk Action Buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-nowrap sm:items-center">
               <Button
                 type="button"
                 variant={allEnabled ? "secondary" : "outline"}
                 size="sm"
                 onClick={() => toggleAllInCategory(category, true)}
-                className="flex items-center gap-2"
+                className="flex items-center justify-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 Enable All
@@ -507,7 +507,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                 variant="outline"
                 size="sm"
                 onClick={() => toggleAllInCategory(category, false)}
-                className="flex items-center gap-2"
+                className="flex items-center justify-center gap-2"
               >
                 <XCircle className="w-4 h-4" />
                 Disable All

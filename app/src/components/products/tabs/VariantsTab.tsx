@@ -379,13 +379,15 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
               getSortedVariants().map((variant) => (
                 <TableRow key={variant.id} className="hover:bg-gray-50">
                   <TableCell>
-                    <Avatar className="w-10 h-10 rounded-lg" key={variant.image_url || variant.id}>
-                      <AvatarImage 
-                        src={variant.image_url || undefined} 
-                        alt={`${variant.variant_name} image`}
-                        className="object-cover"
-                      />
-                      <AvatarFallback className="rounded-lg bg-blue-100 text-blue-600 text-xs font-semibold">
+                    <Avatar className="w-10 h-10 rounded-lg">
+                      {variant.image_url ? (
+                        <AvatarImage 
+                          src={variant.image_url} 
+                          alt={`${variant.variant_name} image`}
+                          className="object-cover"
+                        />
+                      ) : null}
+                      <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 text-xs font-semibold">
                         {getVariantInitials(variant.variant_name)}
                       </AvatarFallback>
                     </Avatar>

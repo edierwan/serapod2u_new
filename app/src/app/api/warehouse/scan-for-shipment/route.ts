@@ -353,7 +353,7 @@ const handleMasterShipment = async (
       normalized_code: normalizedCode,
       code_type: 'master',
       outcome: 'not_found',
-      message: 'Master code not found'
+      message: 'This master case was not found in the system. Please verify the QR code.'
     }
   }
 
@@ -363,7 +363,7 @@ const handleMasterShipment = async (
       normalized_code: normalizedCode,
       code_type: 'master',
       outcome: 'wrong_warehouse',
-      message: 'Master code assigned to different warehouse'
+      message: 'This master case belongs to a different warehouse. Please check the code.'
     }
   }
 
@@ -373,17 +373,29 @@ const handleMasterShipment = async (
       normalized_code: normalizedCode,
       code_type: 'master',
       outcome: 'already_shipped',
-      message: 'Master case already shipped to distributor'
+      message: 'This master case has already been shipped to a distributor.'
     }
   }
 
   if (masterRecord.status !== 'received_warehouse') {
+    const statusMessages: Record<string, string> = {
+      'pending': 'This master case is still pending. Please receive it at the warehouse first.',
+      'printed': 'This master case has not been received at the warehouse yet. Please receive it first.',
+      'packed': 'This master case is at the manufacturer. Please receive it at the warehouse first.',
+      'shipped_distributor': 'This master case has already been shipped to a distributor.',
+      'received_distributor': 'This master case is at a distributor and cannot be shipped from warehouse.',
+      'opened': 'This master case has already been opened.',
+    }
+    
+    const friendlyMessage = statusMessages[masterRecord.status] || 
+      `This master case cannot be shipped right now. Please check its status.`
+    
     return {
       code,
       normalized_code: normalizedCode,
       code_type: 'master',
       outcome: 'invalid_status',
-      message: `Master case must be received at warehouse before shipping (current: ${masterRecord.status})`
+      message: friendlyMessage
     }
   }
 
@@ -663,17 +675,7 @@ const handleUniqueShipment = async (
       normalized_code: normalizedCode,
       code_type: 'unique',
       outcome: 'not_found',
-      message: 'Unique code not found'
-    }
-  }
-
-  if (qrCode.current_location_org_id && qrCode.current_location_org_id !== session.warehouse_org_id) {
-    return {
-      code,
-      normalized_code: normalizedCode,
-      code_type: 'unique',
-      outcome: 'wrong_warehouse',
-      message: 'Unique code is assigned to a different warehouse'
+      message: 'This product code was not found in the system. Please verify the QR code.'
     }
   }
 
@@ -683,17 +685,38 @@ const handleUniqueShipment = async (
       normalized_code: normalizedCode,
       code_type: 'unique',
       outcome: 'already_shipped',
-      message: 'Unique code already shipped to distributor'
+      message: 'This product has already been shipped to a distributor.'
+    }
+  }
+
+  if (qrCode.current_location_org_id && qrCode.current_location_org_id !== session.warehouse_org_id) {
+    return {
+      code,
+      normalized_code: normalizedCode,
+      code_type: 'unique',
+      outcome: 'wrong_warehouse',
+      message: 'This product code is currently assigned to a different warehouse location.'
     }
   }
 
   if (qrCode.status !== 'received_warehouse' && qrCode.status !== 'packed') {
+    const statusMessages: Record<string, string> = {
+      'pending': 'This product is still pending. Please receive it at the warehouse first.',
+      'printed': 'This product has not been received at the warehouse yet. Please receive it first.',
+      'shipped_distributor': 'This product has already been shipped to a distributor.',
+      'received_distributor': 'This product is at a distributor and cannot be shipped from warehouse.',
+      'opened': 'This product has already been opened.',
+    }
+    
+    const friendlyMessage = statusMessages[qrCode.status] || 
+      `This product cannot be shipped right now. Please check its status.`
+    
     return {
       code,
       normalized_code: normalizedCode,
       code_type: 'unique',
       outcome: 'invalid_status',
-      message: `Unique code must be received at warehouse before shipping (current: ${qrCode.status})`
+      message: friendlyMessage
     }
   }
 
@@ -703,7 +726,7 @@ const handleUniqueShipment = async (
       normalized_code: normalizedCode,
       code_type: 'unique',
       outcome: 'error',
-      message: 'Unique code is missing variant information'
+      message: 'This product code is missing product information. Please contact support.'
     }
   }
 
