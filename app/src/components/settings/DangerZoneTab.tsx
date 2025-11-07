@@ -87,6 +87,8 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
     )
   }
 
+
+
   const handleExportBackup = async () => {
     try {
       setExportLoading(true)
@@ -152,7 +154,7 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
     try {
       setTransactionLoading(true)
 
-      const response = await fetch('/api/admin/delete-transactions', {
+      const response = await fetch('/api/admin/delete-transactions-v2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })

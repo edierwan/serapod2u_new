@@ -29,10 +29,9 @@ import SettingsView from '@/components/settings/SettingsView'
 import DashboardOverview from '@/components/dashboard/DashboardOverview'
 // QR Tracking Components
 import QRBatchesView from '@/components/dashboard/views/qr-tracking/QRBatchesView'
-import ManufacturerScanView from '@/components/dashboard/views/qr-tracking/ManufacturerScanView'
 import ManufacturerScanViewV2 from '@/components/dashboard/views/qr-tracking/ManufacturerScanViewV2'
 import WarehouseReceiveView from '@/components/dashboard/views/qr-tracking/WarehouseReceiveView'
-import WarehouseShipView from '@/components/dashboard/views/qr-tracking/WarehouseShipView'
+import WarehouseShipV2 from '@/components/dashboard/views/qr-tracking/WarehouseShipV2'
 import ConsumerScanView from '@/components/dashboard/views/qr-tracking/ConsumerScanView'
 import QRValidationView from '@/components/dashboard/views/qr-tracking/QRValidationView'
 // Consumer Engagement Components
@@ -132,14 +131,12 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
       // QR Tracking Views
       case 'qr-batches':
         return <QRBatchesView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'manufacturer-scan':
-        return <ManufacturerScanView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'manufacturer-scan-v2':
         return <ManufacturerScanViewV2 userProfile={userProfile} onViewChange={handleViewChange} />
       case 'warehouse-receive':
         return <WarehouseReceiveView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'warehouse-ship':
-        return <WarehouseShipView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'warehouse-ship-v2':
+        return <WarehouseShipV2 userProfile={userProfile} onViewChange={handleViewChange} />
       case 'consumer-scan':
         return <ConsumerScanView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'qr-validation':

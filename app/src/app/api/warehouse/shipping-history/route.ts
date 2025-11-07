@@ -181,10 +181,20 @@ export async function GET(request: NextRequest) {
         ? row.unique_codes_scanned
         : []
 
-      // Try to extract order number from scanned codes first
-      const extractedFromMaster = masterCodes.length > 0 ? extractOrderNumber(masterCodes[0]) : null
-      const extractedFromUnique = !extractedFromMaster && uniqueCodes.length > 0 ? extractOrderNumber(uniqueCodes[0]) : null
-      const extractedOrderNo = extractedFromMaster || extractedFromUnique
+      // Try to extract order numbers from ALL scanned codes
+      const allCodes = [...masterCodes, ...uniqueCodes]
+      const extractedOrderNumbers = new Set<string>()
+      
+      for (const code of allCodes.slice(0, 10)) { // Check first 10 codes max
+        const orderNo = extractOrderNumber(code)
+        if (orderNo) {
+          extractedOrderNumbers.add(orderNo)
+        }
+      }
+      
+      const extractedOrderNo = extractedOrderNumbers.size > 0 
+        ? Array.from(extractedOrderNumbers).join(', ')
+        : null
 
       const resolvedOrderId: string | null = orderRecord?.id ?? row.destination_order_id ?? null
       const rawOrderNo: string | null = orderRecord?.order_no ?? null
@@ -192,7 +202,7 @@ export async function GET(request: NextRequest) {
       // Prefer database order_no, then extracted from QR codes, then fallback
       const orderNo = rawOrderNo && rawOrderNo.trim().length > 0
         ? rawOrderNo.trim()
-        : extractedOrderNo || (resolvedOrderId ? `Session ${resolvedOrderId.slice(0, 8)}` : 'Unknown order')
+        : extractedOrderNo || (resolvedOrderId ? `Shipment ${row.id.slice(0, 8)}` : 'Unknown')
 
       const scannedQuantities = (row.scanned_quantities || {}) as { total_units?: number; total_cases?: number }
       const expectedQuantities = (row.expected_quantities || {}) as { master_cases_available?: number; units_available?: number }

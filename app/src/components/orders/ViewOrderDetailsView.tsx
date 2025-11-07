@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 
 interface UserProfile {
   id: string
@@ -76,10 +77,10 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       if (error) throw error
       setOrderData(data)
     } catch (error: any) {
-      console.error('Error loading order:', error)
+      console.error('Error loading order:', error?.message || 'Unknown error', error)
       toast({
         title: 'Error',
-        description: 'Failed to load order details',
+        description: error?.message || 'Failed to load order details',
         variant: 'destructive'
       })
     } finally {
@@ -89,20 +90,43 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
   
   async function loadJourneyData(orderId: string) {
     try {
-      const { data, error } = await supabase
-        .from('consumer_journeys')
-        .select('*')
+      // Get journey configuration linked to this order
+      const { data: link, error: linkError } = await supabase
+        .from('journey_order_links')
+        .select('journey_config_id')
         .eq('order_id', orderId)
+        .maybeSingle()
+      
+      if (linkError) {
+        if (linkError.code !== 'PGRST116') {
+          console.error('Error loading journey link:', linkError.message || linkError.code || 'Unknown error', linkError)
+        }
+        return
+      }
+
+      if (!link) {
+        return // No journey linked to this order
+      }
+
+      // Get journey configuration details
+      const { data: journeyConfig, error: configError } = await supabase
+        .from('journey_configurations')
+        .select('*')
+        .eq('id', link.journey_config_id)
         .eq('is_active', true)
         .maybeSingle()
       
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading journey data:', error)
+      if (configError) {
+        if (configError.code !== 'PGRST116') {
+          console.error('Error loading journey config:', configError.message || configError.code || 'Unknown error', configError)
+        }
         return
       }
-      setJourneyData(data)
+
+      console.log('Journey config loaded:', journeyConfig)
+      setJourneyData(journeyConfig)
     } catch (error: any) {
-      console.error('Error loading journey data:', error)
+      console.error('Error loading journey data:', error?.message || 'Unknown error', error)
     }
   }
   
@@ -115,8 +139,10 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         .eq('order_id', orderId)
         .maybeSingle()
       
-      if (batchError && batchError.code !== 'PGRST116') {
-        console.error('Error loading batch:', batchError)
+      if (batchError) {
+        if (batchError.code !== 'PGRST116') {
+          console.error('Error loading batch:', batchError.message || batchError.code || 'Unknown error', batchError)
+        }
         return
       }
       
@@ -138,7 +164,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         .eq('batch_id', batch.id)
       
       if (error) {
-        console.error('Error loading QR codes:', error)
+        console.error('Error loading QR codes:', error.message || error.code || 'Unknown error', error)
         return
       }
       
@@ -159,7 +185,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         luckyDraws: luckyDrawCount || 0
       })
     } catch (error: any) {
-      console.error('Error loading QR stats:', error)
+      console.error('Error loading QR stats:', error?.message || 'Unknown error', error)
       // Set default stats on error
       setQrStats({
         validLinks: 0,
@@ -178,7 +204,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
   }
 
   const formatCurrency = (amount: number): string => {
-    return `RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return formatCurrencyUtil(amount)
   }
 
   if (loading) {
@@ -224,7 +250,10 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
           <p className="text-gray-600 mt-1">View complete order information</p>
         </div>
         <div>
-          <Badge className="text-lg px-4 py-2">
+          <Badge 
+            variant={orderData.status === 'approved' ? 'default' : 'secondary'}
+            className="text-sm px-3 py-1 font-medium"
+          >
             {orderData.status?.toUpperCase()}
           </Badge>
         </div>
@@ -352,7 +381,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                     <td className="px-4 py-3 text-sm">{index + 1}</td>
                     <td className="px-4 py-3 text-sm">{item.product?.product_name || 'N/A'}</td>
                     <td className="px-4 py-3 text-sm">{item.variant?.variant_name || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-right">{item.qty}</td>
+                    <td className="px-4 py-3 text-sm text-right">{formatNumber(item.qty)}</td>
                     <td className="px-4 py-3 text-sm text-right">{formatCurrency(item.unit_price)}</td>
                     <td className="px-4 py-3 text-sm text-right font-medium">{formatCurrency(item.line_total)}</td>
                   </tr>
@@ -385,52 +414,34 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
               </div>
             </div>
             
-            {/* Journey Features - if active */}
-            {journeyData && (
-              <div className="mt-6 pt-6 border-t">
-                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  Features
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {journeyData.enable_points && (
-                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                      <Package className="w-3 h-3 mr-1" />
-                      Points
-                    </Badge>
-                  )}
-                  {journeyData.enable_lucky_draw && (
-                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                      <Trophy className="w-3 h-3 mr-1" />
-                      Lucky Draw
-                    </Badge>
-                  )}
-                  {journeyData.enable_redemption && (
-                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                      <Gift className="w-3 h-3 mr-1" />
-                      Redemption
-                    </Badge>
-                  )}
-                  {!journeyData.enable_points && !journeyData.enable_lucky_draw && !journeyData.enable_redemption && (
-                    <span className="text-xs text-gray-500">Points (default)</span>
-                  )}
-                </div>
-              </div>
-            )}
-            {!journeyData && (
-              <div className="mt-6 pt-6 border-t">
-                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  Features
-                </h4>
-                <div className="flex flex-wrap gap-2">
+            {/* Journey Features - based on order configuration */}
+            <div className="mt-6 pt-6 border-t">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-600" />
+                Features
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {/* Show features based on order has_lucky_draw and has_redeem flags */}
+                {!orderData.has_lucky_draw && !orderData.has_redeem && (
                   <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                     <Package className="w-3 h-3 mr-1" />
                     Points (default)
                   </Badge>
-                </div>
+                )}
+                {orderData.has_lucky_draw && (
+                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                    <Trophy className="w-3 h-3 mr-1" />
+                    Lucky Draw
+                  </Badge>
+                )}
+                {orderData.has_redeem && (
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    <Gift className="w-3 h-3 mr-1" />
+                    Redemption
+                  </Badge>
+                )}
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
 
@@ -446,19 +457,19 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-600">Order Quantity:</span>
-                <span className="font-medium">{totalQuantity} units</span>
+                <span className="font-medium">{formatNumber(totalQuantity)} units</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Buffer ({bufferPercent}%):</span>
-                <span className="font-medium">{bufferQty} units (unassigned spares)</span>
+                <span className="font-medium">{formatNumber(bufferQty)} units (unassigned spares)</span>
               </div>
               <div className="flex justify-between border-t pt-2">
                 <span className="text-gray-700 font-medium">Total Unique QR Codes:</span>
-                <span className="font-bold text-blue-600">{uniqueQR} ({totalQuantity} + {bufferQty})</span>
+                <span className="font-bold text-blue-600">{formatNumber(uniqueQR)} ({formatNumber(totalQuantity)} + {formatNumber(bufferQty)})</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-700 font-medium">Master QR Codes (Cases):</span>
-                <span className="font-bold text-green-600">{masterQR} cases</span>
+                <span className="font-bold text-green-600">{formatNumber(masterQR)} cases</span>
               </div>
               
               {/* QR Code Statistics */}
@@ -471,7 +482,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                         <QrCode className="w-4 h-4 text-blue-600" />
                         <span className="text-xs text-blue-700 font-medium">Valid Links</span>
                       </div>
-                      <p className="text-2xl font-bold text-blue-900">{qrStats.validLinks}</p>
+                      <p className="text-2xl font-bold text-blue-900">{formatNumber(qrStats.validLinks)}</p>
                     </div>
                     
                     <div className="bg-green-50 rounded-lg p-3 border border-green-100">
@@ -479,32 +490,38 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                         <Package className="w-4 h-4 text-green-600" />
                         <span className="text-xs text-green-700 font-medium">Scanned</span>
                       </div>
-                      <p className="text-2xl font-bold text-green-900">{qrStats.scanned}</p>
+                      <p className="text-2xl font-bold text-green-900">{formatNumber(qrStats.scanned)}</p>
                     </div>
                     
-                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Gift className="w-4 h-4 text-purple-600" />
-                        <span className="text-xs text-purple-700 font-medium">Redemptions</span>
+                    {/* Only show Redemptions if order has redemption feature */}
+                    {orderData.has_redeem && (
+                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Gift className="w-4 h-4 text-purple-600" />
+                          <span className="text-xs text-purple-700 font-medium">Redemptions</span>
+                        </div>
+                        <p className="text-2xl font-bold text-purple-900">{formatNumber(qrStats.redemptions)}</p>
                       </div>
-                      <p className="text-2xl font-bold text-purple-900">{qrStats.redemptions}</p>
-                    </div>
+                    )}
                     
-                    <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Trophy className="w-4 h-4 text-amber-600" />
-                        <span className="text-xs text-amber-700 font-medium">Lucky Draw</span>
+                    {/* Only show Lucky Draw if order has lucky draw feature */}
+                    {orderData.has_lucky_draw && (
+                      <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Trophy className="w-4 h-4 text-amber-600" />
+                          <span className="text-xs text-amber-700 font-medium">Lucky Draw</span>
+                        </div>
+                        <p className="text-2xl font-bold text-amber-900">{formatNumber(qrStats.luckyDraws)}</p>
                       </div>
-                      <p className="text-2xl font-bold text-amber-900">{qrStats.luckyDraws}</p>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
               
               <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-3">
                 <p className="text-xs text-amber-800">
-                  <strong>Note:</strong> Buffer codes ({bufferQty}) are unassigned spares for damaged/lost QR codes. 
-                  Master cases are calculated based on order quantity only ({totalQuantity} ÷ {orderData.units_per_case || 100} = {masterQR} cases).
+                  <strong>Note:</strong> Buffer codes ({formatNumber(bufferQty)}) are unassigned spares for damaged/lost QR codes. 
+                  Master cases are calculated based on order quantity only ({formatNumber(totalQuantity)} ÷ {formatNumber(orderData.units_per_case || 100)} = {formatNumber(masterQR)} cases).
                 </p>
               </div>
             </div>

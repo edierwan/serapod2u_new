@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { parseQRCode } from '@/lib/qr-code-utils'
 
-type CodeType = 'master' | 'unique'
+export type CodeType = 'master' | 'unique'
 
-type ScanOutcome =
+export type ScanOutcome =
   | 'shipped'
   | 'already_shipped'
   | 'not_found'
@@ -23,7 +24,7 @@ type InventoryAdjustment = {
   shortfall?: number
 }
 
-type ShipmentScanResult = {
+export type ShipmentScanResult = {
   code: string
   normalized_code: string
   code_type: CodeType
@@ -35,6 +36,10 @@ type ShipmentScanResult = {
     case_number: number | null
     status: string
     shipped_at?: string
+  }
+  product_info?: {
+    product_name: string
+    variant_name: string
   }
   variant_adjustments?: InventoryAdjustment[]
   warnings?: string[]
@@ -70,7 +75,7 @@ type DiscrepancyDetails = {
   warnings?: string[]
 }
 
-type ValidationSession = {
+export type ValidationSession = {
   id: string
   warehouse_org_id: string
   distributor_org_id: string
@@ -103,7 +108,7 @@ const mergeWarnings = (existing: string[] | undefined, additions: string[]): str
   return Array.from(merged)
 }
 
-const loadSession = async (supabase: Awaited<ReturnType<typeof createClient>>, id: string) => {
+export const loadSession = async (supabase: Awaited<ReturnType<typeof createClient>>, id: string) => {
   const { data, error } = await supabase
     .from('qr_validation_reports')
     .select(
@@ -148,23 +153,25 @@ const fetchVariantMetadata = async (
   supabase: Awaited<ReturnType<typeof createClient>>,
   variantIds: string[]
 ) => {
-  if (!variantIds.length) return new Map<string, { unitsPerCase: number | null }>()
+  if (!variantIds.length) return new Map<string, { unitsPerCase: number | null; productName: string; variantName: string }>()
 
   const { data, error } = await supabase
     .from('product_variants')
-    .select('id, products ( units_per_case )')
+    .select('id, variant_name, products ( product_name, units_per_case )')
     .in('id', variantIds)
 
   if (error) {
     console.warn('⚠️ Failed to load product variant metadata for shipping:', error)
-    return new Map<string, { unitsPerCase: number | null }>()
+    return new Map<string, { unitsPerCase: number | null; productName: string; variantName: string }>()
   }
 
-  const metaMap = new Map<string, { unitsPerCase: number | null }>()
+  const metaMap = new Map<string, { unitsPerCase: number | null; productName: string; variantName: string }>()
   for (const row of data || []) {
     const product = Array.isArray(row.products) ? row.products[0] : row.products
     const unitsPerCase = product?.units_per_case ?? null
-    metaMap.set(row.id, { unitsPerCase })
+    const productName = product?.product_name || 'Unknown Product'
+    const variantName = row.variant_name || 'Unknown Variant'
+    metaMap.set(row.id, { unitsPerCase, productName, variantName })
   }
   return metaMap
 }
@@ -367,6 +374,7 @@ const handleMasterShipment = async (
     }
   }
 
+  // Allow scanning if status is received_warehouse or warehouse_packed
   if (masterRecord.status === 'shipped_distributor') {
     return {
       code,
@@ -377,7 +385,7 @@ const handleMasterShipment = async (
     }
   }
 
-  if (masterRecord.status !== 'received_warehouse') {
+  if (masterRecord.status !== 'received_warehouse' && masterRecord.status !== 'warehouse_packed') {
     const statusMessages: Record<string, string> = {
       'pending': 'This master case is still pending. Please receive it at the warehouse first.',
       'printed': 'This master case has not been received at the warehouse yet. Please receive it first.',
@@ -490,60 +498,32 @@ const handleMasterShipment = async (
       )
     }
 
-    if (removableUnits > 0) {
-      const { error: movementError } = await supabase.rpc('record_stock_movement', {
-        p_movement_type: 'removal',
-        p_variant_id: variantId,
-        p_organization_id: session.warehouse_org_id,
-        p_quantity_change: -removableUnits,
-        p_unit_cost: null,
-        p_manufacturer_id: null,
-        p_warehouse_location: null,
-        p_reason: 'warehouse_ship',
-        p_notes: `Master ${masterRecord.master_code} shipped`,
-        p_reference_type: 'order',
-        p_reference_id: orderRecord?.id || masterRecord.batch_id,
-        p_reference_no: orderRecord?.order_no || null,
-        p_company_id: orderRecord?.company_id || masterRecord.company_id,
-        p_created_by: requestingUserId
-      })
-
-      if (movementError) {
-        console.warn('⚠️ Failed to record stock movement during shipping:', movementError)
-        warnings.push('Inventory movement could not be recorded for this shipment.')
-      }
-    }
-
-    const { error: aggregateError } = await supabase.rpc('apply_inventory_ship_adjustment', {
-      p_variant_id: variantId,
-      p_organization_id: session.warehouse_org_id,
-      p_units: removableUnits,
-      p_cases: 0,
-      p_shipped_at: new Date().toISOString()
-    })
-
-    if (aggregateError) {
-      console.warn('⚠️ Failed to update inventory aggregates for shipping:', aggregateError)
-      warnings.push('Inventory aggregate metrics may be out of sync for this variant.')
-    }
+    // ⚠️ INVENTORY REDUCTION MOVED TO CONFIRM-SHIPMENT API
+    // Inventory should only decrease when shipment is CONFIRMED, not when scanning
+    // The scan just marks items as warehouse_packed (ready to ship)
+    // When user clicks "Confirm Shipment", the confirm-shipment API will:
+    // 1. Change status from warehouse_packed to shipped_distributor
+    // 2. Record stock movements and reduce inventory quantities
+    
+    // REMOVED: Stock movement recording - now done in confirm-shipment
+    // REMOVED: Inventory aggregate adjustment - now done in confirm-shipment
 
     const after = Math.max(0, before - removableUnits)
     inventorySnapshots.set(variantId, { before, after })
   }
 
-  const shippedAt = new Date().toISOString()
+  const scannedAt = new Date().toISOString()
 
+  // Update status to warehouse_packed (not shipped_distributor yet - that happens on confirm)
   const { error: masterUpdateError } = await supabase
     .from('qr_master_codes')
     .update({
-      status: 'shipped_distributor',
+      status: 'warehouse_packed',
       shipped_to_distributor_id: session.distributor_org_id,
-      shipped_at: shippedAt,
-      shipped_by: requestingUserId,
-      updated_at: shippedAt
+      updated_at: scannedAt
     })
     .eq('id', masterRecord.id)
-    .eq('status', 'received_warehouse')
+    .in('status', ['received_warehouse', 'warehouse_packed'])
 
   if (masterUpdateError) {
     console.error('❌ Failed to update master case for shipping:', masterUpdateError)
@@ -559,11 +539,11 @@ const handleMasterShipment = async (
   const { error: codesUpdateError } = await supabase
     .from('qr_codes')
     .update({
-      status: 'shipped_distributor',
+      status: 'warehouse_packed',
       current_location_org_id: session.distributor_org_id,
-      last_scanned_at: shippedAt,
+      last_scanned_at: scannedAt,
       last_scanned_by: requestingUserId,
-      updated_at: shippedAt
+      updated_at: scannedAt
     })
     .eq('master_code_id', masterRecord.id)
 
@@ -577,14 +557,14 @@ const handleMasterShipment = async (
     .insert({
       company_id: orderRecord?.company_id || masterRecord.company_id,
       qr_master_code_id: masterRecord.id,
-      movement_type: 'warehouse_ship',
+      movement_type: 'warehouse_scan',
       from_org_id: session.warehouse_org_id,
       to_org_id: session.distributor_org_id,
-      current_status: 'shipped_distributor',
-      scanned_at: shippedAt,
+      current_status: 'warehouse_packed',
+      scanned_at: scannedAt,
       scanned_by: requestingUserId,
       related_order_id: orderRecord?.id || null,
-      notes: `Warehouse shipped master ${masterRecord.master_code}`
+      notes: `Warehouse scanned master ${masterRecord.master_code} for shipment prep`
     })
 
   if (movementLogError) {
@@ -619,6 +599,10 @@ const handleMasterShipment = async (
     nextMasterList.push(normalizedCode)
   }
 
+  // Get product info from first variant
+  const firstVariant = adjustments.length > 0 ? adjustments[0] : null
+  const variantInfo = firstVariant ? variantMeta.get(firstVariant.variant_id) : null
+
   return {
     code,
     normalized_code: normalizedCode,
@@ -629,9 +613,13 @@ const handleMasterShipment = async (
       id: masterRecord.id,
       master_code: masterRecord.master_code,
       case_number: masterRecord.case_number,
-      status: 'shipped_distributor',
-      shipped_at: shippedAt
+      status: 'warehouse_packed',
+      shipped_at: scannedAt
     },
+    product_info: variantInfo ? {
+      product_name: variantInfo.productName,
+      variant_name: variantInfo.variantName
+    } : undefined,
     variant_adjustments: adjustments,
     warnings,
     discrepancies,
@@ -699,7 +687,7 @@ const handleUniqueShipment = async (
     }
   }
 
-  if (qrCode.status !== 'received_warehouse' && qrCode.status !== 'packed') {
+  if (qrCode.status !== 'received_warehouse' && qrCode.status !== 'packed' && qrCode.status !== 'warehouse_packed') {
     const statusMessages: Record<string, string> = {
       'pending': 'This product is still pending. Please receive it at the warehouse first.',
       'printed': 'This product has not been received at the warehouse yet. Please receive it first.',
@@ -753,53 +741,26 @@ const handleUniqueShipment = async (
     shortfall = 1
   }
 
-  if (removableUnits > 0) {
-    const { error: movementError } = await supabase.rpc('record_stock_movement', {
-      p_movement_type: 'removal',
-      p_variant_id: variantId,
-      p_organization_id: session.warehouse_org_id,
-      p_quantity_change: -removableUnits,
-      p_unit_cost: null,
-      p_manufacturer_id: null,
-      p_warehouse_location: null,
-      p_reason: 'warehouse_ship',
-      p_notes: `Unique code ${normalizedCode} shipped`,
-      p_reference_type: 'tracking',
-      p_reference_id: qrCode.id,
-      p_reference_no: null,
-      p_company_id: qrCode.company_id,
-      p_created_by: requestingUserId
-    })
+  // ⚠️ INVENTORY REDUCTION MOVED TO CONFIRM-SHIPMENT API
+  // Inventory should only decrease when shipment is CONFIRMED, not when scanning
+  // The scan just marks items as warehouse_packed (ready to ship)
+  // When user clicks "Confirm Shipment", the confirm-shipment API will:
+  // 1. Change status from warehouse_packed to shipped_distributor
+  // 2. Record stock movements and reduce inventory quantities
+  
+  // REMOVED: Stock movement recording for unique codes - now done in confirm-shipment
+  // REMOVED: Inventory aggregate adjustment for unique codes - now done in confirm-shipment
 
-    if (movementError) {
-      console.warn('⚠️ Failed to record stock movement for unique ship:', movementError)
-      warnings.push('Inventory movement recording failed for this unique code.')
-    }
-  }
-
-  const { error: aggregateError } = await supabase.rpc('apply_inventory_ship_adjustment', {
-    p_variant_id: variantId,
-    p_organization_id: session.warehouse_org_id,
-    p_units: removableUnits,
-    p_cases: 0,
-    p_shipped_at: new Date().toISOString()
-  })
-
-  if (aggregateError) {
-    console.warn('⚠️ Failed to update inventory aggregates for unique shipping:', aggregateError)
-    warnings.push('Inventory aggregate metrics may be out of sync for this unique code.')
-  }
-
-  const shippedAt = new Date().toISOString()
+  const scannedAt = new Date().toISOString()
 
   const { error: updateError } = await supabase
     .from('qr_codes')
     .update({
-      status: 'shipped_distributor',
+      status: 'warehouse_packed',
       current_location_org_id: session.distributor_org_id,
-      last_scanned_at: shippedAt,
+      last_scanned_at: scannedAt,
       last_scanned_by: requestingUserId,
-      updated_at: shippedAt
+      updated_at: scannedAt
     })
     .eq('id', qrCode.id)
 
@@ -819,13 +780,13 @@ const handleUniqueShipment = async (
     .insert({
       company_id: qrCode.company_id,
       qr_code_id: qrCode.id,
-      movement_type: 'warehouse_ship',
+      movement_type: 'warehouse_scan',
       from_org_id: session.warehouse_org_id,
       to_org_id: session.distributor_org_id,
-      current_status: 'shipped_distributor',
-      scanned_at: shippedAt,
+      current_status: 'warehouse_packed',
+      scanned_at: scannedAt,
       scanned_by: requestingUserId,
-      notes: `Warehouse shipped unique code ${normalizedCode}`
+      notes: `Warehouse scanned unique code ${normalizedCode} for shipment prep`
     })
 
   if (movementLogError) {
@@ -865,12 +826,20 @@ const handleUniqueShipment = async (
     nextUniqueList.push(normalizedCode)
   }
 
+  // Get product info for unique code
+  const variantMeta = await fetchVariantMetadata(supabase, [variantId])
+  const variantInfo = variantMeta.get(variantId)
+
   return {
     code,
     normalized_code: normalizedCode,
     code_type: 'unique',
     outcome: 'shipped',
     message: 'Unique code shipped to distributor',
+    product_info: variantInfo ? {
+      product_name: variantInfo.productName,
+      variant_name: variantInfo.variantName
+    } : undefined,
     variant_adjustments: adjustments,
     warnings,
     discrepancies,
@@ -881,6 +850,194 @@ const handleUniqueShipment = async (
       discrepancy_details: nextDiscrepancy,
       validation_status: nextStatus
     }
+  }
+}
+
+const mapOutcomeToStatus = (outcome: ScanOutcome): number => {
+  switch (outcome) {
+    case 'shipped':
+      return 200
+    case 'already_shipped':
+      return 409
+    case 'not_found':
+      return 404
+    case 'invalid_status':
+    case 'invalid_format':
+      return 400
+    case 'duplicate':
+      return 200
+    case 'wrong_warehouse':
+      return 403
+    default:
+      return 500
+  }
+}
+
+const applySessionUpdateToSnapshot = (session: ValidationSession, result: ShipmentScanResult) => {
+  if (result.outcome !== 'shipped' || !result.session_update) {
+    return
+  }
+
+  if (Array.isArray(result.session_update.master_codes_scanned)) {
+    session.master_codes_scanned = [...result.session_update.master_codes_scanned]
+  }
+
+  if (Array.isArray(result.session_update.unique_codes_scanned)) {
+    session.unique_codes_scanned = [...result.session_update.unique_codes_scanned]
+  }
+
+  if (result.session_update.scanned_quantities) {
+    session.scanned_quantities = result.session_update.scanned_quantities
+  }
+
+  if (result.session_update.discrepancy_details) {
+    session.discrepancy_details = result.session_update.discrepancy_details
+  }
+
+  if (result.session_update.validation_status) {
+    session.validation_status = result.session_update.validation_status
+  }
+}
+
+export type ProcessShipmentScanParams = {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  session: ValidationSession
+  code: string
+  codeTypeOverride?: CodeType
+  requestingUserId: string
+}
+
+type ProcessShipmentScanResult = {
+  result: ShipmentScanResult
+  status: number
+}
+
+export const processShipmentScan = async ({
+  supabase,
+  session,
+  code,
+  codeTypeOverride,
+  requestingUserId
+}: ProcessShipmentScanParams): Promise<ProcessShipmentScanResult> => {
+  if (!code) {
+    const invalidResult: ShipmentScanResult = {
+      code: code || '',
+      normalized_code: code || '',
+      code_type: codeTypeOverride ?? 'master',
+      outcome: 'invalid_format' as ScanOutcome,
+      message: 'code is required'
+    }
+
+    return {
+      result: invalidResult,
+      status: 400
+    }
+  }
+
+  const normalizedCode = normalizeCode(code)
+
+  if (!normalizedCode) {
+    const invalidResult: ShipmentScanResult = {
+      code,
+      normalized_code: code,
+      code_type: codeTypeOverride ?? 'master',
+      outcome: 'invalid_format' as ScanOutcome,
+      message: 'Invalid code format'
+    }
+
+    return {
+      result: invalidResult,
+      status: 400
+    }
+  }
+
+  let codeType: CodeType
+
+  if (codeTypeOverride === 'unique' || codeTypeOverride === 'master') {
+    codeType = codeTypeOverride
+  } else {
+    const parsed = parseQRCode(normalizedCode)
+    if (parsed.isValid && parsed.type === 'MASTER') {
+      codeType = 'master'
+    } else if (parsed.isValid && parsed.type === 'PRODUCT') {
+      codeType = 'unique'
+    } else if (normalizedCode.toUpperCase().startsWith('MASTER-')) {
+      codeType = 'master'
+    } else if (normalizedCode.toUpperCase().startsWith('PROD-')) {
+      codeType = 'unique'
+    } else {
+      codeType = 'master'
+    }
+  }
+
+  const scannedLists = {
+    master: session.master_codes_scanned || [],
+    unique: session.unique_codes_scanned || []
+  }
+
+  if (codeType === 'master' && scannedLists.master.includes(normalizedCode)) {
+    const { data: existingMaster } = await supabase
+      .from('qr_master_codes')
+      .select('id, status')
+      .eq('master_code', normalizedCode)
+      .maybeSingle()
+
+    if (existingMaster && (existingMaster.status === 'warehouse_packed' || existingMaster.status === 'shipped_distributor')) {
+      const duplicateResult: ShipmentScanResult = {
+        code,
+        normalized_code: normalizedCode,
+        code_type: 'master',
+        outcome: 'duplicate',
+        message: 'Master code already scanned in this session'
+      }
+
+      return {
+        result: duplicateResult,
+        status: mapOutcomeToStatus(duplicateResult.outcome)
+      }
+    }
+  }
+
+  if (codeType === 'unique' && scannedLists.unique.includes(normalizedCode)) {
+    const { data: existingUnique } = await supabase
+      .from('qr_codes')
+      .select('id, status')
+      .eq('code', normalizedCode)
+      .maybeSingle()
+
+    if (existingUnique && (existingUnique.status === 'warehouse_packed' || existingUnique.status === 'shipped_distributor')) {
+      const duplicateResult: ShipmentScanResult = {
+        code,
+        normalized_code: normalizedCode,
+        code_type: 'unique',
+        outcome: 'duplicate',
+        message: 'Unique code already scanned in this session'
+      }
+
+      return {
+        result: duplicateResult,
+        status: mapOutcomeToStatus(duplicateResult.outcome)
+      }
+    }
+  }
+
+  let result: ShipmentScanResult
+
+  if (codeType === 'master') {
+    result = await handleMasterShipment(supabase, session, code, normalizedCode, requestingUserId)
+  } else {
+    result = await handleUniqueShipment(supabase, session, code, normalizedCode, requestingUserId)
+  }
+
+  await updateValidationSession(supabase, session, result)
+
+  applySessionUpdateToSnapshot(session, result)
+
+  const status = mapOutcomeToStatus(result.outcome)
+
+  return {
+    result,
+    status
   }
 }
 
@@ -913,26 +1070,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'code is required' }, { status: 400 })
     }
 
-    const normalizedCode = normalizeCode(code)
-    if (!normalizedCode) {
-      return NextResponse.json(
-        {
-          code,
-          normalized_code: code,
-          outcome: 'invalid_format',
-          message: 'Invalid code format'
-        },
-        { status: 400 }
-      )
-    }
-
     const session = await loadSession(supabase, sessionId)
 
     if (session.validation_status === 'approved') {
       return NextResponse.json(
         {
           code,
-          normalized_code: normalizedCode,
+          normalized_code: code,
           outcome: 'session_closed',
           message: 'Shipment session already completed'
         },
@@ -940,64 +1084,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const codeType: CodeType = rawCodeType === 'unique' ? 'unique' : 'master'
     const requestingUserId = overrideUserId || user.id
 
-    const scannedLists = {
-      master: session.master_codes_scanned || [],
-      unique: session.unique_codes_scanned || []
-    }
-
-    if (codeType === 'master' && scannedLists.master.includes(normalizedCode)) {
-      return NextResponse.json(
-        {
-          code,
-          normalized_code: normalizedCode,
-          code_type: 'master',
-          outcome: 'duplicate',
-          message: 'Master code already scanned in this session'
-        },
-        { status: 200 }
-      )
-    }
-
-    if (codeType === 'unique' && scannedLists.unique.includes(normalizedCode)) {
-      return NextResponse.json(
-        {
-          code,
-          normalized_code: normalizedCode,
-          code_type: 'unique',
-          outcome: 'duplicate',
-          message: 'Unique code already scanned in this session'
-        },
-        { status: 200 }
-      )
-    }
-
-    let result: ShipmentScanResult
-
-    if (codeType === 'master') {
-      result = await handleMasterShipment(supabase, session, code, normalizedCode, requestingUserId)
-    } else {
-      result = await handleUniqueShipment(supabase, session, code, normalizedCode, requestingUserId)
-    }
-
-    await updateValidationSession(supabase, session, result)
-
-    const status =
-      result.outcome === 'shipped'
-        ? 200
-        : result.outcome === 'already_shipped'
-          ? 409
-          : result.outcome === 'not_found'
-            ? 404
-            : result.outcome === 'invalid_status' || result.outcome === 'invalid_format'
-              ? 400
-              : result.outcome === 'duplicate'
-                ? 200
-                : result.outcome === 'wrong_warehouse'
-                  ? 403
-                  : 500
+    const { result, status } = await processShipmentScan({
+      supabase,
+      session,
+      code,
+      codeTypeOverride: rawCodeType,
+      requestingUserId
+    })
 
     return NextResponse.json(result, { status })
   } catch (error: any) {

@@ -8,8 +8,11 @@ import { generateQRExcel, generateQRExcelFilename } from '@/lib/excel-generator'
  * Generate QR batch and Excel file for an approved H2M order
  */
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300 // 5 minutes for large batches (Vercel Pro limit)
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+  
   try {
     const { order_id } = await request.json()
 
@@ -97,6 +100,7 @@ export async function POST(request: NextRequest) {
     }))
 
     // 3. Generate QR codes
+    console.log('⏳ Generating QR batch...')
     const qrBatch = generateQRBatch({
       orderNo: order.order_no,
       orderItems,
@@ -110,8 +114,9 @@ export async function POST(request: NextRequest) {
       unique_codes: qrBatch.totalUniqueCodes
     })
 
-    // 4. Generate Excel file
-    const excelBuffer = generateQRExcel({
+    // 4. Generate Excel file (streaming for large batches)
+    console.log('⏳ Generating Excel file (this may take a while for large batches)...')
+    const excelFilePath = await generateQRExcel({
       orderNo: order.order_no,
       orderDate: new Date(order.created_at).toLocaleDateString(),
       companyName: order.buyer_org.org_name,
@@ -123,11 +128,15 @@ export async function POST(request: NextRequest) {
       bufferPercent: qrBatch.bufferPercent
     })
 
-    const filename = generateQRExcelFilename(order.order_no)
-    console.log('✅ Generated Excel file:', filename)
+    const excelFilename = generateQRExcelFilename(order.order_no)
+    console.log('✅ Generated Excel file:', excelFilename)
 
     // 5. Upload Excel to Supabase Storage
-    const storagePath = `${order.seller_org.id}/${order_id}/${filename}`
+    const storagePath = `${order.seller_org.id}/${order_id}/${excelFilename}`
+    
+    // Read file as buffer for storage upload
+    const fs = await import('fs/promises')
+    const excelBuffer = await fs.readFile(excelFilePath)
     
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('qr-codes')
@@ -135,6 +144,9 @@ export async function POST(request: NextRequest) {
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         upsert: false
       })
+
+    // Cleanup temp Excel file after upload
+    await fs.unlink(excelFilePath).catch(() => {})
 
     if (uploadError) {
       console.error('❌ Storage upload error:', uploadError)
@@ -218,7 +230,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 8. Insert Individual QR codes (in batches to avoid timeout)
-    const BATCH_SIZE = 500
+    // Increased batch size for better performance with large datasets
+    const BATCH_SIZE = 1000
+    console.log(`⏳ Inserting ${qrBatch.individualCodes.length} QR codes in batches of ${BATCH_SIZE}...`)
+    
     const totalInserted = await insertQRCodesInBatches(
       supabase,
       batch.id,
@@ -233,6 +248,9 @@ export async function POST(request: NextRequest) {
     console.log(`✅ Inserted ${totalInserted} individual QR codes`)
 
     // 9. Return success response
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(2)
+    console.log(`✅ QR Batch generation complete in ${totalTime}s`)
+    
     return NextResponse.json({
       success: true,
       batch_id: batch.id,
@@ -240,13 +258,24 @@ export async function POST(request: NextRequest) {
       total_master_codes: qrBatch.totalMasterCodes,
       total_unique_codes: qrBatch.totalUniqueCodes,
       excel_file_url: publicUrl,
+      generation_time_seconds: parseFloat(totalTime),
       message: `Generated ${qrBatch.totalUniqueCodes} QR codes in ${qrBatch.totalMasterCodes} cases`
     })
 
   } catch (error: any) {
     console.error('❌ QR Batch Generation Error:', error)
+    
+    // More detailed error logging
+    if (error.message?.includes('out of memory')) {
+      console.error('💥 OUT OF MEMORY - Dataset too large for current configuration')
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to generate QR batch', details: error.message },
+      { 
+        error: 'Failed to generate QR batch', 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     )
   }
@@ -254,6 +283,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * Helper function to insert QR codes in batches to avoid timeout
+ * Optimized for large datasets with progress logging
  */
 async function insertQRCodesInBatches(
   supabase: any,
@@ -266,9 +296,11 @@ async function insertQRCodesInBatches(
   batchSize: number
 ): Promise<number> {
   let totalInserted = 0
+  const totalBatches = Math.ceil(codes.length / batchSize)
 
   for (let i = 0; i < codes.length; i += batchSize) {
     const chunk = codes.slice(i, i + batchSize)
+    const currentBatch = Math.floor(i / batchSize) + 1
     
     const inserts = chunk.map(code => ({
       batch_id: batchId,
@@ -279,7 +311,7 @@ async function insertQRCodesInBatches(
       code: code.code,
       qr_hash: code.hash, // NEW: Store security hash
       sequence_number: code.sequence_number,
-      status: 'pending',
+      status: 'generated', // Changed from 'pending' to 'generated' to match master codes
       is_active: true
     }))
 
@@ -288,12 +320,17 @@ async function insertQRCodesInBatches(
       .insert(inserts)
 
     if (error) {
-      console.error(`❌ Error inserting batch ${i / batchSize + 1}:`, error)
+      console.error(`❌ Error inserting batch ${currentBatch}/${totalBatches}:`, error)
       throw error
     }
 
     totalInserted += inserts.length
-    console.log(`✅ Inserted ${totalInserted}/${codes.length} QR codes...`)
+    
+    // Log progress every 10 batches or 10,000 codes
+    if (currentBatch % 10 === 0 || totalInserted >= codes.length) {
+      const progress = ((totalInserted / codes.length) * 100).toFixed(1)
+      console.log(`  ⏳ Progress: ${totalInserted}/${codes.length} codes (${progress}%) - Batch ${currentBatch}/${totalBatches}`)
+    }
   }
 
   return totalInserted

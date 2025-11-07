@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     console.log('📝 Updating master codes status: packed → ready_to_ship')
     
-    const { error: masterUpdateError } = await supabase
+    const { error: masterUpdateError, count: masterUpdatedCount } = await supabase
       .from('qr_master_codes')
       .update({
         status: 'ready_to_ship',
@@ -171,7 +171,46 @@ export async function POST(request: NextRequest) {
       throw masterUpdateError
     }
 
-    console.log(`✅ Master codes updated to 'ready_to_ship' status`)
+    console.log(`✅ ${masterUpdatedCount || 0} master codes updated to 'ready_to_ship' status`)
+
+    // ============================================================================
+    // Update all unique codes from 'packed' to 'ready_to_ship'
+    // ============================================================================
+
+    console.log('📝 Updating unique codes status: packed → ready_to_ship')
+    
+    // Get all master code IDs for this batch to find their unique codes
+    const { data: masterCodeIds, error: masterIdsError } = await supabase
+      .from('qr_master_codes')
+      .select('id')
+      .eq('batch_id', batch_id)
+
+    if (masterIdsError) {
+      console.error('❌ Failed to get master code IDs:', masterIdsError)
+      throw masterIdsError
+    }
+
+    const masterIds = masterCodeIds?.map(m => m.id) || []
+    
+    if (masterIds.length > 0) {
+      const { error: uniqueUpdateError, count: uniqueUpdatedCount } = await supabase
+        .from('qr_codes')
+        .update({
+          status: 'ready_to_ship',
+          updated_at: new Date().toISOString()
+        })
+        .in('master_code_id', masterIds)
+        .eq('status', 'packed')
+
+      if (uniqueUpdateError) {
+        console.error('❌ Failed to update unique codes status:', uniqueUpdateError)
+        throw uniqueUpdateError
+      }
+
+      console.log(`✅ ${uniqueUpdatedCount || 0} unique codes updated to 'ready_to_ship' status`)
+    } else {
+      console.log('⚠️  No master codes found for this batch, skipping unique code update')
+    }
 
     // ============================================================================
     // NOW mark batch as completed (only after successful propagation)

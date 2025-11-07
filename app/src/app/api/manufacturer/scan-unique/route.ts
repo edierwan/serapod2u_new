@@ -71,7 +71,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already linked to master
-    const alreadyScanned = qrCode.master_code_id !== null || qrCode.status !== 'pending'
+    // Newly generated/printed codes will still have status of 'pending', 'generated', or 'printed'
+    // Only treat codes as already scanned when they have progressed beyond manufacturing capture
+    const allowableStatuses = ['pending', 'generated', 'printed']
+    const alreadyScanned =
+      qrCode.master_code_id !== null ||
+      (qrCode.status ? !allowableStatuses.includes(qrCode.status) : false)
 
     // Extract single objects from arrays (Supabase returns arrays even for single relations)
     const product = Array.isArray(qrCode.products) ? qrCode.products[0] : qrCode.products

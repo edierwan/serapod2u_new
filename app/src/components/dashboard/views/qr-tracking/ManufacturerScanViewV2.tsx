@@ -55,6 +55,7 @@ interface ManufacturerScanViewProps {
 interface BatchProgress {
   batch_id: string
   batch_code: string
+  batch_status?: string
   order_id: string
   order_no: string
   buyer_org_name: string
@@ -332,6 +333,10 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
   useEffect(() => {
     if (selectedOrder) {
       loadProgress(selectedOrder)
+      // 🔄 IMPORTANT: Clear session state when order changes
+      // This prevents stale data from previous order/session causing false duplicates
+      console.log('🧹 Clearing scanned codes session for new order:', selectedOrder)
+      setScannedCodes([])
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrder])
@@ -494,30 +499,39 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       
       const result = await response.json()
       
+      // ✅ DATABASE CHECK: ONLY authoritative source - no session checking
+      // If code has master_code_id or status != 'pending', it's already been processed
       if (result.already_scanned) {
         if (!silent) {
           toast({
             title: 'Warning',
-            description: 'This QR code has already been scanned',
+            description: 'This QR code has already been scanned and linked to a master case',
             variant: 'destructive'
           })
         }
         return { outcome: 'already_scanned', message: 'Previously scanned QR code' }
       }
 
-      const isDuplicate = scannedCodes.some(c => c.code === result.product_info.code)
-      if (isDuplicate) {
-        if (!silent) {
-          toast({
-            title: 'Warning',
-            description: 'This QR code has already been scanned in this session',
-            variant: 'destructive'
-          })
-        }
-        return { outcome: 'duplicate_session', message: 'Duplicate within current session' }
+      // ✅ ALWAYS TRUST DATABASE: If DB says code is OK, it's OK
+      // Session state is ONLY for UI display, NOT for duplicate detection
+      // Check if code already exists in UI list (for display purposes only)
+      const existingIndex = scannedCodes.findIndex(c => c.code === result.product_info.code)
+      if (existingIndex !== -1) {
+        // Code already in UI list - just update it with fresh data
+        // This handles the danger zone scenario where DB is reset but UI still has old data
+        console.log('🔄 Code already in UI list, updating with fresh data:', result.product_info.code)
+        setScannedCodes(prev => {
+          const updated = [...prev]
+          updated[existingIndex] = result.product_info // Refresh with new data from DB
+          return updated
+        })
+      } else {
+        // New code - add to UI list
+        console.log('✅ Adding new code to UI list:', result.product_info.code)
+        setScannedCodes(prev => [...prev, result.product_info])
       }
 
-      setScannedCodes(prev => [...prev, result.product_info])
+      // ALWAYS return success if database check passed
       if (!silent) {
         setBatchOutcomeNotice(null)
         setQrInput('')
@@ -578,6 +592,21 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       return
     }
 
+    // ✅ CRITICAL FIX: Remove duplicate codes from the input itself
+    // If user pastes the same code multiple times, only process once
+    const originalCount = codes.length
+    const uniqueCodes = Array.from(new Set(codes))
+    const duplicatesInInput = originalCount - uniqueCodes.length
+
+    if (duplicatesInInput > 0) {
+      console.log(`⚠️ Found ${duplicatesInInput} duplicate codes in batch input, will process ${uniqueCodes.length} unique codes`)
+      toast({
+        title: 'Duplicates Removed',
+        description: `Found ${duplicatesInInput} duplicate codes in your paste. Processing ${uniqueCodes.length} unique codes.`,
+        variant: 'default'
+      })
+    }
+
     let successCount = 0
     let duplicateCount = 0
     let errorCount = 0
@@ -585,7 +614,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
     const startBatch = async () => {
       setBatchProcessingMode('unique-scan')
       setBatchProcessingSummary({
-        total: codes.length,
+        total: uniqueCodes.length,  // Use uniqueCodes count
         success: 0,
         duplicates: 0,
         errors: 0
@@ -594,10 +623,10 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       setBatchProcessingProgress(0)
       setBatchProcessingActive(true)
 
-      for (let index = 0; index < codes.length; index++) {
-        setBatchProcessingStatus(`Scanning code ${index + 1} of ${codes.length}`)
+      for (let index = 0; index < uniqueCodes.length; index++) {  // Use uniqueCodes
+        setBatchProcessingStatus(`Scanning code ${index + 1} of ${uniqueCodes.length}`)
 
-        const result = await handleScanUnique(codes[index], { silent: true })
+        const result = await handleScanUnique(uniqueCodes[index], { silent: true })  // Use uniqueCodes
 
         switch (result.outcome) {
           case 'success':
@@ -612,10 +641,10 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
             break
         }
 
-        const progress = Math.round(((index + 1) / codes.length) * 100)
+        const progress = Math.round(((index + 1) / uniqueCodes.length) * 100)
         setBatchProcessingProgress(progress)
         setBatchProcessingSummary({
-          total: codes.length,
+          total: uniqueCodes.length,
           success: successCount,
           duplicates: duplicateCount,
           errors: errorCount
@@ -646,7 +675,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
 
       setBatchProcessingStatus('Batch scan complete!')
       setBatchProcessingSummary({
-        total: codes.length,
+        total: uniqueCodes.length,
         success: successCount,
         duplicates: duplicateCount,
         errors: errorCount
@@ -1271,6 +1300,13 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
             Packed
           </Badge>
         )
+      case 'ready_to_ship':
+        return (
+          <Badge variant="default" className="bg-emerald-600">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Ready to Ship
+          </Badge>
+        )
       case 'pending':
         return (
           <Badge variant="secondary" className="bg-amber-100 text-amber-900 border-amber-200">
@@ -1368,8 +1404,22 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
                     variant="ghost"
                     size="sm"
                     onClick={() => handleUnlinkMaster(item.id, item.case_number)}
-                    disabled={unlinking === item.id || isOrderLocked}
-                    className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                    disabled={
+                      unlinking === item.id || 
+                      isOrderLocked || 
+                      item.status === 'ready_to_ship' || 
+                      item.status === 'received_warehouse' || 
+                      item.status === 'shipped_distributor' || 
+                      item.status === 'opened'
+                    }
+                    className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={
+                      item.status === 'ready_to_ship' 
+                        ? 'Cannot unlink - production is complete and ready for shipment' 
+                        : ['received_warehouse', 'shipped_distributor', 'opened'].includes(item.status || '')
+                          ? 'Cannot unlink - case has already been shipped or received'
+                          : 'Unlink this master case'
+                    }
                   >
                     {unlinking === item.id ? (
                       <RefreshCw className="h-4 w-4 animate-spin" />
@@ -2052,10 +2102,16 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
 
                 <Button 
                   onClick={handleCompleteProduction}
-                  disabled={completingProduction || isOrderLocked || masterPercent < 100}
+                  disabled={completingProduction || isOrderLocked || masterPercent < 100 || currentBatchProgress?.batch_status === 'completed'}
                   variant="default"
                   className="gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={masterPercent < 100 ? `Cannot complete: Only ${masterPercent}% packed. Must be 100% complete.` : 'Mark production as complete and ready for warehouse shipment'}
+                  title={
+                    currentBatchProgress?.batch_status === 'completed' 
+                      ? 'Production already completed - batch is ready for warehouse shipment' 
+                      : masterPercent < 100 
+                        ? `Cannot complete: Only ${masterPercent}% packed. Must be 100% complete.` 
+                        : 'Mark production as complete and ready for warehouse shipment'
+                  }
                 >
                   <CheckCircle className="h-4 w-4" />
                   {completingProduction ? 'Completing...' : 'Production Complete - Ready to Ship'}
@@ -2138,24 +2194,10 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
                 <History className="h-5 w-5" />
                 Overall Recent Scan History
               </CardTitle>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={async () => {
-                    const response = await fetch('/api/manufacturer/debug-scan-history')
-                    const data = await response.json()
-                    console.log('🔍 DEBUG DATA:', data)
-                    alert('Check console for debug info')
-                  }}
-                >
-                  🐛 Debug
-                </Button>
-                <Button variant="outline" size="sm" onClick={loadScanHistory}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={loadScanHistory}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
             </div>
           </CardHeader>
           <CardContent>

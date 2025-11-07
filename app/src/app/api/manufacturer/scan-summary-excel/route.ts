@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 /**
  * Get the base URL for QR code tracking
@@ -134,55 +134,65 @@ export async function GET(request: NextRequest) {
     const orgData = orderData ? (Array.isArray(orderData.organizations) ? orderData.organizations[0] : orderData.organizations) : null
 
     // Create workbook
-    const workbook = XLSX.utils.book_new()
+    const workbook = new ExcelJS.Workbook()
 
     // Sheet 1: Summary
+    const summarySheet = workbook.addWorksheet('Summary')
+    summarySheet.columns = [
+      { width: 30 },
+      { width: 40 }
+    ]
+
     const summaryData = [
-      ['Scan Summary Report'],
+      ['Scan Summary Report', ''],
       ['Generated:', new Date().toLocaleString()],
-      [],
-      ['Batch Information'],
+      ['', ''],
+      ['Batch Information', ''],
       ['Batch ID:', batch.id],
       ['Order Number:', orderData?.order_no || 'N/A'],
       ['Buyer:', orgData?.org_name || 'N/A'],
       ['Order Date:', orderData?.created_at ? new Date(orderData.created_at).toLocaleDateString() : 'N/A'],
-      [],
-      ['Scan Statistics'],
-      ['Total Master Cases Scanned:', masterCodes.length],
-      ['Total Unique Codes Scanned:', uniqueCodes.length],
-      ['Buffer Codes Used:', bufferCodeEntries.length]
+      ['', ''],
+      ['Scan Statistics', ''],
+      ['Total Master Cases Scanned:', masterCodes.length.toString()],
+      ['Total Unique Codes Scanned:', uniqueCodes.length.toString()],
+      ['Buffer Codes Used:', bufferCodeEntries.length.toString()]
     ]
 
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
-    summarySheet['!cols'] = [{ wch: 30 }, { wch: 40 }]
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+    summaryData.forEach(row => {
+      summarySheet.addRow(row)
+    })
 
     // Sheet 2: Master Cases
-    const masterData = masterCodes.map((master: any, index: number) => ({
-      '#': index + 1,
-      'Master Code': master.master_code,
-      'Case Number': master.case_number,
-      'Expected Units': master.expected_unit_count,
-      'Actual Units': master.actual_unit_count || 0,
-      'Status': master.status,
-      'Scanned At': master.scanned_at ? new Date(master.scanned_at).toLocaleString() : 'N/A',
-      'Scanned By': master.scanned_by_user || 'N/A'
-    }))
+    const masterSheet = workbook.addWorksheet('Master Cases')
+    
+    if (masterCodes.length > 0) {
+      masterSheet.columns = [
+        { header: '#', key: 'index', width: 5 },
+        { header: 'Master Code', key: 'masterCode', width: 35 },
+        { header: 'Case Number', key: 'caseNumber', width: 12 },
+        { header: 'Expected Units', key: 'expectedUnits', width: 15 },
+        { header: 'Actual Units', key: 'actualUnits', width: 12 },
+        { header: 'Status', key: 'status', width: 12 },
+        { header: 'Scanned At', key: 'scannedAt', width: 20 },
+        { header: 'Scanned By', key: 'scannedBy', width: 25 }
+      ]
 
-    const masterSheet = masterData.length
-      ? XLSX.utils.json_to_sheet(masterData)
-      : XLSX.utils.aoa_to_sheet([[ 'Info', 'No master cases with scanned units yet for this batch.' ]])
-    masterSheet['!cols'] = [
-      { wch: 5 },
-      { wch: 35 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 20 },
-      { wch: 25 }
-    ]
-    XLSX.utils.book_append_sheet(workbook, masterSheet, 'Master Cases')
+      masterCodes.forEach((master: any, index: number) => {
+        masterSheet.addRow({
+          index: index + 1,
+          masterCode: master.master_code,
+          caseNumber: master.case_number,
+          expectedUnits: master.expected_unit_count,
+          actualUnits: master.actual_unit_count || 0,
+          status: master.status,
+          scannedAt: master.scanned_at ? new Date(master.scanned_at).toLocaleString() : 'N/A',
+          scannedBy: master.scanned_by_user || 'N/A'
+        })
+      })
+    } else {
+      masterSheet.addRow(['Info', 'No master cases with scanned units yet for this batch.'])
+    }
 
     // Sheet 3: Child QR Codes by Master
     const childData: any[] = []
@@ -259,20 +269,36 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const childSheet = childData.length
-      ? XLSX.utils.json_to_sheet(childData)
-      : XLSX.utils.aoa_to_sheet([[ 'Info', 'No child codes linked yet for this batch.' ]])
-    childSheet['!cols'] = [
-      { wch: 35 },
-      { wch: 12 },
-      { wch: 50 },
-      { wch: 25 },
-      { wch: 20 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 20 }
-    ]
-    XLSX.utils.book_append_sheet(workbook, childSheet, 'Child Codes by Master')
+    // Sheet 3: Child Codes by Master
+    const childSheet = workbook.addWorksheet('Child Codes by Master')
+    
+    if (childData.length > 0) {
+      childSheet.columns = [
+        { header: 'Master Code', key: 'masterCode', width: 35 },
+        { header: 'Case Number', key: 'caseNumber', width: 12 },
+        { header: 'Child Code', key: 'childCode', width: 50 },
+        { header: 'Product', key: 'product', width: 25 },
+        { header: 'Variant', key: 'variant', width: 20 },
+        { header: 'Sequence', key: 'sequence', width: 10 },
+        { header: 'Status', key: 'status', width: 12 },
+        { header: 'Scanned At', key: 'scannedAt', width: 20 }
+      ]
+
+      childData.forEach((row: any) => {
+        childSheet.addRow({
+          masterCode: row['Master Code'],
+          caseNumber: row['Case Number'],
+          childCode: row['Child Code'],
+          product: row['Product'],
+          variant: row['Variant'],
+          sequence: row['Sequence'],
+          status: row['Status'],
+          scannedAt: row['Scanned At']
+        })
+      })
+    } else {
+      childSheet.addRow(['Info', 'No child codes linked yet for this batch.'])
+    }
 
     // Sheet 4: All Child Codes (flat list)
     const allChildData = uniqueCodes.map((code: any, index: number) => {
@@ -283,42 +309,56 @@ export async function GET(request: NextRequest) {
       return {
         '#': index + 1,
         'Individual QR Code': code.code,
-        'Tracking URL': generateTrackingURL(code.code, 'product'),
-        'Sequence': code.sequence_number,
         'Product': code.products?.product_name || 'N/A',
         'Variant': code.product_variants?.variant_name || 'N/A',
-        'Case Number': isBuffer 
-          ? (masterCodeData?.case_number ? `${masterCodeData.case_number} (Buffer)` : 'Buffer') 
-          : (masterCodeData?.case_number || 'Unassigned'),
+        'Tracking URL': generateTrackingURL(code.code, 'product'),
+        'Sequence': code.sequence_number,
         'Master Code': isBuffer 
           ? (masterCodeData?.master_code ? `${masterCodeData.master_code} (Buffer)` : 'Buffer - Unassigned')
           : (masterCodeData?.master_code || 'Unassigned'),
+        'Case Number': isBuffer 
+          ? (masterCodeData?.case_number ? `${masterCodeData.case_number} (Buffer)` : 'Buffer') 
+          : (masterCodeData?.case_number || 'Unassigned'),
+        'Master Tracking URL': generateTrackingURL(masterCodeData?.master_code || '', 'master'),
         'Status': code.status,
         'Scanned At': code.last_scanned_at ? new Date(code.last_scanned_at).toLocaleString() : 'N/A'
       }
     })
 
-    const allChildSheet = XLSX.utils.json_to_sheet(allChildData)
-    allChildSheet['!cols'] = [
-      { wch: 5 },
-      { wch: 50 },
-      { wch: 60 },  // Tracking URL column
-      { wch: 10 },
-      { wch: 25 },
-      { wch: 20 },
-      { wch: 12 },
-      { wch: 35 },
-      { wch: 12 },
-      { wch: 20 }
+    // Sheet 4: All Child Codes (flat list)
+    const allChildSheet = workbook.addWorksheet('All Child Codes')
+    allChildSheet.columns = [
+      { header: '#', key: 'index', width: 5 },
+      { header: 'Individual QR Code', key: 'code', width: 50 },
+      { header: 'Product', key: 'product', width: 25 },
+      { header: 'Variant', key: 'variant', width: 20 },
+      { header: 'Tracking URL', key: 'trackingUrl', width: 60 },
+      { header: 'Sequence', key: 'sequence', width: 10 },
+      { header: 'Master Code', key: 'masterCode', width: 35 },
+      { header: 'Case Number', key: 'caseNumber', width: 12 },
+      { header: 'Master Tracking URL', key: 'masterTrackingUrl', width: 60 },
+      { header: 'Status', key: 'status', width: 12 },
+      { header: 'Scanned At', key: 'scannedAt', width: 20 }
     ]
-    XLSX.utils.book_append_sheet(workbook, allChildSheet, 'All Child Codes')
+
+    allChildData.forEach((row: any) => {
+      allChildSheet.addRow({
+        index: row['#'],
+        code: row['Individual QR Code'],
+        product: row['Product'],
+        variant: row['Variant'],
+        trackingUrl: row['Tracking URL'],
+        sequence: row['Sequence'],
+        masterCode: row['Master Code'],
+        caseNumber: row['Case Number'],
+        masterTrackingUrl: row['Master Tracking URL'],
+        status: row['Status'],
+        scannedAt: row['Scanned At']
+      })
+    })
 
     // Generate Excel file
-    const excelBuffer = XLSX.write(workbook, {
-      type: 'buffer',
-      bookType: 'xlsx',
-      compression: true
-    })
+    const excelBuffer = await workbook.xlsx.writeBuffer()
 
     const fileName = `Scan_Summary_${orderData?.order_no || batch.id.substring(0, 8)}_${new Date().toISOString().slice(0, 10)}.xlsx`
 

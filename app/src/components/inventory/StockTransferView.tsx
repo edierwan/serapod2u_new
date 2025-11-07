@@ -370,7 +370,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
 
       // Create stock movements for each item (transfer out from source)
       for (const item of transferItems) {
-        await supabase.rpc('record_stock_movement', {
+        const { error: movementError } = await supabase.rpc('record_stock_movement', {
           p_movement_type: 'transfer_out',
           p_variant_id: item.variant_id,
           p_organization_id: fromWarehouse,
@@ -386,6 +386,10 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
           p_company_id: userProfile.organizations.id,
           p_created_by: userProfile.id
         } as any)
+
+        if (movementError) {
+          throw movementError
+        }
       }
 
       toast({

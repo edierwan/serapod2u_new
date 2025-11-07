@@ -612,8 +612,8 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
     }
 
     return (
-        <Card>
-            <CardHeader>
+        <Card className="will-change-transform">
+            <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                     <Smartphone className="w-4 h-4" />
                     Interactive Mobile Preview
@@ -638,7 +638,7 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
                         <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-gray-800 rounded-b-3xl z-20"></div>
 
                         {/* App Content */}
-                        <div className="h-full bg-gray-50 overflow-y-auto pb-20" style={{ paddingTop: '10px' }}>
+                        <div className="h-full bg-gray-50 overflow-y-auto scroll-smooth pb-20" style={{ paddingTop: '10px' }}>
                             {renderCurrentPage()}
                         </div>
 
