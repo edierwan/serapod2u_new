@@ -2,6 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Fix workspace root detection warning
+  turbopack: {
+    root: __dirname,
+  },
+
   allowedDevOrigins: ['192.168.1.5', 'localhost'],
   
   images: {

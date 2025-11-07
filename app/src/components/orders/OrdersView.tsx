@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { validateOrderDeletion, cascadeDeleteOrder } from '@/lib/utils/deletionValidation'
+import { formatNumber } from '@/lib/utils/formatters'
 import { 
   FileText, 
   Plus, 
@@ -677,11 +678,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <div className="flex items-center gap-6">
                           <div className="text-center">
                             <div className="text-xs text-gray-500">Items</div>
-                            <div className="text-sm font-bold text-gray-900">{itemCount}</div>
+                            <div className="text-sm font-bold text-gray-900">{formatNumber(itemCount)}</div>
                           </div>
                           <div className="text-center">
                             <div className="text-xs text-gray-500">Units</div>
-                            <div className="text-sm font-bold text-gray-900">{totalUnits}</div>
+                            <div className="text-sm font-bold text-gray-900">{formatNumber(totalUnits)}</div>
                           </div>
                           <div className="text-center">
                             <div className="text-xs text-gray-500">Amount</div>
@@ -817,11 +818,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                     <div className="grid grid-cols-3 gap-3 mb-4">
                       <div className="bg-gray-50 rounded-lg p-2 text-center">
                         <div className="text-xs text-gray-500 mb-1">Items</div>
-                        <div className="text-lg font-bold text-gray-900">{itemCount}</div>
+                        <div className="text-lg font-bold text-gray-900">{formatNumber(itemCount)}</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-2 text-center">
                         <div className="text-xs text-gray-500 mb-1">Units</div>
-                        <div className="text-lg font-bold text-gray-900">{totalUnits}</div>
+                        <div className="text-lg font-bold text-gray-900">{formatNumber(totalUnits)}</div>
                       </div>
                       <div className="bg-blue-50 rounded-lg p-2 text-center">
                         <div className="text-xs text-blue-600 mb-1">Amount</div>

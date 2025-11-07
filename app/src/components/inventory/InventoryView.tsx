@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,30 +23,23 @@ import {
 
 interface InventoryItem {
   id: string
+  variant_id?: string | null
+  variant_code?: string | null
+  variant_name?: string | null
+  product_name?: string | null
+  product_code?: string | null
+  organization_id?: string | null
+  organization_name?: string | null
+  organization_code?: string | null
   quantity_on_hand: number
   quantity_allocated: number
   quantity_available: number
   reorder_point: number
   reorder_quantity: number
-  average_cost: number | null
-  total_value?: number | null
-  computed_total_value: number
-  computed_unit_cost: number
-  cost_source: 'average' | 'base' | 'none'
+  unit_cost: number | null
+  total_value: number | null
+  manual_balance_qty?: number | null
   warehouse_location: string | null
-  product_variants?: {
-    variant_code: string
-    variant_name: string
-    base_cost?: number | null
-    products?: {
-      product_name: string
-      product_code: string
-    }
-  }
-  organizations?: {
-    org_name: string
-    org_code: string
-  }
 }
 
 interface InventoryViewProps {
@@ -68,47 +61,91 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 15
 
+  const formatNumber = (value?: number | null) => {
+    if (value === null || value === undefined) {
+      return '0'
+    }
+    return new Intl.NumberFormat('en-MY').format(value)
+  }
+
   useEffect(() => {
     if (isReady) {
       fetchInventory()
       fetchLocations()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, searchQuery, locationFilter, statusFilter, currentPage])
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, locationFilter, statusFilter])
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
-      // Toggle direction if same column
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
     } else {
-      // New column, start with ascending
       setSortColumn(column)
       setSortDirection('asc')
     }
-    setCurrentPage(1) // Reset to first page
+    setCurrentPage(1)
   }
 
-  const getSortedInventory = () => {
-    if (!sortColumn) return inventory
+  const filteredInventory = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase()
 
-    const sorted = [...inventory].sort((a, b) => {
+    return inventory.filter(item => {
+      const matchesLocation = locationFilter === 'all' || item.organization_id === locationFilter
+
+      let matchesStatus = true
+      if (statusFilter === 'low_stock') {
+        matchesStatus = item.quantity_available > 0 && item.quantity_available <= item.reorder_point
+      } else if (statusFilter === 'out_of_stock') {
+        matchesStatus = item.quantity_available <= 0
+      } else if (statusFilter === 'in_stock') {
+        matchesStatus = item.quantity_available > 0
+      }
+
+      if (!normalizedSearch) {
+        return matchesLocation && matchesStatus
+      }
+
+      const haystack = [
+        item.variant_code,
+        item.variant_name,
+        item.product_name,
+        item.product_code,
+        item.organization_name,
+        item.organization_code
+      ]
+        .filter(Boolean)
+        .map(value => String(value).toLowerCase())
+
+      const matchesSearch = haystack.some(value => value.includes(normalizedSearch))
+
+      return matchesLocation && matchesStatus && matchesSearch
+    })
+  }, [inventory, searchQuery, locationFilter, statusFilter])
+
+  const sortedInventory = useMemo(() => {
+    if (!sortColumn) {
+      return [...filteredInventory]
+    }
+
+    const sorted = [...filteredInventory].sort((a, b) => {
       let aValue: any
       let bValue: any
 
       switch (sortColumn) {
         case 'variant_code':
-          aValue = a.product_variants?.variant_code || ''
-          bValue = b.product_variants?.variant_code || ''
+          aValue = a.variant_code || ''
+          bValue = b.variant_code || ''
           break
         case 'product_name':
-          aValue = a.product_variants?.products?.product_name || ''
-          bValue = b.product_variants?.products?.product_name || ''
+          aValue = a.product_name || ''
+          bValue = b.product_name || ''
           break
         case 'location':
-          aValue = a.organizations?.org_name || ''
-          bValue = b.organizations?.org_name || ''
+          aValue = a.organization_name || ''
+          bValue = b.organization_name || ''
           break
         case 'on_hand':
           aValue = a.quantity_on_hand
@@ -123,30 +160,34 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           bValue = b.quantity_available
           break
         case 'total_value':
-          aValue = a.computed_total_value || 0
-          bValue = b.computed_total_value || 0
+          aValue = a.total_value ?? 0
+          bValue = b.total_value ?? 0
           break
         default:
           return 0
       }
 
-      // Handle string comparison
       if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return sortDirection === 'asc' 
+        return sortDirection === 'asc'
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue)
       }
 
-      // Handle number comparison
       if (sortDirection === 'asc') {
         return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
       }
+
+      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
     })
 
     return sorted
-  }
+  }, [filteredInventory, sortColumn, sortDirection])
+
+  const paginatedInventory = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage
+    const end = start + itemsPerPage
+    return sortedInventory.slice(start, end)
+  }, [sortedInventory, currentPage, itemsPerPage])
 
   const renderSortIcon = (column: string) => {
     if (sortColumn !== column) {
@@ -162,113 +203,352 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
     setLoading(true)
     try {
-      let query = supabase
-        .from('product_inventory')
-        .select(`
-          id,
-          quantity_on_hand,
-          quantity_allocated,
-          quantity_available,
-          reorder_point,
-          reorder_quantity,
-          average_cost,
-          total_value,
-          warehouse_location,
-          product_variants!inner (
-            variant_code,
-            variant_name,
-            base_cost,
-            products!inner (
-              product_name,
-              product_code
+      let source: 'view' | 'fallback' = 'view'
+      let data: any[] | null = null
+
+      const { data: viewData, error: viewError } = await supabase
+        .from('vw_inventory_on_hand')
+        .select('*')
+
+      if (viewError) {
+        const missingView = (() => {
+          const code = typeof viewError.code === 'string' ? viewError.code.toUpperCase() : null
+          if (code === '42P01' || code === 'PGRST103' || code === 'PGRST204') {
+            return true
+          }
+          const message = typeof viewError.message === 'string' ? viewError.message.toLowerCase() : ''
+          return message.includes('vw_inventory_on_hand') || message.includes('schema cache')
+        })()
+
+        if (!missingView) {
+          throw viewError
+        }
+
+        console.warn('vw_inventory_on_hand unavailable, using product_inventory fallback', viewError)
+        source = 'fallback'
+
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('product_inventory')
+          .select(`
+            id,
+            variant_id,
+            organization_id,
+            quantity_on_hand,
+            quantity_allocated,
+            quantity_available,
+            reorder_point,
+            reorder_quantity,
+            average_cost,
+            total_value,
+            warehouse_location,
+            product_variants (
+              id,
+              variant_code,
+              variant_name,
+              base_cost,
+              products (
+                product_name,
+                product_code
+              )
+            ),
+            organizations (
+              id,
+              org_name,
+              org_code
             )
-          ),
-          organizations!inner (
-            org_name,
-            org_code
-          )
-        `)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
+          `)
+          .eq('is_active', true)
 
-      // Apply filters
-      if (searchQuery) {
-        query = query.or(`product_variants.variant_name.ilike.%${searchQuery}%,product_variants.products.product_name.ilike.%${searchQuery}%`)
+        if (fallbackError) {
+          console.error('Fallback inventory query failed:', fallbackError)
+          throw fallbackError
+        }
+
+        data = fallbackData || []
+      } else {
+        data = viewData || []
       }
 
-      if (locationFilter !== 'all') {
-        query = query.eq('organization_id', locationFilter)
+      const parseNumber = (value: any): number | null => {
+        if (value === null || value === undefined || value === '') {
+          return null
+        }
+        const numeric = Number(value)
+        return Number.isFinite(numeric) ? numeric : null
       }
 
-      if (statusFilter === 'low_stock') {
-        query = query.lt('quantity_available', 'reorder_point')
-      } else if (statusFilter === 'out_of_stock') {
-        query = query.eq('quantity_available', 0)
-      } else if (statusFilter === 'in_stock') {
-        query = query.gt('quantity_available', 0)
+      const variantBaseCostMap = new Map<string, number>()
+      const collectedVariantIds = Array.from(
+        new Set(
+          (data || [])
+            .map((record: any) => {
+              if (record?.variant_id) return record.variant_id
+              const variantRelation = Array.isArray(record?.product_variants)
+                ? record.product_variants[0]
+                : record?.product_variants
+              return variantRelation?.id ?? null
+            })
+            .filter(Boolean)
+        )
+      )
+
+      if (collectedVariantIds.length > 0) {
+        const { data: variantCostRows, error: variantCostError } = await supabase
+          .from('product_variants')
+          .select('id, base_cost')
+          .in('id', collectedVariantIds as string[])
+
+        if (!variantCostError) {
+          variantCostRows?.forEach((row: any) => {
+            if (row?.id && row?.base_cost !== null && row?.base_cost !== undefined) {
+              const parsed = Number(row.base_cost)
+              if (!Number.isNaN(parsed)) {
+                variantBaseCostMap.set(row.id, parsed)
+              }
+            }
+          })
+        } else {
+          console.warn('Failed to load variant base cost data for inventory fallback', variantCostError)
+        }
       }
 
-      // Pagination
-      const start = (currentPage - 1) * itemsPerPage
-      const end = start + itemsPerPage - 1
-      query = query.range(start, end)
-
-      const { data, error } = await query
-
-      if (error) throw error
-      
-      // Transform the data to handle both array and object responses from Supabase
-      // With !inner joins, the response format can vary
-      const transformedData = (data || []).map((item: any) => {
+      let normalized: InventoryItem[] = (data || []).map((item: any, index: number) => {
         const rawVariant = Array.isArray(item.product_variants)
           ? item.product_variants[0]
           : item.product_variants
 
-        const normalizedVariant = rawVariant
-          ? {
-              ...rawVariant,
-              base_cost: rawVariant.base_cost !== null && rawVariant.base_cost !== undefined
-                ? Number(rawVariant.base_cost)
-                : null,
-              products: Array.isArray(rawVariant.products)
-                ? rawVariant.products[0]
-                : rawVariant.products
-            }
+        const rawProduct = rawVariant?.products
+          ? Array.isArray(rawVariant.products)
+            ? rawVariant.products[0]
+            : rawVariant.products
           : null
 
-        const normalizedOrg = Array.isArray(item.organizations)
+        const rawOrg = Array.isArray(item.organizations)
           ? item.organizations[0]
           : item.organizations
 
-        const averageCost = item.average_cost !== null && item.average_cost !== undefined
-          ? Number(item.average_cost)
-          : null
+        const variantId = item.variant_id ?? rawVariant?.id ?? null
+        const organizationId = item.organization_id ?? rawOrg?.id ?? null
 
-        const baseCost = normalizedVariant?.base_cost ?? null
+        const variantBaseCostCandidates: Array<number | null> = []
+        if (variantId && variantBaseCostMap.has(variantId)) {
+          variantBaseCostCandidates.push(variantBaseCostMap.get(variantId) ?? null)
+        }
+        variantBaseCostCandidates.push(parseNumber(rawVariant?.base_cost))
+        variantBaseCostCandidates.push(parseNumber(item.base_cost))
 
-        const costSource: 'average' | 'base' | 'none' = averageCost !== null && !Number.isNaN(averageCost)
-          ? 'average'
-          : baseCost !== null && !Number.isNaN(baseCost)
-            ? 'base'
-            : 'none'
+        const variantBaseCost = variantBaseCostCandidates.find(cost => cost !== null) ?? null
 
-        const computedUnitCost = costSource === 'none' ? 0 : (costSource === 'average' ? averageCost! : baseCost!)
-        const computedTotalValue = Number((Number(item.quantity_on_hand || 0) * computedUnitCost).toFixed(2))
+  const quantityOnHand = parseNumber(item.quantity_on_hand) ?? 0
+  const allocatedQuantity = parseNumber(item.quantity_allocated) ?? 0
+  const quantityAvailable = parseNumber(item.quantity_available) ?? quantityOnHand
+
+        const resolvedUnitCost = (() => {
+          if (variantBaseCost !== null) return variantBaseCost
+          const directUnit = parseNumber(item.unit_cost)
+          if (directUnit !== null && directUnit !== 0) return directUnit
+          const average = parseNumber(item.average_cost)
+          return average
+        })()
+
+        const resolvedTotalValue = (() => {
+          if (resolvedUnitCost !== null) {
+            return Number((quantityOnHand * resolvedUnitCost).toFixed(2))
+          }
+          const directTotal = parseNumber(item.total_value)
+          if (directTotal !== null) return directTotal
+          return null
+        })()
 
         return {
-          ...item,
-          average_cost: averageCost,
-          product_variants: normalizedVariant,
-          organizations: normalizedOrg,
-          computed_unit_cost: computedUnitCost,
-          computed_total_value: computedTotalValue,
-          cost_source: costSource
+          id: item.id || `${organizationId || 'org'}-${variantId || rawVariant?.variant_code || index}`,
+          variant_id: variantId,
+          variant_code: item.variant_code ?? rawVariant?.variant_code ?? null,
+          variant_name: item.variant_name ?? rawVariant?.variant_name ?? null,
+          product_name: item.product_name ?? rawProduct?.product_name ?? null,
+          product_code: item.product_code ?? rawProduct?.product_code ?? null,
+          organization_id: organizationId,
+          organization_name: item.organization_name ?? rawOrg?.org_name ?? null,
+          organization_code: item.organization_code ?? rawOrg?.org_code ?? null,
+          quantity_on_hand: quantityOnHand,
+          quantity_allocated: allocatedQuantity,
+          quantity_available: quantityAvailable,
+          reorder_point: Number(item.reorder_point ?? 0),
+          reorder_quantity: Number(item.reorder_quantity ?? 0),
+          unit_cost: resolvedUnitCost,
+          total_value: resolvedTotalValue,
+          manual_balance_qty:
+            item.manual_balance_qty !== undefined && item.manual_balance_qty !== null
+              ? Number(item.manual_balance_qty)
+              : null,
+          warehouse_location: item.warehouse_location ?? null
         }
       })
-      
-  setInventory(transformedData as InventoryItem[])
-    } catch (error) {
-      console.error('Error fetching inventory:', error)
+
+      if (source === 'fallback' && normalized.length > 0) {
+        const combos = normalized.filter(item => item.variant_id && item.organization_id)
+        const variantIds = Array.from(new Set(combos.map(item => item.variant_id!).filter(Boolean)))
+        const organizationIds = Array.from(new Set(combos.map(item => item.organization_id!).filter(Boolean)))
+
+        if (variantIds.length > 0 && organizationIds.length > 0) {
+          const organizationIdSet = new Set(organizationIds)
+          const manualBalanceMap = new Map<string, number>()
+
+          const { data: manualViewData, error: manualViewError } = await supabase
+            .from('vw_manual_stock_balance')
+            .select('warehouse_id, variant_id, manual_balance_qty')
+            .in('variant_id', variantIds)
+            .in('warehouse_id', organizationIds)
+
+          if (!manualViewError) {
+            manualViewData?.forEach((row: any) => {
+              if (!row?.warehouse_id || !row?.variant_id) return
+              const key = `${row.warehouse_id}:${row.variant_id}`
+              manualBalanceMap.set(key, Number(row.manual_balance_qty ?? 0))
+            })
+          } else {
+            console.warn('vw_manual_stock_balance unavailable, aggregating manual balance from stock_movements', manualViewError)
+            const { data: manualMovementData, error: manualMovementError } = await supabase
+              .from('stock_movements')
+              .select('variant_id, movement_type, to_organization_id, from_organization_id, quantity_change')
+              .in('variant_id', variantIds)
+              .in('movement_type', ['manual_in', 'manual_out'])
+
+            if (!manualMovementError) {
+              manualMovementData?.forEach((movement: any) => {
+                const targetOrg = movement.movement_type === 'manual_in'
+                  ? movement.to_organization_id
+                  : movement.from_organization_id
+
+                if (!targetOrg || !movement.variant_id) {
+                  return
+                }
+
+                if (!organizationIdSet.has(targetOrg)) {
+                  return
+                }
+
+                const key = `${targetOrg}:${movement.variant_id}`
+                const existing = manualBalanceMap.get(key) ?? 0
+                const delta = Number(movement.quantity_change ?? 0)
+                manualBalanceMap.set(key, existing + delta)
+              })
+            } else {
+              console.error('Failed to aggregate manual stock balance fallback:', manualMovementError)
+            }
+          }
+
+          if (manualBalanceMap.size > 0) {
+            normalized = normalized.map(item => {
+              if (!item.organization_id || !item.variant_id) {
+                return item
+              }
+              const key = `${item.organization_id}:${item.variant_id}`
+              if (!manualBalanceMap.has(key)) {
+                return item
+              }
+              return {
+                ...item,
+                manual_balance_qty: manualBalanceMap.get(key) ?? item.manual_balance_qty ?? null
+              }
+            })
+          }
+
+          const movementTotalsMap = new Map<string, number>()
+          try {
+            const { data: movementTotalsData, error: movementTotalsError } = await supabase
+              .from('stock_movements')
+              .select('variant_id, quantity_change, from_organization_id, to_organization_id')
+              .in('variant_id', variantIds)
+              .or(`from_organization_id.in.(${organizationIds.join(',')}),to_organization_id.in.(${organizationIds.join(',')})`)
+
+            if (!movementTotalsError) {
+              movementTotalsData?.forEach((movement: any) => {
+                const variantId = movement?.variant_id
+                if (!variantId) {
+                  return
+                }
+
+                const qty = Number(movement.quantity_change ?? 0)
+                if (!Number.isFinite(qty) || qty === 0) {
+                  return
+                }
+
+                const toOrg = movement.to_organization_id
+                if (toOrg && organizationIdSet.has(toOrg)) {
+                  const key = `${toOrg}:${variantId}`
+                  movementTotalsMap.set(key, (movementTotalsMap.get(key) ?? 0) + qty)
+                }
+
+                const fromOrg = movement.from_organization_id
+                if (fromOrg && organizationIdSet.has(fromOrg)) {
+                  const key = `${fromOrg}:${variantId}`
+                  movementTotalsMap.set(key, (movementTotalsMap.get(key) ?? 0) + qty)
+                }
+              })
+            } else {
+              console.error('Failed to recalculate on-hand from stock_movements:', movementTotalsError)
+            }
+          } catch (movementError) {
+            console.error('Unexpected error while recalculating fallback inventory totals:', movementError)
+          }
+
+          if (movementTotalsMap.size > 0) {
+            normalized = normalized.map(item => {
+              if (!item.organization_id || !item.variant_id) {
+                return item
+              }
+
+              const key = `${item.organization_id}:${item.variant_id}`
+              if (!movementTotalsMap.has(key)) {
+                return item
+              }
+
+              const recalculatedOnHand = Number(movementTotalsMap.get(key))
+              if (!Number.isFinite(recalculatedOnHand)) {
+                return item
+              }
+
+              const allocated = Number(item.quantity_allocated ?? 0)
+              const recalculatedAvailable = recalculatedOnHand - (Number.isFinite(allocated) ? allocated : 0)
+
+              const hasUnitCost = typeof item.unit_cost === 'number' && Number.isFinite(item.unit_cost)
+              const existingTotal = typeof item.total_value === 'number' && Number.isFinite(item.total_value)
+                ? item.total_value
+                : null
+              const previousOnHand = Number(item.quantity_on_hand ?? 0)
+
+              let recalculatedTotal = existingTotal
+
+              if (hasUnitCost) {
+                recalculatedTotal = Number((recalculatedOnHand * (item.unit_cost as number)).toFixed(2))
+              } else if (existingTotal !== null && previousOnHand > 0 && previousOnHand !== recalculatedOnHand) {
+                const derivedUnitCost = existingTotal / previousOnHand
+                if (Number.isFinite(derivedUnitCost)) {
+                  recalculatedTotal = Number((recalculatedOnHand * derivedUnitCost).toFixed(2))
+                }
+              }
+
+              return {
+                ...item,
+                quantity_on_hand: recalculatedOnHand,
+                quantity_available: recalculatedAvailable,
+                total_value: recalculatedTotal
+              }
+            })
+          }
+        }
+      }
+
+      if (source === 'fallback') {
+        console.info(`Inventory fallback loaded ${normalized.length} records from product_inventory`)
+      }
+
+      setInventory(normalized)
+    } catch (error: any) {
+      const errorMessage = typeof error?.message === 'string' ? error.message : error
+      console.error('Error fetching inventory:', errorMessage, error)
+      setInventory([])
     } finally {
       setLoading(false)
     }
@@ -290,8 +570,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     }
   }
 
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString(undefined, {
+  const formatCurrency = (value?: number | null) => {
+    const numeric = value !== null && value !== undefined && !Number.isNaN(value) ? value : 0
+    return numeric.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })
@@ -315,11 +596,11 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   }
 
   // Calculate stats
-  const totalValue = inventory.reduce((sum, item) => sum + (item.computed_total_value || 0), 0)
-  const inStockItems = inventory.filter(item => item.quantity_available > 0).length
-  const lowStockItems = inventory.filter(item => item.quantity_available <= item.reorder_point && item.quantity_available > 0).length
-  const outOfStockItems = inventory.filter(item => item.quantity_available === 0).length
-  const inStockPercentage = inventory.length > 0 ? Math.round((inStockItems / inventory.length) * 100) : 0
+  const totalValue = filteredInventory.reduce((sum, item) => sum + (item.total_value ?? 0), 0)
+  const inStockItems = filteredInventory.filter(item => item.quantity_available > 0).length
+  const lowStockItems = filteredInventory.filter(item => item.quantity_available <= item.reorder_point && item.quantity_available > 0).length
+  const outOfStockItems = filteredInventory.filter(item => item.quantity_available <= 0).length
+  const inStockPercentage = filteredInventory.length > 0 ? Math.round((inStockItems / filteredInventory.length) * 100) : 0
 
   return (
     <div className="space-y-6">
@@ -368,7 +649,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             </div>
             <p className="text-gray-600 text-xs sm:text-sm mb-1">In Stock</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{inStockPercentage}%</p>
-            <p className="text-xs text-gray-600 hidden sm:block">{inStockItems} of {inventory.length} items</p>
+            <p className="text-xs text-gray-600 hidden sm:block">{inStockItems} of {filteredInventory.length} items</p>
           </CardContent>
         </Card>
 
@@ -447,7 +728,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         <CardHeader>
           <CardTitle>Inventory Items</CardTitle>
           <CardDescription>
-            {loading ? 'Loading...' : `${inventory.length} inventory items found`}
+            {loading ? 'Loading...' : `${filteredInventory.length} inventory items found`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -534,37 +815,37 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </TableCell>
                 </TableRow>
               ) : (
-                getSortedInventory().map((item) => (
+                paginatedInventory.map((item: InventoryItem) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-mono text-sm">
-                      {item.product_variants?.variant_code || 'N/A'}
+                      {item.variant_code || 'N/A'}
                     </TableCell>
                     <TableCell>
                       <div>
                         <p className="font-medium">
-                          {item.product_variants?.products?.product_name || 'Unknown Product'}
+                          {item.product_name || 'Unknown Product'}
                         </p>
                         <p className="text-sm text-gray-600">
-                          {item.product_variants?.variant_name || 'No variant'}
+                          {item.variant_name || 'No variant'}
                         </p>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{item.organizations?.org_name || 'Unknown Location'}</p>
+                        <p className="font-medium">{item.organization_name || 'Unknown Location'}</p>
                         {item.warehouse_location && (
                           <p className="text-sm text-gray-600">{item.warehouse_location}</p>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">{item.quantity_on_hand}</span>
+                      <span className="font-medium">{formatNumber(item.quantity_on_hand)}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-gray-600">{item.quantity_allocated}</span>
+                      <span className="text-gray-600">{formatNumber(item.quantity_allocated)}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">{item.quantity_available}</span>
+                      <span className="font-medium">{formatNumber(item.quantity_available)}</span>
                     </TableCell>
                     <TableCell>
                       <div className="space-y-2">
@@ -582,20 +863,17 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                           />
                         </div>
                         <p className="text-xs text-gray-600">
-                          Reorder at: {item.reorder_point}
+                          Reorder at: {formatNumber(item.reorder_point)}
                         </p>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="font-medium">
-                        RM {formatCurrency(item.computed_total_value)}
+                        RM {formatCurrency(item.total_value ?? 0)}
                       </span>
-                      {item.cost_source !== 'none' && (
-                        <p className="text-sm text-gray-600">
-                          @ RM {formatCurrency(item.computed_unit_cost)}{' '}
-                          {item.cost_source === 'average' ? '(Avg cost)' : '(Base cost)'}
-                        </p>
-                      )}
+                      <p className="text-sm text-gray-600">
+                        @ RM {formatCurrency(item.unit_cost ?? 0)} per unit
+                      </p>
                     </TableCell>
                   </TableRow>
                 ))
@@ -606,7 +884,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           {/* Pagination */}
           <div className="mt-6 flex items-center justify-between">
             <p className="text-gray-600 text-sm">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, inventory.length)} of {inventory.length} items
+              {filteredInventory.length === 0
+                ? 'No items to display'
+                : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, filteredInventory.length)} of ${filteredInventory.length} items`}
             </p>
             <div className="flex gap-2">
               <Button 
@@ -628,7 +908,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 variant="outline" 
                 size="sm"
                 onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={inventory.length < itemsPerPage}
+                disabled={currentPage * itemsPerPage >= filteredInventory.length}
               >
                 Next
               </Button>

@@ -1,14 +1,23 @@
 /**
  * Excel Generator Utility
- * Generates Excel files for QR code batches
+ * Generates MULTIPLE Excel files for QR code batches (split into 10K per file)
+ * Then creates a ZIP archive of all files
+ * Optimized for 200K+ codes with streaming ExcelJS writer
  */
 
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
+import { createWriteStream, createReadStream } from 'fs'
+import { unlink } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { randomUUID } from 'crypto'
+import { finished } from 'stream/promises'
+import archiver, { type Archiver } from 'archiver'
 import { GeneratedMasterCode, GeneratedQRCode } from './qr-generator'
+import type { NextResponse } from 'next/server'
 
 /**
  * Get the base URL for QR code tracking
- * Uses environment variable or falls back to production URL
  */
 function getBaseURL(): string {
   return process.env.NEXT_PUBLIC_APP_URL || 'http://www.serapod2u.com'
@@ -34,210 +43,376 @@ export interface QRExcelData {
   bufferPercent: number
 }
 
-/**
- * Generate Excel file for QR batch
- * Returns Buffer that can be uploaded to storage or downloaded
- */
-export function generateQRExcel(data: QRExcelData): Buffer {
-  const workbook = XLSX.utils.book_new()
+const URL_THRESHOLD = 10_000
+const CODES_PER_FILE = 1_000_000 // Keep all codes in single file (changed from 10K to 1M)
 
-  // ===== SHEET 1: Summary =====
-  const summaryData = [
-    ['QR Code Batch Report'],
+type ProductGroupAggregate = {
+  firstCode: GeneratedQRCode
+  lastCode: GeneratedQRCode
+  count: number
+}
+
+type CaseProductAggregates = Map<string, Map<string, number>>
+
+/**
+ * Generate single Excel file for QR batch with all codes
+ * Returns path to the Excel file (no ZIP needed for single file)
+ * Optimized for large batches using streaming ExcelJS writer
+ */
+export async function generateQRExcel(data: QRExcelData): Promise<string> {
+  console.log(`📊 Starting Excel generation: ${data.totalUniqueCodes} codes`)
+  const startTime = Date.now()
+
+  const excelFilePath = join(tmpdir(), `qr-batch-${randomUUID()}.xlsx`)
+
+  try {
+    console.log('  ⏳ Step 1: Calculating aggregates...')
+    const { productGroups, caseProductCounts } = calculateAggregates(data)
+    console.log(`  ✅ Aggregates calculated: ${productGroups.size} product groups, ${caseProductCounts.size} cases`)
+
+    console.log(`📄 Generating single Excel file with ${data.individualCodes.length} codes`)
+
+    const writeStream = createWriteStream(excelFilePath)
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: writeStream,
+      useStyles: false,
+      useSharedStrings: false
+    })
+
+    // Build all sheets in order
+    await buildSummarySheet(workbook, data)
+    await buildMasterSheet(workbook, data)
+    await buildIndividualSheet(workbook, data, data.individualCodes)
+    await buildProductBreakdownSheet(workbook, productGroups)
+    await buildPackingSheet(workbook, data, caseProductCounts)
+
+    await workbook.commit()
+    await finished(writeStream)
+
+    const stats = await import('fs/promises').then(fs => fs.stat(excelFilePath))
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2)
+    console.log(`✅ Excel generation complete in ${elapsedTime}s (File: ${(stats.size / 1024 / 1024).toFixed(2)} MB)`)
+
+    return excelFilePath
+  } catch (error) {
+    console.error('❌ Excel generation failed:', error)
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    // Cleanup on error
+    await unlink(excelFilePath).catch(() => {})
+    throw error
+  }
+}
+
+
+
+/**
+ * Calculate aggregates once (used by all Excel files)
+ */
+function calculateAggregates(data: QRExcelData): {
+  productGroups: Map<string, ProductGroupAggregate>
+  caseProductCounts: CaseProductAggregates
+} {
+  const productGroups = new Map<string, ProductGroupAggregate>()
+  const caseProductCounts: CaseProductAggregates = new Map()
+
+  data.individualCodes.forEach((code) => {
+    const key = `${code.product_code}-${code.variant_code || 'default'}`
+    
+    if (!productGroups.has(key)) {
+      productGroups.set(key, {
+        firstCode: code,
+        lastCode: code,
+        count: 1
+      })
+    } else {
+      const group = productGroups.get(key)!
+      group.lastCode = code
+      group.count++
+    }
+
+    if (code.case_number) {
+      const caseKey = String(code.case_number)
+      if (!caseProductCounts.has(caseKey)) {
+        caseProductCounts.set(caseKey, new Map())
+      }
+      const caseMap = caseProductCounts.get(caseKey)!
+      caseMap.set(key, (caseMap.get(key) || 0) + 1)
+    }
+  })
+
+  return { productGroups, caseProductCounts }
+}
+
+
+
+/**
+ * Stream file as HTTP response and cleanup after
+ */
+export async function streamFileAsResponse(
+  filePath: string,
+  filename: string
+): Promise<Response> {
+  const stats = await import('fs/promises').then(fs => fs.stat(filePath))
+  const stream = createReadStream(filePath)
+
+  // Create a Response with the stream
+  const response = new Response(stream as any, {
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': stats.size.toString(),
+      'Cache-Control': 'no-cache'
+    }
+  })
+
+  // Cleanup file after stream finishes
+  stream.on('end', () => {
+    unlink(filePath).catch(err => console.error('Failed to cleanup temp file:', err))
+  })
+
+  stream.on('error', () => {
+    unlink(filePath).catch(() => {})
+  })
+
+  return response
+}
+
+async function buildSummarySheet(
+  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+  data: QRExcelData
+): Promise<void> {
+  const sheet = workbook.addWorksheet('Summary')
+  sheet.columns = [
+    { header: '', key: 'col1', width: 35 },
+    { header: '', key: 'col2', width: 45 }
+  ]
+
+  const rows: Array<[string, string]> = [
+    ['QR Code Batch Report', ''],
     ['Generated:', new Date().toLocaleString()],
-    [],
-    ['Order Information'],
+    ['', ''],
+    ['Order Information', ''],
     ['Order Number:', data.orderNo],
     ['Order Date:', data.orderDate],
     ['Company:', data.companyName],
     ['Manufacturer:', data.manufacturerName],
-    [],
-    ['QR Code Statistics'],
-    ['Total Master Codes (Cases):', data.totalMasterCodes],
-    ['Total Individual Codes:', data.totalUniqueCodes],
+    ['', ''],
+    ['QR Code Statistics', ''],
+    ['Total Master Codes (Cases):', data.totalMasterCodes.toString()],
+    ['Total Individual Codes:', data.totalUniqueCodes.toString()],
     ['Buffer Percentage:', `${data.bufferPercent}%`],
-    [],
-    ['Tracking System'],
+    ['', ''],
+    ['Tracking System', ''],
     ['Base URL:', getBaseURL()],
     ['Product Tracking:', `${getBaseURL()}/track/product/[CODE]`],
     ['Master Tracking:', `${getBaseURL()}/track/master/[CODE]`],
-    [],
-    ['Instructions'],
-    ['1. Print Master QR codes and attach to cases/boxes'],
-    ['2. Print Individual QR codes and attach to each product unit'],
-    ['3. Scan Master QR when packing products into cases'],
-    ['4. Scan Individual QR codes during manufacturing process'],
-    ['5. Each QR code contains a tracking URL that can be scanned']
+    ['', ''],
+    ['Instructions', ''],
+    ['1. Print Master QR codes and attach to cases/boxes', ''],
+    ['2. Print Individual QR codes and attach to each product unit', ''],
+    ['3. Scan Master QR when packing products into cases', ''],
+    ['4. Scan Individual QR codes during manufacturing process', ''],
+    ['5. Each QR code contains a tracking URL that can be scanned', '']
   ]
 
-  const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
-  
-  // Set column widths
-  summarySheet['!cols'] = [
-    { wch: 30 },
-    { wch: 40 }
-  ]
-
-  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
-
-  // ===== SHEET 2: Master QR Codes =====
-  const masterSheetData = data.masterCodes.map((master, index) => ({
-    '#': index + 1,
-    'Master QR Code': master.code,
-    'Tracking URL': generateTrackingURL(master.code, 'master'),
-    'Case Number': master.case_number,
-    'Expected Units': master.expected_unit_count,
-    'Order No': data.orderNo,
-    'Print Instructions': 'Print at 5cm x 5cm minimum size'
-  }))
-
-  const masterSheet = XLSX.utils.json_to_sheet(masterSheetData)
-  
-  // Set column widths
-  masterSheet['!cols'] = [
-    { wch: 5 },   // #
-    { wch: 45 },  // Master QR Code
-    { wch: 60 },  // Tracking URL
-    { wch: 12 },  // Case Number
-    { wch: 14 },  // Expected Units
-    { wch: 20 },  // Order No
-    { wch: 35 }   // Print Instructions
-  ]
-
-  XLSX.utils.book_append_sheet(workbook, masterSheet, 'Master QR Codes')
-
-  // ===== SHEET 3: Individual QR Codes =====
-  const individualSheetData = data.individualCodes.map((code, index) => ({
-    '#': index + 1,
-    'Individual QR Code': code.code,
-    'Tracking URL': generateTrackingURL(code.code, 'product'),
-    'Sequence': code.sequence_number,
-    'Product Code': code.product_code,
-    'Variant Code': code.variant_code,
-    'Product Name': code.product_name,
-    'Variant': code.variant_name,
-    'Case Number': code.case_number,
-    'Order No': data.orderNo,
-    'Print Instructions': 'Print at 2cm x 2cm minimum size'
-  }))
-
-  const individualSheet = XLSX.utils.json_to_sheet(individualSheetData)
-  
-  // Set column widths
-  individualSheet['!cols'] = [
-    { wch: 5 },   // #
-    { wch: 50 },  // Individual QR Code
-    { wch: 60 },  // Tracking URL
-    { wch: 10 },  // Sequence
-    { wch: 15 },  // Product Code
-    { wch: 15 },  // Variant Code
-    { wch: 30 },  // Product Name
-    { wch: 20 },  // Variant
-    { wch: 12 },  // Case Number
-    { wch: 20 },  // Order No
-    { wch: 35 }   // Print Instructions
-  ]
-
-  XLSX.utils.book_append_sheet(workbook, individualSheet, 'Individual QR Codes')
-
-  // ===== SHEET 4: By Product Breakdown =====
-  // Group codes by product
-  const productGroups = new Map<string, GeneratedQRCode[]>()
-  
-  for (const code of data.individualCodes) {
-    const key = `${code.product_code}-${code.variant_code}`
-    if (!productGroups.has(key)) {
-      productGroups.set(key, [])
-    }
-    productGroups.get(key)!.push(code)
+  for (const [col1, col2] of rows) {
+    const row = sheet.addRow([col1 ?? '', col2 ?? ''])
+    row.commit()
   }
 
-  const productBreakdownData: any[] = []
-  
-  // Convert Map to Array for iteration
-  Array.from(productGroups.entries()).forEach(([key, codes]) => {
-    const firstCode = codes[0]
-    productBreakdownData.push({
-      'Product Code': firstCode.product_code,
-      'Variant Code': firstCode.variant_code,
-      'Product Name': firstCode.product_name,
-      'Variant': firstCode.variant_name,
-      'Total QR Codes': codes.length,
-      'First Code': codes[0].code,
-      'Last Code': codes[codes.length - 1].code,
-      'Case Range': `${codes[0].case_number} - ${codes[codes.length - 1].case_number}`
+  await sheet.commit()
+  console.log('✅ Summary sheet created')
+}
+
+async function buildMasterSheet(
+  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+  data: QRExcelData
+): Promise<void> {
+  const sheet = workbook.addWorksheet('Master QR Codes')
+  sheet.columns = [
+    { header: '#', key: 'index', width: 6 },
+    { header: 'Master QR Code', key: 'masterCode', width: 45 },
+    { header: 'Tracking URL', key: 'trackingUrl', width: 60 },
+    { header: 'Case Number', key: 'caseNumber', width: 14 },
+    { header: 'Expected Units', key: 'expectedUnits', width: 16 },
+    { header: 'Order No', key: 'orderNo', width: 18 },
+    { header: 'Print Instructions', key: 'printInstructions', width: 38 }
+  ]
+
+  data.masterCodes.forEach((master, index) => {
+    const row = sheet.addRow({
+      index: index + 1,
+      masterCode: master.code,
+      trackingUrl: generateTrackingURL(master.code, 'master'),
+      caseNumber: master.case_number,
+      expectedUnits: master.expected_unit_count,
+      orderNo: data.orderNo,
+      printInstructions: 'Print at 5cm x 5cm minimum size'
     })
+    row.commit()
   })
 
-  const productBreakdownSheet = XLSX.utils.json_to_sheet(productBreakdownData)
+  await sheet.commit()
+  console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} codes)`)
+}
+
+/**
+ * Build Individual QR Codes sheet for a single Excel file
+ * Streams row-by-row with immediate commit for memory efficiency
+ */
+async function buildIndividualSheet(
+  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+  data: QRExcelData,
+  codesSlice: GeneratedQRCode[]
+): Promise<void> {
+  const sheetName = 'Individual QR Codes'
+
+  // Create a map of case numbers to master codes for quick lookup
+  const caseToMasterCode = new Map<number, string>()
+  data.masterCodes.forEach(master => {
+    caseToMasterCode.set(master.case_number, master.code)
+  })
+
+  const sheet = workbook.addWorksheet(sheetName)
   
-  // Set column widths
-  productBreakdownSheet['!cols'] = [
-    { wch: 15 },  // Product Code
-    { wch: 15 },  // Variant Code
-    { wch: 30 },  // Product Name
-    { wch: 20 },  // Variant
-    { wch: 15 },  // Total QR Codes
-    { wch: 50 },  // First Code
-    { wch: 50 },  // Last Code
-    { wch: 15 }   // Case Range
+  // Column order based on user requirements:
+  // 1. # (A)
+  // 2. Individual QR Code (B)
+  // 3. Product Name (C) - moved from position 9
+  // 4. Variant (D) - moved from position 10
+  // 5. Individual Tracking URL (E) - moved from position 3
+  // 6. Sequence (F)
+  // 7. Product Code (G)
+  // 8. Variant Code (H)
+  // 9. Master QR Code (I)
+  // 10. Case Number (J) - moved before Master Tracking URL
+  // 11. Master Tracking URL (K) - moved after Case Number
+  // 12. Order No (L)
+  // 13. Print Instructions (M)
+  sheet.columns = [
+    { header: '#', key: 'index', width: 6 },
+    { header: 'Individual QR Code', key: 'code', width: 50 },
+    { header: 'Product Name', key: 'productName', width: 32 },
+    { header: 'Variant', key: 'variantName', width: 24 },
+    { header: 'Individual Tracking URL', key: 'trackingUrl', width: 65 },
+    { header: 'Sequence', key: 'sequence', width: 12 },
+    { header: 'Product Code', key: 'productCode', width: 18 },
+    { header: 'Variant Code', key: 'variantCode', width: 18 },
+    { header: 'Master QR Code (Case)', key: 'masterCode', width: 50 },
+    { header: 'Case Number', key: 'caseNumber', width: 14 },
+    { header: 'Master Tracking URL', key: 'masterTrackingUrl', width: 65 },
+    { header: 'Order No', key: 'orderNo', width: 18 },
+    { header: 'Print Instructions', key: 'printInstructions', width: 32 }
   ]
 
-  XLSX.utils.book_append_sheet(workbook, productBreakdownSheet, 'Product Breakdown')
+  for (let i = 0; i < codesSlice.length; i++) {
+    const code = codesSlice[i]
+    const masterCode = caseToMasterCode.get(code.case_number) || ''
 
-  // ===== SHEET 5: Packing List =====
-  const packingListData = data.masterCodes.map(master => {
-    // Get codes for this case
-    const codesInCase = data.individualCodes.filter(c => c.case_number === master.case_number)
-    
-    // Group by product
-    const productCounts = new Map<string, { name: string, count: number }>()
-    for (const code of codesInCase) {
-      const key = `${code.product_name} - ${code.variant_name}`
-      if (!productCounts.has(key)) {
-        productCounts.set(key, { name: key, count: 0 })
-      }
-      productCounts.get(key)!.count++
+    // Build row data with all URLs and Master QR Code
+    const rowData: any = {
+      index: i + 1,
+      code: code.code,
+      trackingUrl: generateTrackingURL(code.code, 'product'),
+      masterCode: masterCode,
+      masterTrackingUrl: masterCode ? generateTrackingURL(masterCode, 'master') : '',
+      sequence: code.sequence_number,
+      productCode: code.product_code,
+      variantCode: code.variant_code,
+      productName: code.product_name,
+      variantName: code.variant_name,
+      caseNumber: code.case_number,
+      orderNo: data.orderNo,
+      printInstructions: 'Print at 2cm x 2cm minimum size'
     }
 
-    const productList = Array.from(productCounts.values())
-      .map(p => `${p.name} (${p.count})`)
-      .join('; ')
+    const row = sheet.addRow(rowData)
+    row.commit()
 
-    return {
-      'Case Number': master.case_number,
-      'Master QR Code': master.code,
-      'Expected Units': master.expected_unit_count,
-      'Products in Case': productList,
-      'Status': '☐ Packed',
-      'Packed By': '',
-      'Packed Date': ''
+    if ((i + 1) % 5_000 === 0) {
+      console.log(`  ⏳ Processed ${i + 1}/${codesSlice.length} codes in this file...`)
     }
-  })
+  }
 
-  const packingSheet = XLSX.utils.json_to_sheet(packingListData)
-  
-  // Set column widths
-  packingSheet['!cols'] = [
-    { wch: 12 },  // Case Number
-    { wch: 45 },  // Master QR Code
-    { wch: 14 },  // Expected Units
-    { wch: 60 },  // Products in Case
-    { wch: 10 },  // Status
-    { wch: 20 },  // Packed By
-    { wch: 15 }   // Packed Date
+  await sheet.commit()
+  console.log(`✅ ${sheetName} created (${codesSlice.length} codes)`)
+}
+
+async function buildProductBreakdownSheet(
+  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+  productGroups: Map<string, ProductGroupAggregate>
+): Promise<void> {
+  const sheet = workbook.addWorksheet('Product Breakdown')
+  sheet.columns = [
+    { header: 'Product Code', key: 'productCode', width: 18 },
+    { header: 'Variant Code', key: 'variantCode', width: 18 },
+    { header: 'Product Name', key: 'productName', width: 32 },
+    { header: 'Variant', key: 'variantName', width: 24 },
+    { header: 'Total QR Codes', key: 'totalQrCodes', width: 18 },
+    { header: 'First Code', key: 'firstCode', width: 48 },
+    { header: 'Last Code', key: 'lastCode', width: 48 },
+    { header: 'Case Range', key: 'caseRange', width: 20 }
   ]
 
-  XLSX.utils.book_append_sheet(workbook, packingSheet, 'Packing List')
-
-  // Generate buffer
-  const buffer = XLSX.write(workbook, {
-    type: 'buffer',
-    bookType: 'xlsx',
-    compression: true
+  productGroups.forEach(group => {
+    const row = sheet.addRow({
+      productCode: group.firstCode.product_code,
+      variantCode: group.firstCode.variant_code,
+      productName: group.firstCode.product_name,
+      variantName: group.firstCode.variant_name,
+      totalQrCodes: group.count,
+      firstCode: group.firstCode.code,
+      lastCode: group.lastCode.code,
+      caseRange: `${group.firstCode.case_number} - ${group.lastCode.case_number}`
+    })
+    row.commit()
   })
 
-  return Buffer.from(buffer)
+  await sheet.commit()
+  console.log('✅ Product Breakdown sheet created')
+}
+
+async function buildPackingSheet(
+  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+  data: QRExcelData,
+  caseProductCounts: CaseProductAggregates
+): Promise<void> {
+  const sheet = workbook.addWorksheet('Packing List')
+  sheet.columns = [
+    { header: 'Case Number', key: 'caseNumber', width: 14 },
+    { header: 'Master QR Code', key: 'masterCode', width: 45 },
+    { header: 'Expected Units', key: 'expectedUnits', width: 16 },
+    { header: 'Products in Case', key: 'productsInCase', width: 60 },
+    { header: 'Status', key: 'status', width: 12 },
+    { header: 'Packed By', key: 'packedBy', width: 20 },
+    { header: 'Packed Date', key: 'packedDate', width: 18 }
+  ]
+
+  data.masterCodes.forEach(master => {
+    const productCounts = caseProductCounts.get(String(master.case_number))
+    const productList = productCounts
+      ? Array.from(productCounts.entries())
+          .map(([name, count]) => `${name} (${count})`)
+          .join('; ')
+      : ''
+
+    const row = sheet.addRow({
+      caseNumber: master.case_number,
+      masterCode: master.code,
+      expectedUnits: master.expected_unit_count,
+      productsInCase: productList,
+      status: '☐ Packed',
+      packedBy: '',
+      packedDate: ''
+    })
+    row.commit()
+  })
+
+  await sheet.commit()
+  console.log('✅ Packing List sheet created')
 }
 
 /**

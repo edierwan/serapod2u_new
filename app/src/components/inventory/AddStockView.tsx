@@ -245,7 +245,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
       // Call the record_stock_movement function via RPC
       const { error } = await supabase.rpc('record_stock_movement', {
-        p_movement_type: 'addition',
+        p_movement_type: 'manual_in',
         p_variant_id: selectedVariant,
         p_organization_id: selectedWarehouse,
         p_quantity_change: qty,

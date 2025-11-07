@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import DocumentWorkflowProgress from '@/components/documents/DocumentWorkflowProgress'
 import AcknowledgeButton from '@/components/documents/AcknowledgeButton'
 import PaymentProofUpload from '@/components/documents/PaymentProofUpload'
+import ManufacturerDocumentUpload from '@/components/documents/ManufacturerDocumentUpload'
 import { type Document } from '@/lib/document-permissions'
 
 interface OrderDocumentsDialogEnhancedProps {
@@ -46,6 +47,7 @@ export default function OrderDocumentsDialogEnhanced({
     receipt?: Document | null
   }>({})
   const [paymentProofUrl, setPaymentProofUrl] = useState<string | null>(null)
+  const [manufacturerDocUrl, setManufacturerDocUrl] = useState<string | null>(null)
   const [requiresPaymentProof, setRequiresPaymentProof] = useState(false)
   const [orderData, setOrderData] = useState<any>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
@@ -135,6 +137,20 @@ export default function OrderDocumentsDialogEnhanced({
       })
 
       setDocuments(docs)
+
+      // Check for manufacturer document if PO exists
+      if (docs.po) {
+        const { data: mfgFile } = await supabase
+          .from('document_files')
+          .select('file_url')
+          .eq('document_id', docs.po.id)
+          .eq('file_type', 'manufacturer_doc')
+          .single()
+
+        if (mfgFile) {
+          setManufacturerDocUrl(mfgFile.file_url)
+        }
+      }
 
       // Check for payment proof if payment document exists
       if (docs.payment) {
@@ -499,6 +515,18 @@ export default function OrderDocumentsDialogEnhanced({
                       </Button>
                     </div>
 
+                    {/* Show manufacturer document upload for seller (manufacturer) before acknowledgment */}
+                    {documents.po.status === 'pending' && 
+                     documents.po.issued_to_org_id === userProfile.organization_id && (
+                      <ManufacturerDocumentUpload
+                        documentId={documents.po.id}
+                        orderId={orderId}
+                        companyId={orderData?.company_id}
+                        onUploadComplete={setManufacturerDocUrl}
+                        existingFileUrl={manufacturerDocUrl}
+                      />
+                    )}
+
                     <AcknowledgeButton
                       document={documents.po as Document}
                       userProfile={userProfileWithSignature}
@@ -557,6 +585,66 @@ export default function OrderDocumentsDialogEnhanced({
                         </>
                       )}
                     </Button>
+
+                    {/* Show manufacturer document if uploaded */}
+                    {manufacturerDocUrl && (
+                      <div className="space-y-3">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <p className="text-sm text-blue-800 font-medium mb-3">
+                            📄 Manufacturer Supporting Document Available
+                          </p>
+                          <Button
+                            onClick={async () => {
+                              setDownloading('manufacturer-doc')
+                              try {
+                                const { data, error } = await supabase.storage
+                                  .from('order-documents')
+                                  .download(manufacturerDocUrl)
+
+                                if (error) throw error
+
+                                const url = URL.createObjectURL(data)
+                                const a = document.createElement('a')
+                                a.href = url
+                                a.download = manufacturerDocUrl.split('/').pop() || 'manufacturer-document.pdf'
+                                document.body.appendChild(a)
+                                a.click()
+                                document.body.removeChild(a)
+                                URL.revokeObjectURL(url)
+
+                                toast({
+                                  title: 'Success',
+                                  description: 'Manufacturer document downloaded successfully'
+                                })
+                              } catch (error: any) {
+                                console.error('Error downloading manufacturer document:', error)
+                                toast({
+                                  title: 'Download Failed',
+                                  description: 'Failed to download manufacturer document',
+                                  variant: 'destructive'
+                                })
+                              } finally {
+                                setDownloading(null)
+                              }
+                            }}
+                            disabled={downloading === 'manufacturer-doc'}
+                            className="w-full bg-blue-600 hover:bg-blue-700"
+                          >
+                            {downloading === 'manufacturer-doc' ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Downloading...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4 mr-2" />
+                                Download Manufacturer Document
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
                     {requiresPaymentProof && documents.invoice.status === 'pending' && (
                       <PaymentProofUpload

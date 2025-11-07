@@ -110,18 +110,8 @@ const navigationItems: MenuItem[] = [
         }
       },
       {
-        id: 'manufacturer-scan',
-        label: 'Manufacturer Scan',
-        icon: Factory,
-        access: {
-          // Only manufacturers
-          allowedOrgTypes: ['MANU', 'MFG'],
-          maxRoleLevel: 40
-        }
-      },
-      {
         id: 'manufacturer-scan-v2',
-        label: 'Manufacturer ScanV2',
+        label: 'Manufacturer Scan',
         icon: Factory,
         access: {
           // Only manufacturers
@@ -140,7 +130,7 @@ const navigationItems: MenuItem[] = [
         }
       },
       {
-        id: 'warehouse-ship',
+        id: 'warehouse-ship-v2',
         label: 'Warehouse Ship',
         icon: Truck,
         access: {
@@ -261,7 +251,7 @@ const navigationItems: MenuItem[] = [
         label: 'Add Stock',
         icon: Plus,
         access: {
-          allowedOrgTypes: ['HQ'],
+          allowedOrgTypes: ['HQ', 'WH'],
           maxRoleLevel: 40
         }
       },
@@ -279,7 +269,7 @@ const navigationItems: MenuItem[] = [
         label: 'Stock Transfer',
         icon: Truck,
         access: {
-          allowedOrgTypes: ['HQ'],
+          allowedOrgTypes: ['HQ', 'WH'],
           maxRoleLevel: 40
         }
       },

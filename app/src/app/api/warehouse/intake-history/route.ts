@@ -12,6 +12,10 @@ interface HistoryRow {
   buyerOrgName: string | null
   casesReceived: number
   unitsReceived: number
+  casesScanned: number
+  unitsScanned: number
+  casesShipped: number    // NEW: Cases shipped to distributors
+  unitsShipped: number    // NEW: Units shipped to distributors
   firstReceivedAt: string | null
   lastReceivedAt: string | null
 }
@@ -150,7 +154,9 @@ export async function GET(request: NextRequest) {
     }
 
     const historyMap = new Map<string, HistoryRow>()
+    const orderIdSet = new Set<string>()
 
+    // First pass: collect received data and order IDs
     ;(data || []).forEach((row: any) => {
       const batches = Array.isArray(row.qr_batches) ? row.qr_batches : [row.qr_batches]
       const batch = batches[0]
@@ -160,6 +166,8 @@ export async function GET(request: NextRequest) {
       const orderRecord = Array.isArray(orders) ? orders[0] : orders
       const orderId = orderRecord?.id || batch.order_id
       if (!orderId) return
+
+      orderIdSet.add(orderId)
 
       const buyerOrg = orderRecord?.organizations
       const buyerOrgRecord = Array.isArray(buyerOrg) ? buyerOrg[0] : buyerOrg
@@ -185,6 +193,10 @@ export async function GET(request: NextRequest) {
           buyerOrgName,
           casesReceived: 1,
           unitsReceived: units,
+          casesScanned: 0, // Will be updated below
+          unitsScanned: 0, // Will be updated below
+          casesShipped: 0, // Will be updated below
+          unitsShipped: 0, // Will be updated below
           firstReceivedAt: receivedAt,
           lastReceivedAt: receivedAt
         })
@@ -201,6 +213,138 @@ export async function GET(request: NextRequest) {
         existing.lastReceivedAt = receivedAt
       }
     })
+
+    // Second pass: get total scanned cases and units for each order
+    if (orderIdSet.size > 0) {
+      const orderIds = Array.from(orderIdSet)
+      const { data: allMasterCodes, error: masterError } = await supabase
+        .from('qr_master_codes')
+        .select(`
+          id,
+          actual_unit_count,
+          expected_unit_count,
+          status,
+          shipment_order_id,
+          qr_batches!inner (
+            order_id
+          )
+        `)
+        .in('qr_batches.order_id', orderIds)
+        .eq('warehouse_org_id', warehouseOrgId)
+
+      if (!masterError && allMasterCodes) {
+        const orderTotals = new Map<string, { cases: number; units: number }>()
+        const masterInfoByOrder = new Map<string, Array<{ id: string; status: string | null; units: number }>>()
+        const masterIds: string[] = []
+
+        allMasterCodes.forEach((row: any) => {
+          const batches = Array.isArray(row.qr_batches) ? row.qr_batches : [row.qr_batches]
+          const batch = batches[0]
+          if (!batch) return
+
+          const resolvedOrderId = row.shipment_order_id || batch.order_id
+          if (!resolvedOrderId) return
+
+          const units = row.actual_unit_count ?? row.expected_unit_count ?? 0
+
+          masterIds.push(row.id)
+
+          const existing = orderTotals.get(resolvedOrderId) || { cases: 0, units: 0 }
+          existing.cases += 1
+          existing.units += units
+          orderTotals.set(resolvedOrderId, existing)
+
+          const infoList = masterInfoByOrder.get(resolvedOrderId) || []
+          infoList.push({ id: row.id, status: row.status ?? null, units })
+          masterInfoByOrder.set(resolvedOrderId, infoList)
+        })
+
+        // Load shipped unique counts for relevant masters
+        let shippedUniqueByMaster = new Map<string, number>()
+        if (masterIds.length > 0) {
+          const { data: shippedUniqueRows, error: shippedUniqueError } = await supabase
+            .from('qr_codes')
+            .select('master_code_id')
+            .eq('status', 'shipped_distributor')
+            .in('master_code_id', masterIds)
+
+          if (!shippedUniqueError && shippedUniqueRows) {
+            shippedUniqueByMaster = shippedUniqueRows.reduce((map: Map<string, number>, row: any) => {
+              const masterId = row.master_code_id
+              if (masterId) {
+                map.set(masterId, (map.get(masterId) || 0) + 1)
+              }
+              return map
+            }, new Map<string, number>())
+          }
+        }
+
+        const casesShippedByOrder = new Map<string, number>()
+        masterInfoByOrder.forEach((masters, orderId) => {
+          let shippedCount = 0
+          masters.forEach((master) => {
+            const caseUnits = master.units > 0 ? master.units : 0
+            const masterStatus = master.status || ''
+            const shippedUniqueCount = shippedUniqueByMaster.get(master.id) || 0
+
+            const masterShipped = masterStatus === 'shipped_distributor' || masterStatus === 'opened'
+            const shippedByUniques = caseUnits > 0 && shippedUniqueCount >= caseUnits
+
+            if (masterShipped || shippedByUniques) {
+              shippedCount += 1
+            }
+          })
+          casesShippedByOrder.set(orderId, shippedCount)
+        })
+
+        // Units shipped via movement history
+        let unitsShippedByOrder = new Map<string, number>()
+        if (orderIds.length > 0) {
+          const { data: movementRows, error: movementError } = await supabase
+            .from('v_stock_movements_display')
+            .select('reference_id, quantity_change')
+            .eq('movement_type', 'order_fulfillment')
+            .eq('reference_type', 'order')
+            .eq('from_organization_id', warehouseOrgId)
+            .in('reference_id', orderIds)
+
+          if (!movementError && movementRows) {
+            unitsShippedByOrder = movementRows.reduce((map: Map<string, number>, row: any) => {
+              const refId = row.reference_id
+              if (!refId) return map
+              const change = typeof row.quantity_change === 'number' ? row.quantity_change : 0
+              if (change < 0) {
+                map.set(refId, (map.get(refId) || 0) + -change)
+              }
+              return map
+            }, new Map<string, number>())
+          }
+        }
+
+        // Update history map values
+        orderTotals.forEach((totals, orderId) => {
+          const historyRow = historyMap.get(orderId)
+          if (historyRow) {
+            historyRow.casesScanned = totals.cases
+            historyRow.unitsScanned = totals.units
+          }
+        })
+
+        casesShippedByOrder.forEach((cases, orderId) => {
+          const historyRow = historyMap.get(orderId)
+          if (historyRow) {
+            historyRow.casesShipped = cases
+          }
+        })
+
+        unitsShippedByOrder.forEach((units, orderId) => {
+          const historyRow = historyMap.get(orderId)
+          if (historyRow) {
+            historyRow.unitsShipped = units
+          }
+        })
+      }
+    }
 
     let rows = Array.from(historyMap.values()).sort((a, b) => {
       const aTime = a.lastReceivedAt ? new Date(a.lastReceivedAt).getTime() : 0

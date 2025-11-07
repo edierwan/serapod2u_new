@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { formatNumber } from '@/lib/utils/formatters'
 import { 
   QrCode, 
   Download, 
@@ -118,14 +119,14 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       if (error) throw error
       
       // Fetch packed counts for each batch
-      // Progress counts master codes that are packed or beyond (received_warehouse, shipped_distributor, opened)
+      // Progress counts master codes that are packed or beyond (ready_to_ship, completed, received_warehouse, shipped_distributor, opened)
       const batchesWithProgress = await Promise.all(
         (data || []).map(async (batch) => {
           const { data: packedData } = await supabase
             .from('qr_master_codes')
             .select('id', { count: 'exact' })
             .eq('batch_id', batch.id)
-            .in('status', ['packed', 'received_warehouse', 'shipped_distributor', 'opened'])
+            .in('status', ['packed', 'ready_to_ship', 'completed', 'received_warehouse', 'shipped_distributor', 'opened'])
           
           const packedCount = packedData?.length || 0
           const totalCount = batch.total_master_codes || 0
@@ -225,7 +226,9 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       window.URL.revokeObjectURL(url)
 
       // Update batch status to 'printing' after download
+      // AND update all QR codes (master + unique) to 'printed' status
       if (batch.status === 'generated') {
+        // Update batch status
         const { error: updateError } = await supabase
           .from('qr_batches')
           .update({ 
@@ -238,8 +241,41 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
           console.error('Failed to update batch status:', updateError)
         } else {
           console.log('✅ Batch status updated to "printing"')
-          await loadBatches() // Refresh the batches list
         }
+
+        // Update master codes to 'printed' status
+        const { error: masterError } = await supabase
+          .from('qr_master_codes')
+          .update({ 
+            status: 'printed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('batch_id', batch.id)
+          .eq('status', 'generated')
+
+        if (masterError) {
+          console.error('Failed to update master codes status:', masterError)
+        } else {
+          console.log('✅ Master codes updated to "printed"')
+        }
+
+        // Update unique codes to 'printed' status
+        const { error: uniqueError } = await supabase
+          .from('qr_codes')
+          .update({ 
+            status: 'printed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('batch_id', batch.id)
+          .eq('status', 'generated')
+
+        if (uniqueError) {
+          console.error('Failed to update unique codes status:', uniqueError)
+        } else {
+          console.log('✅ Unique codes updated to "printed"')
+        }
+
+        await loadBatches() // Refresh the batches list
       }
 
       toast({
@@ -568,10 +604,10 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
-                        {batch.total_master_codes}
+                        {formatNumber(batch.total_master_codes)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
-                        {batch.total_unique_codes}
+                        {formatNumber(batch.total_unique_codes)}
                       </td>
                       <td className="px-4 py-3">
                         {getStatusBadge(batch.status)}

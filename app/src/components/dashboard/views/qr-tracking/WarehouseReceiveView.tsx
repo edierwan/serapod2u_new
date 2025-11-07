@@ -43,7 +43,10 @@ import {
   History as HistoryIcon,
   CalendarRange,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { extractOrderNumber } from '@/lib/qr-code-utils'
@@ -342,9 +345,16 @@ interface IntakeHistoryRow {
   buyerOrgName: string | null
   casesReceived: number
   unitsReceived: number
+  casesScanned: number
+  unitsScanned: number
+  casesShipped: number    // NEW: Cases shipped to distributors
+  unitsShipped: number    // NEW: Units shipped to distributors
   firstReceivedAt: string | null
   lastReceivedAt: string | null
 }
+
+type HistorySortColumn = 'orderNo' | 'buyerOrgName' | 'casesReceived' | 'unitsReceived' | 'casesScanned' | 'unitsScanned' | 'casesShipped' | 'unitsShipped' | 'firstReceivedAt' | 'lastReceivedAt'
+type SortDirection = 'asc' | 'desc'
 
 const HISTORY_PRESETS: Array<{ value: HistoryPreset; label: string }> = [
   { value: 'today', label: 'Today' },
@@ -427,6 +437,8 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
   const historyRange = useMemo(() => buildPresetRange(historyPreset), [historyPreset])
   const [historySearchInput, setHistorySearchInput] = useState('')
   const [historySearch, setHistorySearch] = useState('')
+  const [historySortColumn, setHistorySortColumn] = useState<HistorySortColumn>('lastReceivedAt')
+  const [historySortDirection, setHistorySortDirection] = useState<SortDirection>('desc')
   const historyRangeParams = useMemo(() => ({
     start: historyRange.start.toISOString(),
     end: historyRange.end.toISOString()
@@ -469,6 +481,53 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
     }
     return 'Unlinked Batch'
   }
+
+  const handleHistorySort = (column: HistorySortColumn) => {
+    if (historySortColumn === column) {
+      // Toggle direction if same column
+      setHistorySortDirection(historySortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // New column, default to descending for numbers/dates, ascending for text
+      setHistorySortColumn(column)
+      setHistorySortDirection(
+        column === 'orderNo' || column === 'buyerOrgName' ? 'asc' : 'desc'
+      )
+    }
+  }
+
+  const getSortIcon = (column: HistorySortColumn) => {
+    if (historySortColumn !== column) {
+      return <ArrowUpDown className="h-3 w-3 ml-1 text-gray-400" />
+    }
+    return historySortDirection === 'asc' ? (
+      <ArrowUp className="h-3 w-3 ml-1 text-indigo-600" />
+    ) : (
+      <ArrowDown className="h-3 w-3 ml-1 text-indigo-600" />
+    )
+  }
+
+  const sortedHistoryRows = useMemo(() => {
+    const sorted = [...historyRows].sort((a, b) => {
+      let aValue: any = a[historySortColumn]
+      let bValue: any = b[historySortColumn]
+
+      // Handle null values
+      if (aValue === null && bValue === null) return 0
+      if (aValue === null) return 1
+      if (bValue === null) return -1
+
+      // Handle different types
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = bValue.toLowerCase()
+      }
+
+      if (aValue < bValue) return historySortDirection === 'asc' ? -1 : 1
+      if (aValue > bValue) return historySortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+    return sorted
+  }, [historyRows, historySortColumn, historySortDirection])
 
   const fetchOrderNumberMap = async (orderIds: string[]): Promise<Map<string, string>> => {
     const uniqueIds = Array.from(new Set(orderIds.filter((id): id is string => typeof id === 'string' && id.length > 0)))
@@ -840,18 +899,19 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
       if (filteredOrders.length > 0) {
         const isCurrentStillValid = filteredOrders.some((order) => order.orderId === selectedOrderId)
         
-        // Auto-select logic: if only 1 order is available, always select it
-        // If multiple orders, maintain current selection if valid, otherwise select first
-        let nextOrderId: string
-        if (filteredOrders.length === 1) {
-          // Auto-load the only available order
-          nextOrderId = filteredOrders[0].orderId
-        } else {
-          // Multiple orders: maintain current selection if valid
-          nextOrderId = isCurrentStillValid ? selectedOrderId : filteredOrders[0].orderId
+        // FIX: Only auto-select if current selection is invalid
+        // Don't auto-switch when user just completed an order
+        // This allows user to see "Today's intake activity" for the order they completed
+        if (!isCurrentStillValid && !selectedOrderId) {
+          // No selection yet - auto-select first available order
+          setSelectedOrderId(filteredOrders[0].orderId)
+        } else if (!isCurrentStillValid && selectedOrderId) {
+          // Current selection is no longer valid (order completed)
+          // DON'T auto-switch - let user see the completed order's activity
+          // User can manually select next order when ready
+          console.log('[WarehouseReceive] Order completed. Keeping selection to view activity.')
         }
-        
-        setSelectedOrderId(nextOrderId)
+        // If current selection is still valid, keep it (already selected)
       }
     } catch (error: any) {
       console.error('Error loading pending batches:', error)
@@ -1759,24 +1819,9 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
                 <HistoryIcon className="h-5 w-5" />
                 Warehouse intake history
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const debugUrl = `/api/warehouse/debug-history`
-                  console.log('🔍 Opening debug endpoint for warehouse:', userProfile.organization_id)
-                  window.open(debugUrl, '_blank')
-                }}
-                className="text-xs"
-              >
-                🔍 Debug
-              </Button>
             </div>
             <p className="text-sm text-gray-500">
               Showing orders received between {formatDateOnly(historyRange.start)} and {formatDateOnly(historyRange.end)}
-            </p>
-            <p className="text-xs text-gray-400 font-mono">
-              Warehouse Org ID: {userProfile.organization_id}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -1865,33 +1910,117 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
-                  <TableHead className="text-xs font-medium uppercase text-gray-500">Order</TableHead>
-                  <TableHead className="text-xs font-medium uppercase text-gray-500">Buyer</TableHead>
-                  <TableHead className="text-xs font-medium uppercase text-gray-500">Cases received</TableHead>
-                  <TableHead className="text-xs font-medium uppercase text-gray-500">Units received</TableHead>
-                  <TableHead className="text-xs font-medium uppercase text-gray-500">First received</TableHead>
-                  <TableHead className="text-xs font-medium uppercase text-gray-500">Last received</TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('orderNo')}
+                  >
+                    <div className="flex items-center">
+                      Order
+                      {getSortIcon('orderNo')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('buyerOrgName')}
+                  >
+                    <div className="flex items-center">
+                      Buyer
+                      {getSortIcon('buyerOrgName')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('casesScanned')}
+                  >
+                    <div className="flex items-center">
+                      Cases Scanned
+                      {getSortIcon('casesScanned')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('unitsScanned')}
+                  >
+                    <div className="flex items-center">
+                      Units Scanned
+                      {getSortIcon('unitsScanned')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('casesReceived')}
+                  >
+                    <div className="flex items-center">
+                      Cases Received
+                      {getSortIcon('casesReceived')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('unitsReceived')}
+                  >
+                    <div className="flex items-center">
+                      Units Received
+                      {getSortIcon('unitsReceived')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('casesShipped')}
+                  >
+                    <div className="flex items-center">
+                      Cases Shipped
+                      {getSortIcon('casesShipped')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('unitsShipped')}
+                  >
+                    <div className="flex items-center">
+                      Units Shipped
+                      {getSortIcon('unitsShipped')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('firstReceivedAt')}
+                  >
+                    <div className="flex items-center">
+                      First Received
+                      {getSortIcon('firstReceivedAt')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('lastReceivedAt')}
+                  >
+                    <div className="flex items-center">
+                      Last Received
+                      {getSortIcon('lastReceivedAt')}
+                    </div>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {historyLoading
                   ? Array.from({ length: 5 }).map((_, index) => (
                       <TableRow key={`history-skeleton-${index}`}>
-                        <TableCell colSpan={6}>
+                        <TableCell colSpan={10}>
                           <div className="h-4 animate-pulse rounded bg-gray-200" />
                         </TableCell>
                       </TableRow>
                     ))
-                  : historyRows.length === 0 ? (
+                  : sortedHistoryRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6}>
+                        <TableCell colSpan={10}>
                           <div className="py-8 text-center text-sm text-gray-500">
                             No received orders in this period. Adjust the filters to broaden your search.
                           </div>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      historyRows.map((row) => (
+                      sortedHistoryRows.map((row) => (
                         <TableRow key={row.orderId} className="hover:bg-indigo-50/40">
                           <TableCell>
                             <div className="flex flex-col">
@@ -1903,12 +2032,28 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
                             <span className="text-sm text-gray-700">{row.buyerOrgName || '—'}</span>
                           </TableCell>
                           <TableCell>
+                            <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                              {formatNumber(row.casesScanned)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium text-blue-900">{formatNumber(row.unitsScanned)}</span>
+                          </TableCell>
+                          <TableCell>
                             <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
                               {formatNumber(row.casesReceived)}
                             </Badge>
                           </TableCell>
                           <TableCell>
                             <span className="font-medium text-gray-900">{formatNumber(row.unitsReceived)}</span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
+                              {formatNumber(row.casesShipped)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium text-purple-900">{formatNumber(row.unitsShipped)}</span>
                           </TableCell>
                           <TableCell>
                             <span className="text-sm text-gray-600">{formatDateTime(row.firstReceivedAt)}</span>

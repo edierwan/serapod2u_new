@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
         total_master_codes,
         total_unique_codes,
         buffer_percent,
+        status,
         created_at,
         orders (
           id,
@@ -151,6 +152,7 @@ export async function GET(request: NextRequest) {
         return {
           batch_id: batch.id,
           batch_code: batchCode,
+          batch_status: batch.status,
           order_id: batch.order_id,
           order_no: orderData?.order_no || '',
           buyer_org_name: orgData?.org_name || 'Unknown',

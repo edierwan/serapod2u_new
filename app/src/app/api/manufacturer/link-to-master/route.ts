@@ -79,7 +79,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get all QR code records with sequence numbers AND variant information
+    // PERFORMANCE OPTIMIZATION: Fetch all QR codes in single query with related data
+    // Using .in() to batch fetch is more efficient than individual queries
+    const perfStart = Date.now()
     const { data: qrCodeRecords, error: qrError } = await supabase
       .from('qr_codes')
       .select(`
@@ -98,41 +100,60 @@ export async function POST(request: NextRequest) {
       `)
       .in('code', unique_codes)
 
+    console.log(`⚡ DB query completed in ${Date.now() - perfStart}ms`)
+
     if (qrError) {
       throw qrError
     }
 
-    if (!qrCodeRecords || qrCodeRecords.length !== unique_codes.length) {
+    // IMPROVED LOGIC: Process valid codes and report issues separately
+    // Instead of failing if not all codes are found, we'll process what we can
+    // PERFORMANCE: Use Set for O(1) lookups instead of O(n) array operations
+    
+    const foundCodes = qrCodeRecords || []
+    const foundCodesSet = new Set(foundCodes.map(qr => qr.code))
+    const notFoundCodes = unique_codes.filter(code => !foundCodesSet.has(code))
+    
+    console.log('📊 QR Code breakdown:', {
+      total_submitted: unique_codes.length,
+      found_in_db: foundCodes.length,
+      not_found: notFoundCodes.length
+    })
+
+    // Separate found codes into: already linked vs available
+    const alreadyLinked = foundCodes.filter(qr => qr.master_code_id !== null)
+    const availableCodes = foundCodes.filter(qr => qr.master_code_id === null)
+    
+    console.log('📊 Found codes breakdown:', {
+      already_linked: alreadyLinked.length,
+      available_to_link: availableCodes.length
+    })
+
+    // If no codes are available to link, provide detailed error
+    if (availableCodes.length === 0) {
+      const errorParts = []
+      if (notFoundCodes.length > 0) {
+        errorParts.push(`${notFoundCodes.length} code(s) not found in database`)
+      }
+      if (alreadyLinked.length > 0) {
+        errorParts.push(`${alreadyLinked.length} code(s) already linked to master cases`)
+      }
+      
       return NextResponse.json(
         { 
-          error: `Some QR codes not found. Expected ${unique_codes.length}, found ${qrCodeRecords?.length || 0}` 
+          error: `No valid codes available to link. ${errorParts.join(', ')}.`,
+          not_found_count: notFoundCodes.length,
+          already_linked_count: alreadyLinked.length,
+          total_submitted: unique_codes.length
         },
         { status: 400 }
       )
     }
 
-    // Preserve original order from user submission
+    // Use available codes for processing (preserve original order)
     const orderedRecords = unique_codes
-      .map(code => qrCodeRecords.find(qr => qr.code === code))
-      .filter((record): record is typeof qrCodeRecords[number] => Boolean(record))
-
-    if (orderedRecords.length !== unique_codes.length) {
-      return NextResponse.json(
-        { error: 'Some QR codes were not found for this batch. Please double-check the pasted list.' },
-        { status: 400 }
-      )
-    }
-
-    // Check if any codes are already linked
-    const alreadyLinked = orderedRecords.filter(qr => qr.master_code_id !== null)
-    if (alreadyLinked.length > 0) {
-      return NextResponse.json(
-        { 
-          error: `${alreadyLinked.length} code(s) are already linked to another master case` 
-        },
-        { status: 400 }
-      )
-    }
+      .map(code => availableCodes.find(qr => qr.code === code))
+      .filter((record): record is typeof foundCodes[number] => Boolean(record))
 
     // SMART VARIANT FILTERING: Auto-filter codes by variant instead of blocking
     // This applies to both regular codes AND buffer codes
@@ -201,87 +222,170 @@ export async function POST(request: NextRequest) {
       skippedVariantSummary[variantName] = (skippedVariantSummary[variantName] || 0) + 1
     })
 
-    // Check if all codes belong to same batch and order
-    const batchIds = Array.from(new Set(qrCodeRecords.map(qr => qr.batch_id)))
-    const orderIds = Array.from(new Set(qrCodeRecords.map(qr => qr.order_id)))
+    // SMART BATCH FILTERING: Instead of failing, filter codes by batch
+    // Separate codes into: matching batch vs wrong batch
+    const correctBatchCodes = orderedRecords.filter(qr => qr.batch_id === masterCodeRecord.batch_id)
+    const wrongBatchCodes = orderedRecords.filter(qr => qr.batch_id !== masterCodeRecord.batch_id)
     
-    if (batchIds.length > 1) {
+    // Build summary of wrong batch codes with their batch IDs
+    const wrongBatchSummary: Record<string, number> = {}
+    wrongBatchCodes.forEach(qr => {
+      const batchId = qr.batch_id || 'unknown'
+      wrongBatchSummary[batchId] = (wrongBatchSummary[batchId] || 0) + 1
+    })
+    
+    console.log('📊 Batch filtering:', {
+      master_batch_id: masterCodeRecord.batch_id,
+      correct_batch: correctBatchCodes.length,
+      wrong_batch: wrongBatchCodes.length,
+      wrong_batch_summary: wrongBatchSummary
+    })
+
+    // If no codes match the correct batch, provide detailed error
+    if (correctBatchCodes.length === 0 && wrongBatchCodes.length > 0) {
+      const batchList = Object.entries(wrongBatchSummary)
+        .map(([batchId, count]) => `${count} codes from batch ${batchId}`)
+        .join(', ')
+      
       return NextResponse.json(
-        { error: 'All QR codes must belong to the same batch' },
+        { 
+          error: `No codes match this master case batch (${masterCodeRecord.batch_id}). Found: ${batchList}`,
+          wrong_batch_count: wrongBatchCodes.length,
+          expected_batch_id: masterCodeRecord.batch_id
+        },
         { status: 400 }
       )
     }
 
-    if (batchIds[0] !== masterCodeRecord.batch_id) {
-      return NextResponse.json(
-        { error: 'QR codes do not match the master case batch' },
-        { status: 400 }
-      )
-    }
+    // Continue processing with codes from the correct batch only
+    const batchFilteredRecords = correctBatchCodes
+
+    // SMART VARIANT FILTERING on batch-filtered codes
+    // Re-apply variant filtering to the batch-filtered records
+    const variantFilteredRecords = targetVariantId 
+      ? batchFilteredRecords.filter(qr => qr.variant_id === targetVariantId)
+      : batchFilteredRecords
+    
+    const wrongVariantCodes = targetVariantId
+      ? batchFilteredRecords.filter(qr => qr.variant_id !== targetVariantId)
+      : []
+
+    console.log('📊 Variant filtering on batch-matched codes:', {
+      batch_matched: batchFilteredRecords.length,
+      variant_matched: variantFilteredRecords.length,
+      variant_mismatched: wrongVariantCodes.length,
+      target_variant: targetVariantName
+    })
 
     // CONDITIONAL: Validate case number matching by sequence number range
     // Only validate if skip_case_validation is not true
+    let wrongSequenceCodes: typeof variantFilteredRecords = []
     if (!skip_case_validation) {
       const expectedUnitsPerCase = masterCodeRecord.expected_unit_count
       const caseNumber = masterCodeRecord.case_number
       const minSequence = ((caseNumber - 1) * expectedUnitsPerCase) + 1
       const maxSequence = caseNumber * expectedUnitsPerCase
 
-      // Check if all QR codes fall within the expected sequence range for this case
-      const invalidSequences = qrCodeRecords.filter(qr => 
+      // Filter codes by sequence range instead of failing
+      const correctSequenceCodes = variantFilteredRecords.filter(qr => 
+        qr.sequence_number >= minSequence && qr.sequence_number <= maxSequence
+      )
+      
+      wrongSequenceCodes = variantFilteredRecords.filter(qr => 
         qr.sequence_number < minSequence || qr.sequence_number > maxSequence
       )
 
-      if (invalidSequences.length > 0) {
-        const wrongSequences = invalidSequences.map(qr => qr.sequence_number).join(', ')
+      console.log('📊 Sequence validation:', {
+        case_number: caseNumber,
+        expected_range: `${minSequence}-${maxSequence}`,
+        correct_sequence: correctSequenceCodes.length,
+        wrong_sequence: wrongSequenceCodes.length
+      })
+
+      // If no codes have correct sequence, provide error
+      if (correctSequenceCodes.length === 0 && wrongSequenceCodes.length > 0) {
+        const wrongSequences = wrongSequenceCodes.map(qr => qr.sequence_number).join(', ')
         return NextResponse.json(
           { 
-            error: `QR codes do not belong to Case #${caseNumber}. Expected sequence ${minSequence}-${maxSequence}, but found codes with sequences: ${wrongSequences}. Please scan codes from the correct case. (You can disable this check using the "Skip Case Validation" option if needed)` 
+            error: `No codes match Case #${caseNumber} sequence range (${minSequence}-${maxSequence}). Found sequences: ${wrongSequences}`,
+            wrong_sequence_count: wrongSequenceCodes.length,
+            expected_range: `${minSequence}-${maxSequence}`
           },
           { status: 400 }
         )
       }
       
-      console.log('✅ Case validation passed: All codes belong to Case #' + caseNumber)
+      // Use sequence-validated codes
+      const codesToProcess = correctSequenceCodes
+      console.log('✅ Case validation passed: ' + codesToProcess.length + ' codes belong to Case #' + caseNumber)
     } else {
       console.log('⚠️ Case validation SKIPPED by user choice')
     }
 
-    // Use matching variant codes for linking
-    const codesToProcess = matchingVariantCodes
+    // Use the fully filtered codes for linking
+    const codesToProcess = !skip_case_validation 
+      ? variantFilteredRecords.filter(qr => {
+          const expectedUnitsPerCase = masterCodeRecord.expected_unit_count
+          const caseNumber = masterCodeRecord.case_number
+          const minSequence = ((caseNumber - 1) * expectedUnitsPerCase) + 1
+          const maxSequence = caseNumber * expectedUnitsPerCase
+          return qr.sequence_number >= minSequence && qr.sequence_number <= maxSequence
+        })
+      : variantFilteredRecords
 
     const recordsToLink = codesToProcess.slice(0, remainingCapacity)
     const codesToLink = recordsToLink.map(record => record.code)
     const unusedCodes = codesToProcess.slice(recordsToLink.length).map(record => record.code)
 
     if (codesToLink.length === 0) {
-      // No codes matched the variant - provide helpful message
-      if (skippedVariantCodes.length > 0) {
-        const skippedList = Object.entries(skippedVariantSummary)
-          .map(([name, count]) => `${name} (${count} codes)`)
-          .join(', ')
-        
-        return NextResponse.json(
-          { 
-            error: `This master case accepts "${targetVariantName}" variant only. All ${unique_codes.length} scanned codes belong to different variants: ${skippedList}. Please scan codes with the correct variant.` 
-          },
-          { status: 400 }
-        )
+      // Build comprehensive error message about all filtering stages
+      const errorParts = []
+      
+      if (notFoundCodes.length > 0) {
+        errorParts.push(`${notFoundCodes.length} not found in database`)
+      }
+      if (alreadyLinked.length > 0) {
+        errorParts.push(`${alreadyLinked.length} already linked`)
+      }
+      if (wrongBatchCodes.length > 0) {
+        errorParts.push(`${wrongBatchCodes.length} from different batch`)
+      }
+      if (wrongVariantCodes.length > 0) {
+        errorParts.push(`${wrongVariantCodes.length} wrong variant`)
+      }
+      if (wrongSequenceCodes.length > 0) {
+        errorParts.push(`${wrongSequenceCodes.length} wrong case sequence`)
+      }
+      if (remainingCapacity === 0) {
+        errorParts.push('master case is full')
       }
       
       return NextResponse.json(
-        { error: 'No remaining capacity on this master case. Link these codes to a different case.' },
+        { 
+          error: `No valid codes available to link. Issues: ${errorParts.join(', ')}.`,
+          filtering_summary: {
+            total_submitted: unique_codes.length,
+            not_found: notFoundCodes.length,
+            already_linked: alreadyLinked.length,
+            wrong_batch: wrongBatchCodes.length,
+            wrong_variant: wrongVariantCodes.length,
+            wrong_sequence: wrongSequenceCodes.length,
+            remaining_capacity: remainingCapacity
+          }
+        },
         { status: 400 }
       )
     }
 
-    // Update QR codes to link to master
+    // PERFORMANCE: Batch update QR codes in single query using .in() operator
     console.log('📝 Updating QR codes:', {
       requested_count: unique_codes.length,
       linked_count: codesToLink.length,
       master_code_id: masterCodeRecord.id,
       manufacturer_org_id
     })
+    
+    const updateStart = Date.now()
     const { error: updateError } = await supabase
       .from('qr_codes')
       .update({
@@ -299,7 +403,7 @@ export async function POST(request: NextRequest) {
       throw updateError
     }
 
-    console.log('✅ QR codes updated successfully')
+    console.log(`✅ QR codes updated successfully in ${Date.now() - updateStart}ms`)
 
     // Update master code
     const masterIsNowComplete = currentActualCount + codesToLink.length >= masterCodeRecord.expected_unit_count
@@ -375,6 +479,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // PERFORMANCE: Log total processing time
+    const totalProcessingTime = Date.now() - perfStart
+    console.log(`⚡ Total processing time: ${totalProcessingTime}ms for ${codesToLink.length} codes`)
+
     // Build response with variant filtering information
     const response: any = {
       success: true,
@@ -392,7 +500,11 @@ export async function POST(request: NextRequest) {
         warehouse_org_id: masterUpdates.warehouse_org_id || masterCodeRecord.warehouse_org_id || null
       },
       linked_codes: codesToLink,
-      unused_codes: unusedCodes
+      unused_codes: unusedCodes,
+      performance: {
+        processing_time_ms: totalProcessingTime,
+        codes_per_second: Math.round((codesToLink.length / totalProcessingTime) * 1000)
+      }
     }
 
     // Add variant filtering information if codes were skipped
@@ -402,6 +514,56 @@ export async function POST(request: NextRequest) {
       response.skipped_variant_summary = skippedVariantSummary
       response.variant_filter_applied = true
       response.target_variant = targetVariantName
+    }
+
+    // Add comprehensive filtering information about all codes
+    const hasFilteredCodes = notFoundCodes.length > 0 || alreadyLinked.length > 0 || 
+                            wrongBatchCodes.length > 0 || wrongVariantCodes.length > 0 || 
+                            wrongSequenceCodes.length > 0
+
+    if (hasFilteredCodes) {
+      response.filtering_summary = {
+        total_submitted: unique_codes.length,
+        successfully_linked: codesToLink.length,
+        not_found: notFoundCodes.length,
+        already_linked: alreadyLinked.length,
+        wrong_batch: wrongBatchCodes.length,
+        wrong_variant: wrongVariantCodes.length,
+        wrong_sequence: wrongSequenceCodes.length,
+        unused_capacity: unusedCodes.length
+      }
+      
+      // Build detailed user-friendly message
+      const issueParts = []
+      if (notFoundCodes.length > 0) {
+        issueParts.push(`${notFoundCodes.length} not found`)
+      }
+      if (alreadyLinked.length > 0) {
+        issueParts.push(`${alreadyLinked.length} already linked`)
+      }
+      if (wrongBatchCodes.length > 0) {
+        const batchList = Object.keys(wrongBatchSummary).join(', ')
+        issueParts.push(`${wrongBatchCodes.length} from wrong batch (${batchList})`)
+      }
+      if (wrongVariantCodes.length > 0) {
+        issueParts.push(`${wrongVariantCodes.length} wrong variant`)
+      }
+      if (wrongSequenceCodes.length > 0) {
+        issueParts.push(`${wrongSequenceCodes.length} wrong case sequence`)
+      }
+      
+      if (issueParts.length > 0) {
+        response.processing_note = `✅ Successfully linked ${codesToLink.length} of ${unique_codes.length} codes. Filtered out: ${issueParts.join(', ')}.`
+      }
+      
+      // Add details for debugging/transparency
+      response.filtered_codes_detail = {
+        not_found_codes: notFoundCodes.length > 10 ? `${notFoundCodes.length} codes` : notFoundCodes,
+        already_linked_count: alreadyLinked.length,
+        wrong_batch_summary: wrongBatchSummary,
+        wrong_variant_count: wrongVariantCodes.length,
+        wrong_sequence_count: wrongSequenceCodes.length
+      }
     }
 
     if (orderRecord) {

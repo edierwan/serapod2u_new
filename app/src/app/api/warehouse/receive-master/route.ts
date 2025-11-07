@@ -244,7 +244,7 @@ const receiveSingleMaster = async (
     }
 
     let resolvedWarehouseOrgId =
-      masterRecord.warehouse_org_id || orderRecord?.buyer_org_id || providedWarehouseOrgId || null
+      providedWarehouseOrgId || masterRecord.warehouse_org_id || orderRecord?.buyer_org_id || null
 
     if (!resolvedWarehouseOrgId) {
       return {
@@ -256,13 +256,12 @@ const receiveSingleMaster = async (
     }
 
     if (orderRecord?.buyer_org_id && resolvedWarehouseOrgId !== orderRecord.buyer_org_id) {
-      console.warn('⚠️ Warehouse mismatch detected. Using buyer organization instead.', {
+      console.warn('⚠️ Warehouse mismatch detected. Proceeding with provided warehouse.', {
         provided: providedWarehouseOrgId,
         assigned: resolvedWarehouseOrgId,
         buyer: orderRecord.buyer_org_id,
         master_code: normalizedMasterCode
       })
-      resolvedWarehouseOrgId = orderRecord.buyer_org_id
     }
 
     if (masterRecord.status === 'received_warehouse') {
@@ -473,21 +472,6 @@ const receiveSingleMaster = async (
           if (!inventoryWarning) {
             inventoryWarning = 'Case totals estimated because product unit-per-case metadata is missing.'
           }
-        }
-      }
-
-      const { error: aggregateError } = await supabase.rpc('apply_inventory_receive_adjustment', {
-        p_variant_id: variantId,
-        p_organization_id: resolvedWarehouseOrgId,
-        p_units: quantity,
-        p_cases: casesIncrement,
-        p_received_at: receivedAt
-      })
-
-      if (aggregateError) {
-        console.error('⚠️ Failed to update inventory aggregates after warehouse receive:', aggregateError)
-        if (!inventoryWarning) {
-          inventoryWarning = 'Inventory quantity updated but case/unit aggregates could not be adjusted.'
         }
       }
 

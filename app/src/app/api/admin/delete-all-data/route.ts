@@ -146,6 +146,15 @@ export async function POST(request: NextRequest) {
     deletedCount += orderItemsCount || 0
     console.log(`✓ Deleted ${orderItemsCount || 0} order items`)
 
+    // 11a. Delete journey order links (before deleting orders)
+    const { count: journeyOrderLinksCount } = await supabase
+      .from('journey_order_links')
+      .delete({ count: 'exact' })
+      .neq('id', '00000000-0000-0000-0000-000000000000')
+    
+    deletedCount += journeyOrderLinksCount || 0
+    console.log(`✓ Deleted ${journeyOrderLinksCount || 0} journey order links`)
+
     // 12. Delete orders
     const { count: ordersCount } = await supabase
       .from('orders')
@@ -195,6 +204,14 @@ export async function POST(request: NextRequest) {
     
     deletedCount += consumerActivationsCount || 0
     console.log(`✓ Deleted ${consumerActivationsCount || 0} consumer activations`)
+
+    const { count: consumerQrScansCount } = await supabase
+      .from('consumer_qr_scans')
+      .delete({ count: 'exact' })
+      .neq('id', '00000000-0000-0000-0000-000000000000')
+    
+    deletedCount += consumerQrScansCount || 0
+    console.log(`✓ Deleted ${consumerQrScansCount || 0} consumer QR scans`)
 
     console.log('✅ Phase 1 Complete - Transaction data deleted')
 
@@ -407,6 +424,15 @@ export async function POST(request: NextRequest) {
     
     deletedCount += allOtherOrgsCount || 0
     console.log(`✓ Deleted ${allOtherOrgsCount || 0} organizations (manufacturers, distributors, warehouses - kept parent HQ only)`)
+
+    // 17. Delete journey configurations (AFTER deleting organizations since it references org_id)
+    const { count: journeyConfigsCount } = await supabase
+      .from('journey_configurations')
+      .delete({ count: 'exact' })
+      .neq('id', '00000000-0000-0000-0000-000000000000')
+    
+    deletedCount += journeyConfigsCount || 0
+    console.log(`✓ Deleted ${journeyConfigsCount || 0} journey configurations`)
 
     console.log('✅ Phase 2 Complete - Master data deleted (parent org preserved)')    // ========================================
     // PHASE 3: DELETE STORAGE FILES

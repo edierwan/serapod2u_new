@@ -120,8 +120,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   const [qrBuffer, setQrBuffer] = useState(10.00)
   const [enableRFID, setEnableRFID] = useState(false)
   const [hasPoints, setHasPoints] = useState(true)
-  const [enableLuckyDraw, setEnableLuckyDraw] = useState(false)
-  const [enableRedeem, setEnableRedeem] = useState(false)
+  const [enableLuckyDraw, setEnableLuckyDraw] = useState(true)
+  const [enableRedeem, setEnableRedeem] = useState(true)
   const [notes, setNotes] = useState('')
   
   // Products and Variants

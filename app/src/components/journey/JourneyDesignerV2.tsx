@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,6 +30,9 @@ import {
 } from 'lucide-react'
 import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
 import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
+
+const PRODUCT_CONSUMER_READY_STATUSES = ['shipped_distributor', 'activated', 'redeemed'] as const
+const MASTER_CONSUMER_READY_STATUSES = ['shipped_distributor', 'opened'] as const
 
 interface Order {
     id: string
@@ -89,6 +92,8 @@ export default function JourneyDesignerV2({
     const [uploadingImage, setUploadingImage] = useState(false)
     const [productsShipped, setProductsShipped] = useState(false)
     const [checkingShipment, setCheckingShipment] = useState(true)
+    const headerRef = useRef<HTMLDivElement | null>(null)
+    const [previewMetrics, setPreviewMetrics] = useState({ top: 104, maxHeight: 640 })
     const { toast } = useToast()
 
     const [config, setConfig] = useState<JourneyConfig>({
@@ -117,37 +122,100 @@ export default function JourneyDesignerV2({
 
     const supabase = createClient()
 
+    const updatePreviewMetrics = useCallback(() => {
+        if (typeof window === 'undefined') return
+
+        const headerHeight = headerRef.current?.offsetHeight ?? 0
+        const viewportHeight = window.innerHeight
+        const gutter = 24 // keep a comfortable gap below the header
+
+        const top = headerHeight + gutter
+        const maxHeight = Math.max(viewportHeight - top - gutter, 420)
+
+        setPreviewMetrics((current) => {
+            if (current.top === top && current.maxHeight === maxHeight) {
+                return current
+            }
+            return { top, maxHeight }
+        })
+    }, [])
+
+    useEffect(() => {
+        updatePreviewMetrics()
+        window.addEventListener('resize', updatePreviewMetrics)
+        return () => window.removeEventListener('resize', updatePreviewMetrics)
+    }, [updatePreviewMetrics])
+
+    useEffect(() => {
+        if (showPreview) {
+            updatePreviewMetrics()
+        }
+    }, [showPreview, updatePreviewMetrics])
+
     // Check if products have been shipped to distributor
     useEffect(() => {
         async function checkShipmentStatus() {
             try {
                 setCheckingShipment(true)
-                
-                // Query QR master codes for this order via qr_batches
-                // Need to join through qr_batches to get to the order
-                const { data, error } = await supabase
-                    .from('qr_master_codes')
-                    .select(`
-                        id,
-                        status,
-                        qr_batches!inner (
-                            order_id
-                        )
-                    `)
-                    .eq('qr_batches.order_id', order.id)
-                    .eq('status', 'shipped_distributor')
-                    .limit(1)
-                
-                if (error) {
-                    console.error('[Journey] Error checking shipment status:', error)
-                    // Default to false if error - safer to assume not shipped
-                    setProductsShipped(false)
-                } else {
-                    // If at least one product has shipped, consider order as shipped
-                    const hasShipped = (data?.length || 0) > 0
-                    setProductsShipped(hasShipped)
-                    console.log(`[Journey] Shipment check for order ${order.order_no}:`, hasShipped ? 'Products shipped ✅' : 'Awaiting shipment 🕐')
+                const [masterResult, uniqueByOrderResult] = await Promise.all([
+                    supabase
+                        .from('qr_master_codes')
+                        .select(`
+                            id,
+                            status,
+                            qr_batches!inner (
+                                order_id
+                            )
+                        `)
+                        .eq('qr_batches.order_id', order.id)
+                        .in('status', MASTER_CONSUMER_READY_STATUSES)
+                        .limit(1),
+                    supabase
+                        .from('qr_codes')
+                        .select('id')
+                        .eq('order_id', order.id)
+                        .in('status', PRODUCT_CONSUMER_READY_STATUSES)
+                        .limit(1)
+                ])
+
+                let hasShipped = false
+
+                if (masterResult.error) {
+                    console.error('[Journey] Error checking master shipment status:', masterResult.error)
+                } else if ((masterResult.data?.length || 0) > 0) {
+                    hasShipped = true
                 }
+
+                if (uniqueByOrderResult.error) {
+                    console.error('[Journey] Error checking unique shipment status (order linkage):', uniqueByOrderResult.error)
+                } else if ((uniqueByOrderResult.data?.length || 0) > 0) {
+                    hasShipped = true
+                }
+
+                // Some QR codes may only be linked through batches, so fall back to join if needed
+                if (!hasShipped) {
+                    const { data: uniqueByBatch, error: uniqueByBatchError } = await supabase
+                        .from('qr_codes')
+                        .select(`
+                            id,
+                            status,
+                            qr_batches!inner (
+                                order_id
+                            )
+                        `)
+                        .in('status', PRODUCT_CONSUMER_READY_STATUSES)
+                        .eq('qr_batches.order_id', order.id)
+                        .limit(1)
+
+                    if (uniqueByBatchError) {
+                        console.error('[Journey] Error checking unique shipment status (batch linkage):', uniqueByBatchError)
+                    } else if ((uniqueByBatch?.length || 0) > 0) {
+                        hasShipped = true
+                    }
+                }
+
+                setProductsShipped(hasShipped)
+                console.log(`[Journey] Shipment check for order ${order.order_no}:`, hasShipped ? 'Products shipped ✅' : 'Awaiting shipment 🕐')
             } catch (error) {
                 console.error('[Journey] Error checking shipment:', error)
                 setProductsShipped(false)
@@ -364,9 +432,12 @@ export default function JourneyDesignerV2({
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+        <div className="space-y-6 pb-6">
+            {/* Header - Fixed at top */}
+            <div
+                ref={headerRef}
+                className="flex items-center justify-between sticky top-0 z-10 bg-muted/10 py-4 -mt-6 -mx-6 px-6 backdrop-blur-sm border-b"
+            >
                 <div className="flex items-center gap-4">
                     <Button variant="outline" size="sm" onClick={onBack}>
                         <ArrowLeft className="w-4 h-4 mr-2" />
@@ -397,7 +468,7 @@ export default function JourneyDesignerV2({
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 {/* Configuration Panel */}
                 <div className="lg:col-span-2 space-y-6">
                     {/* Basic Settings */}
@@ -825,9 +896,22 @@ export default function JourneyDesignerV2({
 
                 {/* Mobile Preview */}
                 {showPreview && (
-                    <div className="lg:col-span-1">
-                        <div className="sticky top-6">
-                            <InteractiveMobilePreviewV2 config={config} />
+                    <div className="lg:col-span-1 w-full">
+                        <div
+                            className="relative lg:sticky lg:transition-transform lg:duration-200 lg:ease-out"
+                            style={{
+                                top: `${previewMetrics.top}px`,
+                                maxHeight: `${previewMetrics.maxHeight}px`
+                            }}
+                        >
+                            <div
+                                className="overflow-y-auto scroll-smooth pr-1"
+                                style={{
+                                    maxHeight: `${Math.max(previewMetrics.maxHeight - 24, 360)}px`
+                                }}
+                            >
+                                <InteractiveMobilePreviewV2 config={config} />
+                            </div>
                         </div>
                     </div>
                 )}
