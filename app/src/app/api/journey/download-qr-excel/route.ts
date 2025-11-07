@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 /**
  * Get the base URL for QR code tracking
@@ -99,11 +99,17 @@ export async function GET(request: NextRequest) {
     const codes = qrCodes || []
     const orgData = Array.isArray(order.organizations) ? order.organizations[0] : order.organizations
 
-    // Create workbook
-    const workbook = XLSX.utils.book_new()
+    // Create workbook with ExcelJS
+    const workbook = new ExcelJS.Workbook()
 
     // Sheet 1: Summary
-    const summaryData = [
+    const summarySheet = workbook.addWorksheet('Summary')
+    summarySheet.columns = [
+      { key: 'label', width: 30 },
+      { key: 'value', width: 40 }
+    ]
+    
+    summarySheet.addRows([
       ['Journey QR Codes Report'],
       ['Generated:', new Date().toLocaleString()],
       [],
@@ -116,77 +122,68 @@ export async function GET(request: NextRequest) {
       ['Total QR Codes:', codes.length],
       ['Scanned Codes:', codes.filter(c => ['opened', 'shipped_distributor', 'received_warehouse', 'packed'].includes(c.status)).length],
       ['Generated Codes:', codes.filter(c => c.status === 'generated').length]
-    ]
-
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
-    summarySheet['!cols'] = [{ wch: 30 }, { wch: 40 }]
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+    ])
 
     // Sheet 2: All QR Codes with Tracking URLs
-    const qrData = codes.map((code: any, index: number) => {
+    const qrSheet = workbook.addWorksheet('QR Codes & URLs')
+    qrSheet.columns = [
+      { header: '#', key: 'index', width: 5 },
+      { header: 'QR Code', key: 'code', width: 50 },
+      { header: 'Tracking URL', key: 'url', width: 70 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Is Scanned', key: 'scanned', width: 12 },
+      { header: 'Product', key: 'product', width: 25 },
+      { header: 'Variant', key: 'variant', width: 20 },
+      { header: 'Sequence', key: 'sequence', width: 10 },
+      { header: 'Case Number', key: 'caseNum', width: 12 },
+      { header: 'Master Code', key: 'master', width: 35 },
+      { header: 'Last Scanned', key: 'lastScanned', width: 20 },
+      { header: 'Blocked', key: 'blocked', width: 10 }
+    ]
+
+    codes.forEach((code: any, index: number) => {
       const masterCodeData = Array.isArray(code.qr_master_codes) ? code.qr_master_codes[0] : code.qr_master_codes
       const isScanned = ['opened', 'shipped_distributor', 'received_warehouse', 'packed'].includes(code.status)
       
-      return {
-        '#': index + 1,
-        'QR Code': code.code,
-        'Tracking URL': generateTrackingURL(code.code),
-        'Status': code.status,
-        'Is Scanned': isScanned ? 'Yes' : 'No',
-        'Product': code.products?.product_name || 'N/A',
-        'Variant': code.product_variants?.variant_name || 'N/A',
-        'Sequence': code.sequence_number,
-        'Case Number': masterCodeData?.case_number || 'Unassigned',
-        'Master Code': masterCodeData?.master_code || 'Unassigned',
-        'Last Scanned': code.last_scanned_at ? new Date(code.last_scanned_at).toLocaleString() : 'Never',
-        'Blocked': code.is_blocked ? 'Yes' : 'No'
-      }
+      qrSheet.addRow({
+        index: index + 1,
+        code: code.code,
+        url: generateTrackingURL(code.code),
+        status: code.status,
+        scanned: isScanned ? 'Yes' : 'No',
+        product: code.products?.product_name || 'N/A',
+        variant: code.product_variants?.variant_name || 'N/A',
+        sequence: code.sequence_number,
+        caseNum: masterCodeData?.case_number || 'Unassigned',
+        master: masterCodeData?.master_code || 'Unassigned',
+        lastScanned: code.last_scanned_at ? new Date(code.last_scanned_at).toLocaleString() : 'Never',
+        blocked: code.is_blocked ? 'Yes' : 'No'
+      })
     })
-
-    const qrSheet = XLSX.utils.json_to_sheet(qrData)
-    qrSheet['!cols'] = [
-      { wch: 5 },   // #
-      { wch: 50 },  // QR Code
-      { wch: 70 },  // Tracking URL
-      { wch: 15 },  // Status
-      { wch: 12 },  // Is Scanned
-      { wch: 25 },  // Product
-      { wch: 20 },  // Variant
-      { wch: 10 },  // Sequence
-      { wch: 12 },  // Case Number
-      { wch: 35 },  // Master Code
-      { wch: 20 },  // Last Scanned
-      { wch: 10 }   // Blocked
-    ]
-    XLSX.utils.book_append_sheet(workbook, qrSheet, 'QR Codes & URLs')
 
     // Sheet 3: Valid Links Only (for consumer distribution)
-    const validLinks = codes
-      .filter(c => !c.is_blocked && c.status !== 'void')
-      .map((code: any, index: number) => ({
-        '#': index + 1,
-        'QR Code': code.code,
-        'Consumer Tracking URL': generateTrackingURL(code.code),
-        'Product': code.products?.product_name || 'N/A',
-        'Variant': code.product_variants?.variant_name || 'N/A'
-      }))
-
-    const validLinksSheet = XLSX.utils.json_to_sheet(validLinks)
-    validLinksSheet['!cols'] = [
-      { wch: 5 },   // #
-      { wch: 50 },  // QR Code
-      { wch: 70 },  // Tracking URL
-      { wch: 25 },  // Product
-      { wch: 20 }   // Variant
+    const validLinksSheet = workbook.addWorksheet('Valid Links')
+    validLinksSheet.columns = [
+      { header: '#', key: 'index', width: 5 },
+      { header: 'QR Code', key: 'code', width: 50 },
+      { header: 'Consumer Tracking URL', key: 'url', width: 70 },
+      { header: 'Product', key: 'product', width: 25 },
+      { header: 'Variant', key: 'variant', width: 20 }
     ]
-    XLSX.utils.book_append_sheet(workbook, validLinksSheet, 'Valid Links')
 
-    // Generate Excel file
-    const excelBuffer = XLSX.write(workbook, {
-      type: 'buffer',
-      bookType: 'xlsx',
-      compression: true
+    const validCodes = codes.filter(c => !c.is_blocked && c.status !== 'void')
+    validCodes.forEach((code: any, index: number) => {
+      validLinksSheet.addRow({
+        index: index + 1,
+        code: code.code,
+        url: generateTrackingURL(code.code),
+        product: code.products?.product_name || 'N/A',
+        variant: code.product_variants?.variant_name || 'N/A'
+      })
     })
+
+    // Generate Excel file buffer
+    const excelBuffer = await workbook.xlsx.writeBuffer()
 
     const fileName = `Journey_QR_Codes_${order.order_no || orderId.substring(0, 8)}_${new Date().toISOString().slice(0, 10)}.xlsx`
 
