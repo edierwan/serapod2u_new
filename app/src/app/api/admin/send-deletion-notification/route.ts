@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!profile || (profile.roles as any).role_level !== 1) {
+    if (!profile || !(profile as any).roles || (profile as any).roles.role_level !== 1) {
       return NextResponse.json(
         { error: 'Access denied. Super Admin only.' },
         { status: 403 }

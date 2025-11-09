@@ -44,13 +44,40 @@ interface OrderDetails {
   documents: {
     po_date: string | null
     po_created_by: string | null
+    deposit_invoice_date: string | null
+    deposit_invoice_created_by: string | null
+    deposit_payment_date: string | null
+    deposit_payment_created_by: string | null
     invoice_date: string | null
     invoice_created_by: string | null
     payment_date: string | null
     payment_created_by: string | null
     receipt_date: string | null
     receipt_created_by: string | null
+    balance_payment_request_id: string | null
+    balance_payment_request_date: string | null
+    balance_payment_request_status: string | null
+    balance_payment_date: string | null
+    balance_payment_created_by: string | null
+    warehouse_receive_date: string | null
+    warehouse_receive_by: string | null
+    balance_payment_request_file_url?: string | null
   }
+}
+
+interface TimelineStep {
+  label: string
+  icon: any
+  completed: boolean
+  date: string | null
+  description: string
+  actionBy: string | null
+  bgColor: string
+  iconColor: string
+  borderColor: string
+  status?: string | null
+  requestId?: string | null
+  supportingDocUrl?: string | null
 }
 
 interface TrackOrderViewProps {
@@ -62,7 +89,8 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
   const [loading, setLoading] = useState(true)
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null)
   const [showDocumentsDialog, setShowDocumentsDialog] = useState(false)
-  const [initialDocumentTab, setInitialDocumentTab] = useState<'po' | 'invoice' | 'payment' | 'receipt' | null>(null)
+  const [initialDocumentTab, setInitialDocumentTab] = useState<'po' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment' | null>(null)
+  const [approvingPaymentRequest, setApprovingPaymentRequest] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -92,12 +120,16 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
     // Check if we should auto-open the documents dialog
     const selectedDocumentId = sessionStorage.getItem('selectedDocumentId')
     const selectedDocumentType = sessionStorage.getItem('selectedDocumentType')
+    const selectedDocumentTab = sessionStorage.getItem('selectedDocumentTab')
     if (selectedDocumentId && orderDetails) {
-      setInitialDocumentTab(normalizeTab(selectedDocumentType) ?? 'po')
+      // Use the explicitly set tab if available, otherwise normalize the document type
+      const tabToOpen = (selectedDocumentTab || normalizeTab(selectedDocumentType) || 'po') as 'po' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
+      setInitialDocumentTab(tabToOpen)
       setShowDocumentsDialog(true)
-      // Clear the flag after opening
+      // Clear the flags after opening
       sessionStorage.removeItem('selectedDocumentId')
       sessionStorage.removeItem('selectedDocumentType')
+      sessionStorage.removeItem('selectedDocumentTab')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -195,7 +227,10 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       const { data: documents, error: docsError } = await supabase
         .from('documents')
         .select(`
+          id,
           doc_type, 
+          doc_no,
+          status,
           acknowledged_at, 
           created_at,
           created_by,
@@ -218,21 +253,95 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       }
 
       const poDoc = documents?.find(d => d.doc_type === 'PO')
-      const invoiceDoc = documents?.find(d => d.doc_type === 'INVOICE')
-      const paymentDoc = documents?.find(d => d.doc_type === 'PAYMENT')
+      const invoiceDocs = documents?.filter(d => d.doc_type === 'INVOICE').sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+      const depositInvoiceDoc = invoiceDocs?.[0] // First invoice = deposit
+      const finalInvoiceDoc = invoiceDocs?.[1] // Second invoice = final (if exists)
+      
+      const paymentDocs = documents?.filter(d => d.doc_type === 'PAYMENT').sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+      const depositPaymentDoc = paymentDocs?.[0] // First payment = deposit
+      const balancePaymentDoc = paymentDocs?.[1] // Second payment = balance (created from request approval)
+      
+      const paymentRequestDoc = documents?.find(d => d.doc_type === 'PAYMENT_REQUEST')
       const receiptDoc = documents?.find(d => d.doc_type === 'RECEIPT')
+
+      let balanceRequestFileUrl: string | null = null
+      if (paymentRequestDoc) {
+        const { data: balanceFile, error: balanceFileError } = await supabase
+          .from('document_files')
+          .select('file_url')
+          .eq('document_id', paymentRequestDoc.id)
+          .maybeSingle()
+
+        if (balanceFileError) {
+          console.error('Error fetching balance payment support file:', balanceFileError)
+        }
+
+        balanceRequestFileUrl = balanceFile?.file_url ?? null
+      }
 
       // Extract document dates and creators
       const docDates = {
         po_date: poDoc?.created_at || null,
         po_created_by: poDoc ? await getUserName(poDoc.created_by) : null,
-        // Invoice shows as "sent" when created by seller, then updated when acknowledged by buyer
-        invoice_date: invoiceDoc?.acknowledged_at || invoiceDoc?.created_at || null,
-        invoice_created_by: invoiceDoc ? await getUserName(invoiceDoc.acknowledged_by || invoiceDoc.created_by) : null,
-        payment_date: paymentDoc?.acknowledged_at || null,
-        payment_created_by: paymentDoc ? await getUserName(paymentDoc.acknowledged_by) : null,
+        
+        // Deposit invoice (first invoice)
+        deposit_invoice_date: depositInvoiceDoc?.acknowledged_at || depositInvoiceDoc?.created_at || null,
+        deposit_invoice_created_by: depositInvoiceDoc ? await getUserName(depositInvoiceDoc.acknowledged_by || depositInvoiceDoc.created_by) : null,
+        
+        // Deposit payment (first payment)
+        deposit_payment_date: depositPaymentDoc?.acknowledged_at || null,
+        deposit_payment_created_by: depositPaymentDoc ? await getUserName(depositPaymentDoc.acknowledged_by) : null,
+        
+        // Legacy invoice (for backwards compatibility)
+        invoice_date: finalInvoiceDoc?.acknowledged_at || finalInvoiceDoc?.created_at || depositInvoiceDoc?.acknowledged_at || depositInvoiceDoc?.created_at || null,
+        invoice_created_by: finalInvoiceDoc ? await getUserName(finalInvoiceDoc.acknowledged_by || finalInvoiceDoc.created_by) : depositInvoiceDoc ? await getUserName(depositInvoiceDoc.acknowledged_by || depositInvoiceDoc.created_by) : null,
+        
+        // Legacy payment (for backwards compatibility)
+        payment_date: balancePaymentDoc?.acknowledged_at || depositPaymentDoc?.acknowledged_at || null,
+        payment_created_by: balancePaymentDoc ? await getUserName(balancePaymentDoc.acknowledged_by) : depositPaymentDoc ? await getUserName(depositPaymentDoc.acknowledged_by) : null,
+        
+        // Receipt
         receipt_date: receiptDoc?.created_at || null,
-        receipt_created_by: receiptDoc ? await getUserName(receiptDoc.created_by) : null
+        receipt_created_by: receiptDoc ? await getUserName(receiptDoc.created_by) : null,
+        
+        // Balance Payment Request (NEW)
+        balance_payment_request_id: paymentRequestDoc?.id || null,
+        balance_payment_request_date: paymentRequestDoc?.created_at || null,
+        balance_payment_request_status: paymentRequestDoc?.status || null,
+  balance_payment_request_file_url: balanceRequestFileUrl,
+        
+        // Balance Payment (from request approval)
+        balance_payment_date: balancePaymentDoc?.acknowledged_at || null,
+        balance_payment_created_by: balancePaymentDoc ? await getUserName(balancePaymentDoc.acknowledged_by) : null,
+      }
+
+      // Fetch warehouse receive data
+      const { data: warehouseReceive } = await supabase
+        .from('qr_master_codes')
+        .select(`
+          warehouse_received_at,
+          warehouse_received_by,
+          qr_batches!inner (order_id)
+        `)
+        .eq('qr_batches.order_id', trackingOrderId)
+        .eq('status', 'received_warehouse')
+        .order('warehouse_received_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      let warehouseReceiveBy = null
+      if (warehouseReceive?.warehouse_received_by) {
+        warehouseReceiveBy = await getUserName(warehouseReceive.warehouse_received_by)
+      }
+
+      const docDatesWithWarehouse = {
+        ...docDates,
+        warehouse_receive_date: warehouseReceive?.warehouse_received_at || null,
+        warehouse_receive_by: warehouseReceiveBy
       }
 
       setOrderDetails({
@@ -255,7 +364,7 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
         units_per_case: order.units_per_case || 100,
         qr_buffer_percent: order.qr_buffer_percent || 10,
         notes: order.notes || null,
-        documents: docDates
+        documents: docDatesWithWarehouse
       })
 
     } catch (error: any) {
@@ -322,6 +431,48 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
     }).format(amount).replace('MYR', 'RM')
   }
 
+  const handleApproveBalancePaymentRequest = async (requestId: string) => {
+    try {
+      setApprovingPaymentRequest(true)
+
+      const response = await fetch(`/api/documents/payment-request/${requestId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+    const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to approve payment request')
+      }
+
+      toast({
+        title: "Success",
+        description: `Balance payment request approved. Payment document ${data.payment_doc_no} has been created.`,
+      })
+
+      // Reload order details to refresh timeline
+      await loadOrderDetails()
+
+    } catch (error: any) {
+      console.error('Error approving payment request:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve payment request",
+        variant: "destructive"
+      })
+    } finally {
+      setApprovingPaymentRequest(false)
+    }
+  }
+
+  const isHQAdmin = () => {
+    return userProfile?.role_code === 'HQ_ADMIN' || 
+           userProfile?.role_code === 'POWER_USER' ||
+           userProfile?.organizations?.org_type_code === 'HQ'
+  }
+
   // Timeline steps based on order workflow
   const getTimelineSteps = () => {
     if (!orderDetails) return []
@@ -372,48 +523,95 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
         borderColor: 'border-purple-200'
       },
       {
-        label: 'Invoice Sent',
+        label: 'Deposit Invoice Sent',
         icon: FileText,
-        completed: !!orderDetails.documents.invoice_date,
-        date: orderDetails.documents.invoice_date,
-        description: 'Invoice acknowledged by buyer',
-        actionBy: orderDetails.documents.invoice_created_by,
+        completed: !!orderDetails.documents.deposit_invoice_date,
+        date: orderDetails.documents.deposit_invoice_date,
+        description: 'Deposit invoice (50%) acknowledged by buyer',
+        actionBy: orderDetails.documents.deposit_invoice_created_by,
         bgColor: 'bg-indigo-50',
         iconColor: 'bg-indigo-100 text-indigo-600',
         borderColor: 'border-indigo-200'
       },
       {
-        label: 'Payment',
+        label: 'Deposit Payment',
         icon: CreditCard,
-        completed: !!orderDetails.documents.payment_date,
-        date: orderDetails.documents.payment_date,
-        description: 'Payment processed',
-        actionBy: orderDetails.documents.payment_created_by,
+        completed: !!orderDetails.documents.deposit_payment_date,
+        date: orderDetails.documents.deposit_payment_date,
+        description: 'Deposit payment (50%) processed',
+        actionBy: orderDetails.documents.deposit_payment_created_by,
         bgColor: 'bg-amber-50',
         iconColor: 'bg-amber-100 text-amber-600',
         borderColor: 'border-amber-200'
       },
       {
-        label: 'Delivery',
+        label: 'Delivery to Warehouse',
         icon: Truck,
-        completed: !!orderDetails.documents.receipt_date,
-        date: orderDetails.documents.receipt_date,
-        description: 'Receipt acknowledged',
-        actionBy: orderDetails.documents.receipt_created_by,
+        completed: !!orderDetails.documents.warehouse_receive_date,
+        date: orderDetails.documents.warehouse_receive_date,
+        description: 'Products received at warehouse',
+        actionBy: orderDetails.documents.warehouse_receive_by || 'Warehouse Receive',
         bgColor: 'bg-teal-50',
         iconColor: 'bg-teal-100 text-teal-600',
         borderColor: 'border-teal-200'
       },
       {
-        label: 'Completed',
+        label: 'Balance Payment Request Created',
+        icon: DollarSign,
+        completed: !!orderDetails.documents.balance_payment_request_date,
+        date: orderDetails.documents.balance_payment_request_date,
+        description: 'Balance payment request (50%) auto-generated',
+        actionBy: 'System Auto-Generation',
+        bgColor: 'bg-orange-50',
+        iconColor: 'bg-orange-100 text-orange-600',
+        borderColor: 'border-orange-200',
+        status: orderDetails.documents.balance_payment_request_status,
+        requestId: orderDetails.documents.balance_payment_request_id,
+        supportingDocUrl: orderDetails.documents.balance_payment_request_file_url
+      },
+      {
+        label: 'Balance Payment Approved',
+        icon: CheckCircle2,
+        completed: orderDetails.documents.balance_payment_request_status === 'acknowledged',
+        date: orderDetails.documents.balance_payment_request_status === 'acknowledged' ? orderDetails.documents.balance_payment_request_date : null,
+        description: 'Balance payment request approved by HQ',
+        actionBy: orderDetails.documents.balance_payment_request_status === 'acknowledged' ? 'HQ Admin' : null,
+        bgColor: 'bg-cyan-50',
+        iconColor: 'bg-cyan-100 text-cyan-600',
+        borderColor: 'border-cyan-200'
+      },
+      {
+        label: 'Final Payment',
+        icon: CreditCard,
+        completed: !!orderDetails.documents.balance_payment_date,
+        date: orderDetails.documents.balance_payment_date,
+        description: 'Balance payment (50%) processed',
+        actionBy: orderDetails.documents.balance_payment_created_by,
+        bgColor: 'bg-rose-50',
+        iconColor: 'bg-rose-100 text-rose-600',
+        borderColor: 'border-rose-200'
+      },
+      {
+        label: 'Final Receipt',
+        icon: FileText,
+        completed: !!orderDetails.documents.receipt_date,
+        date: orderDetails.documents.receipt_date,
+        description: 'Receipt acknowledged',
+        actionBy: orderDetails.documents.receipt_created_by,
+        bgColor: 'bg-emerald-50',
+        iconColor: 'bg-emerald-100 text-emerald-600',
+        borderColor: 'border-emerald-200'
+      },
+      {
+        label: 'Order Completed',
         icon: CheckCircle2,
         completed: orderDetails.status === 'closed',
         date: orderDetails.documents.receipt_date,
         description: 'Order completed',
         actionBy: null,
-        bgColor: 'bg-emerald-50',
-        iconColor: 'bg-emerald-100 text-emerald-600',
-        borderColor: 'border-emerald-200'
+        bgColor: 'bg-green-50',
+        iconColor: 'bg-green-100 text-green-600',
+        borderColor: 'border-green-200'
       }
     ]
 
@@ -702,6 +900,41 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
                               </span>
                             )}
                           </div>
+
+                          {/* Approve Button for Balance Payment Request */}
+                          {step.label === 'Balance Payment Request Created' && 
+                           step.status === 'pending' && 
+                           step.requestId && 
+                           isHQAdmin() && (
+                            <div className="mt-3">
+                              <Button
+                                onClick={() => handleApproveBalancePaymentRequest(step.requestId!)}
+                                disabled={approvingPaymentRequest || !step.supportingDocUrl}
+                                size="sm"
+                                className="bg-orange-600 hover:bg-orange-700 text-white"
+                              >
+                                {approvingPaymentRequest ? (
+                                  <>
+                                    <Clock className="w-4 h-4 mr-2 animate-spin" />
+                                    Approving...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                                    Approve Balance Payment
+                                  </>
+                                )}
+                              </Button>
+                              <p className="text-xs text-gray-500 mt-1">
+                                This will create a new payment document for the balance 50%
+                              </p>
+                              {!step.supportingDocUrl && (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  Attach the final payment proof in Order Documents before approval.
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

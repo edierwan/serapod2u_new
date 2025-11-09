@@ -20,7 +20,7 @@ import { canAcknowledgeDocument, getDocumentTypeLabel, type Document } from '@/l
 
 interface PendingDocument {
   id: string
-  doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT'
+  doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST'
   doc_no: string
   status: string
   created_at: string
@@ -90,7 +90,7 @@ interface UserProfile {
 
 interface ActionRequiredProps {
   userProfile: UserProfile
-  onViewDocument: (orderId: string, documentId: string, docType: PendingDocument['doc_type']) => void
+  onViewDocument: (orderId: string, documentId: string, docType: PendingDocument['doc_type'], docNo?: string) => void
   onViewChange: (view: string) => void
 }
 
@@ -199,7 +199,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
       // Get company_id
       const { data: companyData } = await supabase
-        .rpc('get_company_id', { p_org_id: userProfile.organization_id })
+        .rpc('get_company_id', { p_org_id: userProfile.organization_id } as any)
       
       const companyId = companyData || userProfile.organization_id
 
@@ -594,7 +594,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
               {pendingDocs.map((doc) => (
                 <button
                   key={`mobile-${doc.id}`}
-                  onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type)}
+                  onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.doc_no)}
                   className="p-3 rounded-xl border border-gray-200 bg-white/80 text-left shadow-sm hover:shadow transition-all"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -648,7 +648,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                       
                       <Button
                         size="sm"
-                        onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type)}
+                        onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.doc_no)}
                         className="flex-shrink-0"
                       >
                         Review
@@ -661,7 +661,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                      userProfile.organizations.org_type_code === 'HQ' && 
                      requirePaymentProof && (
                       <button
-                        onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type)}
+                        onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.doc_no)}
                         className="w-full bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-center justify-between gap-2 hover:bg-amber-100 transition-colors group"
                       >
                         <div className="flex items-center gap-2">

@@ -179,13 +179,13 @@ export default function ManufacturerDocumentUpload({
             </div>
             <div className="flex-1">
               <h4 className="text-sm font-semibold text-green-900 mb-1">
-                ✓ Manufacturer Document Uploaded
+                ✓ Proforma Invoice (PI) Uploaded Successfully
               </h4>
               <p className="text-sm text-green-800">
-                Your supporting document has been attached and will be available for download in the invoice flow.
+                Your Proforma Invoice has been attached and will be available for the buyer to download in the invoice flow. The buyer can review pricing, terms, and specifications before proceeding with payment.
               </p>
               <p className="text-xs text-green-700 mt-1">
-                Need to change the file? Click &quot;Replace&quot; to upload a different document.
+                Need to update the PI? Click &quot;Replace&quot; to upload a revised Proforma Invoice.
               </p>
             </div>
           </div>
@@ -199,7 +199,7 @@ export default function ManufacturerDocumentUpload({
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-green-900">Manufacturer Document</p>
+              <p className="font-semibold text-green-900">Proforma Invoice (PI)</p>
               <p className="text-sm text-green-700 truncate">{uploadedUrl.split('/').pop()}</p>
             </div>
             <div className="flex gap-2">
@@ -239,10 +239,13 @@ export default function ManufacturerDocumentUpload({
           </div>
           <div className="flex-1">
             <h4 className="text-sm font-semibold text-blue-900 mb-1">
-              Upload Supporting Documents (Optional)
+              Upload Proforma Invoice (PI) - Required
             </h4>
             <p className="text-sm text-blue-800">
-              You can attach supporting documents such as test reports, certificates, or specifications before acknowledging this Purchase Order. These documents will be available in the invoice flow.
+              Please upload your <strong>Proforma Invoice (PI)</strong> for this Purchase Order. The PI must include pricing details, payment terms, delivery terms, and product specifications before you can acknowledge this PO. This document will be shared with the buyer in the invoice flow.
+            </p>
+            <p className="text-xs text-blue-700 mt-2">
+              💡 <strong>Note:</strong> The Proforma Invoice serves as a preliminary invoice outlining the commercial terms of the transaction.
             </p>
           </div>
         </div>
@@ -250,7 +253,7 @@ export default function ManufacturerDocumentUpload({
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Manufacturer Supporting Document
+          Proforma Invoice (PI) Document
         </label>
         <p className="text-xs text-gray-500 mb-3">
           Accepted formats: PDF, JPG, PNG • Maximum file size: 10MB

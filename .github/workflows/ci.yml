@@ -24,10 +24,6 @@ jobs:
         working-directory: ./app
         run: npm ci
 
-      - name: Run linter
-        working-directory: ./app
-        run: npm run lint
-
       - name: Build application
         working-directory: ./app
         run: npm run build

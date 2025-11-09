@@ -11,12 +11,29 @@ interface DocumentWorkflowProgressProps {
     invoice?: Document | null
     payment?: Document | null
     receipt?: Document | null
+    depositInvoice?: Document | null
+    depositPayment?: Document | null
+    balancePaymentRequest?: Document | null
+    balancePayment?: Document | null
+    depositReceipt?: Document | null
+    finalReceipt?: Document | null
   }
   onTabChange?: (tab: string) => void
+  use50_50Split?: boolean
 }
 
-export default function DocumentWorkflowProgress({ documents, onTabChange }: DocumentWorkflowProgressProps) {
-  const steps = [
+export default function DocumentWorkflowProgress({ documents, onTabChange, use50_50Split = false }: DocumentWorkflowProgressProps) {
+  // Define steps based on workflow type
+  type Step = {
+    key: string
+    label: string
+    shortLabel?: string
+    icon: any
+    color: string
+    document: Document | null | undefined
+  }
+
+  const traditionalSteps: Step[] = [
     {
       key: 'po',
       label: 'Purchase Order',
@@ -47,6 +64,57 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
     }
   ]
 
+  const split50_50Steps: Step[] = [
+    {
+      key: 'po',
+      label: 'Purchase Order',
+      icon: FileText,
+      color: 'blue',
+      document: documents.po
+    },
+    {
+      key: 'depositInvoice',
+      label: 'Deposit Invoice (50%)',
+      shortLabel: 'Deposit Invoice',
+      icon: FileCheck,
+      color: 'green',
+      document: documents.depositInvoice || documents.invoice
+    },
+    {
+      key: 'depositPayment',
+      label: 'Deposit Payment (50%)',
+      shortLabel: 'Deposit Pay',
+      icon: CreditCard,
+      color: 'purple',
+      document: documents.depositPayment || (!documents.balancePayment ? documents.payment : null)
+    },
+    {
+      key: 'balanceRequest',
+      label: 'Balance Request (50%)',
+      shortLabel: 'Balance Req',
+      icon: FileText,
+      color: 'teal',
+      document: documents.balancePaymentRequest
+    },
+    {
+      key: 'balancePayment',
+      label: 'Balance Payment (50%)',
+      shortLabel: 'Balance Pay',
+      icon: CreditCard,
+      color: 'indigo',
+      document: documents.balancePayment
+    },
+    {
+      key: 'receipt',
+      label: 'Receipt',
+      icon: Receipt,
+      color: 'orange',
+      document: documents.receipt
+    }
+  ]
+
+  const steps = use50_50Split ? split50_50Steps : traditionalSteps
+
   const getStepStatus = (document: Document | null | undefined) => {
     if (!document) return 'not-started'
     if (document.doc_type === 'RECEIPT') return 'completed'
@@ -57,26 +125,42 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
 
   const getStepColor = (status: string, baseColor: string) => {
     if (status === 'completed') return 'bg-green-100 text-green-700 border-green-300'
+    if (status === 'partial') return 'bg-amber-100 text-amber-800 border-amber-300'
     if (status === 'pending') return `bg-yellow-100 text-yellow-700 border-yellow-300`
     return 'bg-gray-100 text-gray-400 border-gray-300'
   }
 
   const getIconColor = (status: string, baseColor: string) => {
     if (status === 'completed') return 'text-green-600'
+    if (status === 'partial') return 'text-amber-600'
     if (status === 'pending') return `text-${baseColor}-600`
     return 'text-gray-400'
   }
 
   const getProgressPercentage = () => {
-    let completed = 0
-    const total = 4
+    if (use50_50Split) {
+      let completed = 0
+      const total = 6
 
-    if (documents.po?.status === 'acknowledged' || documents.invoice) completed++
-    if (documents.invoice?.status === 'acknowledged' || documents.payment) completed++
-    if (documents.payment?.status === 'acknowledged' || documents.receipt) completed++
-    if (documents.receipt) completed++
+      if (documents.po?.status === 'acknowledged' || documents.depositInvoice || documents.invoice) completed++
+      if (documents.depositInvoice?.status === 'acknowledged' || documents.depositPayment || documents.invoice?.status === 'acknowledged' || documents.payment) completed++
+  if (documents.depositPayment?.status === 'acknowledged' || (!documents.balancePayment && documents.payment?.status === 'acknowledged') || documents.balancePaymentRequest) completed++
+      if (documents.balancePaymentRequest?.status === 'acknowledged' || documents.balancePayment) completed++
+      if (documents.balancePayment?.status === 'acknowledged' || documents.receipt) completed++
+      if (documents.receipt) completed++
 
-    return (completed / total) * 100
+      return (completed / total) * 100
+    } else {
+      let completed = 0
+      const total = 4
+
+      if (documents.po?.status === 'acknowledged' || documents.invoice) completed++
+      if (documents.invoice?.status === 'acknowledged' || documents.payment) completed++
+      if (documents.payment?.status === 'acknowledged' || documents.receipt) completed++
+      if (documents.receipt) completed++
+
+      return (completed / total) * 100
+    }
   }
 
   const progress = getProgressPercentage()
@@ -96,10 +180,21 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div className={`grid gap-3 sm:gap-4 ${use50_50Split ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-4'}`}>
         {steps.map((step, index) => {
-          const status = getStepStatus(step.document)
+          const isReceiptStep = use50_50Split && step.key === 'receipt'
+          const depositReceipt = documents.depositReceipt
+          const finalReceipt = documents.finalReceipt
+
+          const status = isReceiptStep
+            ? finalReceipt
+              ? 'completed'
+              : depositReceipt
+                ? 'partial'
+                : getStepStatus(step.document)
+            : getStepStatus(step.document)
           const StepIcon = step.icon
+          const displayLabel = use50_50Split && 'shortLabel' in step ? step.shortLabel : step.label
 
           return (
             <div key={step.key} className="relative">
@@ -113,7 +208,7 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
                   <div className={`mb-2 ${getIconColor(status, step.color)}`}>
                     {status === 'completed' ? (
                       <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8" />
-                    ) : status === 'pending' ? (
+                    ) : status === 'pending' || status === 'partial' ? (
                       <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
                     ) : (
                       <StepIcon className="w-6 h-6 sm:w-8 sm:h-8" />
@@ -121,8 +216,8 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
                   </div>
                   
                   <p className="font-semibold text-xs sm:text-sm mb-1">
-                    <span className="sm:hidden">{step.key === 'po' ? 'PO' : step.label}</span>
-                    <span className="hidden sm:inline">{step.label}</span>
+                    <span className="sm:hidden">{step.key === 'po' ? 'PO' : displayLabel}</span>
+                    <span className="hidden sm:inline">{displayLabel}</span>
                   </p>
                   
                   {step.document ? (
@@ -161,8 +256,9 @@ export default function DocumentWorkflowProgress({ documents, onTabChange }: Doc
       {/* Workflow Explanation */}
       <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
         <p className="text-sm text-blue-900">
-          <strong>Workflow:</strong> Each document is automatically created when the previous one is acknowledged. 
-          The Receipt marks the completion of the order.
+          <strong>Workflow:</strong> {use50_50Split 
+            ? 'Orders use a 50/50 payment split: Deposit Invoice (50%) → Deposit Payment (50%) → Warehouse Receive → Balance Payment Request (50%) → Balance Payment (50%) → Receipt.' 
+            : 'Each document is automatically created when the previous one is acknowledged. The Receipt marks the completion of the order.'}
         </p>
       </div>
     </Card>

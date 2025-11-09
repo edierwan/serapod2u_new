@@ -51,7 +51,7 @@ const resolveUnitsForMaster = (record: SupabaseMasterRecord): number => {
   return candidate && candidate > 0 ? candidate : 0
 }
 
-export async function GET(request: NextRequest, context: { params: { orderId: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ orderId: string }> }) {
   try {
     const supabase = await createClient()
     const {
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest, context: { params: { orderId: st
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const orderIdParam = context.params?.orderId
+  const { orderId: orderIdParam } = await context.params
     const orderId = parseUUID(orderIdParam)
 
     if (!orderId) {

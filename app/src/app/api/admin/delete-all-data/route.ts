@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!profile || (profile.roles as any).role_level !== 1) {
+    if (!profile || !(profile as any).roles || (profile as any).roles.role_level !== 1) {
       return NextResponse.json(
         { error: 'Access denied. Super Admin only.' },
         { status: 403 }
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Delete document workflows
     const { count: docWorkflowCount } = await supabase
-      .from('document_workflows')
+      .from('document_workflows' as any)
       .delete({ count: 'exact' })
       .neq('id', '00000000-0000-0000-0000-000000000000')
     
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     // 7. Delete payments
     const { count: paymentsCount } = await supabase
-      .from('payments')
+      .from('payments' as any)
       .delete({ count: 'exact' })
       .neq('id', '00000000-0000-0000-0000-000000000000')
     
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
 
     // 8. Delete invoices
     const { count: invoicesCount } = await supabase
-      .from('invoices')
+      .from('invoices' as any)
       .delete({ count: 'exact' })
       .neq('id', '00000000-0000-0000-0000-000000000000')
     
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     // 9. Delete shipments
     const { count: shipmentsCount } = await supabase
-      .from('shipments')
+      .from('shipments' as any)
       .delete({ count: 'exact' })
       .neq('id', '00000000-0000-0000-0000-000000000000')
     
@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
 
     // 10. Delete categories
     const { count: categoriesCount } = await supabase
-      .from('categories')
+      .from('categories' as any)
       .delete({ count: 'exact' })
       .neq('id', '00000000-0000-0000-0000-000000000000')
     
@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
     
-    const parentOrgId = superAdminUser?.organization_id
+    const parentOrgId = (superAdminUser as any)?.organization_id
     console.log(`🏢 Preserving parent organization: ${parentOrgId}`)
 
     // 12. Delete all users from database except Super Admin
@@ -388,7 +388,7 @@ export async function POST(request: NextRequest) {
 
     // 14. Delete distributor relationships (BEFORE deleting organizations)
     const { count: distributorRelationshipsCount } = await supabase
-      .from('distributor_relationships')
+      .from('distributor_relationships' as any)
       .delete({ count: 'exact' })
       .neq('id', '00000000-0000-0000-0000-000000000000')
     
@@ -397,7 +397,7 @@ export async function POST(request: NextRequest) {
 
     // 15. Delete inventory records (BEFORE deleting organizations)
     const { count: inventoryCount } = await supabase
-      .from('inventory')
+      .from('inventory' as any)
       .delete({ count: 'exact' })
       .neq('id', '00000000-0000-0000-0000-000000000000')
     

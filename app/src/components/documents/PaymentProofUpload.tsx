@@ -7,12 +7,64 @@ import { Card } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { Upload, File, X, Check, Loader2 } from 'lucide-react'
 
+type PaymentProofVariant = 'invoice' | 'balance'
+
+const VARIANT_COPY: Record<PaymentProofVariant, {
+  assetName: string
+  stepTitle: string
+  stepDescription: string
+  fieldLabel: string
+  fieldHint: string
+  successHeader: string
+  successDescription: string
+  successCardTitle: string
+  toastUploadDescription: string
+  toastReplaceDescription: string
+  toastDownloadFailed: string
+  replacePrompt: string
+  uploadCta: string
+}> = {
+  invoice: {
+    assetName: 'payment proof',
+    stepTitle: 'Step 1: Upload Payment Proof (Required)',
+    stepDescription:
+      'Before acknowledging this invoice, please attach proof of payment such as a bank transfer receipt or payment confirmation.',
+    fieldLabel: 'Payment Proof Document',
+    fieldHint: 'Accepted formats: PDF, JPG, PNG • Maximum file size: 5MB',
+    successHeader: '✓ Step 1 Complete: Payment Proof Uploaded',
+    successDescription: 'You can now proceed to acknowledge the invoice below.',
+    successCardTitle: 'Payment Proof Uploaded',
+    toastUploadDescription: 'Payment proof has been uploaded',
+    toastReplaceDescription: 'Payment proof has been replaced with the new file',
+    toastDownloadFailed: 'Failed to download payment proof',
+    replacePrompt: 'Please select a new payment proof file',
+    uploadCta: 'Click to upload payment proof'
+  },
+  balance: {
+    assetName: 'final payment document',
+    stepTitle: 'Step 1: Attach Final Payment Document (Required)',
+    stepDescription:
+      'Before HQ can approve this balance payment request, please upload the remittance advice or supporting document for the final 50% payment.',
+    fieldLabel: 'Final Payment Document',
+    fieldHint: 'Accepted formats: PDF, JPG, PNG • Maximum file size: 5MB',
+    successHeader: '✓ Final Payment Document Attached',
+    successDescription: 'HQ approvers can now approve the balance payment request.',
+    successCardTitle: 'Final Payment Document Uploaded',
+    toastUploadDescription: 'Final payment document has been uploaded',
+    toastReplaceDescription: 'Final payment document has been replaced with the new file',
+    toastDownloadFailed: 'Failed to download final payment document',
+    replacePrompt: 'Please select a new final payment document',
+    uploadCta: 'Click to upload final payment document'
+  }
+}
+
 interface PaymentProofUploadProps {
   documentId: string
   orderId: string
   companyId: string
   onUploadComplete: (fileUrl: string) => void
   existingFileUrl?: string | null
+  variant?: PaymentProofVariant
 }
 
 export default function PaymentProofUpload({
@@ -20,8 +72,10 @@ export default function PaymentProofUpload({
   orderId,
   companyId,
   onUploadComplete,
-  existingFileUrl = null
+  existingFileUrl = null,
+  variant = 'invoice'
 }: PaymentProofUploadProps) {
+  const copy = VARIANT_COPY[variant]
   const [uploading, setUploading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(existingFileUrl)
@@ -123,7 +177,7 @@ export default function PaymentProofUpload({
           mime_type: selectedFile.type,
           company_id: companyId,
           uploaded_by: user.id  // Add user ID
-        })
+        } as any)
 
       if (dbError) throw dbError
 
@@ -133,8 +187,8 @@ export default function PaymentProofUpload({
       toast({
         title: uploadedUrl || existingFileUrl ? 'File Replaced Successfully' : 'Upload Successful',
         description: uploadedUrl || existingFileUrl 
-          ? 'Payment proof has been replaced with the new file'
-          : 'Payment proof has been uploaded'
+          ? copy.toastReplaceDescription
+          : copy.toastUploadDescription
       })
 
       setSelectedFile(null)
@@ -183,7 +237,7 @@ export default function PaymentProofUpload({
       console.error('Error downloading file:', error)
       toast({
         title: 'Download Failed',
-        description: 'Failed to download payment proof',
+        description: copy.toastDownloadFailed,
         variant: 'destructive'
       })
     }
@@ -197,7 +251,7 @@ export default function PaymentProofUpload({
     }
     toast({
       title: 'Ready to Replace',
-      description: 'Please select a new payment proof file',
+      description: copy.replacePrompt,
     })
   }
 
@@ -212,10 +266,10 @@ export default function PaymentProofUpload({
             </div>
             <div className="flex-1">
               <h4 className="text-sm font-semibold text-green-900 mb-1">
-                ✓ Step 1 Complete: Payment Proof Uploaded
+                {copy.successHeader}
               </h4>
               <p className="text-sm text-green-800">
-                You can now proceed to acknowledge the invoice below.
+                {copy.successDescription}
               </p>
               <p className="text-xs text-green-700 mt-1">
                 Need to change the file? Click &quot;Replace&quot; to upload a different document.
@@ -232,7 +286,7 @@ export default function PaymentProofUpload({
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-green-900">Payment Proof Uploaded</p>
+              <p className="font-semibold text-green-900">{copy.successCardTitle}</p>
               <p className="text-sm text-green-700 truncate">{uploadedUrl.split('/').pop()}</p>
             </div>
             <div className="flex gap-2">
@@ -271,10 +325,10 @@ export default function PaymentProofUpload({
           </div>
           <div className="flex-1">
             <h4 className="text-sm font-semibold text-blue-900 mb-1">
-              Step 1: Upload Payment Proof (Required)
+              {copy.stepTitle}
             </h4>
             <p className="text-sm text-blue-800">
-              Before acknowledging this invoice, please attach proof of payment such as a bank transfer receipt or payment confirmation.
+              {copy.stepDescription}
             </p>
           </div>
         </div>
@@ -282,10 +336,10 @@ export default function PaymentProofUpload({
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Payment Proof Document <span className="text-red-500">*</span>
+          {copy.fieldLabel} <span className="text-red-500">*</span>
         </label>
         <p className="text-xs text-gray-500 mb-3">
-          Accepted formats: PDF, JPG, PNG • Maximum file size: 5MB
+          {copy.fieldHint}
         </p>
       </div>
 
@@ -305,7 +359,7 @@ export default function PaymentProofUpload({
         >
           <div className="text-center">
             <Upload className="w-10 h-10 mx-auto mb-2 text-blue-500" />
-            <p className="text-sm font-medium text-gray-900">Click to upload payment proof</p>
+            <p className="text-sm font-medium text-gray-900">{copy.uploadCta}</p>
             <p className="text-xs text-gray-500 mt-1">or drag and drop your file here</p>
             <p className="text-xs text-gray-400 mt-2">PDF, JPG or PNG (max 5MB)</p>
           </div>

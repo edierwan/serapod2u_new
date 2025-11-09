@@ -12,16 +12,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
-import { 
+import {
   getValidParentOrgs, 
   isParentRequired, 
   getParentHelpText,
   getParentFieldLabel,
   parseHierarchyError,
   validateOrgHierarchy,
-  validateOrgTypeChange,
   type OrgType
 } from '@/lib/utils/orgHierarchy'
+import type { Organization, OrganizationFormData } from '@/lib/types/organization'
 
 interface EditOrganizationViewProps {
   userProfile: {
@@ -31,25 +31,6 @@ interface EditOrganizationViewProps {
   onViewChange?: (view: string) => void
 }
 
-interface Organization {
-  id: string
-  org_name: string
-  org_code: string
-  org_type_code: string
-  parent_org_id: string | null
-  contact_name: string | null
-  contact_title: string | null
-  contact_phone: string | null
-  contact_email: string | null
-  address: string | null
-  city: string | null
-  state: string | null
-  postal_code: string | null
-  country_code: string | null
-  website: string | null
-  logo_url: string | null
-}
-
 interface ParentOrganization {
   id: string
   org_code: string
@@ -57,17 +38,31 @@ interface ParentOrganization {
   org_type_code: string
 }
 
+interface StateOption {
+  id: string
+  state_code: string
+  state_name: string
+}
+
+interface DistrictOption {
+  id: string
+  district_code: string
+  district_name: string
+  state_id: string
+}
+
 export default function EditOrganizationView({ userProfile, onViewChange }: EditOrganizationViewProps) {
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [formData, setFormData] = useState<Partial<Organization>>({})
+  const [formData, setFormData] = useState<OrganizationFormData>({})
   const [parentOrgs, setParentOrgs] = useState<ParentOrganization[]>([])
   const [filteredParentOrgs, setFilteredParentOrgs] = useState<ParentOrganization[]>([])
+  const [states, setStates] = useState<StateOption[]>([])
+  const [districts, setDistricts] = useState<DistrictOption[]>([])
   const [childOrgs, setChildOrgs] = useState<any[]>([])
   const [shopDistributors, setShopDistributors] = useState<any[]>([])
   const [orgUsers, setOrgUsers] = useState<any[]>([])
-  const [typeChangeWarning, setTypeChangeWarning] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoError, setLogoError] = useState('')
@@ -91,6 +86,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
   useEffect(() => {
     if (isReady) {
+      loadStates()
       const orgId = sessionStorage.getItem('selectedOrgId')
       if (orgId) {
         loadOrganization(orgId)
@@ -134,6 +130,15 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.org_type_code, parentOrgs])
+
+  useEffect(() => {
+    if (formData.state_id) {
+      loadDistrictsForState(formData.state_id)
+    } else {
+      setDistricts([])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.state_id])
 
   const loadParentOrganizations = async () => {
     try {
@@ -230,6 +235,39 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     }
   }
 
+  const loadStates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('states')
+        .select('id, state_code, state_name')
+        .eq('is_active', true)
+        .order('state_name', { ascending: true })
+
+      if (error) throw error
+      setStates(data || [])
+    } catch (error) {
+      console.error('Error loading states:', error)
+      setStates([])
+    }
+  }
+
+  const loadDistrictsForState = async (stateId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('districts')
+        .select('id, district_code, district_name, state_id')
+        .eq('state_id', stateId)
+        .eq('is_active', true)
+        .order('district_name', { ascending: true })
+
+      if (error) throw error
+      setDistricts(data || [])
+    } catch (error) {
+      console.error('Error loading districts:', error)
+      setDistricts([])
+    }
+  }
+
   const loadOrganization = async (orgId: string) => {
     try {
       setLoading(true)
@@ -241,8 +279,12 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
       if (error) throw error
 
-      setOrganization(data)
-      setFormData(data)
+      if (data?.state_id) {
+        await loadDistrictsForState(data.state_id)
+      }
+
+      setOrganization(data as Organization)
+      setFormData(data as OrganizationFormData)
     } catch (error) {
       console.error('Error loading organization:', error)
       toast({
@@ -337,18 +379,22 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       }
 
       // Build update payload - only include fields that exist in formData
-      const updatePayload: any = {
-        updated_at: new Date().toISOString()
+      const updatePayload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+        updated_by: userProfile.id
       }
 
       // Only include fields that are actually in the form
       if (formData.org_name !== undefined) updatePayload.org_name = formData.org_name
       if (formData.contact_name !== undefined) updatePayload.contact_name = formData.contact_name || null
+      if (formData.contact_title !== undefined) updatePayload.contact_title = formData.contact_title || null
       if (formData.contact_phone !== undefined) updatePayload.contact_phone = formData.contact_phone || null
       if (formData.contact_email !== undefined) updatePayload.contact_email = formData.contact_email || null
       if (formData.address !== undefined) updatePayload.address = formData.address || null
+      if (formData.address_line2 !== undefined) updatePayload.address_line2 = formData.address_line2 || null
       if (formData.city !== undefined) updatePayload.city = formData.city || null
-      if (formData.state !== undefined) updatePayload.state = formData.state || null
+      if (formData.state_id !== undefined) updatePayload.state_id = formData.state_id || null
+      if (formData.district_id !== undefined) updatePayload.district_id = formData.district_id || null
       if (formData.postal_code !== undefined) updatePayload.postal_code = formData.postal_code || null
       if (formData.country_code !== undefined) updatePayload.country_code = formData.country_code || null
       if (formData.website !== undefined) updatePayload.website = formData.website || null
@@ -649,7 +695,19 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="address_line2">Address Line 2</Label>
+            <Textarea
+              id="address_line2"
+              value={formData.address_line2 || ''}
+              onChange={(e) => handleInputChange('address_line2', e.target.value)}
+              placeholder="Apartment, suite, building (optional)"
+              rows={2}
+              className={!formData.address_line2 ? 'placeholder:text-gray-300' : ''}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="city">City</Label>
               <Input
@@ -661,20 +719,6 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
               />
               {!formData.city && (
                 <p className="text-xs text-gray-400 italic">Enter city name</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="state">State</Label>
-              <Input
-                id="state"
-                value={formData.state || ''}
-                onChange={(e) => handleInputChange('state', e.target.value)}
-                placeholder="Enter state"
-                className={!formData.state ? 'placeholder:text-gray-300' : ''}
-              />
-              {!formData.state && (
-                <p className="text-xs text-gray-400 italic">Enter state/province</p>
               )}
             </div>
 
@@ -691,20 +735,67 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 <p className="text-xs text-gray-400 italic">Enter postal code</p>
               )}
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="state_id">State</Label>
+              <Select
+                value={formData.state_id || undefined}
+                onValueChange={(value) => {
+                  handleInputChange('state_id', value)
+                  handleInputChange('district_id', null)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select state" />
+                </SelectTrigger>
+                <SelectContent>
+                  {states.map((state) => (
+                    <SelectItem key={state.id} value={state.id}>
+                      {state.state_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="space-y-2">
-              <Label htmlFor="country_code">Country</Label>
-              <Input
-                id="country_code"
-                value={formData.country_code || ''}
-                onChange={(e) => handleInputChange('country_code', e.target.value)}
-                placeholder="Enter country code"
-                className={!formData.country_code ? 'placeholder:text-gray-300' : ''}
-              />
-              {!formData.country_code && (
-                <p className="text-xs text-gray-400 italic">e.g., MY, US, UK</p>
+              <Label htmlFor="district_id">District</Label>
+              <Select
+                value={formData.district_id || undefined}
+                onValueChange={(value) => handleInputChange('district_id', value)}
+                disabled={!formData.state_id}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.state_id ? 'Select district' : 'Select state first'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {districts.map((district) => (
+                    <SelectItem key={district.id} value={district.id}>
+                      {district.district_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!formData.state_id && (
+                <p className="text-xs text-gray-400 italic">Select a state to view districts</p>
               )}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="country_code">Country</Label>
+            <Input
+              id="country_code"
+              value={formData.country_code || ''}
+              onChange={(e) => handleInputChange('country_code', e.target.value)}
+              placeholder="Enter country code"
+              className={!formData.country_code ? 'placeholder:text-gray-300' : ''}
+            />
+            {!formData.country_code && (
+              <p className="text-xs text-gray-400 italic">e.g., MY, US, UK</p>
+            )}
           </div>
         </CardContent>
       </Card>

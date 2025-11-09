@@ -17,7 +17,8 @@ export type DocumentType =
   | 'PO' 
   | 'INVOICE' 
   | 'PAYMENT' 
-  | 'RECEIPT';
+  | 'RECEIPT'
+  | 'PAYMENT_REQUEST';
 
 export type DocumentStatus = 
   | 'pending' 
