@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!profile || (profile.roles as any).role_level !== 1) {
+    if (!profile || !(profile as any).roles || (profile as any).roles.role_level !== 1) {
       return NextResponse.json(
         { error: 'Access denied. Super Admin only.' },
         { status: 403 }
@@ -91,28 +91,28 @@ export async function POST(request: NextRequest) {
 
     // Invoices
     const { data: invoices } = await supabase
-      .from('invoices')
+      .from('invoices' as any)
       .select('*')
       .order('created_at', { ascending: false })
     exportData.transaction_data.invoices = invoices || []
 
     // Payments
     const { data: payments } = await supabase
-      .from('payments')
+      .from('payments' as any)
       .select('*')
       .order('created_at', { ascending: false })
     exportData.transaction_data.payments = payments || []
 
     // Shipments
     const { data: shipments } = await supabase
-      .from('shipments')
+      .from('shipments' as any)
       .select('*')
       .order('created_at', { ascending: false })
     exportData.transaction_data.shipments = shipments || []
 
     // Document Workflows
     const { data: docWorkflows } = await supabase
-      .from('document_workflows')
+      .from('document_workflows' as any)
       .select('*')
       .order('created_at', { ascending: false })
     exportData.transaction_data.document_workflows = docWorkflows || []
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
 
     // Categories
     const { data: categories } = await supabase
-      .from('categories')
+      .from('categories' as any)
       .select('*')
       .order('category_name', { ascending: true })
     exportData.master_data.categories = categories || []
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
 
     // Countries
     const { data: countries } = await supabase
-      .from('countries')
+      .from('countries' as any)
       .select('*')
       .order('country_name', { ascending: true })
     exportData.master_data.countries = countries || []

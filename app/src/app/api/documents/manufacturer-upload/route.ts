@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: profileError.message }, { status: 500 })
     }
 
-    if (!profile?.organization_id) {
+    if (!(profile as any)?.organization_id) {
       return NextResponse.json({ error: 'User organization not found' }, { status: 403 })
     }
 
@@ -86,16 +86,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 })
     }
 
-    const userOrg = profile.organization_id
+    const userOrg = (profile as any).organization_id
     const isAllowed =
-      document.issued_by_org_id === userOrg ||
-      document.issued_to_org_id === userOrg
+      (document as any).issued_by_org_id === userOrg ||
+      (document as any).issued_to_org_id === userOrg
 
     if (!isAllowed) {
       return NextResponse.json({ error: 'You do not have access to modify this document' }, { status: 403 })
     }
 
-    const resolvedCompanyId = companyId || document.company_id
+    const resolvedCompanyId = companyId || (document as any).company_id
 
     if (!resolvedCompanyId) {
       return NextResponse.json({ error: 'Unable to determine company for this document' }, { status: 400 })

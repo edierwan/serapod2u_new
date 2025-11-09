@@ -49,8 +49,24 @@ export default function AcknowledgeButton({
     roleLevel: userProfile.roles.role_level
   })
 
-  // Don't show button if user can't acknowledge or document is not pending
-  if (!canAcknowledge || document.status !== 'pending') {
+  const isPending = document.status === 'pending'
+  const normalizedOrgType = userProfile.organizations.org_type_code?.toUpperCase() ?? ''
+  const isManufacturer = ['MFG', 'MANU'].includes(normalizedOrgType)
+  const isInvoice = document.doc_type === 'INVOICE'
+  const issuedToMismatch = document.issued_to_org_id !== userProfile.organization_id
+  const shouldShowInvoiceAssignmentNotice =
+    isPending && isInvoice && issuedToMismatch && isManufacturer
+
+  // Don’t show button if user can’t acknowledge or document is not pending
+  if (!canAcknowledge || !isPending) {
+    if (shouldShowInvoiceAssignmentNotice) {
+      return (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
+          This invoice must be acknowledged by the buying organization (HQ). Please reach out to the HQ finance team if you need them to complete the acknowledgment.
+        </div>
+      )
+    }
+
     return null
   }
 
@@ -127,7 +143,11 @@ export default function AcknowledgeButton({
           throw new Error('Invalid document type for acknowledgment')
       }
 
-      if (result.error) throw result.error
+      if (result.error) {
+        const { message, details, hint, code } = result.error
+        const composedMessage = message || details || hint || (code ? `Acknowledgement failed (code ${code})` : null)
+        throw new Error(composedMessage || 'Failed to acknowledge document')
+      }
 
       toast({
         title: `${getDocumentTypeLabel(document.doc_type)} Acknowledged`,
@@ -137,9 +157,20 @@ export default function AcknowledgeButton({
       onSuccess()
     } catch (error: any) {
       console.error('Error acknowledging document:', error)
+
+      const errorDetails = error?.message || error?.details || error?.hint || error?.code
+      const fallbackMessage = typeof errorDetails === 'string' && errorDetails.trim().length > 0
+        ? errorDetails
+        : 'Failed to acknowledge document'
       
-      // Handle payment proof error specifically
-      if (error.message && error.message.includes('Payment proof is required')) {
+      // Handle authorization errors before payment proof messaging
+      if (error.message && error.message.toLowerCase().includes('for this organization')) {
+        toast({
+          title: 'Not Authorized',
+          description: 'Your organization is not permitted to acknowledge this document. Please contact the assigned team for assistance.',
+          variant: 'destructive'
+        })
+      } else if (error.message && error.message.includes('Payment proof is required')) {
         toast({
           title: 'Payment Proof Required',
           description: 'Please upload payment proof above before acknowledging this invoice.',
@@ -148,7 +179,7 @@ export default function AcknowledgeButton({
       } else {
         toast({
           title: 'Error',
-          description: error.message || 'Failed to acknowledge document',
+          description: fallbackMessage,
           variant: 'destructive'
         })
       }

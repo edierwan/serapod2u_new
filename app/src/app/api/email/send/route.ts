@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const { data: emailConfig, error: configError } = await supabase
       .from('notification_provider_configs')
       .select('*')
-      .eq('org_id', userProfile.organization_id)
+      .eq('org_id', (userProfile as any).organization_id)
       .eq('channel', 'email')
       .eq('is_active', true)
       .single()
@@ -71,13 +71,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get provider name (default to gmail if null)
+    const providerName = emailConfig.provider_name || 'gmail'
+    
     // Check Gmail daily limit if using Gmail
-    if (emailConfig.provider_name === 'gmail') {
+    if (providerName === 'gmail') {
       const { data: todayCount } = await supabase
         .rpc('get_email_count_today', {
-          p_org_id: userProfile.organization_id,
+          p_org_id: (userProfile as any).organization_id,
           p_provider: 'gmail'
-        })
+        } as any)
 
       if ((todayCount || 0) >= 500) {
         return NextResponse.json(
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
     let emailResult
     const recipients = Array.isArray(to) ? to : [to]
 
-    switch (emailConfig.provider_name) {
+    switch (providerName) {
       case 'gmail':
         emailResult = await sendViaGmail(emailConfig, recipients, subject, html || text!, from_name, reply_to)
         break
@@ -115,17 +118,17 @@ export async function POST(request: NextRequest) {
     // Log the email send
     for (const recipient of recipients) {
       await supabase.rpc('log_email_send', {
-        p_org_id: userProfile.organization_id,
-        p_provider: emailConfig.provider_name,
+        p_org_id: (userProfile as any).organization_id,
+        p_provider: providerName,
         p_recipient_email: recipient,
         p_subject: subject,
         p_status: emailResult.success ? 'sent' : 'failed',
         p_error_message: emailResult.error || null,
         p_metadata: {
           message_id: emailResult.message_id,
-          from_name: from_name || emailConfig.config_public.from_name
+          from_name: from_name || (emailConfig.config_public as any)?.from_name || 'Serapod'
         }
-      })
+      } as any)
     }
 
     if (!emailResult.success) {
@@ -138,9 +141,9 @@ export async function POST(request: NextRequest) {
     // Get updated usage count
     const { data: updatedCount } = await supabase
       .rpc('get_email_count_today', {
-        p_org_id: userProfile.organization_id,
-        p_provider: emailConfig.provider_name
-      })
+        p_org_id: (userProfile as any).organization_id,
+        p_provider: providerName
+      } as any)
 
     return NextResponse.json({
       success: true,

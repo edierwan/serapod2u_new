@@ -5,7 +5,7 @@
 
 export interface Document {
   id: string
-  doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT'
+  doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST'
   doc_no: string
   status: 'pending' | 'acknowledged' | 'completed'
   issued_by_org_id: string
@@ -25,23 +25,21 @@ export interface UserPermissions {
  * Determines if a user can acknowledge a specific document
  * 
  * Rules:
- * - HQ Admins (role_level ≤ 10) can acknowledge ANY document
- * - Power Users (role_level ≤ 20) in their org type can acknowledge
- * - PO: Seller (issued_to) acknowledges
- * - INVOICE: Buyer (issued_to) acknowledges
- * - PAYMENT: Seller (issued_to) acknowledges
+ * - PO: ONLY Seller (Manufacturer) can acknowledge - HQ cannot override
+ * - INVOICE: Buyer (HQ) acknowledges
+ * - PAYMENT: Seller (Manufacturer) acknowledges
  * - RECEIPT: No acknowledgment needed (terminal state)
+ * - HQ Admins can acknowledge INVOICE/PAYMENT but NOT PO
  */
 export function canAcknowledgeDocument(
   document: Document,
   userPermissions: UserPermissions
 ): boolean {
-  const { organizationId, roleLevel } = userPermissions
+  const { organizationId, orgTypeCode, roleLevel } = userPermissions
 
-  // HQ Admin override - can acknowledge anything
-  if (roleLevel <= 10) {
-    return true
-  }
+  const normalizedOrgType = orgTypeCode?.toUpperCase() ?? ''
+  const isManufacturer = ['MFG', 'MANU'].includes(normalizedOrgType)
+  const isHqAdminOverride = normalizedOrgType === 'HQ' && roleLevel <= 10
 
   // Receipt is terminal - no acknowledgment
   if (document.doc_type === 'RECEIPT') {
@@ -56,13 +54,25 @@ export function canAcknowledgeDocument(
   // Check if user's organization is the one that should acknowledge
   const isAcknowledger = document.issued_to_org_id === organizationId
 
+  // Special case: PO can ONLY be acknowledged by the manufacturer (seller/issued_to)
+  // HQ cannot acknowledge PO even with admin privileges
+  if (document.doc_type === 'PO') {
+    // Only the manufacturer organization (issued_to) can acknowledge
+    return isAcknowledger && isManufacturer
+  }
+
+  // For other document types (INVOICE, PAYMENT, PAYMENT_REQUEST), HQ Admin can override if needed
+  if (isHqAdminOverride) {
+    return true
+  }
+
   return isAcknowledger
 }
 
 /**
  * Get the organization that should acknowledge this document
  */
-export function getAcknowledger(document: Document): 'buyer' | 'seller' | 'none' {
+export function getAcknowledger(document: Document): 'buyer' | 'seller' | 'hq' | 'none' {
   switch (document.doc_type) {
     case 'PO':
       return 'seller' // Seller acknowledges PO
@@ -70,6 +80,8 @@ export function getAcknowledger(document: Document): 'buyer' | 'seller' | 'none'
       return 'buyer' // Buyer acknowledges Invoice
     case 'PAYMENT':
       return 'seller' // Seller acknowledges Payment
+    case 'PAYMENT_REQUEST':
+      return 'hq' // HQ Admin approves balance payment request
     case 'RECEIPT':
       return 'none' // Terminal state
     default:
@@ -126,10 +138,32 @@ export function getDocumentTypeLabel(docType: Document['doc_type']): string {
       return 'Invoice'
     case 'PAYMENT':
       return 'Payment'
+    case 'PAYMENT_REQUEST':
+      return 'Balance Payment Request'
     case 'RECEIPT':
       return 'Receipt'
     default:
       return docType
+  }
+}
+
+/**
+ * Get document type badge color
+ */
+export function getDocumentTypeBadgeColor(docType: Document['doc_type']): string {
+  switch (docType) {
+    case 'PO':
+      return 'bg-purple-100 text-purple-700 border-purple-200'
+    case 'INVOICE':
+      return 'bg-indigo-100 text-indigo-700 border-indigo-200'
+    case 'PAYMENT':
+      return 'bg-amber-100 text-amber-700 border-amber-200'
+    case 'PAYMENT_REQUEST':
+      return 'bg-orange-100 text-orange-700 border-orange-200'
+    case 'RECEIPT':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    default:
+      return 'bg-gray-100 text-gray-700 border-gray-200'
   }
 }
 

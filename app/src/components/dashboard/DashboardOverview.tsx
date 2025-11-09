@@ -30,12 +30,29 @@ interface DashboardOverviewProps {
 }
 
 export default function DashboardOverview({ userProfile, onViewChange }: DashboardOverviewProps) {
-  const handleViewDocument = (orderId: string, documentId: string, docType: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT') => {
+  const handleViewDocument = (orderId: string, documentId: string, docType: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST', docNo?: string) => {
     // Store the order ID and document ID in session storage
     // Use 'trackingOrderId' to match what TrackOrderView expects
     sessionStorage.setItem('trackingOrderId', orderId)
     sessionStorage.setItem('selectedDocumentId', documentId)
     sessionStorage.setItem('selectedDocumentType', docType)
+    
+    // Map document type to the correct tab
+    let initialTab = 'po' // default
+    if (docType === 'INVOICE') {
+      // Check if it's deposit invoice or final invoice
+      initialTab = docNo?.includes('-DEP') ? 'depositInvoice' : 'invoice'
+    } else if (docType === 'PAYMENT') {
+      // Check if it's deposit payment or balance payment
+      initialTab = docNo?.includes('-BAL') ? 'balancePayment' : 'depositPayment'
+    } else if (docType === 'RECEIPT') {
+      initialTab = 'receipt'
+    } else if (docType === 'PAYMENT_REQUEST') {
+      initialTab = 'balanceRequest'
+    }
+    
+    // Store the initial tab to open
+    sessionStorage.setItem('selectedDocumentTab', initialTab)
     
     // Navigate to track order view
     onViewChange('track-order')
