@@ -29,16 +29,21 @@ export async function POST(request: NextRequest) {
 
     // Allow both pending and matched status (matched = warehouse_packed, ready to ship)
     // If already approved, check if this is a duplicate request (same codes already shipped)
-    if (session.validation_status === 'approved') {
+    const sessionStatus = session.validation_status ?? 'pending'
+
+    if (sessionStatus === 'approved') {
       // Session was already approved - this might be a duplicate click or session wasn't reset
       const alreadyShipped = {
         master_codes: session.master_codes_scanned || [],
         unique_codes: session.unique_codes_scanned || []
       }
+
+      const approvalTimestamp = session.approved_at || session.updated_at || new Date().toISOString()
+      const approvalDate = new Date(approvalTimestamp)
       
       return NextResponse.json(
         { 
-          error: `This shipment session was already confirmed at ${new Date(session.approved_at || session.updated_at).toLocaleString()}. Please refresh the page or select the distributor again to start a new shipment.`,
+          error: `This shipment session was already confirmed at ${approvalDate.toLocaleString()}. Please refresh the page or select the distributor again to start a new shipment.`,
           details: {
             already_shipped: alreadyShipped,
             approved_at: session.approved_at || session.updated_at
@@ -47,19 +52,37 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    
-    if (!['pending', 'matched'].includes(session.validation_status)) {
+
+    const allowedStatuses = ['pending', 'matched', 'discrepancy'] as const
+    if (!allowedStatuses.includes(sessionStatus as typeof allowedStatuses[number])) {
       return NextResponse.json(
-        { error: `Invalid session status: ${session.validation_status}. Expected pending or matched.` },
+        { error: `Invalid session status: ${sessionStatus}. Expected pending, matched, or discrepancy.` },
         { status: 400 }
       )
     }
 
+    if (sessionStatus === 'discrepancy') {
+      console.warn('⚠️  Proceeding with shipment despite discrepancy status. Only scanned codes will be shipped.', {
+        session_id,
+        master_codes_scanned: session.master_codes_scanned?.length || 0,
+        unique_codes_scanned: session.unique_codes_scanned?.length || 0
+      })
+    }
+
     const shippedAt = new Date().toISOString()
-    
+
+    const normalizeStringArray = (value: unknown): string[] => {
+      if (!Array.isArray(value)) return []
+      return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    }
+
     // Get codes from the session itself
-    const masterCodesScanned = session.master_codes_scanned || []
-    const uniqueCodesScanned = session.unique_codes_scanned || []
+    const masterCodesScanned = normalizeStringArray(session.master_codes_scanned)
+    const uniqueCodesScanned = normalizeStringArray(session.unique_codes_scanned)
+    const uniqueCodesScannedSet = new Set(uniqueCodesScanned)
+
+  let resolvedFromOrg: string | null = session.warehouse_org_id ?? null
+  let resolvedToOrg: string | null = session.distributor_org_id ?? null
     
     console.log('📦 Confirming shipment:', { 
       session_id, 
@@ -128,8 +151,10 @@ export async function POST(request: NextRequest) {
         ? (Array.isArray(batchData.orders) ? batchData.orders[0] : batchData.orders)
         : null
 
-      const fromOrg = session.warehouse_org_id || masterData?.warehouse_org_id
-      const toOrg = session.distributor_org_id || masterData?.shipped_to_distributor_id || null
+      const resolvedFrom = resolvedFromOrg || masterData?.warehouse_org_id || null
+      const resolvedTo = resolvedToOrg || masterData?.shipped_to_distributor_id || null
+      const fromOrg = resolvedFrom
+      const toOrg = resolvedTo
       const orderId = masterData?.shipment_order_id || batchData?.order_id
 
       if (!fromOrg) {
@@ -153,6 +178,9 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      resolvedFromOrg = fromOrg
+      resolvedToOrg = toOrg
+
       // ✅ FIXED APPROACH: 
       // 1. Call WMS function FIRST with ALL codes → creates ONE consolidated movement
       // 2. Set session variable to skip trigger
@@ -161,8 +189,8 @@ export async function POST(request: NextRequest) {
       console.log('📦 Step 1: Creating consolidated movement via WMS function')
       const { data: wmsResult, error: wmsError } = await supabase.rpc('wms_ship_unique_auto', {
         p_qr_code_ids: qrCodeIds,
-        p_from_org_id: fromOrg,
-        p_to_org_id: toOrg,
+  p_from_org_id: fromOrg,
+  p_to_org_id: toOrg,
         p_order_id: orderId,
         p_shipped_at: shippedAt
       })
@@ -210,36 +238,100 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      uniqueCodesShipped = updatedCodes?.length || 0
-      console.log('✅ Updated', uniqueCodesShipped, 'QR codes to shipped_distributor')
+  const updatedUniqueCount = updatedCodes?.length || 0
+  uniqueCodesShipped += updatedUniqueCount
+  console.log('✅ Updated', updatedUniqueCount, 'QR codes to shipped_distributor')
     }
 
-    // Update master codes if any (same pattern: call WMS first, then update status)
+    // Update master codes if any
+    // IMPORTANT: Check if child codes were already scanned individually
+    // If so, inventory was already deducted - skip WMS and just update master status
     if (masterCodesScanned.length > 0) {
-      // Fetch master code IDs
       const { data: masterData, error: masterFetchError } = await supabase
         .from('qr_master_codes')
-        .select('id, master_code')
+        .select(`
+          id, 
+          master_code, 
+          warehouse_org_id, 
+          shipped_to_distributor_id,
+          qr_codes(id, code, status)
+        `)
         .in('master_code', masterCodesScanned)
         .eq('status', 'warehouse_packed')
 
       if (masterFetchError) {
         console.error('Error fetching master codes:', masterFetchError)
       } else if (masterData && masterData.length > 0) {
-        // Call WMS function for each master (masters are processed individually)
+        const masterIds = masterData.map(master => master.id)
+
+        if (!resolvedFromOrg) {
+          const fallbackWarehouse = masterData.find(master => master.warehouse_org_id)?.warehouse_org_id ?? null
+          resolvedFromOrg = fallbackWarehouse
+        }
+
+        if (!resolvedToOrg) {
+          const fallbackDistributor = masterData.find(master => master.shipped_to_distributor_id)?.shipped_to_distributor_id ?? null
+          resolvedToOrg = fallbackDistributor
+        }
+
+        if (!resolvedFromOrg) {
+          return NextResponse.json(
+            { error: 'Missing warehouse organization for shipment' },
+            { status: 400 }
+          )
+        }
+
+        if (!resolvedToOrg) {
+          return NextResponse.json(
+            { error: 'Distributor not specified for this shipment. Please select a distributor before confirming.' },
+            { status: 400 }
+          )
+        }
+
+        if (resolvedToOrg === resolvedFromOrg) {
+          return NextResponse.json(
+            { error: 'Distributor organization must be different from the shipping warehouse.' },
+            { status: 400 }
+          )
+        }
+
+        // Check which masters have children already processed via unique code scanning
         for (const master of masterData) {
-          const { error: masterWmsError } = await supabase.rpc('wms_ship_master_auto', {
-            p_master_code_id: master.id
-          })
-          
-          if (masterWmsError) {
-            console.error(`❌ WMS function failed for master ${master.master_code}:`, masterWmsError)
+          const childCodes = master.qr_codes || []
+          const allChildrenAlreadyShipped = childCodes.length > 0 && 
+            childCodes.every((child: any) => 
+              child.status === 'shipped_distributor' || 
+              uniqueCodesScannedSet.has(child.code)
+            )
+
+          if (allChildrenAlreadyShipped) {
+            console.log(`⚠️ Master ${master.master_code}: All children already processed, skipping WMS (inventory already deducted)`)
           } else {
-            console.log(`✅ WMS function processed master ${master.master_code}`)
+            // Only call WMS if children haven't been individually scanned yet
+            const { error: masterWmsError } = await supabase.rpc('wms_ship_master_auto', {
+              p_master_code_id: master.id
+            })
+
+            if (masterWmsError) {
+              console.error(`❌ WMS function failed for master ${master.master_code}:`, masterWmsError)
+              // Don't return error - continue to update status anyway since inventory might have been handled by children
+            } else {
+              console.log(`✅ WMS function processed master ${master.master_code}`)
+            }
           }
         }
 
-        // Now update status - triggers will fire but dedup prevents duplicates
+        console.log(`🔄 Attempting to update ${masterIds.length} master codes:`, masterIds)
+        
+        // Set session variable to skip trigger (prevent duplicate inventory movements)
+        const { error: skipMasterError } = await supabase.rpc('set_skip_ship_trigger', {
+          p_skip: true
+        })
+
+        if (skipMasterError) {
+          console.log('⚠️  Warning: Could not set session variable for master update:', skipMasterError.message)
+        }
+
         const { data: updatedMasters, error: masterError } = await supabase
           .from('qr_master_codes')
           .update({
@@ -248,15 +340,68 @@ export async function POST(request: NextRequest) {
             shipped_by: user_id,
             updated_at: shippedAt
           })
-          .in('master_code', masterCodesScanned)
+          .in('id', masterIds)
           .eq('status', 'warehouse_packed')
-          .select('id, master_code')
+          .select('id, master_code, status')
 
         if (masterError) {
-          console.error('Error updating master codes:', masterError)
+          console.error('❌ Error updating master codes:', masterError)
         } else {
-          masterCasesShipped = updatedMasters?.length || 0
-          console.log('✅ Updated', masterCasesShipped, 'master codes to shipped_distributor')
+          const updatedMasterCount = updatedMasters?.length || 0
+          masterCasesShipped += updatedMasterCount
+          console.log(`✅ Updated ${updatedMasterCount} of ${masterIds.length} master codes to shipped_distributor`)
+          if (updatedMasterCount < masterIds.length) {
+            console.warn(`⚠️ Only ${updatedMasterCount} of ${masterIds.length} master codes were updated. Some may not have status=warehouse_packed`)
+          }
+          updatedMasters?.forEach(m => console.log(`  - ${m.master_code}: ${m.status}`))
+        }
+
+        // Update all child unique codes that haven't already been shipped individually
+        const { data: masterChildCodes, error: childFetchError } = await supabase
+          .from('qr_codes')
+          .select('id, code')
+          .in('master_code_id', masterIds)
+          .eq('status', 'warehouse_packed')
+
+        if (childFetchError) {
+          console.error('Error fetching unique codes for masters:', childFetchError)
+        } else if (masterChildCodes && masterChildCodes.length > 0) {
+          const childIdsToUpdate: string[] = []
+
+          for (const child of masterChildCodes) {
+            if (!uniqueCodesScannedSet.has(child.code)) {
+              childIdsToUpdate.push(child.id)
+            }
+          }
+
+          if (childIdsToUpdate.length > 0) {
+            const { error: skipChildError } = await supabase.rpc('set_skip_ship_trigger', {
+              p_skip: true
+            })
+
+            if (skipChildError) {
+              console.log('⚠️  Warning: Could not set session variable before master child update:', skipChildError.message)
+            }
+
+            const { data: updatedChildCodes, error: updateChildError } = await supabase
+              .from('qr_codes')
+              .update({
+                status: 'shipped_distributor',
+                current_location_org_id: resolvedToOrg,
+                updated_at: shippedAt
+              })
+              .in('id', childIdsToUpdate)
+              .eq('status', 'warehouse_packed')
+              .select('id, code')
+
+            if (updateChildError) {
+              console.error('Error updating unique codes linked to masters:', updateChildError)
+            } else {
+              const childCount = updatedChildCodes?.length || 0
+              uniqueCodesShipped += childCount
+              console.log('✅ Updated', childCount, 'unique codes linked to master cases to shipped_distributor')
+            }
+          }
         }
       }
     }

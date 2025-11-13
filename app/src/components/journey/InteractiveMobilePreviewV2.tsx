@@ -26,11 +26,22 @@ interface JourneyConfig {
 
 type PageType = 'welcome' | 'collect-points' | 'lucky-draw' | 'redeem-gift' | 'thank-you'
 
-export default function InteractiveMobilePreviewV2({ config }: { config: JourneyConfig }) {
+interface InteractiveMobilePreviewV2Props {
+    config: JourneyConfig
+    fullScreen?: boolean // When true, shows full-screen mobile view without phone frame
+    qrCode?: string // The QR code that was scanned (for actual submissions)
+}
+
+export default function InteractiveMobilePreviewV2({ config, fullScreen = false, qrCode }: InteractiveMobilePreviewV2Props) {
     const [currentPage, setCurrentPage] = useState<PageType>('welcome')
     const [pointsCollected, setPointsCollected] = useState(false)
     const [luckyDrawEntered, setLuckyDrawEntered] = useState(false)
     const [giftRedeemed, setGiftRedeemed] = useState(false)
+    const [redeemGifts, setRedeemGifts] = useState<any[]>([])
+    const [loadingGifts, setLoadingGifts] = useState(false)
+    const [claimingGift, setClaimingGift] = useState(false)
+    const [redemptionCode, setRedemptionCode] = useState('')
+    const [claimedGiftDetails, setClaimedGiftDetails] = useState<any>(null)
 
     // Form states
     const [userId, setUserId] = useState('')
@@ -40,29 +51,176 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
     const [customerEmail, setCustomerEmail] = useState('')
     const [totalPoints, setTotalPoints] = useState(0)
     const [cumulativePoints, setCumulativePoints] = useState(0)
+    const [isCollectingPoints, setIsCollectingPoints] = useState(false)
 
-    function handleCollectPoints() {
+    async function handleCollectPoints() {
         if (!userId || !password) {
-            alert('Please enter User ID and Password')
+            alert('Please enter Shop ID and Password')
             return
         }
-        // Simulate points collection
-        const earnedPoints = Math.floor(Math.random() * 50) + 50 // 50-100 points
-        setTotalPoints(earnedPoints)
-        setCumulativePoints(cumulativePoints + earnedPoints)
-        setPointsCollected(true)
+
+        // If qrCode is provided, call real API
+        if (qrCode) {
+            setIsCollectingPoints(true)
+            try {
+                const response = await fetch('/api/consumer/collect-points', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        qr_code: qrCode,
+                        shop_id: userId,
+                        password: password
+                    })
+                })
+
+                const result = await response.json()
+
+                if (!response.ok || !result.success) {
+                    alert(result.error || 'Failed to collect points')
+                    setIsCollectingPoints(false)
+                    return
+                }
+
+                // Success - update points
+                const earnedPoints = result.points_earned || 0
+                const totalBalance = result.total_balance || earnedPoints
+                
+                setTotalPoints(earnedPoints)
+                setCumulativePoints(totalBalance)
+                setPointsCollected(true)
+                setIsCollectingPoints(false)
+
+                console.log('Points collected:', result)
+            } catch (error) {
+                console.error('Error collecting points:', error)
+                alert('Failed to collect points. Please try again.')
+                setIsCollectingPoints(false)
+                return
+            }
+        } else {
+            // Demo mode - simulate points collection
+            const earnedPoints = Math.floor(Math.random() * 50) + 50 // 50-100 points
+            setTotalPoints(earnedPoints)
+            setCumulativePoints(cumulativePoints + earnedPoints)
+            setPointsCollected(true)
+        }
     }
 
-    function handleLuckyDrawEntry() {
+    async function handleLuckyDrawEntry() {
         if (!customerName || !customerPhone) {
             alert('Please enter Name and Phone')
             return
         }
+
+        // If qrCode is provided, submit to actual API
+        if (qrCode) {
+            try {
+                const response = await fetch('/api/consumer/lucky-draw-entry', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        qr_code: qrCode,
+                        consumer_name: customerName,
+                        consumer_phone: customerPhone,
+                        consumer_email: customerEmail || undefined
+                    })
+                })
+
+                const result = await response.json()
+
+                if (!response.ok || !result.success) {
+                    alert(result.error || 'Failed to submit lucky draw entry')
+                    return
+                }
+
+                // Success - show the entry details
+                console.log('Lucky draw entry submitted:', result)
+            } catch (error) {
+                console.error('Error submitting lucky draw entry:', error)
+                alert('Failed to submit lucky draw entry. Please try again.')
+                return
+            }
+        }
+
+        // Show success page (works for both demo and real submissions)
         setLuckyDrawEntered(true)
     }
 
-    function handleGiftRedeem() {
-        setGiftRedeemed(true)
+    async function fetchRedeemGifts() {
+        if (!qrCode) return
+        
+        setLoadingGifts(true)
+        try {
+            const response = await fetch(`/api/consumer/redeem-gifts?qr_code=${encodeURIComponent(qrCode)}`)
+            const result = await response.json()
+            
+            if (result.success) {
+                setRedeemGifts(result.gifts || [])
+            }
+        } catch (error) {
+            console.error('Error fetching redeem gifts:', error)
+        } finally {
+            setLoadingGifts(false)
+        }
+    }
+
+    async function handleGiftRedeem() {
+        // If qrCode is provided and gifts are available, call real API
+        if (qrCode && redeemGifts.length > 0) {
+            setClaimingGift(true)
+            try {
+                const firstGift = redeemGifts[0] // Claim the first available gift
+                
+                const response = await fetch('/api/consumer/claim-gift', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        qr_code: qrCode,
+                        gift_id: firstGift.id,
+                        consumer_phone: customerPhone || null
+                    })
+                })
+
+                const result = await response.json()
+
+                if (!response.ok || !result.success) {
+                    alert(result.error || 'Failed to claim gift')
+                    setClaimingGift(false)
+                    return
+                }
+
+                // Success - show redemption screen
+                setRedemptionCode(result.redemption_code)
+                setClaimedGiftDetails(result)
+                setGiftRedeemed(true)
+                setClaimingGift(false)
+
+                // Refresh gift list to update quantities
+                if (result.remaining !== null && result.remaining <= 0) {
+                    setRedeemGifts([])
+                } else {
+                    // Reload gifts to get updated quantities
+                    await fetchRedeemGifts()
+                }
+
+                console.log('Gift claimed:', result)
+            } catch (error) {
+                console.error('Error claiming gift:', error)
+                alert('Failed to claim gift. Please try again.')
+                setClaimingGift(false)
+                return
+            }
+        } else {
+            // Demo mode - simulate gift redemption
+            setRedemptionCode(`GFT-${Math.random().toString(36).substr(2, 6).toUpperCase()}`)
+            setGiftRedeemed(true)
+        }
     }
 
     function renderWelcomePage() {
@@ -204,7 +362,10 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
                     {/* Redemption */}
                     {config.redemption_enabled && (
                         <button
-                            onClick={() => setCurrentPage('redeem-gift')}
+                            onClick={() => {
+                                setCurrentPage('redeem-gift')
+                                fetchRedeemGifts()
+                            }}
                             className="w-full bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:border-green-300 transition-colors text-left"
                         >
                             <div className="flex items-center gap-3">
@@ -300,11 +461,11 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
 
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label className="text-sm">User ID / Phone Number</Label>
+                            <Label className="text-sm">Shop ID / Phone Number</Label>
                             <Input
                                 value={userId}
                                 onChange={(e) => setUserId(e.target.value)}
-                                placeholder="Enter your user ID"
+                                placeholder="Enter your shop ID"
                                 className="text-sm"
                             />
                         </div>
@@ -322,10 +483,11 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
 
                     <button
                         onClick={handleCollectPoints}
-                        className="w-full py-3 px-4 text-white font-medium rounded-lg"
+                        disabled={isCollectingPoints}
+                        className="w-full py-3 px-4 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{ backgroundColor: config.button_color }}
                     >
-                        Collect Points
+                        {isCollectingPoints ? 'Collecting Points...' : 'Collect Points'}
                     </button>
                 </div>
             </>
@@ -454,18 +616,34 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
                                 Please show this screen to the shop staff to claim your free gift
                             </p>
 
-                            {/* Gift Image Placeholder */}
+                            {/* Gift Image */}
                             <div className="bg-white border-2 border-green-300 rounded-lg p-4 mb-4">
-                                <div className="w-32 h-32 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
-                                    <Gift className="w-16 h-16 text-gray-400" />
-                                </div>
-                                <p className="mt-3 font-semibold text-gray-800">Premium Gift Item</p>
-                                <p className="text-xs text-gray-600 mt-1">Limited Time Offer</p>
+                                {claimedGiftDetails?.gift_image_url ? (
+                                    <div className="w-48 h-48 mx-auto bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
+                                        <Image
+                                            src={claimedGiftDetails.gift_image_url}
+                                            alt={claimedGiftDetails.gift_name || 'Gift'}
+                                            width={192}
+                                            height={192}
+                                            className="w-full h-full object-contain"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="w-32 h-32 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
+                                        <Gift className="w-16 h-16 text-gray-400" />
+                                    </div>
+                                )}
+                                <p className="mt-3 font-semibold text-gray-800">
+                                    {claimedGiftDetails?.gift_name || 'Premium Gift Item'}
+                                </p>
+                                {claimedGiftDetails?.gift_description && (
+                                    <p className="text-xs text-gray-600 mt-1">{claimedGiftDetails.gift_description}</p>
+                                )}
                             </div>
 
                             <div className="bg-white border border-green-200 rounded p-3">
                                 <p className="text-xs text-gray-600">Redemption Code</p>
-                                <p className="text-lg font-mono font-bold text-gray-800">GFT-{Math.random().toString(36).substr(2, 6).toUpperCase()}</p>
+                                <p className="text-lg font-mono font-bold text-gray-800">{redemptionCode}</p>
                             </div>
                         </div>
 
@@ -498,31 +676,89 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
                     <h2 className="font-semibold">Claim Free Gift</h2>
                 </div>
                 <div className="px-4 py-6 space-y-4">
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-                        <Gift className="w-12 h-12 text-green-600 mx-auto mb-2" />
-                        <p className="text-sm text-green-800 font-medium">You have a free gift waiting!</p>
-                    </div>
-
-                    {/* Gift Preview */}
-                    <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
-                        <div className="w-full h-40 bg-gray-100 rounded-lg flex items-center justify-center mb-3">
-                            <Gift className="w-20 h-20 text-gray-400" />
+                    {loadingGifts ? (
+                        <div className="text-center py-8">
+                            <p className="text-gray-500">Loading available gifts...</p>
                         </div>
-                        <h3 className="font-semibold text-center">Premium Gift Item</h3>
-                        <p className="text-xs text-gray-600 text-center mt-1">Click below to claim your gift</p>
-                    </div>
+                    ) : redeemGifts.length === 0 ? (
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                            <Gift className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                            <p className="text-sm text-gray-600">No gifts available at this time</p>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Check if all gifts are fully claimed */}
+                            {redeemGifts.every(gift => gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity) ? (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                                    <Gift className="w-16 h-16 text-yellow-500 mx-auto mb-3" />
+                                    <h3 className="font-semibold text-lg text-yellow-900 mb-2">All Gifts Claimed</h3>
+                                    <p className="text-sm text-yellow-700">
+                                        All available gifts for this product have been claimed. Thank you for your interest!
+                                    </p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                                        <Gift className="w-12 h-12 text-green-600 mx-auto mb-2" />
+                                        <p className="text-sm text-green-800 font-medium">You have {redeemGifts.length} free gift{redeemGifts.length > 1 ? 's' : ''} waiting!</p>
+                                    </div>
 
-                    <button
-                        onClick={handleGiftRedeem}
-                        className="w-full py-3 px-4 text-white font-medium rounded-lg"
-                        style={{ backgroundColor: config.button_color }}
-                    >
-                        Claim Gift Now
-                    </button>
+                                    {/* Gift List */}
+                                    {redeemGifts.map((gift) => {
+                                        const remaining = gift.total_quantity > 0 ? gift.total_quantity - gift.claimed_quantity : null
+                                        const isFullyClaimed = remaining !== null && remaining <= 0
+                                        
+                                        return (
+                                            <div key={gift.id} className={`bg-white border-2 rounded-lg p-4 ${isFullyClaimed ? 'border-gray-300 opacity-60' : 'border-gray-200'}`}>
+                                                {gift.gift_image_url ? (
+                                                    <div className="w-full h-48 rounded-lg overflow-hidden mb-3 bg-gray-50 flex items-center justify-center">
+                                                        <Image
+                                                            src={gift.gift_image_url}
+                                                            alt={gift.gift_name}
+                                                            width={400}
+                                                            height={192}
+                                                            className="w-full h-full object-contain"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-3">
+                                                        <Gift className="w-20 h-20 text-gray-400" />
+                                                    </div>
+                                                )}
+                                                <h3 className="font-semibold text-center">{gift.gift_name}</h3>
+                                                {gift.gift_description && (
+                                                    <p className="text-xs text-gray-600 text-center mt-1">{gift.gift_description}</p>
+                                                )}
+                                                {remaining !== null && (
+                                                    <p className={`text-xs text-center mt-2 font-medium ${isFullyClaimed ? 'text-red-600' : 'text-green-600'}`}>
+                                                        {isFullyClaimed ? 'Fully claimed' : `${remaining} available`}
+                                                    </p>
+                                                )}
+                                                {remaining === null && (
+                                                    <p className="text-xs text-gray-500 text-center mt-2">
+                                                        Unlimited availability
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
 
-                    <p className="text-xs text-gray-500 text-center">
-                        Show the redemption screen to shop staff to receive your gift
-                    </p>
+                                    <button
+                                        onClick={handleGiftRedeem}
+                                        disabled={claimingGift || redeemGifts.every(gift => gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity)}
+                                        className="w-full py-3 px-4 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                        style={{ backgroundColor: config.button_color }}
+                                    >
+                                        {claimingGift ? 'Claiming...' : 'Claim Gift Now'}
+                                    </button>
+
+                                    <p className="text-xs text-gray-500 text-center">
+                                        Show the redemption screen to shop staff to receive your gift
+                                    </p>
+                                </>
+                            )}
+                        </>
+                    )}
                 </div>
             </>
         )
@@ -611,6 +847,16 @@ export default function InteractiveMobilePreviewV2({ config }: { config: Journey
         }
     }
 
+    // Full-screen mobile view (for actual mobile users scanning QR codes)
+    if (fullScreen) {
+        return (
+            <div className="min-h-screen bg-gray-50 overflow-y-auto">
+                {renderCurrentPage()}
+            </div>
+        )
+    }
+
+    // Desktop preview with phone frame mockup
     return (
         <Card className="will-change-transform">
             <CardHeader className="pb-3">

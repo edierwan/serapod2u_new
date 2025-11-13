@@ -12,24 +12,100 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Check if user is Super Admin (role_level = 1)
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role_code, roles(role_level)')
+      .eq('id', user.id)
+      .single()
+
+    const isSuperAdmin = profile && (profile as any).roles && (profile as any).roles.role_level === 1
+
     // Get warehouse_org_id from query params
     const searchParams = request.nextUrl.searchParams
     const warehouse_org_id = searchParams.get('warehouse_org_id')
 
-    if (!warehouse_org_id) {
+    // Super Admin can view ALL warehouses if no warehouse_org_id is provided
+    if (!warehouse_org_id && !isSuperAdmin) {
       return NextResponse.json({ error: 'warehouse_org_id is required' }, { status: 400 })
     }
 
-    console.log('🔍 Fetching pending receives for warehouse_org_id:', warehouse_org_id)
+    console.log('🔍 Fetching pending receives for warehouse_org_id:', warehouse_org_id || 'ALL (Super Admin)')
 
-    // Execute SECURITY DEFINER RPC to bypass RLS while enforcing warehouse filters server-side
-    const { data: pendingBatches, error: queryError } = await supabase
-      .rpc('get_pending_receives_for_warehouse', {
-        p_warehouse_org_id: warehouse_org_id
-      })
+    let pendingBatches: any[] | null = null
+    let queryError: any = null
+
+    if (warehouse_org_id) {
+      // Execute SECURITY DEFINER RPC to bypass RLS while enforcing warehouse filters server-side
+      const result = await supabase
+        .rpc('get_pending_receives_for_warehouse', {
+          p_warehouse_org_id: warehouse_org_id
+        })
+      pendingBatches = result.data
+      queryError = result.error
+    } else if (isSuperAdmin) {
+      // Super Admin: Query all warehouse_packed master codes across all warehouses
+      const result = await supabase
+        .from('qr_master_codes')
+        .select(`
+          id,
+          master_code,
+          case_number,
+          actual_unit_count,
+          expected_unit_count,
+          status,
+          manufacturer_scanned_at,
+          warehouse_org_id,
+          manufacturer_org_id,
+          qr_batches!inner (
+            id,
+            company_id,
+            order_id,
+            orders (
+              order_no,
+              buyer_org_id,
+              seller_org_id,
+              buyer:organizations!orders_buyer_org_id_fkey (
+                org_name
+              )
+            )
+          )
+        `)
+        .eq('status', 'warehouse_packed')
+        .order('manufacturer_scanned_at', { ascending: false })
+
+      if (result.data) {
+        // Transform to match RPC output format
+        pendingBatches = result.data.map((item: any) => {
+          const batch = Array.isArray(item.qr_batches) ? item.qr_batches[0] : item.qr_batches
+          const order = batch?.orders ? (Array.isArray(batch.orders) ? batch.orders[0] : batch.orders) : null
+          const buyer = order?.buyer ? (Array.isArray(order.buyer) ? order.buyer[0] : order.buyer) : null
+
+          return {
+            master_id: item.id,
+            master_code: item.master_code,
+            case_number: item.case_number,
+            actual_unit_count: item.actual_unit_count,
+            expected_unit_count: item.expected_unit_count,
+            status: item.status,
+            manufacturer_scanned_at: item.manufacturer_scanned_at,
+            warehouse_org_id: item.warehouse_org_id,
+            manufacturer_org_id: item.manufacturer_org_id,
+            batch_id: batch?.id || null,
+            company_id: batch?.company_id || null,
+            order_id: batch?.order_id || null,
+            order_no: order?.order_no || null,
+            buyer_org_id: order?.buyer_org_id || null,
+            buyer_org_name: buyer?.org_name || null,
+            seller_org_id: order?.seller_org_id || null
+          }
+        })
+      }
+      queryError = result.error
+    }
 
     if (queryError) {
-      console.error('❌ Error fetching pending batches via RPC:', queryError)
+      console.error('❌ Error fetching pending batches:', queryError)
       return NextResponse.json({ error: queryError.message }, { status: 500 })
     }
 

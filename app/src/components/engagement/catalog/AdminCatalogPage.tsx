@@ -60,10 +60,13 @@ type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
 
 interface ShopUser {
-  consumer_phone: string
-  consumer_email: string | null
+  user_id: string
+  shop_name: string
+  shop_phone: string
+  shop_email: string | null
+  organization_id: string
   current_balance: number
-  total_earned: number
+  total_collected: number
   total_redeemed: number
   last_transaction_date: string | null
   transaction_count: number
@@ -197,54 +200,204 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     const supabaseClient = createClient()
 
     try {
-      // Get all transactions for this company
-      const { data: allTransactions, error: txnError } = await supabaseClient
-        .from("points_transactions")
-        .select("*")
-        .eq("company_id", companyId)
-        .order("transaction_date", { ascending: false })
+      console.log("🔍 Loading shops for company:", companyId, userProfile.organizations.org_name)
+      
+      // Step 1: Get all distributors under this HQ/company
+      const { data: distributors, error: distError } = await supabaseClient
+        .from("organizations")
+        .select("id, org_name, org_type_code")
+        .eq("parent_org_id", companyId)
+        .in("org_type_code", ["DIST"])
+        .eq("is_active", true)
 
-      if (txnError) {
-        console.error("Failed to load user transactions", txnError)
+      if (distError) {
+        console.error("❌ Failed to load distributors", distError)
+      }
+
+      console.log("✅ Found distributors:", distributors?.length || 0)
+      const distributorIds = distributors?.map(d => d.id) || []
+
+      // Step 2: Get all shops under those distributors (and direct shops under HQ)
+      let shopOrgIds: string[] = []
+      
+      if (distributorIds.length > 0) {
+        const { data: shopOrgs, error: orgsError } = await supabaseClient
+          .from("organizations")
+          .select("id, org_name, org_type_code, parent_org_id")
+          .or(`parent_org_id.in.(${distributorIds.join(',')}),parent_org_id.eq.${companyId}`)
+          .in("org_type_code", ["SHOP"])
+          .eq("is_active", true)
+
+        if (orgsError) {
+          console.error("❌ Failed to load shop organizations", orgsError)
+          setUsersLoading(false)
+          return
+        }
+
+        console.log("✅ Found shop organizations:", shopOrgs?.length || 0)
+        shopOrgs?.forEach(shop => {
+          console.log(`  📍 Shop: ${shop.org_name} (ID: ${shop.id}, Parent: ${shop.parent_org_id})`)
+        })
+
+        shopOrgIds = shopOrgs?.map(org => org.id) || []
+      } else {
+        // No distributors, check for shops directly under HQ
+        const { data: shopOrgs, error: orgsError } = await supabaseClient
+          .from("organizations")
+          .select("id, org_name, org_type_code, parent_org_id")
+          .eq("parent_org_id", companyId)
+          .in("org_type_code", ["SHOP"])
+          .eq("is_active", true)
+
+        if (orgsError) {
+          console.error("❌ Failed to load shop organizations", orgsError)
+          setUsersLoading(false)
+          return
+        }
+
+        console.log("✅ Found shop organizations (direct under HQ):", shopOrgs?.length || 0)
+        shopOrgIds = shopOrgs?.map(org => org.id) || []
+      }
+
+      if (shopOrgIds.length === 0) {
+        console.log("⚠️ No shop organizations found in company hierarchy")
+        setShopUsers([])
         setUsersLoading(false)
         return
       }
 
-      // Aggregate by consumer_phone
+      // Get shop users from these organizations
+      // Don't filter by role_code - just get users from shop organizations
+      // Use !fk_users_organization to specify the correct foreign key relationship
+      const { data: shopUsersData, error: usersError } = await supabaseClient
+        .from("users")
+        .select(`
+          id,
+          email,
+          phone,
+          organization_id,
+          role_code,
+          organizations!fk_users_organization (
+            id,
+            org_name,
+            org_type_code
+          )
+        `)
+        .in("organization_id", shopOrgIds)
+        .eq("is_active", true)
+
+      if (usersError) {
+        console.error("❌ Failed to load shop users", usersError)
+        console.error("Error details:", JSON.stringify(usersError, null, 2))
+        setUsersLoading(false)
+        return
+      }
+
+      console.log("✅ Loaded shop users:", shopUsersData?.length || 0)
+      shopUsersData?.forEach(user => {
+        console.log(`  👤 User: ${user.email} (Role: ${user.role_code}, Org: ${user.organizations?.org_name})`)
+      })
+
+      // Get ALL point collections from consumer_qr_scans for shop organizations
+      console.log("🔍 Searching for scans in shop orgs:", shopOrgIds)
+      
+      const { data: qrScans, error: scansError } = await supabaseClient
+        .from("consumer_qr_scans")
+        .select("*")
+        .in("shop_id", shopOrgIds)
+        .eq("collected_points", true)
+        .order("points_collected_at", { ascending: false })
+
+      if (scansError) {
+        console.error("Failed to load QR scans", scansError)
+        console.error("Error details:", JSON.stringify(scansError, null, 2))
+      }
+
+      console.log("✅ Loaded QR scans:", qrScans?.length || 0)
+      
+      // Log sample scan for debugging
+      if (qrScans && qrScans.length > 0) {
+        console.log("📋 Sample QR scan:", qrScans[0])
+      }
+
+      // Create organization ID to user mapping
+      const orgIdToUserMap = new Map<string, any>()
+      
+      shopUsersData?.forEach((user) => {
+        if (user.organization_id) {
+          orgIdToUserMap.set(user.organization_id, user)
+          console.log("🏢 Mapped org:", user.organization_id, "for shop:", user.organizations?.org_name)
+        }
+      })
+
+      console.log("🏢 Total organizations mapped:", orgIdToUserMap.size)
+
+      // Aggregate by user
       const userMap = new Map<string, ShopUser>()
       
-      allTransactions?.forEach((txn) => {
-        const phone = txn.consumer_phone
-        if (!userMap.has(phone)) {
-          userMap.set(phone, {
-            consumer_phone: phone,
-            consumer_email: txn.consumer_email,
+      // Process QR scans (where points are actually stored)
+      qrScans?.forEach((scan) => {
+        const shopOrgId = scan.shop_id // This is the organization_id
+        
+        if (!shopOrgId) {
+          console.log("⚠️ Scan without shop_id:", scan.id)
+          return
+        }
+        
+        // Find shop user by organization ID
+        const shopUser = orgIdToUserMap.get(shopOrgId)
+        
+        if (!shopUser) {
+          console.log("⚠️ Shop org not found:", shopOrgId)
+          return
+        }
+        
+        // Use user ID as the key
+        const userKey = shopUser.id
+        console.log("✅ Matched scan to shop:", shopUser.organizations?.org_name, "Points:", scan.points_amount)
+        
+        if (!userMap.has(userKey)) {
+          const org = shopUser.organizations as any
+          userMap.set(userKey, {
+            user_id: shopUser.id,
+            shop_name: org?.org_name || 'Unknown Shop',
+            shop_phone: shopUser.phone || '',
+            shop_email: shopUser.email || null,
+            organization_id: shopUser.organization_id || '',
             current_balance: 0,
-            total_earned: 0,
+            total_collected: 0,
             total_redeemed: 0,
             last_transaction_date: null,
             transaction_count: 0
           })
         }
 
-        const user = userMap.get(phone)!
+        const user = userMap.get(userKey)!
         user.transaction_count += 1
         
-        if (!user.last_transaction_date || txn.transaction_date > user.last_transaction_date) {
-          user.last_transaction_date = txn.transaction_date
-          user.current_balance = txn.balance_after
+        // Update last transaction date
+        const scanDate = scan.points_collected_at || scan.created_at
+        if (scanDate && (!user.last_transaction_date || scanDate > user.last_transaction_date)) {
+          user.last_transaction_date = scanDate
         }
 
-        if (txn.transaction_type === 'earn' || txn.transaction_type === 'adjust') {
-          if (txn.points_amount > 0) {
-            user.total_earned += txn.points_amount
-          }
-        } else if (txn.transaction_type === 'redeem') {
-          user.total_redeemed += Math.abs(txn.points_amount)
-        }
+        // Add points collected
+        const points = scan.points_amount || 0
+        user.total_collected += points
+        user.current_balance += points
       })
 
-      setShopUsers(Array.from(userMap.values()))
+      // Convert to array and sort by total collected (highest first)
+      const users = Array.from(userMap.values()).sort((a, b) => {
+        return b.total_collected - a.total_collected
+      })
+
+      console.log("🎯 Final shop users with points:", users.length)
+      users.forEach(u => {
+        console.log(`  - ${u.shop_name}: ${u.total_collected} collected, ${u.current_balance} balance`)
+      })
+
+      setShopUsers(users)
     } catch (error) {
       console.error("Error loading shop users:", error)
     } finally {
@@ -275,8 +428,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         .from('points_transactions')
         .insert({
           company_id: companyId,
-          consumer_phone: selectedUser.consumer_phone,
-          consumer_email: selectedUser.consumer_email,
+          consumer_phone: selectedUser.shop_phone,
+          consumer_email: selectedUser.shop_email,
           transaction_type: 'adjust',
           points_amount: finalAmount,
           balance_after: newBalance,
@@ -441,7 +594,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         }
         case "updated-desc":
         default:
-          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+          return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
       }
     })
   }, [categoryFilter, enrichedRewards, searchTerm, sortOption, statusFilter])
@@ -452,8 +605,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
     return shopUsers.filter((user) => {
       return (
-        user.consumer_phone.toLowerCase().includes(term) ||
-        (user.consumer_email ?? '').toLowerCase().includes(term)
+        user.shop_name.toLowerCase().includes(term) ||
+        user.shop_phone.toLowerCase().includes(term) ||
+        (user.shop_email ?? '').toLowerCase().includes(term) ||
+        user.organization_id.toLowerCase().includes(term)
       )
     })
   }, [shopUsers, userSearchTerm])
@@ -465,8 +620,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           <p className="text-sm font-medium text-muted-foreground">Consumer Engagement • Admin View</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Point Catalog Management</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Monitor inventory, publish new rewards, and track redemption momentum across shops. Everything you need
-            to keep the catalog fresh lives here.
+            Manage rewards inventory and monitor shop point collections. Track shop balances earned through mobile app, 
+            publish new rewards, and oversee redemption activity across all shops.
           </p>
         </div>
         <div className="flex gap-2">
@@ -483,13 +638,13 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users")} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users")} className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="rewards" className="gap-2">
             <Package className="h-4 w-4" /> Manage Rewards
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" /> Manage Users
+            <Users className="h-4 w-4" /> Shop Points Monitor
           </TabsTrigger>
         </TabsList>
 
@@ -787,23 +942,52 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       </div>
         </TabsContent>
 
-        {/* MANAGE USERS TAB */}
+        {/* SHOP POINTS MONITOR TAB */}
         <TabsContent value="users" className="space-y-4">
+          {/* Info Banner */}
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-blue-100 p-2">
+                  <Trophy className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-blue-900">Shop Point Collection System</h3>
+                  <p className="mt-1 text-sm text-blue-800">
+                    Shops collect points through the mobile app by entering their Shop ID and password. 
+                    All point collections are tracked here for monitoring and management.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                      ✓ Mobile Point Collection
+                    </Badge>
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                      ✓ Real-time Balance Updates
+                    </Badge>
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                      ✓ Transaction History
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <Users className="h-4 w-4" /> Shop Users & Points
+                    <Users className="h-4 w-4" /> Shop Point Balances
                   </CardTitle>
-                  <CardDescription>Manage point balances for shop users. Transfer points from old system.</CardDescription>
+                  <CardDescription>Monitor shop point collections and balances. Adjust points or transfer from old system if needed.</CardDescription>
                 </div>
                 <div className="relative sm:min-w-[280px]">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={userSearchTerm}
                     onChange={(e) => setUserSearchTerm(e.target.value)}
-                    placeholder="Search by phone or email..."
+                    placeholder="Search by shop name, phone, or email..."
                     className="pl-9"
                   />
                 </div>
@@ -817,7 +1001,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               ) : filteredUsers.length === 0 ? (
                 <div className="py-16 text-center text-sm text-muted-foreground">
                   {shopUsers.length === 0 
-                    ? "No shop users with points activity yet."
+                    ? "No shop points collected yet. Shops can collect points through the mobile app."
                     : "No users match your search."}
                 </div>
               ) : (
@@ -825,9 +1009,9 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                   <table className="min-w-full divide-y divide-border text-sm">
                     <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3">Consumer</th>
+                        <th className="px-4 py-3">Shop User</th>
                         <th className="px-4 py-3">Current Balance</th>
-                        <th className="px-4 py-3">Total Earned</th>
+                        <th className="px-4 py-3">Total Collected</th>
                         <th className="px-4 py-3">Total Redeemed</th>
                         <th className="px-4 py-3">Transactions</th>
                         <th className="px-4 py-3">Last Activity</th>
@@ -836,11 +1020,14 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                     </thead>
                     <tbody className="divide-y divide-border/60">
                       {filteredUsers.map((user) => (
-                        <tr key={user.consumer_phone} className="hover:bg-muted/40">
+                        <tr key={user.user_id} className="hover:bg-muted/40">
                           <td className="px-4 py-4">
-                            <div className="font-medium text-foreground">{user.consumer_phone}</div>
-                            {user.consumer_email && (
-                              <div className="text-xs text-muted-foreground">{user.consumer_email}</div>
+                            <div className="font-semibold text-foreground">{user.shop_name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {user.shop_phone}
+                            </div>
+                            {user.shop_email && (
+                              <div className="text-xs text-muted-foreground">{user.shop_email}</div>
                             )}
                           </td>
                           <td className="px-4 py-4">
@@ -852,7 +1039,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                             </div>
                           </td>
                           <td className="px-4 py-4 text-emerald-600">
-                            +{formatNumber(user.total_earned)}
+                            +{formatNumber(user.total_collected)}
                           </td>
                           <td className="px-4 py-4 text-amber-600">
                             -{formatNumber(user.total_redeemed)}
@@ -895,7 +1082,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           <DialogHeader>
             <DialogTitle>Adjust Points Balance</DialogTitle>
             <DialogDescription>
-              Modify point balance for {selectedUser?.consumer_phone}. Current balance: {formatNumber(selectedUser?.current_balance ?? 0)} points
+              Modify point balance for {selectedUser?.shop_name} ({selectedUser?.shop_phone}). Current balance: {formatNumber(selectedUser?.current_balance ?? 0)} points
             </DialogDescription>
           </DialogHeader>
 

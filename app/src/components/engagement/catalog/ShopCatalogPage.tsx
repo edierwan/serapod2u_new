@@ -110,17 +110,22 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
       const now = new Date().toISOString()
 
-      const [rewardRes, transactionRes, ruleRes] = await Promise.all([
+            // Get shop's organization ID to query their point collections
+      const shopOrgId = userProfile.organization_id
+
+      const [rewardRes, qrScansRes, ruleRes] = await Promise.all([
         supabaseClient
           .from("redeem_items")
           .select("*")
           .eq("company_id", companyId)
           .order("points_required", { ascending: true }),
+        // Query consumer_qr_scans where shop collected points
         supabaseClient
-          .from("points_transactions")
+          .from("consumer_qr_scans")
           .select("*")
-          .eq("company_id", companyId)
-          .order("transaction_date", { ascending: false }),
+          .eq("shop_id", shopOrgId)
+          .eq("collected_points", true)
+          .order("points_collected_at", { ascending: false }),
         supabaseClient
           .from("points_rules")
           .select("*")
@@ -141,10 +146,25 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         setRewards(rewardRes.data ?? [])
       }
 
-      if (transactionRes.error) {
-        console.error("Failed to load points transactions", transactionRes.error)
+      if (qrScansRes.error) {
+        console.error("Failed to load QR scans", qrScansRes.error)
       } else {
-        setTransactions(transactionRes.data ?? [])
+        // Convert QR scans to transaction-like format for compatibility
+        const scanTransactions = qrScansRes.data?.map((scan, index) => ({
+          id: scan.id,
+          consumer_phone: userProfile.phone || '',
+          consumer_email: userProfile.email || '',
+          company_id: companyId,
+          transaction_type: 'earn',
+          points_amount: scan.points_amount || 0,
+          balance_after: qrScansRes.data.slice(0, index + 1).reduce((sum, s) => sum + (s.points_amount || 0), 0),
+          transaction_date: scan.points_collected_at || scan.created_at,
+          created_at: scan.created_at,
+          description: `Points collected from QR scan`,
+          qr_code_id: scan.qr_code_id,
+          redeem_item_id: null
+        })) || []
+        setTransactions(scanTransactions)
       }
 
       if (ruleRes.error) {
@@ -193,7 +213,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         case "points-desc":
           return b.points_required - a.points_required
         case "newest":
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         case "ending-soon":
           return (a.endsInDays ?? Number.MAX_SAFE_INTEGER) - (b.endsInDays ?? Number.MAX_SAFE_INTEGER)
         case "points-asc":
@@ -300,15 +320,28 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="default" className="gap-2">
-            <Link href="/engagement/catalog/admin">
-              <Settings className="h-4 w-4" /> Admin View
-            </Link>
-          </Button>
+          {/* Only show Admin View button for HQ/admin users, not for shop users */}
+          {userProfile.organizations.org_type_code !== 'SHOP' && (
+            <Button asChild variant="default" className="gap-2">
+              <Link href="/engagement/catalog/admin">
+                <Settings className="h-4 w-4" /> Admin View
+              </Link>
+            </Button>
+          )}
           <Button variant="outline" className="gap-2" onClick={() => setOnlyAvailable(true)}>
             <Sparkles className="h-4 w-4" /> Highlight Available
           </Button>
-          <Button variant="outline" className="gap-2" onClick={() => setSelectedRewardId(null)}>
+          <Button 
+            variant="outline" 
+            className="gap-2" 
+            onClick={() => {
+              setSelectedRewardId(null)
+              setSearchTerm("")
+              setSelectedCategory("all")
+              setSelectedSort("points-asc")
+              setOnlyAvailable(true)
+            }}
+          >
             <LayoutGrid className="h-4 w-4" /> Reset View
           </Button>
         </div>
@@ -364,7 +397,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         </Card>
       </div>
 
-      <Tabs defaultValue="catalog" className="space-y-6">
+      <Tabs defaultValue="catalog" className="space-y-6" suppressHydrationWarning>
         <TabsList className="w-full justify-start">
           <TabsTrigger value="catalog" className="gap-2">
             <Gift className="h-4 w-4" /> Rewards Catalog

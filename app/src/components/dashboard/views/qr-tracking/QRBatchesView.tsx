@@ -87,7 +87,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
       console.log('✅ Approved Orders loaded:', data)
       console.log('📊 Total approved orders:', data?.length || 0)
-      console.log('🆕 Orders without batches:', data?.filter(o => !o.qr_batches || o.qr_batches.length === 0).length || 0)
+      console.log('🆕 Orders without batches:', data?.filter(o => !o.qr_batches).length || 0)
       setApprovedOrders(data || [])
     } catch (error: any) {
       console.error('Error loading approved orders:', error)
@@ -119,14 +119,14 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       if (error) throw error
       
       // Fetch packed counts for each batch
-      // Progress counts master codes that are packed or beyond (ready_to_ship, completed, received_warehouse, shipped_distributor, opened)
+      // Progress counts master codes that are packed or beyond (warehouse_packed, ready_to_ship, completed, received_warehouse, shipped_distributor, opened)
       const batchesWithProgress = await Promise.all(
         (data || []).map(async (batch) => {
           const { data: packedData } = await supabase
             .from('qr_master_codes')
             .select('id', { count: 'exact' })
             .eq('batch_id', batch.id)
-            .in('status', ['packed', 'ready_to_ship', 'completed', 'received_warehouse', 'shipped_distributor', 'opened'])
+            .in('status', ['packed', 'warehouse_packed', 'ready_to_ship', 'completed', 'received_warehouse', 'shipped_distributor', 'opened'])
           
           const packedCount = packedData?.length || 0
           const totalCount = batch.total_master_codes || 0
@@ -293,7 +293,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
   // Get orders that need QR batch generation
   const ordersNeedingBatch = useMemo(() => {
-    return approvedOrders.filter(order => !order.qr_batches || order.qr_batches.length === 0)
+    return approvedOrders.filter(order => !order.qr_batches)
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -376,7 +376,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       </Card>
 
       {/* Approved Orders Section - NEW */}
-      {approvedOrders.filter(order => !order.qr_batches || order.qr_batches.length === 0).length > 0 && (
+      {approvedOrders.filter(order => !order.qr_batches).length > 0 && (
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -399,7 +399,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                   </SelectTrigger>
                   <SelectContent>
                     {approvedOrders
-                      .filter(order => !order.qr_batches || order.qr_batches.length === 0)
+                      .filter(order => !order.qr_batches)
                       .map((order) => {
                         const totalItems = order.order_items?.length || 0
                         const totalQuantity = order.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0

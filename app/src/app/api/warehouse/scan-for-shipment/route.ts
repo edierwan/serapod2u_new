@@ -79,7 +79,7 @@ export type ValidationSession = {
   id: string
   warehouse_org_id: string
   distributor_org_id: string
-  validation_status: string
+  validation_status: string | null
   master_codes_scanned: string[] | null
   unique_codes_scanned: string[] | null
   scanned_quantities: ScannedQuantities | null
@@ -289,9 +289,11 @@ const getVariantAdjustmentsFromMap = (
     const unitsPerCase = meta?.unitsPerCase && meta.unitsPerCase > 0 ? meta.unitsPerCase : null
     const shortfall = shortfalls.get(variantId) ?? 0
     const actualUnitsRemoved = Math.max(units - shortfall, 0)
-    let casesRemoved = unitsPerCase ? parseFloat((actualUnitsRemoved / unitsPerCase).toFixed(2)) : 0
-    if (!casesRemoved && isSingleVariantMaster && actualUnitsRemoved > 0) {
-      casesRemoved = 1
+    // For master cases, always set cases_removed = 1 (representing 1 master case scanned)
+    // Don't calculate based on units since that would show 50 instead of 1
+    let casesRemoved = isSingleVariantMaster && actualUnitsRemoved > 0 ? 1 : 0
+    if (!isSingleVariantMaster && unitsPerCase) {
+      casesRemoved = parseFloat((actualUnitsRemoved / unitsPerCase).toFixed(2))
     }
     const snapshot = inventorySnapshots.get(variantId)
     adjustments.push({
@@ -374,7 +376,7 @@ const handleMasterShipment = async (
     }
   }
 
-  // Allow scanning if status is received_warehouse or warehouse_packed
+  // Allow scanning if status is received_warehouse, warehouse_packed, or ready_to_ship
   if (masterRecord.status === 'shipped_distributor') {
     return {
       code,
@@ -385,7 +387,8 @@ const handleMasterShipment = async (
     }
   }
 
-  if (masterRecord.status !== 'received_warehouse' && masterRecord.status !== 'warehouse_packed') {
+  const validShippingStatuses = ['received_warehouse', 'warehouse_packed', 'ready_to_ship']
+  if (!masterRecord.status || !validShippingStatuses.includes(masterRecord.status)) {
     const statusMessages: Record<string, string> = {
       'pending': 'This master case is still pending. Please receive it at the warehouse first.',
       'printed': 'This master case has not been received at the warehouse yet. Please receive it first.',
@@ -395,7 +398,7 @@ const handleMasterShipment = async (
       'opened': 'This master case has already been opened.',
     }
     
-    const friendlyMessage = statusMessages[masterRecord.status] || 
+    const friendlyMessage = (masterRecord.status ? statusMessages[masterRecord.status] : null) || 
       `This master case cannot be shipped right now. Please check its status.`
     
     return {
@@ -445,13 +448,13 @@ const handleMasterShipment = async (
     if (orderRecord?.id) {
       const { data: orderItems, error: orderItemsError } = await supabase
         .from('order_items')
-        .select('variant_id, quantity')
+        .select('variant_id, qty')
         .eq('order_id', orderRecord.id)
 
       if (!orderItemsError) {
         for (const item of orderItems || []) {
           if (item.variant_id) {
-            variantCounts.set(item.variant_id, (variantCounts.get(item.variant_id) || 0) + (item.quantity || 0))
+            variantCounts.set(item.variant_id, (variantCounts.get(item.variant_id) || 0) + (item.qty || 0))
           }
         }
       } else {
@@ -597,6 +600,9 @@ const handleMasterShipment = async (
 
   if (!nextMasterList.includes(normalizedCode)) {
     nextMasterList.push(normalizedCode)
+    console.log(`✅ Added master code to session: ${normalizedCode}. Total masters: ${nextMasterList.length}`)
+  } else {
+    console.log(`⚠️ Master code already in session: ${normalizedCode}`)
   }
 
   // Get product info from first variant
@@ -628,7 +634,7 @@ const handleMasterShipment = async (
       unique_codes_scanned: session.unique_codes_scanned || [],
       scanned_quantities: nextQuantities,
       discrepancy_details: nextDiscrepancy,
-      validation_status: nextStatus
+      validation_status: nextStatus || 'pending'
     }
   }
 }
@@ -696,7 +702,7 @@ const handleUniqueShipment = async (
       'opened': 'This product has already been opened.',
     }
     
-    const friendlyMessage = statusMessages[qrCode.status] || 
+    const friendlyMessage = (qrCode.status ? statusMessages[qrCode.status] : null) || 
       `This product cannot be shipped right now. Please check its status.`
     
     return {
@@ -848,7 +854,7 @@ const handleUniqueShipment = async (
       unique_codes_scanned: nextUniqueList,
       scanned_quantities: nextQuantities,
       discrepancy_details: nextDiscrepancy,
-      validation_status: nextStatus
+      validation_status: nextStatus || 'pending'
     }
   }
 }

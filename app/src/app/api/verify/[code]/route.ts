@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseQRCode } from '@/lib/qr-code-utils'
 import { Database } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { validateQRCodeSecurity, getBaseCode } from '@/lib/security/qr-hash'
+import { validateQRCodeSecurity, getBaseCode, extractQRCodeParts } from '@/lib/security/qr-hash'
 
 type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 
@@ -222,33 +222,20 @@ async function handleProductCodeVerification(
 ) {
   console.log('🔍 handleProductCodeVerification - Starting for code:', code)
   
-  // ===== NEW: Validate QR code security hash =====
-  const securityCheck = validateQRCodeSecurity(code, true) // Allow legacy codes
+  // Try to fetch the QR code directly first (exact match)
+  console.log('🔍 Looking up code (exact match):', code)
   
-  if (!securityCheck.isValid) {
-    console.log('❌ Security validation failed:', securityCheck.reason)
-    return buildInvalidResponse(
-      'Invalid or tampered QR code. Please use the original QR code from the product.',
-      null
-    )
-  }
+  let qrRowsRaw: any = null
+  let qrError: any = null
   
-  if (securityCheck.hasHash) {
-    console.log('✅ Security hash validated successfully')
-  } else {
-    console.log('⚠️ Legacy code without hash (backward compatibility mode)')
-  }
-  
-  // Use base code (without hash) for database lookup
-  const baseCode = securityCheck.baseCode
-  console.log('🔍 Looking up base code:', baseCode)
-  // ===== END SECURITY CHECK =====
-  
-  const { data: qrRowsRaw, error: qrError } = await supabaseAdmin
+  // First attempt: exact match with full code
+  const result1 = await supabaseAdmin
     .from('qr_codes')
     .select(
       `
         id,
+        code,
+        qr_hash,
         status,
         is_active,
         order_id,
@@ -264,8 +251,46 @@ async function handleProductCodeVerification(
         )
       `
     )
-    .eq('code', baseCode) // Use base code for lookup
+    .eq('code', code)
     .limit(1)
+  
+  qrRowsRaw = result1.data
+  qrError = result1.error
+  
+  // If not found and code looks like it might have a hash, try without the last segment
+  if ((!qrRowsRaw || qrRowsRaw.length === 0) && !qrError) {
+    const possibleBaseCode = getBaseCode(code)
+    if (possibleBaseCode !== code) {
+      console.log('🔍 Code not found, trying base code:', possibleBaseCode)
+      const result2 = await supabaseAdmin
+        .from('qr_codes')
+        .select(
+          `
+            id,
+            code,
+            qr_hash,
+            status,
+            is_active,
+            order_id,
+            product:products!qr_codes_product_id_fkey ( product_name ),
+            variant:product_variants!qr_codes_variant_id_fkey ( variant_name ),
+            order:orders!qr_codes_order_id_fkey (
+              id,
+              order_no,
+              company_id,
+              has_points,
+              has_lucky_draw,
+              has_redeem
+            )
+          `
+        )
+        .eq('code', possibleBaseCode)
+        .limit(1)
+      
+      qrRowsRaw = result2.data
+      qrError = result2.error
+    }
+  }
 
   if (qrError) {
     console.error('❌ Error fetching QR code details:', qrError)
@@ -277,13 +302,15 @@ async function handleProductCodeVerification(
     )
   }
 
-  const qrRows = qrRowsRaw as QRCodeRow[] | null
+  const qrRows = qrRowsRaw as (QRCodeRow & { qr_hash?: string | null, code: string })[] | null
   const qrCode = qrRows?.[0]
 
   console.log('🔍 QR Code found:', qrCode ? 'YES' : 'NO')
   if (qrCode) {
     console.log('🔍 QR Code details:', {
       id: qrCode.id,
+      code: qrCode.code,
+      qr_hash: qrCode.qr_hash,
       status: qrCode.status,
       is_active: qrCode.is_active,
       order_id: qrCode.order_id
@@ -294,6 +321,40 @@ async function handleProductCodeVerification(
     console.log('❌ QR code not found')
     return buildInvalidResponse('QR code not found or not activated')
   }
+
+  // ===== SECURITY HASH VALIDATION =====
+  // Now that we have the DB record, check if this code requires hash validation
+  const storedHash = qrCode.qr_hash
+  
+  if (storedHash) {
+    // This is a secure code with hash - validate it
+    console.log('🔐 Secure code detected - validating hash')
+    const securityCheck = validateQRCodeSecurity(code, false) // Don't allow legacy for hashed codes
+    
+    if (!securityCheck.isValid || !securityCheck.hasHash) {
+      console.log('❌ Security validation failed:', securityCheck.reason)
+      return buildInvalidResponse(
+        'Invalid or tampered QR code. Please use the original QR code from the product.',
+        null
+      )
+    }
+    
+    // Extract hash from scanned code and compare with stored hash
+    const parts = extractQRCodeParts(code)
+    if (!parts || parts.hash.toLowerCase() !== storedHash.toLowerCase()) {
+      console.log('❌ Hash mismatch - scanned:', parts?.hash, 'stored:', storedHash)
+      return buildInvalidResponse(
+        'Invalid or tampered QR code. Please use the original QR code from the product.',
+        null
+      )
+    }
+    
+    console.log('✅ Security hash validated successfully')
+  } else {
+    // Legacy code without stored hash - no validation needed
+    console.log('⚠️ Legacy code without hash (qr_hash is NULL)')
+  }
+  // ===== END SECURITY CHECK =====
 
   // Note: is_blocked column doesn't exist in this database schema
   // If needed in the future, add: ALTER TABLE qr_codes ADD COLUMN is_blocked boolean DEFAULT false;

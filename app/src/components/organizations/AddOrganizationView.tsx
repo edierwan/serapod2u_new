@@ -193,7 +193,14 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         .order('hierarchy_level', { ascending: true })
 
       if (typesError) throw typesError
-      setOrgTypes(types || [])
+      setOrgTypes((types || []).map(t => ({
+        id: t.id,
+        type_code: t.type_code,
+        type_name: t.type_name,
+        description: t.type_description || '',
+        hierarchy_level: t.hierarchy_level,
+        is_active: t.is_active ?? true
+      })))
 
       // Fetch states
       const { data: statesData, error: statesError } = await supabase
@@ -203,7 +210,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         .order('state_name', { ascending: true })
 
       if (statesError) throw statesError
-      setStates(statesData || [])
+      setStates((statesData || []).map(s => ({
+        id: s.id,
+        state_code: s.state_code,
+        state_name: s.state_name,
+        is_active: s.is_active ?? true
+      })))
 
       // Fetch parent organizations based on user role
       let parentQuery = supabase
@@ -243,7 +255,13 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         .order('district_name', { ascending: true })
 
       if (error) throw error
-      setDistricts(data || [])
+      setDistricts((data || []).map(d => ({
+        id: d.id,
+        district_code: d.district_code,
+        district_name: d.district_name,
+        state_id: d.state_id,
+        is_active: d.is_active ?? true
+      })))
     } catch (error: any) {
       console.error('Error fetching districts:', error)
       setDistricts([])
@@ -520,39 +538,73 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         
         if (parentOrg && parentOrg.org_type_code === 'DIST') {
           try {
-            console.log('✅ Creating shop_distributors link...')
-            const { data: linkData, error: linkError } = await (supabase as any)
-              .from('shop_distributors')
-              .insert([{
-                shop_id: data[0].id,
-                distributor_id: formData.parent_org_id,
-                payment_terms: 'NET_30',
-                is_active: true,
-                is_preferred: true, // First distributor is always default
-                approved_by: userProfile.id,
-                approved_at: new Date().toISOString(),
-                created_by: userProfile.id // Track who created this relationship
-              }])
-              .select()
+            console.log('✅ Creating shop_distributors link...', {
+              shop_id: data[0].id,
+              distributor_id: formData.parent_org_id
+            })
             
-            if (linkError) {
-              console.error('❌ Failed to create shop-distributor link:', {
-                error: linkError,
-                message: linkError.message,
-                details: linkError.details,
-                hint: linkError.hint,
-                code: linkError.code
-              })
-              // Don't fail the whole operation, just log it
-            } else {
-              console.log('✅ Shop-distributor link created successfully:', linkData)
-              // Longer delay to ensure database transaction is committed and indexed
-              await new Promise(resolve => setTimeout(resolve, 800))
-              // Signal parent to refresh link status
-              sessionStorage.setItem('needsLinkRefresh', 'true')
+            // First check if link already exists (to prevent duplicates)
+            const { data: existingLink, error: checkError } = await (supabase as any)
+              .from('shop_distributors')
+              .select('id')
+              .eq('shop_id', data[0].id)
+              .eq('distributor_id', formData.parent_org_id)
+              .maybeSingle()
+            
+            if (checkError) {
+              console.error('⚠️ Error checking existing link:', checkError.message)
             }
-          } catch (linkErr) {
-            console.error('❌ Error creating shop-distributor link:', linkErr)
+            
+            if (existingLink) {
+              console.log('ℹ️ Shop-distributor link already exists, skipping creation')
+            } else {
+              // Create the link
+              const { data: linkData, error: linkError } = await (supabase as any)
+                .from('shop_distributors')
+                .insert([{
+                  shop_id: data[0].id,
+                  distributor_id: formData.parent_org_id,
+                  payment_terms: 'NET_30',
+                  is_active: true,
+                  is_preferred: true, // First distributor is always default
+                  approved_by: userProfile.id,
+                  approved_at: new Date().toISOString(),
+                  created_by: userProfile.id // Track who created this relationship
+                }])
+                .select()
+              
+              if (linkError) {
+                console.error('❌ Failed to create shop-distributor link:', {
+                  errorString: String(linkError),
+                  message: linkError.message || 'No message',
+                  details: linkError.details || 'No details',
+                  hint: linkError.hint || 'No hint',
+                  code: linkError.code || 'No code',
+                  fullError: JSON.stringify(linkError, Object.getOwnPropertyNames(linkError))
+                })
+                
+                // Check if it's a duplicate key error (code 23505)
+                if (linkError.code === '23505') {
+                  console.log('ℹ️ Link already exists (duplicate key), continuing...')
+                } else {
+                  // Log but don't fail the whole operation
+                  console.warn('⚠️ Shop-distributor link creation failed but shop was created successfully')
+                }
+              } else {
+                console.log('✅ Shop-distributor link created successfully:', linkData)
+                // Longer delay to ensure database transaction is committed and indexed
+                await new Promise(resolve => setTimeout(resolve, 800))
+                // Signal parent to refresh link status
+                sessionStorage.setItem('needsLinkRefresh', 'true')
+              }
+            }
+          } catch (linkErr: any) {
+            console.error('❌ Exception creating shop-distributor link:', {
+              errorString: String(linkErr),
+              message: linkErr?.message || 'No message',
+              stack: linkErr?.stack || 'No stack',
+              fullError: JSON.stringify(linkErr, Object.getOwnPropertyNames(linkErr))
+            })
           }
         } else {
           console.log('ℹ️ Parent is not a distributor, skipping shop_distributors link')

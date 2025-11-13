@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       .from('lucky_draw_campaigns')
       .select('id, company_id')
       .eq('id', campaignId)
-      .eq('company_id', profile.organization_id)
+      .eq('company_id', profile.organization_id || '')
       .single()
 
     if (campaignError || !campaign) {
@@ -46,10 +46,12 @@ export async function GET(request: NextRequest) {
         id,
         consumer_phone,
         consumer_name,
+        consumer_email,
         entry_number,
         entry_date,
         is_winner,
-        prize_won
+        prize_won,
+        prize_claimed
       `)
       .eq('campaign_id', campaignId)
       .order('entry_date', { ascending: false })

@@ -44,7 +44,7 @@ interface Order {
     order_no: string;
     order_type: string;
     status: string;
-    has_redeem: boolean;
+    has_redeem: boolean | null;
     company_id: string;
 }
 
@@ -52,8 +52,10 @@ interface RedeemGift {
     id: string;
     order_id: string;
     gift_name: string;
-    gift_description: string;
-    gift_image_url?: string;
+    gift_description: string | null;
+    gift_image_url?: string | null;
+    total_quantity?: number;
+    claimed_quantity?: number;
     quantity_available?: number;
     created_at: string;
     updated_at: string;
@@ -93,20 +95,52 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
   /* eslint-disable react-hooks/exhaustive-deps */
   const fetchRedemptionStatistics = useCallback(async () => {
     try {
-      // TODO: Replace with actual redemption tracking table when implemented
-      // For now, calculate based on available gifts data
-      const { data: allGifts, error } = await supabase
-        .from('redemption_gifts')
-        .select('*');
+      // Fetch total gifts defined
+      const { data: allGifts, error: giftsError } = await supabase
+        .from('redeem_gifts')
+        .select('id, gift_name, order_id')
+        .eq('is_active', true);
 
-      if (error) throw error;
+      if (giftsError) {
+        console.error('Error fetching gifts:', giftsError);
+      }
 
       setTotalGifts(allGifts?.length || 0);
       
-      // Simulated redemption data - replace with actual redemption_logs table
-      setTotalRedemptions(0);
-      setRedemptionsThisMonth(0);
+      // Fetch total redemptions from consumer_qr_scans
+      const { count: totalCount, error: totalError } = await supabase
+        .from('consumer_qr_scans')
+        .select('id', { count: 'exact', head: true })
+        .eq('redeemed_gift', true);
+
+      if (totalError) {
+        console.error('Error fetching total redemptions:', totalError);
+      } else {
+        setTotalRedemptions(totalCount || 0);
+      }
+
+      // Fetch redemptions this month
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const { count: monthCount, error: monthError } = await supabase
+        .from('consumer_qr_scans')
+        .select('id', { count: 'exact', head: true })
+        .eq('redeemed_gift', true)
+        .gte('scanned_at', startOfMonth.toISOString());
+
+      if (monthError) {
+        console.error('Error fetching month redemptions:', monthError);
+      } else {
+        setRedemptionsThisMonth(monthCount || 0);
+      }
+
+      // Find most popular gift (most redeemed)
+      // This requires joining consumer_qr_scans with qr_codes to get gift info
+      // For now, set to N/A - can be enhanced later
       setMostPopularGift('N/A');
+      
     } catch (error) {
       console.error('Error fetching redemption statistics:', error);
     }
@@ -140,7 +174,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('redemption_gifts')
+        .from('redeem_gifts')
         .select('*')
         .eq('order_id', orderId)
         .order('created_at', { ascending: false });
@@ -167,6 +201,61 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
     }
   }, [selectedOrder, fetchGifts]);
 
+    const resizeImage = (file: File, maxWidth: number = 800, maxHeight: number = 600): Promise<Blob> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.createElement('img');
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Calculate new dimensions maintaining aspect ratio
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width = Math.round((width * maxHeight) / height);
+                            height = maxHeight;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        reject(new Error('Failed to get canvas context'));
+                        return;
+                    }
+
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Convert to blob with quality optimization
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                resolve(blob);
+                            } else {
+                                reject(new Error('Failed to create blob'));
+                            }
+                        },
+                        'image/jpeg',
+                        0.85 // 85% quality for good balance between quality and file size
+                    );
+                };
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = e.target?.result as string;
+            };
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+        });
+    };
+
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -177,7 +266,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
             return;
         }
 
-        // Validate file size (max 5MB)
+        // Validate file size (max 5MB for original file)
         if (file.size > 5 * 1024 * 1024) {
             showAlert('error', 'Image size should be less than 5MB');
             return;
@@ -186,15 +275,22 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
         try {
             setUploadingImage(true);
 
+            // Resize image to mobile-friendly dimensions (800x600 max)
+            const resizedBlob = await resizeImage(file, 800, 600);
+
             // Create unique filename
             const fileExt = file.name.split('.').pop();
-            const fileName = `gift-${Date.now()}.${fileExt}`;
+            const fileName = `gift-${Date.now()}.jpg`; // Always save as JPEG after resizing
             const filePath = `redemption-gifts/${userProfile.organization_id}/${fileName}`;
 
-            // Upload to Supabase Storage
+            // Upload resized image to Supabase Storage
             const { error: uploadError } = await supabase.storage
                 .from('product-images')
-                .upload(filePath, file);
+                .upload(filePath, resizedBlob, {
+                    contentType: 'image/jpeg',
+                    cacheControl: '3600',
+                    upsert: false
+                });
 
             if (uploadError) throw uploadError;
 
@@ -204,7 +300,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
                 .getPublicUrl(filePath);
 
             setGiftImageUrl(publicUrl);
-            showAlert('success', 'Image uploaded successfully');
+            showAlert('success', 'Image uploaded and optimized successfully');
         } catch (error) {
             console.error('Error uploading image:', error);
             showAlert('error', 'Failed to upload image');
@@ -230,12 +326,12 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
             if (editingGift) {
                 // Update existing gift
                 const { error } = await supabase
-                    .from('redemption_gifts')
+                    .from('redeem_gifts')
                     .update({
                         gift_name: giftName,
                         gift_description: giftDescription,
                         gift_image_url: giftImageUrl || null,
-                        quantity_available: quantityAvailable || null,
+                        total_quantity: quantityAvailable || 0,
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', editingGift.id);
@@ -245,13 +341,15 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
             } else {
                 // Create new gift
                 const { error } = await supabase
-                    .from('redemption_gifts')
+                    .from('redeem_gifts')
                     .insert({
                         order_id: selectedOrder.id,
                         gift_name: giftName,
                         gift_description: giftDescription,
                         gift_image_url: giftImageUrl || null,
-                        quantity_available: quantityAvailable || null
+                        total_quantity: quantityAvailable || 0,
+                        claimed_quantity: 0,
+                        is_active: true
                     });
 
                 if (error) throw error;
@@ -274,7 +372,8 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
         setGiftName(gift.gift_name);
         setGiftDescription(gift.gift_description || '');
         setGiftImageUrl(gift.gift_image_url || '');
-        setQuantityAvailable(gift.quantity_available);
+        // Use total_quantity from the database
+        setQuantityAvailable((gift as any).total_quantity);
         setShowForm(true);
     };
 
@@ -286,7 +385,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
         try {
             setLoading(true);
             const { error } = await supabase
-                .from('redemption_gifts')
+                .from('redeem_gifts')
                 .delete()
                 .eq('id', giftId);
 
@@ -538,13 +637,15 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
                                         <Label>Gift Image</Label>
                                         <div className="mt-2 space-y-3">
                                             {giftImageUrl ? (
-                                                <div className="relative w-full h-48 border rounded-lg overflow-hidden">
-                                                    <Image
-                                                        src={giftImageUrl}
-                                                        alt="Gift preview"
-                                                        layout="fill"
-                                                        objectFit="cover"
-                                                    />
+                                                <div className="relative w-full border rounded-lg overflow-hidden bg-gray-50">
+                                                    <div className="relative w-full h-64">
+                                                        <Image
+                                                            src={giftImageUrl}
+                                                            alt="Gift preview"
+                                                            layout="fill"
+                                                            objectFit="contain"
+                                                        />
+                                                    </div>
                                                     <Button
                                                         variant="destructive"
                                                         size="sm"
@@ -553,6 +654,9 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
+                                                    <p className="text-xs text-gray-500 text-center py-2 border-t bg-white">
+                                                        Preview: Full image will be shown on mobile
+                                                    </p>
                                                 </div>
                                             ) : (
                                                 <div className="border-2 border-dashed rounded-lg p-8 text-center">
@@ -566,7 +670,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
                                                         className="max-w-xs mx-auto"
                                                     />
                                                     {uploadingImage && (
-                                                        <p className="text-sm text-blue-600 mt-2">Uploading...</p>
+                                                        <p className="text-sm text-blue-600 mt-2">Uploading and optimizing...</p>
                                                     )}
                                                 </div>
                                             )}
@@ -601,61 +705,79 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
                                     </div>
                                 )}
 
-                                {!loading && gifts.map((gift) => (
-                                    <Card key={gift.id} className="hover:shadow-md transition-shadow">
-                                        <CardContent className="p-4">
-                                            <div className="flex gap-4">
-                                                {/* Gift Image */}
-                                                {gift.gift_image_url ? (
-                                                    <Image
-                                                        src={gift.gift_image_url}
-                                                        alt={gift.gift_name}
-                                                        width={96}
-                                                        height={96}
-                                                        className="object-cover rounded-lg"
-                                                    />
-                                                ) : (
-                                                    <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center">
-                                                        <ImageIcon className="h-8 w-8 text-gray-400" />
-                                                    </div>
-                                                )}
+                                {!loading && gifts.map((gift) => {
+                                                    const totalQty = (gift as any).total_quantity || 0;
+                                                    const claimedQty = (gift as any).claimed_quantity || 0;
+                                                    const remaining = totalQty - claimedQty;
+                                                    
+                                                    return (
+                                                        <Card key={gift.id} className="hover:shadow-md transition-shadow">
+                                                            <CardContent className="p-4">
+                                                                <div className="flex gap-4">
+                                                                    {/* Gift Image */}
+                                                                    {gift.gift_image_url ? (
+                                                                        <div className="w-24 h-24 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
+                                                                            <Image
+                                                                                src={gift.gift_image_url}
+                                                                                alt={gift.gift_name}
+                                                                                width={96}
+                                                                                height={96}
+                                                                                className="object-contain w-full h-full"
+                                                                            />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                                            <ImageIcon className="h-8 w-8 text-gray-400" />
+                                                                        </div>
+                                                                    )}
 
-                                                {/* Gift Details */}
-                                                <div className="flex-1">
-                                                    <div className="flex items-start justify-between">
-                                                        <div>
-                                                            <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
-                                                            {gift.gift_description && (
-                                                                <p className="text-sm text-gray-600 mt-1">{gift.gift_description}</p>
-                                                            )}
-                                                            {gift.quantity_available && (
-                                                                <Badge variant="outline" className="mt-2">
-                                                                    {gift.quantity_available} available
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => handleEditGift(gift)}
-                                                            >
-                                                                <Edit className="h-4 w-4" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => handleDeleteGift(gift.id)}
-                                                            >
-                                                                <Trash2 className="h-4 w-4 text-red-600" />
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
+                                                                    {/* Gift Details */}
+                                                                    <div className="flex-1">
+                                                                        <div className="flex items-start justify-between">
+                                                                            <div>
+                                                                                <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
+                                                                                {gift.gift_description && (
+                                                                                    <p className="text-sm text-gray-600 mt-1">{gift.gift_description}</p>
+                                                                                )}
+                                                                                {totalQty > 0 && (
+                                                                                    <div className="mt-2 space-x-2">
+                                                                                        <Badge variant="outline">
+                                                                                            {remaining} available
+                                                                                        </Badge>
+                                                                                        <Badge variant="secondary">
+                                                                                            {claimedQty} claimed
+                                                                                        </Badge>
+                                                                                    </div>
+                                                                                )}
+                                                                                {totalQty === 0 && (
+                                                                                    <Badge variant="outline" className="mt-2">
+                                                                                        Unlimited
+                                                                                    </Badge>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex gap-2">
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={() => handleEditGift(gift)}
+                                                                                >
+                                                                                    <Edit className="h-4 w-4" />
+                                                                                </Button>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={() => handleDeleteGift(gift.id)}
+                                                                                >
+                                                                                    <Trash2 className="h-4 w-4 text-red-600" />
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </CardContent>
+                                                        </Card>
+                                                    );
+                                                })}
                             </div>
                         )}
                     </CardContent>

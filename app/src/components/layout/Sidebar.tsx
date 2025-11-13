@@ -56,12 +56,20 @@ const navigationItems: MenuItem[] = [
     label: 'Products',
     icon: Package,
     description: 'Product catalog',
+    access: {
+      // Hide Products menu for SHOP organizations
+      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
+      maxRoleLevel: 60
+    },
     submenu: [
       {
         id: 'products',
         label: 'Product List',
         icon: Package,
-        // Accessible to all
+        access: {
+          allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
+          maxRoleLevel: 60
+        }
       },
       {
         id: 'product-management',
@@ -234,7 +242,8 @@ const navigationItems: MenuItem[] = [
     icon: Package,
     description: 'Stock management',
     access: {
-      // Exclude guests
+      // Hide Inventory menu for SHOP organizations
+      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
       maxRoleLevel: 60
     },
     submenu: [
@@ -243,6 +252,7 @@ const navigationItems: MenuItem[] = [
         label: 'View Inventory',
         icon: Package,
         access: {
+          allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
           maxRoleLevel: 60
         }
       },
@@ -372,10 +382,12 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           .single()
         
         if (!error && data) {
-          const logoUrl = data.settings?.branding?.logoUrl || data.logo_url
+          const settings = typeof data.settings === 'object' && data.settings !== null ? data.settings as any : null
+          const branding = settings?.branding
+          const logoUrl = branding?.logoUrl || data.logo_url
           setBrandingSettings({
-            appName: data.settings?.branding?.appName || 'Serapod2U',
-            appTagline: data.settings?.branding?.appTagline || 'Supply Chain',
+            appName: branding?.appName || 'Serapod2U',
+            appTagline: branding?.appTagline || 'Supply Chain',
             logoUrl: logoUrl ? `${logoUrl.split('?')[0]}?t=${new Date(data.updated_at || Date.now()).getTime()}` : null
           })
         }

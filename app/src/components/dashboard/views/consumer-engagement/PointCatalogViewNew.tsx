@@ -37,12 +37,12 @@ interface PointCatalogViewNewProps {
 interface PointReward {
     id: string;
     reward_name: string;
-    reward_description: string;
+    reward_description: string | null;
     points_required: number;
-    reward_image_url?: string;
-    stock_quantity?: number;
-    is_featured: boolean;
-    tier_level: 'bronze' | 'silver' | 'gold' | 'platinum';
+    reward_image_url?: string | null;
+    stock_quantity?: number | null;
+    is_featured: boolean | null;
+    tier_level: string;
     created_at: string;
     updated_at: string;
 }
@@ -76,13 +76,15 @@ export default function PointCatalogViewNew({ userProfile, onViewChange }: Point
     const [rewardImageUrl, setRewardImageUrl] = useState('');
     const [stockQuantity, setStockQuantity] = useState<number | undefined>(undefined);
     const [isFeatured, setIsFeatured] = useState(false);
-    const [tierLevel, setTierLevel] = useState<'bronze' | 'silver' | 'gold' | 'platinum'>('bronze');
+    const [tierLevel, setTierLevel] = useState<string>('bronze');
     const [uploadingImage, setUploadingImage] = useState(false);
 
     // Alert state
     const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
-    const isAdmin = userProfile.role_code === 'ADMIN' || userProfile.role_code === 'SUPER_ADMIN';
+    // Check if user is from HQ organization (not shop/distributor/warehouse)
+    // Only HQ organization users should see admin features
+    const isAdmin = userProfile.org_type !== 'SHOP' && userProfile.org_type !== 'DISTRIBUTOR' && userProfile.org_type !== 'WAREHOUSE';
     const isShop = userProfile.org_type === 'SHOP';
 
     // Tier definitions
@@ -270,8 +272,8 @@ export default function PointCatalogViewNew({ userProfile, onViewChange }: Point
         setRewardDescription(reward.reward_description || '');
         setPointsRequired(reward.points_required);
         setRewardImageUrl(reward.reward_image_url || '');
-        setStockQuantity(reward.stock_quantity);
-        setIsFeatured(reward.is_featured);
+        setStockQuantity(reward.stock_quantity ?? undefined);
+        setIsFeatured(reward.is_featured ?? false);
         setTierLevel(reward.tier_level);
         setShowForm(true);
     };

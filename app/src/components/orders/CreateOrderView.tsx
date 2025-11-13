@@ -35,9 +35,9 @@ interface Organization {
   org_name: string
   org_type_code: string
   org_code: string
-  address?: string
-  contact_phone?: string
-  contact_name?: string
+  address?: string | null
+  contact_phone?: string | null
+  contact_name?: string | null
 }
 
 interface Product {
@@ -179,21 +179,44 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       } else if (userOrgType === 'SHOP') {
         setOrderType('S2D')
         setBuyerOrg(userOrgData)
+        
+        console.log('🏪 Shop Order - Auto-filling customer info:', {
+          org_name: userOrgData.org_name,
+          contact_name: userOrgData.contact_name,
+          contact_phone: userOrgData.contact_phone,
+          address: userOrgData.address
+        })
+        
+        // Auto-fill customer information from shop organization
+        // For shops, customer = shop itself
+        setCustomerName(userOrgData.org_name) // Use shop name as customer name
+        setPhoneNumber(userOrgData.contact_phone || '')
+        
+        // Combine address and address_line2 for delivery address
+        const fullAddress = [
+          userOrgData.address,
+          userOrgData.address_line2
+        ].filter(Boolean).join(', ')
+        
+        setDeliveryAddress(fullAddress || '')
+        
         // For S2D: Shop buys from Distributor - load available distributors
         await loadShopDistributors(userOrgData.id)
       }
       
-      // Auto-fill customer information from organization
-      setCustomerName(userOrgData.contact_person || userOrgData.org_name)
-      setPhoneNumber(userOrgData.contact_phone || '')
-      
-      // Combine address and address_line2 for delivery address
-      const fullAddress = [
-        userOrgData.address,
-        userOrgData.address_line2
-      ].filter(Boolean).join(', ')
-      
-      setDeliveryAddress(fullAddress || '')
+      // Auto-fill customer information from organization (for HQ and DIST orders)
+      if (userOrgType !== 'SHOP') {
+        setCustomerName(userOrgData.contact_name || userOrgData.org_name)
+        setPhoneNumber(userOrgData.contact_phone || '')
+        
+        // Combine address and address_line2 for delivery address
+        const fullAddress = [
+          userOrgData.address,
+          userOrgData.address_line2
+        ].filter(Boolean).join(', ')
+        
+        setDeliveryAddress(fullAddress || '')
+      }
       
     } catch (error) {
       console.error('Error initializing order:', error)
@@ -258,7 +281,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       
       setAvailableDistributors(distributors)
       
-      // Auto-select preferred distributor if exists
+      // For S2D orders, load products first (shops can order any product from distributor)
+      // Don't filter by distributor - distributors act as middlemen
+      await loadAvailableProducts('')
+      
+      // Then auto-select preferred distributor if exists
       const preferred = distributors.find(d => d.is_preferred)
       if (preferred) {
         setSellerOrg({
@@ -269,7 +296,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         })
         setSelectedSellerOrgId(preferred.id)
         setShowDistributorSelector(distributors.length > 1) // Show selector only if multiple options
-        await loadAvailableProducts(preferred.id)
       } else if (distributors.length === 1) {
         // If only one distributor, auto-select it
         const single = distributors[0]
@@ -281,7 +307,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         })
         setSelectedSellerOrgId(single.id)
         setShowDistributorSelector(false)
-        await loadAvailableProducts(single.id)
       } else if (distributors.length > 1) {
         // Multiple distributors, no preferred - show selector
         setShowDistributorSelector(true)
@@ -313,7 +338,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         org_code: distributor.org_code,
         org_type_code: 'DIST'
       })
-      await loadAvailableProducts(distributorId)
+      // For S2D orders, products are already loaded (not distributor-specific)
+      // No need to reload products when changing distributor
     }
   }
 
@@ -356,10 +382,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         .eq('is_active', true)
         .eq('products.is_active', true)
       
-      // Filter by manufacturer for H2M orders
+      // Filter by manufacturer ONLY for H2M orders (HQ buying from specific manufacturer)
+      // For S2D orders, shops should see ALL products regardless of manufacturer
       if (orderType === 'H2M' && sellerOrgId) {
         console.log('🔍 Filtering by manufacturer:', sellerOrgId)
         query = query.eq('products.manufacturer_id', sellerOrgId)
+      } else if (orderType === 'S2D') {
+        console.log('🔍 S2D order: Loading all active products for shop')
+        // No manufacturer filter for S2D - shops can order any product
       }
       
       query = query.order('variant_name')
@@ -404,11 +434,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       setAvailableVariants(formattedVariants)
       
       if (formattedVariants.length === 0) {
+        const errorMessages = {
+          'H2M': 'This manufacturer has no active product variants. Please select a different manufacturer.',
+          'S2D': 'No active product variants available. Please contact your administrator to ensure products are properly configured.',
+          'D2H': 'No active product variants available from HQ. Please contact your administrator.'
+        }
+        
         toast({
           title: 'No Products',
-          description: orderType === 'H2M' 
-            ? 'This manufacturer has no active product variants. Please select a different manufacturer.' 
-            : 'No active product variants available.',
+          description: errorMessages[orderType as keyof typeof errorMessages] || 'No active product variants available.',
           variant: 'destructive'
         })
       }
@@ -668,14 +702,20 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         warehouseOrgId = hqData.default_warehouse_org_id
       }
 
+      // Generate order number (format: ORD-YYYYMMDD-RANDOM)
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase()
+      const generatedOrderNo = `${orderType}-${dateStr}-${randomSuffix}`
+
       // STEP 1: Always create order in 'draft' status first (required by RLS policy)
       const orderData = {
         order_type: orderType,
+        order_no: generatedOrderNo,
         company_id: companyId,
         buyer_org_id: buyerOrg!.id,
         seller_org_id: sellerOrg.id,
         warehouse_org_id: warehouseOrgId, // Set warehouse for H2M orders
-        status: 'draft', // ← Always draft first! RLS policy requires this
+        status: 'draft' as const, // ← Always draft first! RLS policy requires this
         units_per_case: unitsPerCase,
         qr_buffer_percent: qrBuffer,
         has_rfid: enableRFID,

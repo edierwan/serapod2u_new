@@ -121,6 +121,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
   const [scanHistory, setScanHistory] = useState<ScanHistory[]>([])
   const [orderScanHistory, setOrderScanHistory] = useState<ScanHistory[]>([])
   const [showBatchInput, setShowBatchInput] = useState(false)
+  const [batchScanMode, setBatchScanMode] = useState<'normal' | 'reverse'>('normal')
   const [skipCaseValidation] = useState(true) // Always enabled in V2 - simplified workflow
   const [showMasterBatchInput, setShowMasterBatchInput] = useState(false) // Unused in V2 (kept for planImportCard compatibility)
   const [masterBatchInput, setMasterBatchInput] = useState('') // Unused in V2 (kept for planImportCard compatibility)
@@ -558,7 +559,216 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
     }
   }
 
+  const handleBatchPasteReverse = async () => {
+    if (isOrderLocked) {
+      toast({
+        title: 'Order locked',
+        description: 'Warehouse intake has begun for this order. Batch paste is disabled.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setBatchOutcomeNotice(null)
+    if (!batchInput.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please paste QR codes to exclude in the batch input field',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // Get the batch ID from current progress
+    if (!currentBatchProgress || !currentBatchProgress.batch_id) {
+      toast({
+        title: 'Error',
+        description: 'No active batch found. Please select an order first.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    const excludeCodes = batchInput
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+
+    if (excludeCodes.length === 0) {
+      toast({
+        title: 'Error',
+        description: 'No valid QR codes found to exclude',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // Remove duplicates from exclude list
+    const uniqueExcludeCodes = Array.from(new Set(excludeCodes))
+    const duplicatesInInput = excludeCodes.length - uniqueExcludeCodes.length
+
+    if (duplicatesInInput > 0) {
+      console.log(`⚠️ Found ${duplicatesInInput} duplicate codes in exclude list, will process ${uniqueExcludeCodes.length} unique codes`)
+    }
+
+    setBatchProcessingMode('unique-scan')
+    setBatchProcessingSummary({
+      total: 0,
+      success: 0,
+      duplicates: 0,
+      errors: 0
+    })
+    setBatchProcessingStatus('Fetching batch codes...')
+    setBatchProcessingProgress(10)
+    setBatchProcessingActive(true)
+
+    try {
+      // Fetch all available codes from the batch, excluding the specified codes
+      const response = await fetch('/api/manufacturer/get-batch-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batch_id: currentBatchProgress.batch_id,
+          order_id: currentBatchProgress.order_id,
+          exclude_codes: uniqueExcludeCodes
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch batch codes')
+      }
+
+      const result = await response.json()
+      
+      console.log('📊 Reverse scan result:', {
+        total_available: result.summary.total_available_in_batch,
+        excluded: result.summary.excluded_count,
+        returned: result.summary.returned_count,
+        not_found: result.summary.not_found_exclusions
+      })
+
+      setBatchProcessingProgress(30)
+      setBatchProcessingStatus(`Processing ${result.codes.length} codes...`)
+
+      if (!result.codes || result.codes.length === 0) {
+        throw new Error('No codes available to process after exclusions')
+      }
+
+      // Show summary to user
+      toast({
+        title: 'Reverse Scan Mode',
+        description: `Excluded ${result.summary.excluded_count} codes. Processing ${result.codes.length} remaining codes.`,
+        variant: 'default'
+      })
+
+      // Now scan all the returned codes
+      let successCount = 0
+      let duplicateCount = 0
+      let errorCount = 0
+
+      setBatchProcessingSummary({
+        total: result.codes.length,
+        success: 0,
+        duplicates: 0,
+        errors: 0
+      })
+
+      for (let index = 0; index < result.codes.length; index++) {
+        setBatchProcessingStatus(`Scanning code ${index + 1} of ${result.codes.length}`)
+
+        const scanResult = await handleScanUnique(result.codes[index].code, { silent: true })
+
+        switch (scanResult.outcome) {
+          case 'success':
+            successCount++
+            break
+          case 'already_scanned':
+          case 'duplicate_session':
+            duplicateCount++
+            break
+          case 'error':
+            errorCount++
+            break
+        }
+
+        const progress = 30 + Math.round(((index + 1) / result.codes.length) * 70)
+        setBatchProcessingProgress(progress)
+        setBatchProcessingSummary({
+          total: result.codes.length,
+          success: successCount,
+          duplicates: duplicateCount,
+          errors: errorCount
+        })
+        await new Promise(resolve => setTimeout(resolve, 80))
+      }
+
+      const updateOutcomeNotice = () => {
+        if (successCount === 0) {
+          if (duplicateCount > 0 && errorCount === 0) {
+            setBatchOutcomeNotice({
+              type: 'duplicate',
+              message: 'All remaining QR codes were already captured for this order. No new packs were added.'
+            })
+          } else if (errorCount > 0 && duplicateCount === 0) {
+            setBatchOutcomeNotice({
+              type: 'error',
+              message: 'None of the remaining QR codes could be processed.'
+            })
+          } else if (duplicateCount + errorCount > 0) {
+            setBatchOutcomeNotice({
+              type: 'mixed',
+              message: 'Duplicates and invalid codes were skipped automatically, so nothing was recorded.'
+            })
+          }
+        }
+      }
+
+      setBatchProcessingStatus('Reverse scan complete!')
+      setBatchProcessingSummary({
+        total: result.codes.length,
+        success: successCount,
+        duplicates: duplicateCount,
+        errors: errorCount
+      })
+      setBatchProcessingProgress(100)
+      updateOutcomeNotice()
+
+      setTimeout(() => {
+        setBatchProcessingActive(false)
+        setBatchProcessingMode(null)
+      }, 1200)
+
+      setBatchInput('')
+      setShowBatchInput(false)
+
+      toast({
+        title: 'Reverse Scan Complete',
+        description: `Successfully scanned ${successCount} of ${result.codes.length} codes (excluded ${result.summary.excluded_count} codes).`,
+      })
+    } catch (error: any) {
+      console.error('Error during reverse batch scan:', error)
+      setBatchProcessingStatus('Reverse scan failed. Please try again.')
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to process reverse scan',
+        variant: 'destructive'
+      })
+      setTimeout(() => {
+        setBatchProcessingActive(false)
+        setBatchProcessingMode(null)
+      }, 1500)
+    }
+  }
+
   const handleBatchPaste = () => {
+    // Route to appropriate handler based on scan mode
+    if (batchScanMode === 'reverse') {
+      handleBatchPasteReverse()
+      return
+    }
+
+    // Normal mode logic continues below
     if (isOrderLocked) {
       toast({
         title: 'Order locked',
@@ -1204,9 +1414,12 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
         description: `Batch ${currentBatchProgress.batch_code} is now ready for warehouse shipment. ${result.packed_master_codes} of ${result.total_master_codes} cases packed.`,
       })
 
-      // Refresh batch progress to show updated status
-      await loadProgress(selectedOrder)
-      await loadOrders()
+      // Refresh batch progress and scan history to show updated status
+      await Promise.all([
+        loadProgress(selectedOrder),
+        loadOrders(),
+        loadScanHistory()  // Refresh scan history tables to show updated "Packed" status
+      ])
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -1494,6 +1707,68 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
           </div>
         </div>
 
+        {/* Batch Scan Mode Selection - Always Visible */}
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="h-5 w-5 text-indigo-600" />
+            <label className="block text-sm font-bold text-gray-900">
+              Batch Scan Mode
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setBatchScanMode('normal')}
+              disabled={isOrderLocked}
+              className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
+                batchScanMode === 'normal'
+                  ? 'border-blue-500 bg-blue-50 shadow-sm'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              } ${isOrderLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  batchScanMode === 'normal' ? 'border-blue-500' : 'border-gray-300'
+                }`}>
+                  {batchScanMode === 'normal' && (
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                  )}
+                </div>
+                <span className="font-semibold text-sm">Mode A - Normal</span>
+              </div>
+              <p className="text-xs text-gray-600 ml-6">
+                Scan/paste 50 QR codes to <strong>include</strong> in the master case
+              </p>
+            </button>
+            
+            <button
+              onClick={() => setBatchScanMode('reverse')}
+              disabled={isOrderLocked}
+              className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
+                batchScanMode === 'reverse'
+                  ? 'border-purple-500 bg-purple-50 shadow-sm'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              } ${isOrderLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  batchScanMode === 'reverse' ? 'border-purple-500' : 'border-gray-300'
+                }`}>
+                  {batchScanMode === 'reverse' && (
+                    <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                  )}
+                </div>
+                <span className="font-semibold text-sm">Mode B - Reverse</span>
+              </div>
+              <p className="text-xs text-gray-600 ml-6">
+                Scan/paste 5 QR codes to <strong>exclude</strong> from the batch
+              </p>
+            </button>
+          </div>
+          <div className="text-xs text-gray-600 bg-white rounded p-2 border border-gray-200">
+            <strong>Current Mode:</strong> {batchScanMode === 'normal' ? 'Mode A - Normal (Include 50 codes)' : 'Mode B - Reverse (Exclude 5 codes)'}
+          </div>
+        </div>
+
         <div>
           <Button
             variant="outline"
@@ -1509,12 +1784,34 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
         {showBatchInput && (
           <div className="border border-blue-200 rounded-lg p-4 bg-blue-50 space-y-3">
             <label className="block text-sm font-medium text-gray-700">
-              Paste Multiple QR Codes (one per line)
+              {batchScanMode === 'normal' 
+                ? 'Paste Multiple QR Codes (one per line)'
+                : 'Paste QR Codes to Exclude (one per line)'}
             </label>
+            
+            {batchScanMode === 'reverse' && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-2">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-purple-900">
+                    <p className="font-semibold mb-1">Reverse Scan Mode (Mode B):</p>
+                    <ol className="list-decimal list-inside space-y-1">
+                      <li>Paste the unique QR codes you want to <strong>EXCLUDE</strong> (typically 5 damaged/missing codes)</li>
+                      <li>Click "Process Batch" - the system will automatically fetch all 55 QR codes for this batch</li>
+                      <li>The system will exclude the codes you pasted and return the remaining 50 codes</li>
+                      <li>Scan the master QR code to link these 50 codes to the master case</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <textarea
               value={batchInput}
               onChange={(e) => setBatchInput(e.target.value)}
-              placeholder="Paste QR codes here... (one per line)&#10;PROD-ZEREL6829-MAN-552896-ORD-HM-1025-03-00001&#10;PROD-ZEREL6829-MAN-552896-ORD-HM-1025-03-00002&#10;..."
+              placeholder={batchScanMode === 'normal' 
+                ? "Paste QR codes here... (one per line)&#10;PROD-ZEREL6829-MAN-552896-ORD-HM-1025-03-00001&#10;PROD-ZEREL6829-MAN-552896-ORD-HM-1025-03-00002&#10;..."
+                : "Paste QR codes to EXCLUDE here... (one per line)&#10;These codes will be removed from the batch&#10;PROD-ZEREL6829-MAN-552896-ORD-HM-1025-03-00001&#10;PROD-ZEREL6829-MAN-552896-ORD-HM-1025-03-00002&#10;..."}
               rows={6}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-xs"
               disabled={isOrderLocked}
@@ -1539,11 +1836,25 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
             <div className="text-xs text-gray-600">
               {uniqueBatchStats.totalCodes > 0 ? (
                 <span>
-                  Detected <strong>{uniqueBatchStats.totalCodes}</strong> QR codes (
-                  <strong>{uniqueBatchStats.uniqueCodes}</strong> unique across {uniqueBatchStats.lines} line{uniqueBatchStats.lines === 1 ? '' : 's'}).
+                  {batchScanMode === 'normal' ? (
+                    <>
+                      Detected <strong>{uniqueBatchStats.totalCodes}</strong> QR codes (
+                      <strong>{uniqueBatchStats.uniqueCodes}</strong> unique across {uniqueBatchStats.lines} line{uniqueBatchStats.lines === 1 ? '' : 's'}).
+                    </>
+                  ) : (
+                    <>
+                      Detected <strong>{uniqueBatchStats.totalCodes}</strong> QR codes to exclude (
+                      <strong>{uniqueBatchStats.uniqueCodes}</strong> unique). 
+                      The system will fetch remaining codes from the batch automatically.
+                    </>
+                  )}
                 </span>
               ) : (
-                <span>Paste QR codes above to preview how many will be processed.</span>
+                <span>
+                  {batchScanMode === 'normal' 
+                    ? 'Paste QR codes above to preview how many will be processed.'
+                    : 'Paste QR codes to exclude above (typically 5 damaged/missing codes).'}
+                </span>
               )}
             </div>
           </div>

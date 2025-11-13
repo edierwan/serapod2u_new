@@ -46,10 +46,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Check if user is Super Admin (role_level = 1)
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role_code, roles(role_level)')
+      .eq('id', user.id)
+      .single()
+
+    const isSuperAdmin = profile && (profile as any).roles && (profile as any).roles.role_level === 1
+
     const searchParams = request.nextUrl.searchParams
     const warehouseOrgId = searchParams.get('warehouse_org_id')
 
-    if (!warehouseOrgId) {
+    // Super Admin can view ALL warehouses if no warehouse_org_id is provided
+    if (!warehouseOrgId && !isSuperAdmin) {
       return NextResponse.json({ error: 'warehouse_org_id is required' }, { status: 400 })
     }
 
@@ -81,7 +91,8 @@ export async function GET(request: NextRequest) {
       searchTerm
     })
 
-    const { data, error } = await supabase
+    // Build query with conditional warehouse filter
+    let query = supabase
       .from('qr_master_codes')
       .select(
         `
@@ -104,12 +115,18 @@ export async function GET(request: NextRequest) {
           )
         `
       )
-      .eq('warehouse_org_id', warehouseOrgId)
       .not('warehouse_received_at', 'is', null)
       .gte('warehouse_received_at', startIso)
       .lte('warehouse_received_at', endIso)
-  .order('warehouse_received_at', { ascending: false })
-  .limit(2000)
+      .order('warehouse_received_at', { ascending: false })
+      .limit(2000)
+
+    // Only filter by warehouse_org_id if provided (Super Admin can view all)
+    if (warehouseOrgId) {
+      query = query.eq('warehouse_org_id', warehouseOrgId)
+    }
+
+    const { data, error } = await query
 
     console.log('🔍 [Intake History] Query result:', {
       recordCount: data?.length || 0,
@@ -134,23 +151,25 @@ export async function GET(request: NextRequest) {
     if (!data || data.length === 0) {
       console.log('⚠️ [Intake History] No records found, running diagnostics...')
       
-      const { count: totalForWarehouse } = await supabase
-        .from('qr_master_codes')
-        .select('*', { count: 'exact', head: true })
-        .eq('warehouse_org_id', warehouseOrgId)
-        .not('warehouse_received_at', 'is', null)
-      
-      const { count: totalAnyWarehouse } = await supabase
-        .from('qr_master_codes')
-        .select('*', { count: 'exact', head: true })
-        .not('warehouse_received_at', 'is', null)
-      
-      console.log('🔍 [Intake History] Diagnostics:', {
-        totalForYourWarehouse: totalForWarehouse,
-        totalAnyWarehouse: totalAnyWarehouse,
-        warehouseOrgId,
-        dateRange: { start: startIso, end: endIso }
-      })
+      if (warehouseOrgId) {
+        const { count: totalForWarehouse } = await supabase
+          .from('qr_master_codes')
+          .select('*', { count: 'exact', head: true })
+          .eq('warehouse_org_id', warehouseOrgId)
+          .not('warehouse_received_at', 'is', null)
+        
+        const { count: totalAnyWarehouse } = await supabase
+          .from('qr_master_codes')
+          .select('*', { count: 'exact', head: true })
+          .not('warehouse_received_at', 'is', null)
+        
+        console.log('🔍 [Intake History] Diagnostics:', {
+          totalForYourWarehouse: totalForWarehouse,
+          totalAnyWarehouse: totalAnyWarehouse,
+          warehouseOrgId,
+          dateRange: { start: startIso, end: endIso }
+        })
+      }
     }
 
     const historyMap = new Map<string, HistoryRow>()
@@ -217,7 +236,7 @@ export async function GET(request: NextRequest) {
     // Second pass: get total scanned cases and units for each order
     if (orderIdSet.size > 0) {
       const orderIds = Array.from(orderIdSet)
-      const { data: allMasterCodes, error: masterError } = await supabase
+      let masterQuery = supabase
         .from('qr_master_codes')
         .select(`
           id,
@@ -230,7 +249,12 @@ export async function GET(request: NextRequest) {
           )
         `)
         .in('qr_batches.order_id', orderIds)
-        .eq('warehouse_org_id', warehouseOrgId)
+
+      if (warehouseOrgId) {
+        masterQuery = masterQuery.eq('warehouse_org_id', warehouseOrgId)
+      }
+
+      const { data: allMasterCodes, error: masterError } = await masterQuery
 
       if (!masterError && allMasterCodes) {
         const orderTotals = new Map<string, { cases: number; units: number }>()
@@ -300,13 +324,18 @@ export async function GET(request: NextRequest) {
         // Units shipped via movement history
         let unitsShippedByOrder = new Map<string, number>()
         if (orderIds.length > 0) {
-          const { data: movementRows, error: movementError } = await supabase
+          let movementQuery = supabase
             .from('v_stock_movements_display')
             .select('reference_id, quantity_change')
             .eq('movement_type', 'order_fulfillment')
             .eq('reference_type', 'order')
-            .eq('from_organization_id', warehouseOrgId)
             .in('reference_id', orderIds)
+
+          if (warehouseOrgId) {
+            movementQuery = movementQuery.eq('from_organization_id', warehouseOrgId)
+          }
+
+          const { data: movementRows, error: movementError } = await movementQuery
 
           if (!movementError && movementRows) {
             unitsShippedByOrder = movementRows.reduce((map: Map<string, number>, row: any) => {

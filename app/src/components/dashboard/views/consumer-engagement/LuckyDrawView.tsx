@@ -671,21 +671,21 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
                                   {new Date(entry.entry_date).toLocaleDateString()}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {entry.is_winner ? (
-                                    <div className="flex items-center gap-2">
-                                      <Badge className="bg-yellow-500">
-                                        <Trophy className="w-3 h-3 mr-1" />
-                                        Winner
-                                      </Badge>
-                                      {entry.prize_claimed && (
-                                        <Badge className="bg-green-500">
-                                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                                          Claimed
-                                        </Badge>
-                                      )}
-                                    </div>
+                                  {entry.prize_claimed ? (
+                                    <Badge className="bg-green-500">
+                                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                                      Claimed
+                                    </Badge>
+                                  ) : entry.is_winner ? (
+                                    <Badge className="bg-yellow-500">
+                                      <Trophy className="w-3 h-3 mr-1" />
+                                      Winner
+                                    </Badge>
                                   ) : (
-                                    <Badge variant="outline">Pending</Badge>
+                                    <Badge className="bg-blue-500 text-white">
+                                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                                      Entered
+                                    </Badge>
                                   )}
                                 </td>
                               </tr>

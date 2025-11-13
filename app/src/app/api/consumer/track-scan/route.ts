@@ -61,13 +61,17 @@ export async function POST(request: NextRequest) {
       .from('qr_codes')
       .select('id')
       .eq('code', baseCode) // Use base code for lookup
-      .single()
+      .maybeSingle()
 
     if (qrError || !qrCodeData) {
-      return NextResponse.json(
-        { success: false, error: 'QR code not found' },
-        { status: 404 }
-      )
+      // QR code doesn't exist in database yet (preview/test code)
+      // Return success without tracking to avoid blocking user experience
+      console.log('⚠️ QR code not found in database (preview mode):', baseCode)
+      return NextResponse.json({
+        success: true,
+        preview: true,
+        message: 'Scan tracked (preview mode - code not in database yet)'
+      })
     }
 
     // Get user info if authenticated (optional)

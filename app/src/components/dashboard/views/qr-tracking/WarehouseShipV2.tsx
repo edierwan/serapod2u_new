@@ -66,9 +66,10 @@ interface PendingUniqueCode {
 
 interface ScanHistory {
   id: string
-  distributor_id: string
+  distributor_id: string | null
   distributor_name: string
   master_code: string
+  product_name?: string  // NEW: Product name for display
   case_number: number
   actual_unit_count: number
   scanned_at: string
@@ -81,6 +82,8 @@ interface ScanHistory {
   pending_unique_codes?: PendingUniqueCode[]
 }
 
+type ScanCodeType = 'master' | 'unique' | 'unknown'
+
 interface ScannedProduct {
   code: string
   product_name: string
@@ -88,6 +91,7 @@ interface ScannedProduct {
   sequence_number: number
   status: 'success' | 'duplicate' | 'error'
   error_message?: string
+  code_type: ScanCodeType
 }
 
 export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
@@ -108,6 +112,11 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   const [batchProcessingSummary, setBatchProcessingSummary] = useState({ total: 0, success: 0, duplicates: 0, errors: 0 })
   const [confirming, setConfirming] = useState(false)
   const [unlinking, setUnlinking] = useState<string | null>(null)
+  const [sessionQuantities, setSessionQuantities] = useState({
+    total_units: 0,
+    total_cases: 0,
+    per_variant: {} as Record<string, { units: number; cases: number }>
+  })
   
   // Manual stock state
   const [selectedVariant, setSelectedVariant] = useState<string>('')
@@ -134,6 +143,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       setShipmentProgress(null)
       setDistributorHistory([])
       setScannedCodes([])
+      setSessionQuantities({ total_units: 0, total_cases: 0, per_variant: {} })
     }
   }, [selectedDistributor])
 
@@ -404,13 +414,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       console.log('✅ Session created:', newSession.id)
       
       setSessionId(newSession.id)
+      setSessionQuantities({ total_units: 0, total_cases: 0, per_variant: {} })
       setShipmentProgress({
         distributor_id: distributorId,
         distributor_name: distributor?.org_name || 'Unknown',
         master_cases_scanned: 0,
         unique_codes_scanned: 0,
         progress_percentage: 0,
-        created_at: newSession.created_at
+        created_at: newSession.created_at || new Date().toISOString()
       })
     } catch (error: any) {
       console.error('Error in createOrLoadSession:', error)
@@ -427,6 +438,12 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     const masterCodes = Array.isArray(session.master_codes_scanned) ? session.master_codes_scanned : []
     const uniqueCodes = Array.isArray(session.unique_codes_scanned) ? session.unique_codes_scanned : []
     
+    setSessionQuantities({
+      total_units: scannedQty.total_units || 0,
+      total_cases: scannedQty.total_cases || 0,
+      per_variant: scannedQty.per_variant || {}
+    })
+
     const distributor = distributors.find(d => d.id === session.distributor_org_id)
     
     setShipmentProgress({
@@ -497,7 +514,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           product_name: product?.product_name || 'Unknown',
           variant_name: variant?.variant_name || 'Unknown',
           sequence_number: index + 1,
-          status: 'success' as const
+          status: 'success' as const,
+          code_type: 'unique'
         }
       })
 
@@ -522,7 +540,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 product_name: master.master_code,
                 variant_name: 'Master Case',
                 sequence_number: scannedProducts.length + 1,
-                status: 'success'
+                status: 'success',
+                code_type: 'master'
               })
             })
         }
@@ -572,6 +591,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         distributor_id: item.distributor_id || '',
         distributor_name: item.distributor_name || 'Unknown',
         master_code: item.master_code,
+        product_name: item.product_name,  // NEW: Product name from API
         case_number: item.case_number,
         actual_unit_count: item.actual_unit_count,
         scanned_at: item.scanned_at,
@@ -648,7 +668,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           product_name: result.product_info?.product_name || result.master_case?.master_code || result.normalized_code,
           variant_name: result.product_info?.variant_name || (result.code_type === 'master' ? 'Master Case' : 'Unit'),
           sequence_number: scannedCodes.length + 1,
-          status: 'success'
+          status: 'success',
+          code_type: result.code_type === 'master' ? 'master' : 'unique'
         }
         
         setScannedCodes(prev => [...prev, productInfo])
@@ -673,6 +694,15 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             progress_percentage: 0,
             created_at: new Date().toISOString()
           })
+
+          if (result.session_update.scanned_quantities) {
+            const quantities = result.session_update.scanned_quantities
+            setSessionQuantities({
+              total_units: quantities.total_units || 0,
+              total_cases: quantities.total_cases || 0,
+              per_variant: quantities.per_variant || {}
+            })
+          }
         }
 
         loadScanHistory()
@@ -798,7 +828,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 product_name: result.product_info?.product_name || result.master_case?.master_code || normalizedCode,
                 variant_name: result.product_info?.variant_name || (result.code_type === 'master' ? 'Master Case' : 'Unit'),
                 sequence_number: sequenceNumber,
-                status: 'success'
+                status: 'success',
+                code_type: result.code_type === 'master' ? 'master' : 'unique'
               })
 
               if (result.session_update) {
@@ -814,6 +845,15 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   progress_percentage: 0,
                   created_at: new Date().toISOString()
                 })
+
+                if (result.session_update.scanned_quantities) {
+                  const quantities = result.session_update.scanned_quantities
+                  setSessionQuantities({
+                    total_units: quantities.total_units || 0,
+                    total_cases: quantities.total_cases || 0,
+                    per_variant: quantities.per_variant || {}
+                  })
+                }
               }
             } else if (result.outcome === 'duplicate') {
               duplicateCount++
@@ -823,7 +863,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 variant_name: 'Duplicate',
                 sequence_number: sequenceNumber,
                 status: 'duplicate',
-                error_message: result.message || 'This code has already been scanned in this session'
+                error_message: result.message || 'This code has already been scanned in this session',
+                code_type: 'unknown'
               })
             } else {
               errorCount++
@@ -833,7 +874,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 variant_name: 'Error',
                 sequence_number: sequenceNumber,
                 status: 'error',
-                error_message: result.message || 'Failed to scan QR code'
+                error_message: result.message || 'Failed to scan QR code',
+                code_type: 'unknown'
               })
             }
 
@@ -1056,8 +1098,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       return
     }
 
-    const totalItems = scannedCodes.filter(c => c.status === 'success').length + manualQty
-    const confirmMsg = `Confirm shipment of ${totalItems} items (${scannedCodes.filter(c => c.status === 'success').length} QR + ${manualQty} manual) to distributor?`
+    const qrUnitsToShip = looseItemsCount
+    const totalUnitsToShip = qrUnitsToShip + manualQty
+    const confirmBreakdownParts = [
+      masterCasesCount > 0 ? `${masterCasesCount} master case${masterCasesCount === 1 ? '' : 's'}` : null,
+      qrUnitsToShip > 0 ? `${qrUnitsToShip} QR unit${qrUnitsToShip === 1 ? '' : 's'}` : null,
+      manualQty > 0 ? `${manualQty} manual unit${manualQty === 1 ? '' : 's'}` : null
+    ].filter(Boolean)
+    const confirmMsg = `Confirm shipment of ${totalUnitsToShip} unit${totalUnitsToShip === 1 ? '' : 's'}${confirmBreakdownParts.length ? ` (${confirmBreakdownParts.join(' + ')})` : ''}?`
     
     if (!confirm(confirmMsg)) {
       return
@@ -1089,7 +1137,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           p_company_id: userProfile.organizations?.id || userProfile.organization_id,
           p_warehouse_id: userProfile.organization_id,
           p_distributor_id: selectedDistributor,
-          p_variant_id: selectedVariant || null,
+          p_variant_id: selectedVariant || '',
           p_manual_qty: manualQty || 0,
           p_qr_codes: null,
           p_user_id: userProfile.id,
@@ -1101,8 +1149,9 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           throw new Error(manualError.message || 'Failed to process manual shipment')
         }
 
-        manualMovementId = manualResult?.manual_movement_id ?? null
-        manualShippedCount = manualResult?.manual_quantity ?? manualQty
+        const manualResultData = manualResult as { manual_movement_id?: string; manual_quantity?: number } | null
+        manualMovementId = manualResultData?.manual_movement_id ?? null
+        manualShippedCount = manualResultData?.manual_quantity ?? manualQty
 
         console.log('✅ Manual stock shipment processed', manualResult)
       }
@@ -1141,14 +1190,16 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       manualMovementId = null
 
       const breakdownParts = [
-        qrShippedCount > 0 ? `${qrShippedCount} QR` : null,
-        masterCasesShipped > 0 ? `${masterCasesShipped} master` : null,
-        manualShippedCount > 0 ? `${manualShippedCount} manual` : null
+        masterCasesShipped > 0 ? `${masterCasesShipped} master case${masterCasesShipped === 1 ? '' : 's'}` : null,
+        qrShippedCount > 0 ? `${qrShippedCount} QR unit${qrShippedCount === 1 ? '' : 's'}` : null,
+        manualShippedCount > 0 ? `${manualShippedCount} manual unit${manualShippedCount === 1 ? '' : 's'}` : null
       ].filter(Boolean)
+
+      const totalUnitsShipped = qrShippedCount + manualShippedCount
 
       toast({
         title: 'Success',
-        description: `Shipment confirmed! ${totalItems} items shipped${breakdownParts.length ? ` (${breakdownParts.join(' + ')})` : ''}.`,
+        description: `Shipment confirmed! ${totalUnitsShipped} unit${totalUnitsShipped === 1 ? '' : 's'} shipped${breakdownParts.length ? ` (${breakdownParts.join(' + ')})` : ''}.`,
       })
 
       // Clear current session completely - force new session creation
@@ -1156,6 +1207,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       setScannedCodes([])
       setManualQty(0)
       setShipmentProgress(null)
+  setSessionQuantities({ total_units: 0, total_cases: 0, per_variant: {} })
 
       if (selectedVariant) {
         await loadManualStockBalance(selectedVariant)
@@ -1235,9 +1287,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   const scanSummary = scannedCodes.reduce((acc, code) => {
     if (code.status === 'success') {
       acc.successCount++
-      if (code.variant_name === 'Master Case') {
+      if (code.code_type === 'master') {
         acc.masterCases++
-      } else {
+        // For master cases, also track variant if we have product info
+        if (code.product_name && code.variant_name && code.variant_name !== 'Master Case') {
+          const variantKey = `${code.product_name} - ${code.variant_name}`
+          acc.variants[variantKey] = (acc.variants[variantKey] || 0) + 1
+        }
+      } else if (code.code_type === 'unique') {
         acc.uniqueCodes++
         // Track variants by full product name
         const variantKey = `${code.product_name} - ${code.variant_name}`
@@ -1258,8 +1315,23 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     variants: {} as Record<string, number>
   })
 
-  const variantCount = Object.keys(scanSummary.variants).length
-  const totalScanned = scannedCodes.length
+  // Count master cases from shipmentProgress (which uses masterCodes.length from session)
+  // This ensures we show "1 master case" when 1 master QR code is scanned, not "50" (the units inside)
+  // Don't use sessionQuantities.total_cases as it might have been calculated incorrectly in old code
+  const masterCasesCount = shipmentProgress?.master_cases_scanned || scanSummary.masterCases || 0
+  
+  // Use session quantities for loose items (individual units)
+  const looseItemsCount = shipmentProgress?.unique_codes_scanned || sessionQuantities.total_units || scanSummary.uniqueCodes
+  
+  // Count variants from session quantities (more accurate for masters) or scan summary
+  let variantCount = 0
+  if (sessionQuantities.per_variant && Object.keys(sessionQuantities.per_variant).length > 0) {
+    variantCount = Object.keys(sessionQuantities.per_variant).length
+  } else {
+    variantCount = Object.keys(scanSummary.variants).length
+  }
+  
+  const totalScanned = looseItemsCount + manualQty
 
   return (
     <>
@@ -1427,10 +1499,10 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 <Truck className="h-5 w-5" />
                 Current Ship Progress: Distributor: {shipmentProgress.distributor_name}
               </CardTitle>
-              {(totalScanned > 0 || manualQty > 0) && (
+              {(masterCasesCount > 0 || looseItemsCount > 0 || manualQty > 0) && (
                 <Button
                   onClick={handleConfirmShipment}
-                  disabled={confirming || (scanSummary.successCount === 0 && manualQty === 0)}
+                  disabled={confirming || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   {confirming ? (
@@ -1450,7 +1522,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-700">Master Cases</span>
                   <span className="text-2xl font-bold text-green-700">
-                    {scanSummary.masterCases}
+                    {masterCasesCount}
                   </span>
                 </div>
                 <p className="text-xs text-gray-600">
@@ -1462,7 +1534,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-700">Loose Items</span>
                   <span className="text-2xl font-bold text-blue-700">
-                    {scanSummary.uniqueCodes}
+                    {looseItemsCount}
                   </span>
                 </div>
                 <p className="text-xs text-gray-600">
@@ -1498,7 +1570,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-700">Total Items</span>
                   <span className="text-2xl font-bold text-indigo-700">
-                    {scanSummary.successCount + manualQty}
+                    {looseItemsCount + manualQty}
                   </span>
                 </div>
                 <p className="text-xs text-gray-600">
@@ -1544,7 +1616,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium text-gray-700">Scanning Progress</span>
-                <span className="text-gray-900 font-bold">{totalScanned} items scanned</span>
+                <span className="text-gray-900 font-bold">{totalScanned} units ready</span>
               </div>
               <p className="text-xs text-gray-600">
                 Status: <strong>warehouse_packed</strong> - Ready to confirm shipment
@@ -1731,7 +1803,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleUnlinkCode(code.code, code.variant_name === 'Master Case' ? 'master' : 'unique')}
+                            onClick={() => handleUnlinkCode(code.code, code.code_type === 'master' ? 'master' : 'unique')}
                             disabled={unlinking === code.code || confirming}
                             className="hover:bg-orange-50 text-orange-600 border-orange-300"
                           >

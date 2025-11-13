@@ -28,6 +28,21 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('🔓 Unlinking product:', product_name, 'from sessions:', session_ids)
+    
+    // Check if product_name looks like a master code
+    const isMasterCodeLike = product_name.startsWith('MASTER-') || product_name.includes('-CASE-')
+    console.log(`📝 Product name pattern: isMasterCodeLike=${isMasterCodeLike}`)
+
+    const normalize = (value: string) => (value || '').trim().toLowerCase()
+    const buildProductLabel = (product?: string | null, variant?: string | null) => {
+      const productName = (product || '').trim()
+      const variantName = (variant || '').trim()
+      if (productName && variantName) {
+        return `${productName} - ${variantName}`
+      }
+      return productName || variantName || ''
+    }
+    const normalizedProductTarget = normalize(product_name)
 
     const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
     const realSessionIds = session_ids.filter((id: string) => uuidRegex.test(id))
@@ -53,12 +68,28 @@ export async function POST(request: NextRequest) {
     }
 
     for (const session of sessions) {
-      const masterCodes = session.master_codes_scanned || []
-      const uniqueCodes = session.unique_codes_scanned || []
+      const masterCodes = Array.isArray(session.master_codes_scanned)
+        ? session.master_codes_scanned.filter((code: string) => !!code)
+        : []
+      const uniqueCodes = Array.isArray(session.unique_codes_scanned)
+        ? session.unique_codes_scanned.filter((code: string) => !!code)
+        : []
       const codesToUnlinkSet = new Set<string>()
-      const mastersToUnlink: { id: string, master_code: string }[] = []
+      const mastersToUnlink: Array<{
+        id: string
+        master_code: string
+        status: string
+        unitCount: number
+        childCodes: string[]
+      }> = []
 
-      // Query QR codes to find unique/unit codes that match this product
+      console.log(`🔄 Processing session ${session.id}:`, {
+        masterCount: masterCodes.length,
+        uniqueCount: uniqueCodes.length,
+        masterCodes: masterCodes.slice(0, 2),
+        uniqueCodes: uniqueCodes.slice(0, 2)
+      })
+
       if (uniqueCodes.length > 0) {
         const { data: qrCodes, error: qrError } = await supabase
           .from('qr_codes')
@@ -80,34 +111,41 @@ export async function POST(request: NextRequest) {
           qrCodes?.forEach(qr => {
             const variant = Array.isArray(qr.product_variants) ? qr.product_variants[0] : qr.product_variants
             const product = variant?.products ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
-            
-            if (product && variant) {
-              const fullProductName = `${product.product_name} - ${variant.variant_name}`
-              if (fullProductName === product_name) {
-                codesToUnlinkSet.add(qr.code)
-              }
+            const label = buildProductLabel(product?.product_name, variant?.variant_name)
+
+            if (label && normalize(label) === normalizedProductTarget) {
+              codesToUnlinkSet.add(qr.code)
             }
           })
         }
       }
 
-      // Handle master cases that match this product
+      let masterRecords: any[] = []
       if (masterCodes.length > 0) {
-        const { data: masterRecords, error: masterLookupError } = await supabase
+        const { data: masterData, error: masterLookupError } = await supabase
           .from('qr_master_codes')
-          .select('id, master_code, status')
+          .select('id, master_code, status, actual_unit_count, expected_unit_count')
           .in('master_code', masterCodes)
 
         if (masterLookupError) {
           console.error('Error querying master codes:', masterLookupError)
-        } else if (masterRecords && masterRecords.length > 0) {
-          const masterIds = masterRecords.map(record => record.id)
+        } else if (masterData) {
+          masterRecords = masterData
+        }
+      }
 
-          const { data: childCodes, error: childError } = await supabase
+      let childCodes: any[] = []
+      if (masterRecords.length > 0) {
+        const masterIds = masterRecords.map(record => record.id)
+        const chunkSize = 100
+        for (let i = 0; i < masterIds.length; i += chunkSize) {
+          const chunk = masterIds.slice(i, i + chunkSize)
+          const { data: chunkCodes, error: childError } = await supabase
             .from('qr_codes')
             .select(`
               code,
               master_code_id,
+              status,
               product_variants (
                 variant_name,
                 products (
@@ -115,40 +153,63 @@ export async function POST(request: NextRequest) {
                 )
               )
             `)
-            .in('master_code_id', masterIds)
-            .eq('status', 'warehouse_packed')
+            .in('master_code_id', chunk)
 
           if (childError) {
             console.error('Error loading child codes for masters:', childError)
-          } else {
-            const childMap = new Map<string, any[]>()
-            childCodes?.forEach(child => {
-              if (!child.master_code_id) return
-              if (!childMap.has(child.master_code_id)) {
-                childMap.set(child.master_code_id, [])
-              }
-              childMap.get(child.master_code_id)!.push(child)
-            })
+            continue
+          }
 
-            masterRecords.forEach(master => {
-              if (master.status !== 'warehouse_packed') return
-              const children = childMap.get(master.id) || []
-              const matchesChild = children.some(child => {
-                const variant = Array.isArray(child.product_variants) ? child.product_variants[0] : child.product_variants
-                const product = variant?.products ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
-                if (!product || !variant) return false
-                const fullProductName = `${product.product_name} - ${variant.variant_name}`
-                return fullProductName === product_name
-              })
-
-              if (matchesChild || master.master_code === product_name) {
-                mastersToUnlink.push({ id: master.id, master_code: master.master_code })
-                children.forEach(child => codesToUnlinkSet.add(child.code))
-              }
-            })
+          if (chunkCodes && chunkCodes.length > 0) {
+            childCodes = childCodes.concat(chunkCodes)
           }
         }
       }
+
+      const childrenByMaster = new Map<string, any[]>()
+      childCodes.forEach(child => {
+        if (!child.master_code_id) return
+        if (!childrenByMaster.has(child.master_code_id)) {
+          childrenByMaster.set(child.master_code_id, [])
+        }
+        childrenByMaster.get(child.master_code_id)!.push(child)
+      })
+
+      masterRecords.forEach(master => {
+        const masterKey = normalize(master.master_code)
+        const children = childrenByMaster.get(master.id) || []
+        const hasMasterMatch = masterKey === normalizedProductTarget
+        const hasProductMatch = children.some(child => {
+          const variant = Array.isArray(child.product_variants) ? child.product_variants[0] : child.product_variants
+          const product = variant?.products ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
+          const label = buildProductLabel(product?.product_name, variant?.variant_name)
+          return label && normalize(label) === normalizedProductTarget
+        })
+
+        if (!hasMasterMatch && !hasProductMatch) {
+          return
+        }
+
+        // Include children with warehouse_packed OR shipped_distributor status
+        // Users should be able to unlink already-shipped items
+        const unlinkableChildren = children.filter(child => 
+          child.status === 'warehouse_packed' || child.status === 'shipped_distributor'
+        )
+        unlinkableChildren.forEach(child => codesToUnlinkSet.add(child.code))
+
+        const fallbackUnitCount =
+          unlinkableChildren.length > 0
+            ? unlinkableChildren.length
+            : (master.actual_unit_count || master.expected_unit_count || children.length || 0)
+
+        mastersToUnlink.push({
+          id: master.id,
+          master_code: master.master_code,
+          status: master.status,
+          unitCount: fallbackUnitCount,
+          childCodes: unlinkableChildren.map(child => child.code)
+        })
+      })
 
       const codesToUnlink = Array.from(codesToUnlinkSet)
 
@@ -159,6 +220,8 @@ export async function POST(request: NextRequest) {
       console.log(`📦 Found ${codesToUnlink.length} unit codes and ${mastersToUnlink.length} master cases to unlink in session ${session.id}`)
 
       if (codesToUnlink.length > 0) {
+        // Update codes - handle both warehouse_packed AND shipped_distributor statuses
+        // Users should be able to unlink codes even after confirmation
         const { error: updateError } = await supabase
           .from('qr_codes')
           .update({
@@ -167,17 +230,22 @@ export async function POST(request: NextRequest) {
             updated_at: new Date().toISOString()
           })
           .in('code', codesToUnlink)
-          .eq('status', 'warehouse_packed')
+          .in('status', ['warehouse_packed', 'shipped_distributor'])  // Support both statuses
 
         if (updateError) {
           console.error('Error updating QR codes:', updateError)
           continue
         }
+        
+        console.log(`✅ Updated ${codesToUnlink.length} unique codes to received_warehouse`)
       }
 
-      if (mastersToUnlink.length > 0) {
-        const masterIds = mastersToUnlink.map(m => m.id)
+      // Update master codes - handle both warehouse_packed AND shipped_distributor
+      const masterIdsToUpdate = mastersToUnlink
+        .filter(master => master.status === 'warehouse_packed' || master.status === 'shipped_distributor')
+        .map(master => master.id)
 
+      if (masterIdsToUpdate.length > 0) {
         const { error: masterError } = await supabase
           .from('qr_master_codes')
           .update({
@@ -185,16 +253,22 @@ export async function POST(request: NextRequest) {
             shipped_to_distributor_id: null,
             updated_at: new Date().toISOString()
           })
-          .in('id', masterIds)
-          .eq('status', 'warehouse_packed')
+          .in('id', masterIdsToUpdate)
+          .in('status', ['warehouse_packed', 'shipped_distributor'])  // Support both statuses
 
         if (masterError) {
           console.warn('Warning updating master codes:', masterError)
+        } else {
+          console.log(`✅ Updated ${masterIdsToUpdate.length} master codes to received_warehouse`)
         }
       }
 
-      // Remove codes from session arrays
-      const updatedMasterCodes = masterCodes.filter((mc: string) => !mastersToUnlink.some(m => m.master_code === mc))
+      const normalizedMasterRemovalSet = new Set(
+        mastersToUnlink.map(master => normalize(master.master_code))
+      )
+      const updatedMasterCodes = masterCodes.filter(
+        (mc: string) => !normalizedMasterRemovalSet.has(normalize(mc))
+      )
       const updatedUniqueCodes = uniqueCodes.filter((uc: string) => !codesToUnlinkSet.has(uc))
 
       const { error: sessionUpdateError } = await supabase
@@ -211,7 +285,15 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      totalUnlinked += codesToUnlink.length
+      const uniqueUnitsRemoved = codesToUnlink.length
+      const masterUnitsFallback = mastersToUnlink.reduce((sum, master) => {
+        if (master.childCodes.length > 0) {
+          return sum
+        }
+        return sum + master.unitCount
+      }, 0)
+
+      totalUnlinked += uniqueUnitsRemoved + masterUnitsFallback
     }
 
     // Handle warehouse_packed entries without sessions (unshipped)
@@ -220,7 +302,7 @@ export async function POST(request: NextRequest) {
 
       const { data: masterRecord, error: masterFetchError } = await supabase
         .from('qr_master_codes')
-        .select('id, master_code, status, warehouse_org_id')
+        .select('id, master_code, status, warehouse_org_id, actual_unit_count, expected_unit_count')
         .eq('id', masterId)
         .single()
 
@@ -237,6 +319,7 @@ export async function POST(request: NextRequest) {
         .from('qr_codes')
         .select(`
           code,
+          status,
           product_variants (
             variant_name,
             products (
@@ -245,63 +328,87 @@ export async function POST(request: NextRequest) {
           )
         `)
         .eq('master_code_id', masterId)
-        .eq('status', 'warehouse_packed')
 
       if (childError) {
         console.error('Error loading child codes for unshipped master:', childError)
         continue
       }
 
-      const codesToUnlink: string[] = []
+      // Include children with warehouse_packed OR shipped_distributor status
+      const unlinkableChildren = (childCodes || []).filter(child => 
+        child.status === 'warehouse_packed' || child.status === 'shipped_distributor'
+      )
 
-      childCodes?.forEach(child => {
+      const matchingUnitCodes: string[] = []
+
+      unlinkableChildren.forEach(child => {
         const variant = Array.isArray(child.product_variants) ? child.product_variants[0] : child.product_variants
         const product = variant?.products ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
-        if (!product || !variant) return
-        const fullProductName = `${product.product_name} - ${variant.variant_name}`
-        if (fullProductName === product_name) {
-          codesToUnlink.push(child.code)
+        const label = buildProductLabel(product?.product_name, variant?.variant_name)
+        if (label && normalize(label) === normalizedProductTarget) {
+          matchingUnitCodes.push(child.code)
         }
       })
 
-      if (codesToUnlink.length === 0 && product_name === masterRecord.master_code) {
-        codesToUnlink.push(...(childCodes?.map(child => child.code) || []))
+      const masterMatches = normalize(masterRecord.master_code) === normalizedProductTarget
+
+      if (matchingUnitCodes.length === 0 && masterMatches) {
+        matchingUnitCodes.push(...unlinkableChildren.map(child => child.code))
       }
 
-      if (codesToUnlink.length === 0) {
+      const fallbackUnitCount =
+        matchingUnitCodes.length > 0
+          ? matchingUnitCodes.length
+          : masterMatches
+            ? (masterRecord.actual_unit_count || masterRecord.expected_unit_count || unlinkableChildren.length || 0)
+            : 0
+
+      if (matchingUnitCodes.length === 0 && !masterMatches) {
         continue
       }
 
-      const { error: unshippedUpdateError } = await supabase
-        .from('qr_codes')
-        .update({
-          status: 'received_warehouse',
-          current_location_org_id: masterRecord.warehouse_org_id,
-          updated_at: new Date().toISOString()
-        })
-        .in('code', codesToUnlink)
-        .eq('status', 'warehouse_packed')
+      if (matchingUnitCodes.length > 0) {
+        // Update unshipped codes - handle both warehouse_packed AND shipped_distributor
+        const { error: unshippedUpdateError } = await supabase
+          .from('qr_codes')
+          .update({
+            status: 'received_warehouse',
+            current_location_org_id: masterRecord.warehouse_org_id,
+            updated_at: new Date().toISOString()
+          })
+          .in('code', matchingUnitCodes)
+          .in('status', ['warehouse_packed', 'shipped_distributor'])  // Support both statuses
 
-      if (unshippedUpdateError) {
-        console.error('Error updating unshipped codes:', unshippedUpdateError)
-        continue
+        if (unshippedUpdateError) {
+          console.error('Error updating unshipped codes:', unshippedUpdateError)
+          continue
+        }
+        
+        console.log(`✅ Updated ${matchingUnitCodes.length} unshipped codes to received_warehouse`)
       }
 
-      const { error: unshippedMasterUpdateError } = await supabase
-        .from('qr_master_codes')
-        .update({
-          status: 'received_warehouse',
-          shipped_to_distributor_id: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', masterId)
-        .eq('status', 'warehouse_packed')
+      // Update master status - allow unlinking from both warehouse_packed AND shipped_distributor
+      const shouldUpdateMasterStatus = (masterRecord.status === 'warehouse_packed' || masterRecord.status === 'shipped_distributor') && (masterMatches || matchingUnitCodes.length > 0)
 
-      if (unshippedMasterUpdateError) {
-        console.warn('Warning updating unshipped master code:', unshippedMasterUpdateError)
+      if (shouldUpdateMasterStatus) {
+        const { error: unshippedMasterUpdateError } = await supabase
+          .from('qr_master_codes')
+          .update({
+            status: 'received_warehouse',
+            shipped_to_distributor_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', masterId)
+          .in('status', ['warehouse_packed', 'shipped_distributor'])  // Support both statuses
+
+        if (unshippedMasterUpdateError) {
+          console.warn('Warning updating unshipped master code:', unshippedMasterUpdateError)
+        } else {
+          console.log(`✅ Updated unshipped master code to received_warehouse`)
+        }
       }
 
-      totalUnlinked += codesToUnlink.length
+      totalUnlinked += fallbackUnitCount
     }
 
     console.log(`✅ Successfully unlinked ${totalUnlinked} codes`)
