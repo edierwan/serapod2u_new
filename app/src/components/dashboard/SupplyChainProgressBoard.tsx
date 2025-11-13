@@ -26,7 +26,7 @@ interface UserProfile {
   }
 }
 
-type StageKey = 'pending' | 'printed' | 'packed' | 'ready_to_ship' | 'received_warehouse' | 'shipped_distributor' | 'opened'
+type StageKey = 'pending' | 'generated' | 'printed' | 'packed' | 'ready_to_ship' | 'received_warehouse' | 'warehouse_packed' | 'shipped_distributor' | 'opened'
 
 interface RawRecord {
   id: string
@@ -67,14 +67,16 @@ interface OverviewData {
 
 type Scope = 'manufacturer' | 'hq'
 
-const STAGE_ORDER: StageKey[] = ['pending', 'printed', 'packed', 'ready_to_ship', 'received_warehouse', 'shipped_distributor', 'opened']
+const STAGE_ORDER: StageKey[] = ['pending', 'generated', 'printed', 'packed', 'ready_to_ship', 'received_warehouse', 'warehouse_packed', 'shipped_distributor', 'opened']
 
 const STAGE_WEIGHTS: Record<StageKey, number> = {
-  pending: 0,
-  printed: 0.15,
+  pending: 0.05, // Small weight to show minimal progress for pending orders
+  generated: 0.05, // Same as pending - master codes generated but not yet printed
+  printed: 0.20, // Increased from 0.15 to show more visible progress
   packed: 0.45,
   ready_to_ship: 0.45, // Same weight as packed - both represent completed manufacturing
   received_warehouse: 0.7,
+  warehouse_packed: 0.75, // Scanned at warehouse and staged for shipment
   shipped_distributor: 0.9,
   opened: 1
 }
@@ -120,10 +122,12 @@ const PIPELINE_META = [
 function createEmptyStageCounts(): Record<StageKey, number> {
   return {
     pending: 0,
+    generated: 0,
     printed: 0,
     packed: 0,
     ready_to_ship: 0,
     received_warehouse: 0,
+    warehouse_packed: 0,
     shipped_distributor: 0,
     opened: 0
   }
@@ -227,19 +231,19 @@ function buildOverview(records: RawRecord[]): {
 
 function combinePipelineCounts(stageCounts: Record<StageKey, number>) {
   // Calculate cumulative counts for display stages
-  // "Printing" includes everything from pending onwards (pending + printed + packed + ready_to_ship + ...)
-  const printingTotal = stageCounts.pending + stageCounts.printed + stageCounts.packed + 
-                       stageCounts.ready_to_ship + stageCounts.received_warehouse + 
-                       stageCounts.shipped_distributor + stageCounts.opened
+  // "Printing" includes everything from pending/generated onwards (pending + generated + printed + packed + ready_to_ship + ...)
+  const printingTotal = stageCounts.pending + stageCounts.generated + stageCounts.printed + 
+                       stageCounts.packed + stageCounts.ready_to_ship + stageCounts.received_warehouse + 
+                       stageCounts.warehouse_packed + stageCounts.shipped_distributor + stageCounts.opened
   
   // "Packed @ Manufacturer" includes packed + ready_to_ship + all downstream
   const packedTotal = stageCounts.packed + stageCounts.ready_to_ship + 
-                     stageCounts.received_warehouse + stageCounts.shipped_distributor + 
-                     stageCounts.opened
+                     stageCounts.received_warehouse + stageCounts.warehouse_packed + 
+                     stageCounts.shipped_distributor + stageCounts.opened
   
-  // "Received @ Warehouse" includes warehouse + all downstream
-  const warehouseTotal = stageCounts.received_warehouse + stageCounts.shipped_distributor + 
-                        stageCounts.opened
+  // "Received @ Warehouse" includes warehouse + warehouse_packed + all downstream
+  const warehouseTotal = stageCounts.received_warehouse + stageCounts.warehouse_packed + 
+                        stageCounts.shipped_distributor + stageCounts.opened
   
   // "Shipped to Distributor" includes distributor + opened
   const distributorTotal = stageCounts.shipped_distributor + stageCounts.opened
@@ -619,18 +623,23 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
                       </p>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-gray-500">Cases {order.totalCases}</span>
-                        <Badge variant={percent > 70 ? 'secondary' : 'destructive'} className="text-[10px]">
+                        <Badge 
+                          variant={percent >= 70 ? 'secondary' : percent >= 30 ? 'default' : 'destructive'} 
+                          className="text-[10px]"
+                        >
                           {percent}%
                         </Badge>
                       </div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200">
                         <div
-                          className={`h-full rounded-full ${percent > 70 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                          className={`h-full rounded-full ${
+                            percent >= 70 ? 'bg-emerald-500' : percent >= 30 ? 'bg-blue-500' : 'bg-red-500'
+                          }`}
                           style={{ width: `${percent}%` }}
                         />
                       </div>
                       <p className="mt-2 text-[10px] text-gray-400">
-                        Printed {order.stageCounts.pending + order.stageCounts.printed + order.stageCounts.packed + order.stageCounts.ready_to_ship + order.stageCounts.received_warehouse + order.stageCounts.shipped_distributor + order.stageCounts.opened}
+                        Pending/Gen: {order.stageCounts.pending + order.stageCounts.generated} • Printed+: {order.stageCounts.printed + order.stageCounts.packed + order.stageCounts.ready_to_ship + order.stageCounts.received_warehouse + order.stageCounts.warehouse_packed + order.stageCounts.shipped_distributor + order.stageCounts.opened}
                       </p>
                     </div>
                   )
@@ -647,17 +656,20 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
                           <p className="text-sm font-semibold text-gray-900">{order.orderNo}</p>
                           <p className="text-xs text-gray-500">{order.totalUnits.toLocaleString()} units • {order.totalCases} master cases</p>
                         </div>
-                        <Badge variant={percent > 70 ? 'secondary' : 'destructive'} className="text-xs">
+                        <Badge 
+                          variant={percent >= 70 ? 'secondary' : percent >= 30 ? 'default' : 'destructive'} 
+                          className="text-xs"
+                        >
                           {percent}% complete
                         </Badge>
                       </div>
                       <Progress value={percent} className="mt-3 h-2" />
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                        <span>Printing: {order.stageCounts.pending + order.stageCounts.printed + order.stageCounts.packed + order.stageCounts.ready_to_ship + order.stageCounts.received_warehouse + order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
-                        <span>Packed: {order.stageCounts.packed + order.stageCounts.ready_to_ship + order.stageCounts.received_warehouse + order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
-                        <span>Warehouse: {order.stageCounts.received_warehouse + order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
-                        <span>Distributor: {order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
-                        <span>Shop: {order.stageCounts.opened}</span>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500 md:grid-cols-5">
+                        <span title="Cases generated but not yet printed">Pending/Gen: {order.stageCounts.pending + order.stageCounts.generated}</span>
+                        <span title="Cases that reached printing stage or beyond">Printed+: {order.stageCounts.printed + order.stageCounts.packed + order.stageCounts.ready_to_ship + order.stageCounts.received_warehouse + order.stageCounts.warehouse_packed + order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
+                        <span title="Cases that reached packed stage or beyond">Packed+: {order.stageCounts.packed + order.stageCounts.ready_to_ship + order.stageCounts.received_warehouse + order.stageCounts.warehouse_packed + order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
+                        <span title="Cases that reached warehouse or beyond">Warehouse+: {order.stageCounts.received_warehouse + order.stageCounts.warehouse_packed + order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
+                        <span title="Cases shipped to distributor or opened">Distributor+: {order.stageCounts.shipped_distributor + order.stageCounts.opened}</span>
                       </div>
                     </div>
                   )

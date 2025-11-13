@@ -11,6 +11,69 @@ import { Upload, X, Loader2, ImageIcon, AlertCircle } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 
+// Image compression utility for avatars
+// Avatars are displayed very small (40-80px), so we aggressively compress to ~10KB
+const compressImage = (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        
+        // Avatar dimensions - small size since avatars are displayed at 40-80px
+        const MAX_WIDTH = 200
+        const MAX_HEIGHT = 200
+        
+        // Calculate new dimensions while maintaining aspect ratio
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width)
+            width = MAX_WIDTH
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width = Math.round((width * MAX_HEIGHT) / height)
+            height = MAX_HEIGHT
+          }
+        }
+        
+        canvas.width = width
+        canvas.height = height
+        
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+        
+        // Convert to JPEG with aggressive compression (quality 0.6 = 60%)
+        // This targets ~10KB file size for avatars
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              // Create a new File object with compressed blob
+              const compressedFile = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              })
+              console.log(`🖼️ Avatar compressed: ${(file.size / 1024).toFixed(2)}KB → ${(compressedFile.size / 1024).toFixed(2)}KB`)
+              resolve(compressedFile)
+            } else {
+              reject(new Error('Canvas to Blob conversion failed'))
+            }
+          },
+          'image/jpeg',
+          0.6 // Lower quality = smaller file size, perfect for small avatars
+        )
+      }
+      img.onerror = () => reject(new Error('Image loading failed'))
+    }
+    reader.onerror = () => reject(new Error('File reading failed'))
+  })
+}
+
 interface UserDialogNewProps {
   user: User | null
   roles: Role[]
@@ -150,7 +213,7 @@ export default function UserDialogNew({
       .slice(0, 2)
   }
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -168,12 +231,25 @@ export default function UserDialogNew({
       return
     }
 
+    // Initial file size check
     if (file.size > 5 * 1024 * 1024) {
       setErrors({ avatar: 'Image must be less than 5MB' })
       return
     }
 
-    setAvatarFile(file)
+    // Always compress avatar images to optimize size (target ~10KB)
+    // Avatars are displayed small (40-80px), so we don't need high resolution
+    let finalFile = file
+    try {
+      finalFile = await compressImage(file)
+      console.log(`✅ Avatar optimized for storage (target: ~10KB)`)
+    } catch (error) {
+      console.error('Image compression failed:', error)
+      setErrors({ avatar: 'Failed to process image. Please try a smaller file.' })
+      return
+    }
+
+    setAvatarFile(finalFile)
     
     // Clear errors
     if (errors.avatar) {
@@ -361,7 +437,10 @@ export default function UserDialogNew({
                   )}
                   
                   <p className="text-xs text-gray-500">
-                    JPG, PNG, GIF, or WebP (max 5MB). AVIF not supported. Recommended: 400x400px
+                    JPG, PNG, GIF, or WebP (max 5MB). AVIF not supported. Recommended: 400×400px
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    ✨ Images will be automatically compressed to ~10KB (200×200px JPEG) for optimal performance
                   </p>
                   
                   {errors.avatar && (

@@ -550,8 +550,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       attributes: variant.attributes,
       manufacturer_sku: variant.manufacturer_sku,
       qty: unitsPerCase,
-      unit_price: variant.suggested_retail_price,
-      line_total: unitsPerCase * variant.suggested_retail_price
+      unit_price: variant.base_cost,
+      line_total: unitsPerCase * variant.base_cost
     }
 
     setOrderItems([...orderItems, newItem])
@@ -1066,7 +1066,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         const attrText = variant.attributes?.strength || variant.attributes?.nicotine || ''
                         return (
                           <option key={variant.id} value={variant.id}>
-                            {variant.product_name} - {variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {formatCurrency(variant.suggested_retail_price)}
+                            {variant.product_name} - {variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {formatCurrency(variant.base_cost)}
                           </option>
                         )
                       })}

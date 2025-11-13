@@ -52,9 +52,9 @@ export async function createUserWithAuth(userData: {
         p_user_id: authUser.user.id,
         p_email: userData.email,
         p_role_code: userData.role_code,
-        p_organization_id: userData.organization_id || null,
-        p_full_name: userData.full_name || null,
-        p_phone: userData.phone || null
+        p_organization_id: userData.organization_id || undefined,
+        p_full_name: userData.full_name || undefined,
+        p_phone: userData.phone || undefined
       })
 
     if (syncError) {
@@ -162,8 +162,24 @@ export async function deleteUserWithAuth(userId: string) {
       }
     }
 
-    // Step 1: Delete user from public.users table (will cascade to related records)
     const supabase = await createClient()
+
+    // Step 1: Delete audit_logs first to avoid foreign key constraint
+    // Use admin client to bypass RLS policies
+    const { error: auditError } = await adminClient
+      .from('audit_logs')
+      .delete()
+      .eq('user_id', userId)
+
+    if (auditError) {
+      console.error('Failed to delete audit logs:', auditError)
+      return {
+        success: false,
+        error: `Failed to delete audit logs: ${auditError.message}`
+      }
+    }
+
+    // Step 2: Delete user from public.users table (will cascade to other related records)
     const { error: dbError } = await supabase
       .from('users')
       .delete()

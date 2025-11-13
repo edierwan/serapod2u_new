@@ -193,7 +193,13 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 upsert: true 
               })
             
-            if (uploadError) throw uploadError
+            if (uploadError) {
+              console.error('Avatar upload error:', uploadError)
+              const errorMsg = uploadError.message?.includes('maximum allowed size') 
+                ? 'Avatar upload failed. Image should auto-compress to ~10KB. Please try a different image.' 
+                : `Avatar upload failed: ${uploadError.message}`
+              throw new Error(errorMsg)
+            }
             
             // Get public URL without cache-busting params (will be added in display)
             const { data: urlData } = supabase.storage
@@ -201,9 +207,13 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
               .getPublicUrl(filePath)
             
             updateData.avatar_url = urlData.publicUrl
-          } catch (avatarError) {
+          } catch (avatarError: any) {
             console.error('Avatar upload error:', avatarError)
-            toast({ title: 'Warning', description: 'Avatar upload failed, but user data saved.', variant: 'default' })
+            toast({ 
+              title: 'Warning', 
+              description: avatarError.message || 'Avatar upload failed, but user data saved.', 
+              variant: 'default' 
+            })
           }
         }
         
@@ -263,9 +273,22 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
               }
             } else {
               console.error('Avatar upload error:', uploadError)
+              const errorMsg = uploadError.message?.includes('maximum allowed size') 
+                ? 'Avatar upload failed. Image should auto-compress to ~10KB. Please try a different image.' 
+                : `Avatar upload failed: ${uploadError.message}`
+              toast({
+                title: 'Avatar Upload Warning',
+                description: errorMsg,
+                variant: 'default'
+              })
             }
-          } catch (avatarError) {
+          } catch (avatarError: any) {
             console.error('Avatar upload error:', avatarError)
+            toast({
+              title: 'Avatar Upload Warning',
+              description: avatarError.message || 'Failed to upload avatar',
+              variant: 'default'
+            })
           }
         }
         
