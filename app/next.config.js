@@ -8,7 +8,13 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
 
-  // Fix workspace root detection warning
+  // Set output file tracing root for both local dev and Vercel deployment
+  // This tells Next.js where the project root is for proper dependency tracing
+  // Works in both environments: __dirname points to /app locally and on Vercel
+  outputFileTracingRoot: __dirname,
+
+  // Turbopack configuration - must match outputFileTracingRoot
+  // This prevents the warning: "Both outputFileTracingRoot and turbopack.root are set"
   turbopack: {
     root: __dirname,
   },
@@ -31,6 +37,15 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
+
+  // Exclude problematic packages from being bundled as external modules
+  // This prevents Turbopack warnings about fstream/rimraf (legacy dependencies from exceljs)
+  serverExternalPackages: [
+    'archiver',
+    'exceljs',
+    'pdfkit',
+    'googleapis',
+  ],
 
   experimental: {
     optimizeCss: true,
