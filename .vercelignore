@@ -27,9 +27,9 @@ simulate-*.js
 *.txt
 !robots.txt
 
-# Migration files in root
-migrations/
-supabase/
+# Migration files in root (exclude root-level folders, not app/src/lib/supabase)
+/migrations/
+/supabase/
 
 # Test files
 app/test-*.js
