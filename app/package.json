@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "modec:worker": "tsx ../scripts/modec-worker.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.2",

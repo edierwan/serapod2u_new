@@ -21,8 +21,21 @@ export function parseQRCode(qrCode: string): {
   type?: 'PRODUCT' | 'MASTER'
 } {
   try {
-    // Remove any whitespace
-    const cleanCode = qrCode.trim()
+    // Remove any whitespace and extract code from URL if present
+    let cleanCode = qrCode.trim()
+    
+    // Handle URL format: http://www.serapod2u.com/track/master/MASTER-ORD-HM-1125-04-CASE-061-3a8af03b9d6b
+    if (cleanCode.includes('/track/master/')) {
+      const urlParts = cleanCode.split('/track/master/')
+      if (urlParts.length > 1) {
+        cleanCode = urlParts[1] // Extract: MASTER-ORD-HM-1125-04-CASE-061-3a8af03b9d6b
+      }
+    } else if (cleanCode.includes('/track/product/')) {
+      const urlParts = cleanCode.split('/track/product/')
+      if (urlParts.length > 1) {
+        cleanCode = urlParts[1] // Extract product code
+      }
+    }
 
     // Check if it's a product QR code
     if (cleanCode.startsWith('PROD-')) {
@@ -64,8 +77,9 @@ export function parseQRCode(qrCode: string): {
 
     // Check if it's a master QR code
     if (cleanCode.startsWith('MASTER-')) {
-      // Format: MASTER-{order_no}-CASE-{case_number}
+      // Format: MASTER-{order_no}-CASE-{case_number}[-{unique_hash}]
       // Example: MASTER-ORD-HM-1025-01-CASE-001
+      // Example with hash: MASTER-ORD-HM-1125-04-CASE-061-3a8af03b9d6b
       const parts = cleanCode.split('-')
       
       const caseIndex = parts.findIndex(p => p === 'CASE')
@@ -73,15 +87,18 @@ export function parseQRCode(qrCode: string): {
         return { isValid: false }
       }
 
-      // Extract order number
+      // Extract order number (between ORD and CASE)
       const orderParts = parts.slice(2, caseIndex) // Skip "MASTER" and "ORD"
       const orderNo = `ORD-${orderParts.join('-')}`
+      
+      // Case number is right after CASE keyword (ignore any hash suffix after it)
+      const caseNumber = parts[caseIndex + 1]
       
       return {
         isValid: true,
         type: 'MASTER',
         orderNo,
-        sequence: parts[caseIndex + 1] // case number
+        sequence: caseNumber // case number without hash
       }
     }
 
@@ -95,12 +112,32 @@ export function parseQRCode(qrCode: string): {
 /**
  * Extracts order number from QR code string
  * 
- * @param qrCode - The QR code string
+ * @param qrCode - The QR code string (can be URL or raw code)
  * @returns Order number or null if not found
  */
 export function extractOrderNumber(qrCode: string): string | null {
-  const parsed = parseQRCode(qrCode)
-  return parsed.isValid ? parsed.orderNo || null : null
+  try {
+    // Handle URL format: http://www.serapod2u.com/track/master/MASTER-ORD-HM-1125-04-CASE-061-3a8af03b9d6b
+    let cleanCode = qrCode.trim()
+    
+    if (cleanCode.includes('/track/master/')) {
+      const urlParts = cleanCode.split('/track/master/')
+      if (urlParts.length > 1) {
+        cleanCode = urlParts[1] // Extract: MASTER-ORD-HM-1125-04-CASE-061-3a8af03b9d6b
+      }
+    } else if (cleanCode.includes('/track/product/')) {
+      const urlParts = cleanCode.split('/track/product/')
+      if (urlParts.length > 1) {
+        cleanCode = urlParts[1] // Extract product code
+      }
+    }
+    
+    const parsed = parseQRCode(cleanCode)
+    return parsed.isValid ? parsed.orderNo || null : null
+  } catch (error) {
+    console.error('Error extracting order number:', error)
+    return null
+  }
 }
 
 /**

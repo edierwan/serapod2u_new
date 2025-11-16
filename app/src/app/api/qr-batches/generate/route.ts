@@ -12,7 +12,7 @@ export const maxDuration = 300 // 5 minutes for large batches (Vercel Pro limit)
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
-  
+
   try {
     const { order_id } = await request.json()
 
@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
     console.log('⏳ Generating QR batch...')
     const qrBatch = generateQRBatch({
       orderNo: order.order_no,
+      manufacturerCode: order.seller_org.org_code,  // Pass manufacturer code for variant_key
       orderItems,
       bufferPercent: order.qr_buffer_percent || 10,
       unitsPerCase: order.units_per_case || 100
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
     console.log('⏳ Generating Excel file (this may take a while for large batches)...')
     const excelFilePath = await generateQRExcel({
       orderNo: order.order_no,
-      orderDate: new Date(order.created_at).toLocaleDateString(),
+      orderDate: new Date(order.created_at || new Date().toISOString()).toLocaleDateString(),
       companyName: order.buyer_org.org_name,
       manufacturerName: order.seller_org.org_name,
       masterCodes: qrBatch.masterCodes,
@@ -133,11 +134,11 @@ export async function POST(request: NextRequest) {
 
     // 5. Upload Excel to Supabase Storage
     const storagePath = `${order.seller_org.id}/${order_id}/${excelFilename}`
-    
+
     // Read file as buffer for storage upload
     const fs = await import('fs/promises')
     const excelBuffer = await fs.readFile(excelFilePath)
-    
+
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('qr-codes')
       .upload(storagePath, excelBuffer, {
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
       })
 
     // Cleanup temp Excel file after upload
-    await fs.unlink(excelFilePath).catch(() => {})
+    await fs.unlink(excelFilePath).catch(() => { })
 
     if (uploadError) {
       console.error('❌ Storage upload error:', uploadError)
@@ -218,9 +219,10 @@ export async function POST(request: NextRequest) {
       warehouse_received_at: null
     }))
 
-    const { error: masterError } = await supabase
+    const { data: insertedMasters, error: masterError } = await supabase
       .from('qr_master_codes')
       .insert(masterCodesData)
+      .select('id, case_number, master_code, expected_unit_count')
 
     if (masterError) {
       console.error('❌ Master codes insert error:', masterError)
@@ -229,19 +231,34 @@ export async function POST(request: NextRequest) {
       console.log(`✅ Inserted ${masterCodesData.length} master codes`)
     }
 
+    // Create a map of case_number to master_code_id for linking
+    const caseToMasterIdMap = new Map<number, string>()
+    if (insertedMasters) {
+      insertedMasters.forEach(master => {
+        caseToMasterIdMap.set(master.case_number, master.id)
+      })
+      console.log(`✅ Created case to master ID mapping for ${caseToMasterIdMap.size} cases`)
+    }
+
     // 8. Insert Individual QR codes (in batches to avoid timeout)
     // Increased batch size for better performance with large datasets
     const BATCH_SIZE = 1000
     console.log(`⏳ Inserting ${qrBatch.individualCodes.length} QR codes in batches of ${BATCH_SIZE}...`)
-    
+
+    // Add master_code_id to individual codes for non-buffer codes
+    const codesWithMasterIds = qrBatch.individualCodes.map(code => ({
+      ...code,
+      master_code_id: !code.is_buffer && code.case_number ? caseToMasterIdMap.get(code.case_number) : null
+    }))
+
     const totalInserted = await insertQRCodesInBatches(
       supabase,
       batch.id,
       order.id,
       order.company_id || order.seller_org.id,
       order.seller_org_id,
-      order.warehouse_org_id,
-      qrBatch.individualCodes,
+      order.warehouse_org_id || order.seller_org_id, // Fallback to seller if warehouse not set
+      codesWithMasterIds,
       BATCH_SIZE
     )
 
@@ -250,7 +267,7 @@ export async function POST(request: NextRequest) {
     // 9. Return success response
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2)
     console.log(`✅ QR Batch generation complete in ${totalTime}s`)
-    
+
     return NextResponse.json({
       success: true,
       batch_id: batch.id,
@@ -264,15 +281,15 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('❌ QR Batch Generation Error:', error)
-    
+
     // More detailed error logging
     if (error.message?.includes('out of memory')) {
       console.error('💥 OUT OF MEMORY - Dataset too large for current configuration')
     }
-    
+
     return NextResponse.json(
-      { 
-        error: 'Failed to generate QR batch', 
+      {
+        error: 'Failed to generate QR batch',
         details: error.message,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },
@@ -301,7 +318,7 @@ async function insertQRCodesInBatches(
   for (let i = 0; i < codes.length; i += batchSize) {
     const chunk = codes.slice(i, i + batchSize)
     const currentBatch = Math.floor(i / batchSize) + 1
-    
+
     const inserts = chunk.map(code => ({
       batch_id: batchId,
       company_id: companyId,
@@ -309,10 +326,14 @@ async function insertQRCodesInBatches(
       product_id: code.product_id,
       variant_id: code.variant_id,
       code: code.code,
-      qr_hash: code.hash, // NEW: Store security hash
+      qr_hash: code.hash, // Store security hash
       sequence_number: code.sequence_number,
-      status: 'generated', // Changed from 'pending' to 'generated' to match master codes
-      is_active: true
+      case_number: code.case_number,  // NEW: Case assignment
+      variant_key: code.variant_key,  // NEW: Variant grouping key
+      is_buffer: code.is_buffer,  // NEW: Buffer flag
+      status: code.is_buffer ? 'buffer_available' : 'generated',  // Start as 'generated', change to 'printed' after Excel download
+      is_active: true,
+      master_code_id: code.master_code_id || null  // Link to master during generation
     }))
 
     const { error } = await supabase
@@ -325,7 +346,7 @@ async function insertQRCodesInBatches(
     }
 
     totalInserted += inserts.length
-    
+
     // Log progress every 10 batches or 10,000 codes
     if (currentBatch % 10 === 0 || totalInserted >= codes.length) {
       const progress = ((totalInserted / codes.length) * 100).toFixed(1)

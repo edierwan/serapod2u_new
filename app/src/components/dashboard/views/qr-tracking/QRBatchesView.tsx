@@ -215,15 +215,36 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         return
       }
 
-      // Download from Supabase Storage
-      const response = await fetch(batch.excel_file_url)
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `QR_Batch_${batch.orders?.order_no || batch.id.slice(0, 8)}.xlsx`
-      a.click()
-      window.URL.revokeObjectURL(url)
+      const response = await fetch('/api/qr-batches/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batch.id })
+      })
+
+      const payload = await response.json()
+
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || 'Failed to prepare download link')
+      }
+
+      // Use direct window.open for better Vercel/production compatibility
+      // Signed URLs from Supabase include Content-Disposition header for download
+      const downloadUrl = payload.url as string
+      
+      // Open in new window/tab - browser will handle download automatically
+      // This works better on Vercel than anchor.click()
+      const downloadWindow = window.open(downloadUrl, '_blank')
+      
+      // Fallback: if popup blocked, try anchor method
+      if (!downloadWindow) {
+        const anchor = document.createElement('a')
+        anchor.href = downloadUrl
+        anchor.target = '_blank'
+        anchor.rel = 'noopener noreferrer'
+        document.body.appendChild(anchor)
+        anchor.click()
+        document.body.removeChild(anchor)
+      }
 
       // Update batch status to 'printing' after download
       // AND update all QR codes (master + unique) to 'printed' status

@@ -342,13 +342,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           }
           
           console.log('========================')
-          setOrders(ordersWithItems)
+          setOrders(ordersWithItems as any)
           return
         }
       }
       
       console.log('========================')
-      setOrders(ordersData || [])
+      setOrders((ordersData || []) as any)
     } catch (error) {
       console.error('Error loading orders:', error)
     } finally {
@@ -430,6 +430,18 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(amount).replace('MYR', 'RM')
+  }
+
+  // Helper function to shorten organization name
+  const shortenOrgName = (orgName: string): string => {
+    if (!orgName) return 'N/A'
+    // Remove common suffixes to shorten the name
+    return orgName
+      .replace(/\s+(Technologies|Technology|Tech)\s+(Co\.|Company)\s+(Limited|Ltd|Sdn Bhd)/gi, '')
+      .replace(/\s+(Co\.|Company)\s+(Limited|Ltd|Sdn Bhd)/gi, '')
+      .replace(/\s+(Limited|Ltd|Sdn Bhd)/gi, '')
+      .replace(/\s+(Corporation|Corp)/gi, '')
+      .trim()
   }
 
   if (loading && orders.length === 0) {
@@ -668,8 +680,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <Store className="w-4 h-4 text-green-500 flex-shrink-0" />
                           <div>
                             <div className="text-xs text-gray-500">Seller</div>
-                            <div className="text-sm font-medium text-gray-900 truncate">
-                              {order.seller_org?.org_name || 'N/A'}
+                            <div className="text-sm font-medium text-gray-900 truncate" title={order.seller_org?.org_name || 'N/A'}>
+                              {shortenOrgName(order.seller_org?.org_name || 'N/A')}
                             </div>
                           </div>
                         </div>
@@ -807,8 +819,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Store className="w-4 h-4 text-green-500 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <div className="text-xs text-gray-500">Seller</div>
-                          <div className="text-sm font-medium text-gray-900 truncate">
-                            {order.seller_org?.org_name || 'Unknown'}
+                          <div className="text-sm font-medium text-gray-900 truncate" title={order.seller_org?.org_name || 'Unknown'}>
+                            {shortenOrgName(order.seller_org?.org_name || 'Unknown')}
                           </div>
                         </div>
                       </div>

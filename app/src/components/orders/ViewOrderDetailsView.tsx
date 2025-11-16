@@ -160,7 +160,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       // Get QR codes stats
       const { data: codes, error } = await supabase
         .from('qr_codes')
-        .select('id, status, is_redemption_completed')
+        .select('id, status')
         .eq('batch_id', batch.id)
       
       if (error) {
@@ -170,7 +170,13 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       
       const validLinks = codes?.length || 0
       const scanned = codes?.filter(c => c.status !== 'pending' && c.status !== 'printed').length || 0
-      const redemptions = codes?.filter(c => c.is_redemption_completed).length || 0
+      
+      // Get redemptions count from consumer_qr_scans where reward was redeemed
+      const { count: redemptionCount } = await supabase
+        .from('consumer_qr_scans')
+        .select('id', { count: 'exact', head: true })
+        .in('qr_code_id', codes?.map(c => c.id) || [])
+        .not('redeemed_at', 'is', null)
       
       // Get lucky draw entries
       const { count: luckyDrawCount } = await supabase
@@ -181,7 +187,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       setQrStats({
         validLinks,
         scanned,
-        redemptions,
+        redemptions: redemptionCount || 0,
         luckyDraws: luckyDrawCount || 0
       })
     } catch (error: any) {

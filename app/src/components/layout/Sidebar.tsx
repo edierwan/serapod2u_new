@@ -242,8 +242,8 @@ const navigationItems: MenuItem[] = [
     icon: Package,
     description: 'Stock management',
     access: {
-      // Hide Inventory menu for SHOP organizations
-      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
+      // Hide Inventory menu for SHOP and MANUFACTURER organizations
+      allowedOrgTypes: ['HQ', 'DIST', 'WH'],
       maxRoleLevel: 60
     },
     submenu: [
@@ -252,7 +252,7 @@ const navigationItems: MenuItem[] = [
         label: 'View Inventory',
         icon: Package,
         access: {
-          allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
+          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
           maxRoleLevel: 60
         }
       },
@@ -288,6 +288,7 @@ const navigationItems: MenuItem[] = [
         label: 'Movement Reports',
         icon: ListTree,
         access: {
+          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
           maxRoleLevel: 50
         }
       },

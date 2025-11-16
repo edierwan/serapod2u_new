@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
-  ArrowLeft, 
-  Package, 
-  Clock, 
-  CheckCircle2, 
-  FileText, 
-  CreditCard, 
-  Truck, 
+import {
+  ArrowLeft,
+  Package,
+  Clock,
+  CheckCircle2,
+  FileText,
+  CreditCard,
+  Truck,
   Building2,
   Calendar,
   DollarSign
@@ -95,9 +95,9 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
 
   useEffect(() => {
     loadOrderDetails()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -131,18 +131,18 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       sessionStorage.removeItem('selectedDocumentType')
       sessionStorage.removeItem('selectedDocumentTab')
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderDetails])
 
   const loadOrderDetails = async () => {
     try {
       setLoading(true)
-      
+
       // Get order ID from sessionStorage
       const trackingOrderId = sessionStorage.getItem('trackingOrderId')
-      
+
       if (!trackingOrderId) {
         toast({
           title: "Error",
@@ -253,18 +253,22 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       }
 
       const poDoc = documents?.find(d => d.doc_type === 'PO')
-      const invoiceDocs = documents?.filter(d => d.doc_type === 'INVOICE').sort((a, b) => 
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      )
+      const invoiceDocs = documents?.filter(d => d.doc_type === 'INVOICE').sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+        return dateA - dateB
+      })
       const depositInvoiceDoc = invoiceDocs?.[0] // First invoice = deposit
       const finalInvoiceDoc = invoiceDocs?.[1] // Second invoice = final (if exists)
-      
-      const paymentDocs = documents?.filter(d => d.doc_type === 'PAYMENT').sort((a, b) => 
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      )
+
+      const paymentDocs = documents?.filter(d => d.doc_type === 'PAYMENT').sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+        return dateA - dateB
+      })
       const depositPaymentDoc = paymentDocs?.[0] // First payment = deposit
       const balancePaymentDoc = paymentDocs?.[1] // Second payment = balance (created from request approval)
-      
+
       const paymentRequestDoc = documents?.find(d => d.doc_type === 'PAYMENT_REQUEST')
       const receiptDoc = documents?.find(d => d.doc_type === 'RECEIPT')
 
@@ -287,33 +291,33 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       const docDates = {
         po_date: poDoc?.created_at || null,
         po_created_by: poDoc ? await getUserName(poDoc.created_by) : null,
-        
+
         // Deposit invoice (first invoice)
         deposit_invoice_date: depositInvoiceDoc?.acknowledged_at || depositInvoiceDoc?.created_at || null,
         deposit_invoice_created_by: depositInvoiceDoc ? await getUserName(depositInvoiceDoc.acknowledged_by || depositInvoiceDoc.created_by) : null,
-        
+
         // Deposit payment (first payment)
         deposit_payment_date: depositPaymentDoc?.acknowledged_at || null,
         deposit_payment_created_by: depositPaymentDoc ? await getUserName(depositPaymentDoc.acknowledged_by) : null,
-        
+
         // Legacy invoice (for backwards compatibility)
         invoice_date: finalInvoiceDoc?.acknowledged_at || finalInvoiceDoc?.created_at || depositInvoiceDoc?.acknowledged_at || depositInvoiceDoc?.created_at || null,
         invoice_created_by: finalInvoiceDoc ? await getUserName(finalInvoiceDoc.acknowledged_by || finalInvoiceDoc.created_by) : depositInvoiceDoc ? await getUserName(depositInvoiceDoc.acknowledged_by || depositInvoiceDoc.created_by) : null,
-        
+
         // Legacy payment (for backwards compatibility)
         payment_date: balancePaymentDoc?.acknowledged_at || depositPaymentDoc?.acknowledged_at || null,
         payment_created_by: balancePaymentDoc ? await getUserName(balancePaymentDoc.acknowledged_by) : depositPaymentDoc ? await getUserName(depositPaymentDoc.acknowledged_by) : null,
-        
+
         // Receipt
         receipt_date: receiptDoc?.created_at || null,
         receipt_created_by: receiptDoc ? await getUserName(receiptDoc.created_by) : null,
-        
+
         // Balance Payment Request (NEW)
         balance_payment_request_id: paymentRequestDoc?.id || null,
         balance_payment_request_date: paymentRequestDoc?.created_at || null,
         balance_payment_request_status: paymentRequestDoc?.status || null,
-  balance_payment_request_file_url: balanceRequestFileUrl,
-        
+        balance_payment_request_file_url: balanceRequestFileUrl,
+
         // Balance Payment (from request approval)
         balance_payment_date: balancePaymentDoc?.acknowledged_at || null,
         balance_payment_created_by: balancePaymentDoc ? await getUserName(balancePaymentDoc.acknowledged_by) : null,
@@ -353,7 +357,7 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
         seller_org_name: sellerOrg?.org_name || 'Unknown',
         total_items: totalItems,
         total_amount: totalAmount,
-        created_at: order.created_at,
+        created_at: order.created_at!,
         approved_at: order.approved_at,
         created_by_name: createdByUser?.full_name || 'Unknown',
         approved_by_name: approvedByUser?.full_name || null,
@@ -409,11 +413,11 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
 
   const formatTimeAgo = (dateString: string | null) => {
     if (!dateString) return ''
-    
+
     const now = new Date()
     const date = new Date(dateString)
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
-    
+
     if (diffInSeconds < 60) return 'just now'
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
     if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
@@ -442,7 +446,7 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
         }
       })
 
-    const data = await response.json()
+      const data = await response.json()
       if (!response.ok) {
         throw new Error(data.error || 'Failed to approve payment request')
       }
@@ -468,9 +472,9 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
   }
 
   const isHQAdmin = () => {
-    return userProfile?.role_code === 'HQ_ADMIN' || 
-           userProfile?.role_code === 'POWER_USER' ||
-           userProfile?.organizations?.org_type_code === 'HQ'
+    return userProfile?.role_code === 'HQ_ADMIN' ||
+      userProfile?.role_code === 'POWER_USER' ||
+      userProfile?.organizations?.org_type_code === 'HQ'
   }
 
   // Timeline steps based on order workflow
@@ -635,9 +639,9 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
         <div className="text-center">
           <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-600">Order not found</p>
-          <Button 
-            onClick={() => onViewChange('orders')} 
-            variant="outline" 
+          <Button
+            onClick={() => onViewChange('orders')}
+            variant="outline"
             className="mt-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -790,159 +794,6 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
               <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{orderDetails.notes}</p>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Order Timeline */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Order Timeline</CardTitle>
-            <div className="text-sm text-gray-500">
-              {completedSteps} of {timelineSteps.length} steps completed
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Progress Bar */}
-          <div className="mb-8">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${(completedSteps / timelineSteps.length) * 100}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Timeline Steps */}
-          <div className="space-y-4">
-            {timelineSteps.map((step, index) => {
-              const Icon = step.icon
-              const isLast = index === timelineSteps.length - 1
-              
-              return (
-                <div key={index} className="relative">
-                  {/* Connecting Line */}
-                  {!isLast && (
-                    <div 
-                      className={`absolute left-5 top-12 w-0.5 h-full ${
-                        step.completed && timelineSteps[index + 1]?.completed
-                          ? 'bg-gradient-to-b from-green-300 to-green-300'
-                          : 'bg-gray-200'
-                      }`}
-                    />
-                  )}
-                  
-                  {/* Timeline Item */}
-                  <div className={`relative flex items-start gap-4 p-4 rounded-lg border-2 transition-all ${
-                    step.completed 
-                      ? `${step.bgColor} ${step.borderColor}` 
-                      : 'bg-gray-50 border-gray-200'
-                  }`}>
-                    {/* Icon */}
-                    <div className={`relative z-10 flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-sm ${
-                      step.completed 
-                        ? step.iconColor
-                        : 'bg-gray-200 text-gray-400'
-                    }`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className={`font-semibold ${
-                              step.completed ? 'text-gray-900' : 'text-gray-400'
-                            }`}>
-                              {step.label}
-                            </h4>
-                            {step.completed && step.date && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600">
-                                <Clock className="w-3 h-3 mr-1" />
-                                {formatTimeAgo(step.date)}
-                              </span>
-                            )}
-                            {step.completed && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                Completed
-                              </span>
-                            )}
-                          </div>
-                          
-                          <p className={`text-sm mb-2 ${
-                            step.completed ? 'text-gray-600' : 'text-gray-400'
-                          }`}>
-                            {step.description}
-                          </p>
-                          
-                          {/* Additional Info */}
-                          <div className="flex flex-wrap items-center gap-4 text-sm">
-                            {step.actionBy && step.completed && (
-                              <div className="flex items-center gap-1.5 text-gray-600">
-                                <span className="text-gray-500">by</span>
-                                <span className="font-medium">{step.actionBy}</span>
-                              </div>
-                            )}
-                            
-                            {step.date && step.completed && (
-                              <div className="flex items-center gap-1.5 text-gray-500">
-                                <Calendar className="w-3.5 h-3.5" />
-                                <span>{formatDate(step.date)}</span>
-                              </div>
-                            )}
-                            
-                            {!step.completed && (
-                              <span className="inline-flex items-center text-gray-400">
-                                <Clock className="w-3.5 h-3.5 mr-1" />
-                                Pending
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Approve Button for Balance Payment Request */}
-                          {step.label === 'Balance Payment Request Created' && 
-                           step.status === 'pending' && 
-                           step.requestId && 
-                           isHQAdmin() && (
-                            <div className="mt-3">
-                              <Button
-                                onClick={() => handleApproveBalancePaymentRequest(step.requestId!)}
-                                disabled={approvingPaymentRequest || !step.supportingDocUrl}
-                                size="sm"
-                                className="bg-orange-600 hover:bg-orange-700 text-white"
-                              >
-                                {approvingPaymentRequest ? (
-                                  <>
-                                    <Clock className="w-4 h-4 mr-2 animate-spin" />
-                                    Approving...
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                                    Approve Balance Payment
-                                  </>
-                                )}
-                              </Button>
-                              <p className="text-xs text-gray-500 mt-1">
-                                This will create a new payment document for the balance 50%
-                              </p>
-                              {!step.supportingDocUrl && (
-                                <p className="text-xs text-amber-600 mt-1">
-                                  Attach the final payment proof in Order Documents before approval.
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
         </CardContent>
       </Card>
 

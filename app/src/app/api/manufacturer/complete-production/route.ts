@@ -68,11 +68,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify batch is in production
-    if (batch.status !== 'in_production') {
+    // Verify batch is in production or printing status (printing is valid for Mode C)
+    const validStatuses = ['in_production', 'printing']
+    if (!batch.status || !validStatuses.includes(batch.status)) {
       return NextResponse.json(
         { 
-          error: `Batch must be in production status. Current status: ${batch.status}`,
+          error: `Batch must be in production or printing status. Current status: ${batch.status}`,
           current_status: batch.status
         },
         { status: 400 }

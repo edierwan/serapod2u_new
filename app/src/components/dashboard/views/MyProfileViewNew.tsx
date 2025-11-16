@@ -14,8 +14,8 @@ import {
   Loader2, Camera, CheckCircle, XCircle, Clock, MapPin, AlertCircle 
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import ThemePreferencesCard from './ThemePreferencesCard'
 import SignatureUpload from '@/components/profile/SignatureUpload'
+import ChangePasswordCard from '@/components/profile/ChangePasswordCard'
 
 interface UserProfile {
   id: string
@@ -783,8 +783,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         </Card>
       )}
 
-      {/* Theme Preferences Card */}
-      <ThemePreferencesCard />
+      {/* Change Password Card */}
+      <ChangePasswordCard userEmail={userProfile.email} />
     </div>
   )
 }

@@ -1155,6 +1155,7 @@ export type Database = {
           created_at: string | null
           entry_date: string | null
           entry_number: string
+          entry_status: string | null
           id: string
           is_winner: boolean | null
           prize_claimed: boolean | null
@@ -1171,6 +1172,7 @@ export type Database = {
           created_at?: string | null
           entry_date?: string | null
           entry_number: string
+          entry_status?: string | null
           id?: string
           is_winner?: boolean | null
           prize_claimed?: boolean | null
@@ -1187,6 +1189,7 @@ export type Database = {
           created_at?: string | null
           entry_date?: string | null
           entry_number?: string
+          entry_status?: string | null
           id?: string
           is_winner?: boolean | null
           prize_claimed?: boolean | null
@@ -3799,6 +3802,7 @@ export type Database = {
           activated_at: string | null
           activated_by_consumer: string | null
           batch_id: string
+          case_number: number | null
           code: string
           company_id: string
           created_at: string | null
@@ -3808,6 +3812,7 @@ export type Database = {
           has_redeem: boolean | null
           id: string
           is_active: boolean | null
+          is_buffer: boolean | null
           last_scanned_at: string | null
           last_scanned_by: string | null
           lucky_draw_campaign_id: string | null
@@ -3819,16 +3824,19 @@ export type Database = {
           product_id: string
           qr_hash: string | null
           redeem_item_id: string | null
+          replaces_sequence_no: number | null
           sequence_number: number
           status: string | null
           total_consumer_scans: number | null
           updated_at: string | null
           variant_id: string
+          variant_key: string | null
         }
         Insert: {
           activated_at?: string | null
           activated_by_consumer?: string | null
           batch_id: string
+          case_number?: number | null
           code: string
           company_id: string
           created_at?: string | null
@@ -3838,6 +3846,7 @@ export type Database = {
           has_redeem?: boolean | null
           id?: string
           is_active?: boolean | null
+          is_buffer?: boolean | null
           last_scanned_at?: string | null
           last_scanned_by?: string | null
           lucky_draw_campaign_id?: string | null
@@ -3849,16 +3858,19 @@ export type Database = {
           product_id: string
           qr_hash?: string | null
           redeem_item_id?: string | null
+          replaces_sequence_no?: number | null
           sequence_number: number
           status?: string | null
           total_consumer_scans?: number | null
           updated_at?: string | null
           variant_id: string
+          variant_key?: string | null
         }
         Update: {
           activated_at?: string | null
           activated_by_consumer?: string | null
           batch_id?: string
+          case_number?: number | null
           code?: string
           company_id?: string
           created_at?: string | null
@@ -3868,6 +3880,7 @@ export type Database = {
           has_redeem?: boolean | null
           id?: string
           is_active?: boolean | null
+          is_buffer?: boolean | null
           last_scanned_at?: string | null
           last_scanned_by?: string | null
           lucky_draw_campaign_id?: string | null
@@ -3879,11 +3892,13 @@ export type Database = {
           product_id?: string
           qr_hash?: string | null
           redeem_item_id?: string | null
+          replaces_sequence_no?: number | null
           sequence_number?: number
           status?: string | null
           total_consumer_scans?: number | null
           updated_at?: string | null
           variant_id?: string
+          variant_key?: string | null
         }
         Relationships: [
           {
@@ -4474,6 +4489,371 @@ export type Database = {
             columns: ["to_org_id"]
             isOneToOne: false
             referencedRelation: "v_org_hierarchy_validation"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qr_prepared_codes: {
+        Row: {
+          batch_id: string
+          code: string
+          consumed_at: string | null
+          created_at: string | null
+          id: string
+          job_id: string
+          order_id: string
+          sequence_number: number | null
+          status: string
+        }
+        Insert: {
+          batch_id: string
+          code: string
+          consumed_at?: string | null
+          created_at?: string | null
+          id?: string
+          job_id: string
+          order_id: string
+          sequence_number?: number | null
+          status?: string
+        }
+        Update: {
+          batch_id?: string
+          code?: string
+          consumed_at?: string | null
+          created_at?: string | null
+          id?: string
+          job_id?: string
+          order_id?: string
+          sequence_number?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_prepared_codes_batch"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "qr_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_prepared_codes_job"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "qr_reverse_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_prepared_codes_job"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "v_reverse_job_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_prepared_codes_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_prepared_codes_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_document_workflow"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "fk_prepared_codes_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_engagement_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "fk_prepared_codes_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_prepared_codes_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_parent_order_remaining"
+            referencedColumns: ["parent_order_id"]
+          },
+        ]
+      }
+      qr_reverse_job_items: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          job_id: string
+          processed_at: string | null
+          replacement_code_id: string | null
+          replacement_sequence_no: number | null
+          spoiled_code_id: string | null
+          spoiled_sequence_no: number
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          job_id: string
+          processed_at?: string | null
+          replacement_code_id?: string | null
+          replacement_sequence_no?: number | null
+          spoiled_code_id?: string | null
+          spoiled_sequence_no: number
+          status?: string
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          job_id?: string
+          processed_at?: string | null
+          replacement_code_id?: string | null
+          replacement_sequence_no?: number | null
+          spoiled_code_id?: string | null
+          spoiled_sequence_no?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qr_reverse_job_items_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "qr_reverse_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_reverse_job_items_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "v_reverse_job_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_reverse_job_items_replacement_code_id_fkey"
+            columns: ["replacement_code_id"]
+            isOneToOne: false
+            referencedRelation: "qr_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_reverse_job_items_spoiled_code_id_fkey"
+            columns: ["spoiled_code_id"]
+            isOneToOne: false
+            referencedRelation: "qr_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qr_reverse_job_logs: {
+        Row: {
+          created_at: string | null
+          id: string
+          job_id: string
+          level: string
+          message: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          job_id: string
+          level: string
+          message: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          job_id?: string
+          level?: string
+          message?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_job_logs_job"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "qr_reverse_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_job_logs_job"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "v_reverse_job_status"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qr_reverse_jobs: {
+        Row: {
+          batch_id: string
+          case_number: number | null
+          completed_at: string | null
+          created_at: string | null
+          created_by: string | null
+          error_message: string | null
+          exclude_codes: string[]
+          expected_units_per_case: number | null
+          final_unit_count: number | null
+          id: string
+          manufacturer_org_id: string
+          master_code: string | null
+          master_code_id: string | null
+          order_id: string
+          prepared_count: number | null
+          product_variant_key: string | null
+          progress: number | null
+          remaining_to_prepare: number | null
+          result_summary: Json | null
+          started_at: string | null
+          status: string
+          total_available_in_batch: number | null
+          total_replacements: number | null
+          total_spoiled: number | null
+          updated_at: string | null
+          variant_key: string | null
+        }
+        Insert: {
+          batch_id: string
+          case_number?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          error_message?: string | null
+          exclude_codes?: string[]
+          expected_units_per_case?: number | null
+          final_unit_count?: number | null
+          id?: string
+          manufacturer_org_id: string
+          master_code?: string | null
+          master_code_id?: string | null
+          order_id: string
+          prepared_count?: number | null
+          product_variant_key?: string | null
+          progress?: number | null
+          remaining_to_prepare?: number | null
+          result_summary?: Json | null
+          started_at?: string | null
+          status?: string
+          total_available_in_batch?: number | null
+          total_replacements?: number | null
+          total_spoiled?: number | null
+          updated_at?: string | null
+          variant_key?: string | null
+        }
+        Update: {
+          batch_id?: string
+          case_number?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          error_message?: string | null
+          exclude_codes?: string[]
+          expected_units_per_case?: number | null
+          final_unit_count?: number | null
+          id?: string
+          manufacturer_org_id?: string
+          master_code?: string | null
+          master_code_id?: string | null
+          order_id?: string
+          prepared_count?: number | null
+          product_variant_key?: string | null
+          progress?: number | null
+          remaining_to_prepare?: number | null
+          result_summary?: Json | null
+          started_at?: string | null
+          status?: string
+          total_available_in_batch?: number | null
+          total_replacements?: number | null
+          total_spoiled?: number | null
+          updated_at?: string | null
+          variant_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_reverse_jobs_batch"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "qr_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_manufacturer"
+            columns: ["manufacturer_org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_manufacturer"
+            columns: ["manufacturer_org_id"]
+            isOneToOne: false
+            referencedRelation: "v_hq_inventory"
+            referencedColumns: ["hq_org_id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_manufacturer"
+            columns: ["manufacturer_org_id"]
+            isOneToOne: false
+            referencedRelation: "v_org_hierarchy_validation"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_document_workflow"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_engagement_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_parent_order_remaining"
+            referencedColumns: ["parent_order_id"]
+          },
+          {
+            foreignKeyName: "qr_reverse_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_reverse_jobs_master_code_id_fkey"
+            columns: ["master_code_id"]
+            isOneToOne: false
+            referencedRelation: "qr_master_codes"
             referencedColumns: ["id"]
           },
         ]
@@ -6480,14 +6860,14 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "organizations_org_type_code_fkey"
-            columns: ["org_type_code"]
+            columns: ["parent_org_type"]
             isOneToOne: false
             referencedRelation: "organization_types"
             referencedColumns: ["type_code"]
           },
           {
             foreignKeyName: "organizations_org_type_code_fkey"
-            columns: ["parent_org_type"]
+            columns: ["org_type_code"]
             isOneToOne: false
             referencedRelation: "organization_types"
             referencedColumns: ["type_code"]
@@ -6589,6 +6969,73 @@ export type Database = {
           variant_count: number | null
         }
         Relationships: []
+      }
+      v_reverse_job_status: {
+        Row: {
+          batch_id: string | null
+          case_number: number | null
+          completed_at: string | null
+          created_at: string | null
+          created_by_email: string | null
+          error_message: string | null
+          expected_units_per_case: number | null
+          failed_items: number | null
+          final_unit_count: number | null
+          id: string | null
+          master_code: string | null
+          order_id: string | null
+          order_no: string | null
+          pending_items: number | null
+          product_variant_key: string | null
+          replaced_items: number | null
+          status: string | null
+          total_replacements: number | null
+          total_spoiled: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_reverse_jobs_batch"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "qr_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_document_workflow"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_engagement_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_order_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_reverse_jobs_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_parent_order_remaining"
+            referencedColumns: ["parent_order_id"]
+          },
+        ]
       }
       v_shop_available_products: {
         Row: {
@@ -7188,6 +7635,10 @@ export type Database = {
       }
       ensure_distributor_org: { Args: { p_org_id: string }; Returns: undefined }
       ensure_shop_org: { Args: { p_org_id: string }; Returns: undefined }
+      extract_variant_key_from_code: {
+        Args: { qr_code: string }
+        Returns: string
+      }
       fn_calculate_order_total: {
         Args: { p_order_id: string }
         Returns: number
@@ -7436,6 +7887,10 @@ export type Database = {
           warehouse_org_id: string
         }[]
       }
+      get_prepared_codes_count: {
+        Args: { p_batch_id: string; p_order_id: string }
+        Returns: number
+      }
       get_public_branding: { Args: never; Returns: Json }
       get_remaining_quantity: {
         Args: { p_parent_order_id: string; p_variant_id: string }
@@ -7475,6 +7930,14 @@ export type Database = {
           is_active: boolean
           organization_id: string
           role_code: string
+        }[]
+      }
+      get_variants_by_master_code: {
+        Args: { p_master_code: string }
+        Returns: {
+          variant_code: string
+          variant_id: string
+          variant_name: string
         }[]
       }
       hard_delete_organization: { Args: { p_org_id: string }; Returns: Json }
@@ -7741,6 +8204,18 @@ export type Database = {
         Returns: Json
       }
       update_last_login: { Args: { user_id: string }; Returns: undefined }
+      update_master_status_skip_trigger: {
+        Args: {
+          p_master_ids: string[]
+          p_shipped_at?: string
+          p_user_id: string
+        }
+        Returns: {
+          id: string
+          master_code: string
+          status: string
+        }[]
+      }
       validate_child_items: {
         Args: { p_order_id: string; p_parent_order_id: string }
         Returns: boolean

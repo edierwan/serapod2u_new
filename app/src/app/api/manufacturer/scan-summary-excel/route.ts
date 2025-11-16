@@ -59,7 +59,6 @@ export async function GET(request: NextRequest) {
     const plannedUniqueCodes = bufferPercent > 0
       ? Math.round(totalUniqueWithBuffer / (1 + bufferPercent / 100))
       : totalUniqueWithBuffer
-    const trackedStatuses = ['packed', 'received_warehouse', 'shipped_distributor', 'opened']
 
     // Get master codes that have been scanned (even if no units yet OR have units linked)
     const { data: masterCodesRaw, error: masterError } = await supabase
@@ -72,12 +71,13 @@ export async function GET(request: NextRequest) {
       throw masterError
     }
 
-    // Include master codes that have been scanned (status = 'packed') OR have units linked
+    // Include master codes that have been scanned (status = 'packed' or 'generated') OR have units linked
     const masterCodes = (masterCodesRaw || []).filter((master: any) => 
-      master.status === 'packed' || Number(master.actual_unit_count || 0) > 0
+      ['packed', 'generated', 'ready_to_ship'].includes(master.status) || Number(master.actual_unit_count || 0) > 0
     )
 
-    // Get all scanned unique codes with their master case information
+    // Get ALL unique codes for this batch (regardless of status)
+    // This ensures we see the complete picture: printed, packed, buffer_used, spoiled, etc.
     const { data: uniqueCodesRaw, error: uniqueError } = await supabase
       .from('qr_codes')
       .select(`
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('batch_id', batchId)
-      .in('status', trackedStatuses)
+      .order('sequence_number', { ascending: true })
       .order('sequence_number', { ascending: true })
 
     if (uniqueError) {
@@ -104,22 +104,8 @@ export async function GET(request: NextRequest) {
 
     const uniqueCodes = uniqueCodesRaw || []
     
-    // Buffer codes are scanned codes that:
-    // 1. Have sequence number beyond planned codes (from buffer range)
-    // 2. Are scanned but NOT linked to any master case (master_code_id is null)
-    // Get all scanned codes including those not linked to master
-    const { data: allScannedCodes, error: allScannedError } = await supabase
-      .from('qr_codes')
-      .select('sequence_number, master_code_id, status')
-      .eq('batch_id', batchId)
-      .in('status', trackedStatuses)
-
-    if (allScannedError) {
-      throw allScannedError
-    }
-
-    // Buffer codes used = scanned codes with sequence > planned that are linked to masters
-    const bufferCodeEntries = (allScannedCodes || []).filter((code: any) => {
+    // Buffer codes used = codes with sequence > planned that are linked to masters
+    const bufferCodeEntries = uniqueCodes.filter((code: any) => {
       const sequenceNumber = Number(code.sequence_number || 0)
       return plannedUniqueCodes > 0 && sequenceNumber > plannedUniqueCodes && code.master_code_id !== null
     })
@@ -143,6 +129,10 @@ export async function GET(request: NextRequest) {
       { width: 40 }
     ]
 
+    // Calculate statistics
+    const packedCodes = uniqueCodes.filter((c: any) => c.status === 'packed' || c.status === 'buffer_used').length
+    const linkedCodes = uniqueCodes.filter((c: any) => c.master_code_id !== null).length
+    
     const summaryData = [
       ['Scan Summary Report', ''],
       ['Generated:', new Date().toLocaleString()],
@@ -153,10 +143,16 @@ export async function GET(request: NextRequest) {
       ['Buyer:', orgData?.org_name || 'N/A'],
       ['Order Date:', orderData?.created_at ? new Date(orderData.created_at).toLocaleDateString() : 'N/A'],
       ['', ''],
-      ['Scan Statistics', ''],
-      ['Total Master Cases Scanned:', masterCodes.length.toString()],
-      ['Total Unique Codes Scanned:', uniqueCodes.length.toString()],
-      ['Buffer Codes Used:', bufferCodeEntries.length.toString()]
+      ['QR Code Statistics', ''],
+      ['Total QR Codes in Batch:', uniqueCodes.length.toString()],
+      ['Codes Linked to Master Cases:', linkedCodes.toString()],
+      ['Master Cases Created:', masterCodes.length.toString()],
+      ['Buffer Codes Used:', bufferCodeEntries.length.toString()],
+      ['', ''],
+      ['Production Statistics', ''],
+      ['Total Codes Packed/Used:', packedCodes.toString()],
+      ['Planned Unique Codes:', plannedUniqueCodes.toString()],
+      ['Buffer Codes Available:', (totalUniqueWithBuffer - plannedUniqueCodes).toString()]
     ]
 
     summaryData.forEach(row => {
@@ -194,16 +190,44 @@ export async function GET(request: NextRequest) {
       masterSheet.addRow(['Info', 'No master cases with scanned units yet for this batch.'])
     }
 
-    // Sheet 3: Child QR Codes by Master
+    // Sheet 3: Child QR Codes by Master (showing actual codes in the case)
     const childData: any[] = []
     
     for (const master of masterCodes) {
-      const childCodes = uniqueCodes.filter((c: any) => {
-        const masterCodeData = Array.isArray(c.qr_master_codes) ? c.qr_master_codes[0] : c.qr_master_codes
-        return masterCodeData && masterCodeData.case_number === master.case_number
+      // Calculate sequence range for this case based on expected units per case
+      const caseNumber = master.case_number
+      const unitsPerCase = Number(master.expected_unit_count || 100)
+      const startSeq = (caseNumber - 1) * unitsPerCase + 1
+      const endSeq = caseNumber * unitsPerCase
+      
+      // Get codes in this case's sequence range (exclude spoiled codes)
+      const normalCodes = uniqueCodes.filter((c: any) => {
+        const sequenceNumber = Number(c.sequence_number || 0)
+        const inRange = sequenceNumber >= startSeq && sequenceNumber <= endSeq
+        // Exclude spoiled codes - they will be replaced by buffer codes
+        return inRange && c.status !== 'spoiled'
       })
       
-      if (childCodes.length > 0) {
+      // Get buffer codes that replaced spoiled codes in THIS case
+      // These are buffer codes where replaces_sequence_no is in this case's range
+      const bufferCodesForCase = uniqueCodes.filter((c: any) => {
+        const sequenceNumber = Number(c.sequence_number || 0)
+        const isBufferCode = plannedUniqueCodes > 0 && sequenceNumber > plannedUniqueCodes
+        const replacesSeq = Number(c.replaces_sequence_no || 0)
+        const replacesInThisCase = replacesSeq >= startSeq && replacesSeq <= endSeq
+        // Only include buffer_used codes (not buffer_available)
+        return isBufferCode && replacesInThisCase && c.status === 'buffer_used'
+      })
+      
+      // Combine normal codes and buffer codes for this case
+      const allCodesInCase = [...normalCodes, ...bufferCodesForCase].sort((a, b) => {
+        // Sort by original sequence (for buffers, use replaces_sequence_no)
+        const seqA = a.replaces_sequence_no ? Number(a.replaces_sequence_no) : Number(a.sequence_number)
+        const seqB = b.replaces_sequence_no ? Number(b.replaces_sequence_no) : Number(b.sequence_number)
+        return seqA - seqB
+      })
+      
+      if (allCodesInCase.length > 0) {
         childData.push({
           'Master Code': master.master_code,
           'Case Number': master.case_number,
@@ -211,11 +235,16 @@ export async function GET(request: NextRequest) {
           'Product': '',
           'Variant': '',
           'Sequence': '',
+          'Is Buffer': '',
+          'Replaces Seq': '',
           'Status': '=== CASE SUMMARY ===',
-          'Scanned At': `${childCodes.length} codes`
+          'Scanned At': `${allCodesInCase.length} codes`
         })
 
-        childCodes.forEach((child: any) => {
+        allCodesInCase.forEach((child: any) => {
+          const sequenceNumber = Number(child.sequence_number || 0)
+          const isBuffer = plannedUniqueCodes > 0 && sequenceNumber > plannedUniqueCodes
+          
           childData.push({
             'Master Code': '',
             'Case Number': '',
@@ -223,6 +252,8 @@ export async function GET(request: NextRequest) {
             'Product': child.products?.product_name || 'N/A',
             'Variant': child.product_variants?.variant_name || 'N/A',
             'Sequence': child.sequence_number,
+            'Is Buffer': isBuffer ? 'YES' : 'No',
+            'Replaces Seq': child.replaces_sequence_no || '',
             'Status': child.status,
             'Scanned At': child.last_scanned_at ? new Date(child.last_scanned_at).toLocaleString() : 'N/A'
           })
@@ -236,37 +267,12 @@ export async function GET(request: NextRequest) {
           'Product': '',
           'Variant': '',
           'Sequence': '',
+          'Is Buffer': '',
+          'Replaces Seq': '',
           'Status': '',
           'Scanned At': ''
         })
       }
-    }
-
-    // Add buffer codes section
-    if (bufferCodeDetails.length > 0) {
-      childData.push({
-        'Master Code': '=== BUFFER CODES (LINKED) ===',
-        'Case Number': '',
-        'Child Code': '',
-        'Product': '',
-        'Variant': '',
-        'Sequence': '',
-        'Status': '',
-        'Scanned At': `${bufferCodeDetails.length} codes used from buffer`
-      })
-
-      bufferCodeDetails.forEach((child: any) => {
-        childData.push({
-          'Master Code': '',
-          'Case Number': 'Buffer',
-          'Child Code': child.code,
-          'Product': child.products?.product_name || 'N/A',
-          'Variant': child.product_variants?.variant_name || 'N/A',
-          'Sequence': child.sequence_number,
-          'Status': child.status,
-          'Scanned At': child.last_scanned_at ? new Date(child.last_scanned_at).toLocaleString() : 'N/A'
-        })
-      })
     }
 
     // Sheet 3: Child Codes by Master
@@ -280,82 +286,40 @@ export async function GET(request: NextRequest) {
         { header: 'Product', key: 'product', width: 25 },
         { header: 'Variant', key: 'variant', width: 20 },
         { header: 'Sequence', key: 'sequence', width: 10 },
+        { header: 'Is Buffer', key: 'isBuffer', width: 10 },
+        { header: 'Replaces Seq', key: 'replacesSeq', width: 12 },
         { header: 'Status', key: 'status', width: 12 },
         { header: 'Scanned At', key: 'scannedAt', width: 20 }
       ]
 
       childData.forEach((row: any) => {
-        childSheet.addRow({
+        const addedRow = childSheet.addRow({
           masterCode: row['Master Code'],
           caseNumber: row['Case Number'],
           childCode: row['Child Code'],
           product: row['Product'],
           variant: row['Variant'],
           sequence: row['Sequence'],
+          isBuffer: row['Is Buffer'],
+          replacesSeq: row['Replaces Seq'],
           status: row['Status'],
           scannedAt: row['Scanned At']
         })
+        
+        // Highlight buffer rows with yellow background
+        if (row['Is Buffer'] === 'YES') {
+          addedRow.eachCell((cell) => {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFFD966' } // Light yellow
+            }
+          })
+        }
       })
     } else {
       childSheet.addRow(['Info', 'No child codes linked yet for this batch.'])
     }
-
-    // Sheet 4: All Child Codes (flat list)
-    const allChildData = uniqueCodes.map((code: any, index: number) => {
-      const masterCodeData = Array.isArray(code.qr_master_codes) ? code.qr_master_codes[0] : code.qr_master_codes
-      const sequenceNumber = Number(code.sequence_number || 0)
-      const isBuffer = plannedUniqueCodes > 0 && sequenceNumber > plannedUniqueCodes
-      
-      return {
-        '#': index + 1,
-        'Individual QR Code': code.code,
-        'Product': code.products?.product_name || 'N/A',
-        'Variant': code.product_variants?.variant_name || 'N/A',
-        'Tracking URL': generateTrackingURL(code.code, 'product'),
-        'Sequence': code.sequence_number,
-        'Master Code': isBuffer 
-          ? (masterCodeData?.master_code ? `${masterCodeData.master_code} (Buffer)` : 'Buffer - Unassigned')
-          : (masterCodeData?.master_code || 'Unassigned'),
-        'Case Number': isBuffer 
-          ? (masterCodeData?.case_number ? `${masterCodeData.case_number} (Buffer)` : 'Buffer') 
-          : (masterCodeData?.case_number || 'Unassigned'),
-        'Master Tracking URL': generateTrackingURL(masterCodeData?.master_code || '', 'master'),
-        'Status': code.status,
-        'Scanned At': code.last_scanned_at ? new Date(code.last_scanned_at).toLocaleString() : 'N/A'
-      }
-    })
-
-    // Sheet 4: All Child Codes (flat list)
-    const allChildSheet = workbook.addWorksheet('All Child Codes')
-    allChildSheet.columns = [
-      { header: '#', key: 'index', width: 5 },
-      { header: 'Individual QR Code', key: 'code', width: 50 },
-      { header: 'Product', key: 'product', width: 25 },
-      { header: 'Variant', key: 'variant', width: 20 },
-      { header: 'Tracking URL', key: 'trackingUrl', width: 60 },
-      { header: 'Sequence', key: 'sequence', width: 10 },
-      { header: 'Master Code', key: 'masterCode', width: 35 },
-      { header: 'Case Number', key: 'caseNumber', width: 12 },
-      { header: 'Master Tracking URL', key: 'masterTrackingUrl', width: 60 },
-      { header: 'Status', key: 'status', width: 12 },
-      { header: 'Scanned At', key: 'scannedAt', width: 20 }
-    ]
-
-    allChildData.forEach((row: any) => {
-      allChildSheet.addRow({
-        index: row['#'],
-        code: row['Individual QR Code'],
-        product: row['Product'],
-        variant: row['Variant'],
-        trackingUrl: row['Tracking URL'],
-        sequence: row['Sequence'],
-        masterCode: row['Master Code'],
-        caseNumber: row['Case Number'],
-        masterTrackingUrl: row['Master Tracking URL'],
-        status: row['Status'],
-        scannedAt: row['Scanned At']
-      })
-    })
 
     // Generate Excel file
     const excelBuffer = await workbook.xlsx.writeBuffer()

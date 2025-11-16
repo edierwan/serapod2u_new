@@ -44,7 +44,8 @@ export async function GET(request: NextRequest) {
       pendingBatches = result.data
       queryError = result.error
     } else if (isSuperAdmin) {
-      // Super Admin: Query all warehouse_packed master codes across all warehouses
+      // Super Admin: Query only ready_to_ship orders across all warehouses
+      // Only show orders that are ready for warehouse receiving (not still in 'packed' status)
       const result = await supabase
         .from('qr_master_codes')
         .select(`
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
           manufacturer_scanned_at,
           warehouse_org_id,
           manufacturer_org_id,
+          warehouse_received_at,
           qr_batches!inner (
             id,
             company_id,
@@ -71,7 +73,8 @@ export async function GET(request: NextRequest) {
             )
           )
         `)
-        .eq('status', 'warehouse_packed')
+        .eq('status', 'ready_to_ship')
+        .is('warehouse_received_at', null)
         .order('manufacturer_scanned_at', { ascending: false })
 
       if (result.data) {

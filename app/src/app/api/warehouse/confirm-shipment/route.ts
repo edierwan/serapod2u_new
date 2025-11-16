@@ -93,7 +93,8 @@ export async function POST(request: NextRequest) {
     let masterCasesShipped = 0
     let uniqueCodesShipped = 0
     let qrCodeIds: string[] = []
-  let wmsSummary: any = null
+    let wmsSummary: any = null
+    const updatedMasterIdSet = new Set<string>()
 
     // Update QR codes from warehouse_packed to shipped_distributor
     // IMPORTANT: We temporarily disable trigger by updating without transitioning through shipped_distributor
@@ -238,9 +239,77 @@ export async function POST(request: NextRequest) {
         )
       }
 
-  const updatedUniqueCount = updatedCodes?.length || 0
-  uniqueCodesShipped += updatedUniqueCount
-  console.log('✅ Updated', updatedUniqueCount, 'QR codes to shipped_distributor')
+      const updatedUniqueCount = updatedCodes?.length || 0
+      uniqueCodesShipped += updatedUniqueCount
+      console.log('✅ Updated', updatedUniqueCount, 'QR codes to shipped_distributor')
+
+      // Auto-update related master cases if all their children are now shipped
+      const masterIdsFromUnique = Array.from(
+        new Set(
+          (qrCodesData || [])
+            .map((qr) => qr.master_code_id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        )
+      ).filter((id) => !updatedMasterIdSet.has(id))
+
+      if (masterIdsFromUnique.length > 0) {
+        const { data: masterChildStatuses, error: masterChildError } = await supabase
+          .from('qr_codes')
+          .select('master_code_id, status')
+          .in('master_code_id', masterIdsFromUnique)
+
+        if (masterChildError) {
+          console.warn('⚠️ Failed to load child code statuses for master auto-update:', masterChildError)
+        } else if (masterChildStatuses && masterChildStatuses.length > 0) {
+          const masterStatusMap = new Map<string, { total: number; shipped: number }>()
+
+          masterChildStatuses.forEach((row) => {
+            if (!row.master_code_id) return
+            const stats = masterStatusMap.get(row.master_code_id) || { total: 0, shipped: 0 }
+            stats.total += 1
+            if (row.status === 'shipped_distributor') {
+              stats.shipped += 1
+            }
+            masterStatusMap.set(row.master_code_id, stats)
+          })
+
+          const mastersFullyShipped = Array.from(masterStatusMap.entries())
+            .filter(([, stats]) => stats.total > 0 && stats.shipped === stats.total)
+            .map(([masterId]) => masterId)
+            .filter((masterId) => !updatedMasterIdSet.has(masterId))
+
+          if (mastersFullyShipped.length > 0) {
+            const { error: skipAutoMasterError } = await supabase.rpc('set_skip_ship_trigger', {
+              p_skip: true
+            })
+
+            if (skipAutoMasterError) {
+              console.log('⚠️ Could not set skip trigger before auto master update:', skipAutoMasterError.message)
+            }
+
+            const { data: autoUpdatedMasters, error: autoMasterUpdateError } = await supabase
+              .from('qr_master_codes')
+              .update({
+                status: 'shipped_distributor',
+                shipped_at: shippedAt,
+                shipped_by: user_id,
+                shipped_to_distributor_id: resolvedToOrg,
+                updated_at: shippedAt
+              })
+              .in('id', mastersFullyShipped)
+              .select('id, master_code')
+
+            if (autoMasterUpdateError) {
+              console.error('❌ Failed to auto-update master codes after unique shipment:', autoMasterUpdateError)
+            } else {
+              const autoMasterCount = autoUpdatedMasters?.length || 0
+              masterCasesShipped += autoMasterCount
+              autoUpdatedMasters?.forEach((master) => updatedMasterIdSet.add(master.id))
+              console.log('✅ Auto-updated', autoMasterCount, 'master cases to shipped_distributor based on unique shipments')
+            }
+          }
+        }
+      }
     }
 
     // Update master codes if any
@@ -296,24 +365,34 @@ export async function POST(request: NextRequest) {
         }
 
         // Check which masters have children already processed via unique code scanning
+        // If all children were already shipped individually, skip WMS call entirely
+        // to avoid double inventory deduction
         for (const master of masterData) {
           const childCodes = master.qr_codes || []
-          const allChildrenAlreadyShipped = childCodes.length > 0 && 
-            childCodes.every((child: any) => 
-              child.status === 'shipped_distributor' || 
-              uniqueCodesScannedSet.has(child.code)
-            )
+          
+          // Check if any child codes exist and their status
+          if (childCodes.length === 0) {
+            console.log(`⚠️ Master ${master.master_code}: No child codes found, skipping WMS`)
+            continue
+          }
+          
+          const allChildrenAlreadyShipped = childCodes.every((child: any) => 
+            child.status === 'shipped_distributor' || 
+            uniqueCodesScannedSet.has(child.code)
+          )
 
           if (allChildrenAlreadyShipped) {
-            console.log(`⚠️ Master ${master.master_code}: All children already processed, skipping WMS (inventory already deducted)`)
+            console.log(`✅ Master ${master.master_code}: All ${childCodes.length} children already processed, skipping WMS (inventory already deducted)`)
           } else {
             // Only call WMS if children haven't been individually scanned yet
+            console.log(`📦 Master ${master.master_code}: Processing via WMS (some children not yet shipped)`)
             const { error: masterWmsError } = await supabase.rpc('wms_ship_master_auto', {
               p_master_code_id: master.id
             })
 
             if (masterWmsError) {
-              console.error(`❌ WMS function failed for master ${master.master_code}:`, masterWmsError)
+              console.error(`❌ WMS function failed for master ${master.master_code}:`, masterWmsError.message)
+              console.log(`⚠️ Continuing with status update despite WMS error (children may have already handled inventory)`)
               // Don't return error - continue to update status anyway since inventory might have been handled by children
             } else {
               console.log(`✅ WMS function processed master ${master.master_code}`)
@@ -332,7 +411,9 @@ export async function POST(request: NextRequest) {
           console.log('⚠️  Warning: Could not set session variable for master update:', skipMasterError.message)
         }
 
-        const { data: updatedMasters, error: masterError } = await supabase
+        // Update master codes - remove strict status check to ensure update happens
+        // even if WMS function or other process already changed the status
+          const { data: updatedMasters, error: masterError } = await supabase
           .from('qr_master_codes')
           .update({
             status: 'shipped_distributor',
@@ -341,7 +422,6 @@ export async function POST(request: NextRequest) {
             updated_at: shippedAt
           })
           .in('id', masterIds)
-          .eq('status', 'warehouse_packed')
           .select('id, master_code, status')
 
         if (masterError) {
@@ -349,6 +429,7 @@ export async function POST(request: NextRequest) {
         } else {
           const updatedMasterCount = updatedMasters?.length || 0
           masterCasesShipped += updatedMasterCount
+            updatedMasters?.forEach((master) => updatedMasterIdSet.add(master.id))
           console.log(`✅ Updated ${updatedMasterCount} of ${masterIds.length} master codes to shipped_distributor`)
           if (updatedMasterCount < masterIds.length) {
             console.warn(`⚠️ Only ${updatedMasterCount} of ${masterIds.length} master codes were updated. Some may not have status=warehouse_packed`)

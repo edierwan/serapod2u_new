@@ -9,7 +9,7 @@ export interface Toast {
   open?: boolean
   action?: React.ReactNode
   onOpenChange?: (open: boolean) => void
-  variant?: 'default' | 'destructive' | 'success'
+  variant?: 'default' | 'destructive' | 'success' | 'warning'
 }
 
 const TOAST_REMOVE_DELAY = 4000

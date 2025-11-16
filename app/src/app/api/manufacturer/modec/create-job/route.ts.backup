@@ -1,0 +1,640 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { parseSpoiledEntries, groupSpoiledEntriesByCase } from '@/lib/qr-parser'
+
+export async function POST(request: NextRequest) {
+    const startTime = Date.now()
+
+    try {
+        const supabase = await createClient()
+
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        if (userError || !user) {
+            return NextResponse.json(
+                { error: 'Unauthorized' },
+                { status: 401 }
+            )
+        }
+
+        const body = await request.json()
+        const { order_id, batch_id, spoiled_input } = body
+
+        if (!order_id || !batch_id || !spoiled_input) {
+            return NextResponse.json(
+                { error: 'Missing required fields: order_id, batch_id, spoiled_input' },
+                { status: 400 }
+            )
+        }
+
+        console.log('📥 Mode C create-job request:', {
+            order_id,
+            batch_id,
+            user_id: user.id,
+            input_length: spoiled_input.length
+        })
+
+        // Parse spoiled entries
+        const { entries, errors: parseErrors } = parseSpoiledEntries(spoiled_input)
+
+        if (parseErrors.length > 0) {
+            return NextResponse.json(
+                {
+                    error: 'Failed to parse some entries',
+                    details: parseErrors
+                },
+                { status: 400 }
+            )
+        }
+
+        if (entries.length === 0) {
+            return NextResponse.json(
+                { error: 'No valid spoiled codes provided' },
+                { status: 400 }
+            )
+        }
+
+        console.log('✅ Parsed entries:', entries.length)
+
+        // Get batch info to determine units per case
+        const { data: batch, error: batchError } = await supabase
+            .from('qr_batches')
+            .select(`
+        id,
+        order_id,
+        qr_master_codes!inner(expected_unit_count),
+        orders!inner(order_no)
+      `)
+            .eq('id', batch_id)
+            .single()
+
+        if (batchError || !batch) {
+            console.error('❌ Batch not found:', batchError)
+            return NextResponse.json(
+                { error: 'Batch not found' },
+                { status: 404 }
+            )
+        }
+
+        const currentOrderNo = (batch.orders as any)?.order_no || order_id
+
+        const unitsPerCase = batch.qr_master_codes?.[0]?.expected_unit_count || 100
+
+        // Group entries by case number (supports mixed-case submission)
+        const groupResult = groupSpoiledEntriesByCase(entries, unitsPerCase)
+
+        if (!groupResult.success || !groupResult.groups) {
+            return NextResponse.json(
+                {
+                    error: 'Failed to process spoiled codes',
+                    details: groupResult.errors
+                },
+                { status: 400 }
+            )
+        }
+
+        const caseGroups = groupResult.groups
+        console.log(`📦 Grouped into ${caseGroups.size} case(s):`, 
+            Array.from(caseGroups.keys()).map(caseNum => 
+                `Case ${caseNum} (${caseGroups.get(caseNum)!.sequences.length} codes)`
+            ).join(', ')
+        )
+
+        // For each case group, resolve variant_key from database if not in QR code
+        for (const [caseNumber, group] of caseGroups) {
+            if (!group.variantKey && group.sequences.length > 0) {
+                const firstSeq = group.sequences[0]
+                const { data: firstCode } = await supabase
+                    .from('qr_codes')
+                    .select('variant_key')
+                    .eq('batch_id', batch_id)
+                    .eq('sequence_number', firstSeq)
+                    .single()
+
+                if (firstCode?.variant_key) {
+                    group.variantKey = firstCode.variant_key
+                    console.log(`🔍 Case ${caseNumber}: Detected variant_key from database: ${group.variantKey}`)
+                }
+            }
+        }
+
+        // Verify user has access to this manufacturer org
+        const { data: userProfile, error: profileError } = await supabase
+            .from('users')
+            .select('id, organization_id')
+            .eq('id', user.id)
+            .single()
+
+        if (profileError || !userProfile || !userProfile.organization_id) {
+            return NextResponse.json(
+                { error: 'User profile not found or missing organization' },
+                { status: 404 }
+            )
+        }
+
+        // 🚨 CRITICAL VALIDATION: Check if QR codes belong to THIS batch/order
+        // Extract sequence numbers from entries for batch validation
+        const sequenceNumbers = entries
+            .map(e => e.parsed?.sequenceNumber)
+            .filter(seq => seq !== undefined) as number[]
+
+        if (sequenceNumbers.length > 0) {
+            // Fetch a sample of QR codes to verify they belong to this batch
+            const { data: sampleCodes, error: sampleError } = await supabase
+                .from('qr_codes')
+                .select('id, batch_id, sequence_number, code, qr_batches!inner(order_id, orders!inner(order_no))')
+                .eq('batch_id', batch_id) // CRITICAL: Filter by current batch first
+                .in('sequence_number', sequenceNumbers.slice(0, 5)) // Check first 5 codes
+                .limit(5)
+
+            if (sampleError) {
+                console.error('❌ Error validating QR codes:', sampleError)
+                return NextResponse.json(
+                    { error: 'Failed to validate QR codes' },
+                    { status: 500 }
+                )
+            }
+
+            // If no codes found in current batch, they must be from another batch/order
+            if (!sampleCodes || sampleCodes.length === 0) {
+                console.error('❌ No codes found in current batch for sequences:', sequenceNumbers.slice(0, 5))
+                return NextResponse.json(
+                    {
+                        error: `QR codes NOT FOUND in current order "${currentOrderNo}"! These codes may be from a different order. Please scan codes from the CURRENT order only.`,
+                        current_batch_id: batch_id,
+                        current_order_id: order_id,
+                        current_order_no: currentOrderNo,
+                        sequences_checked: sequenceNumbers.slice(0, 5)
+                    },
+                    { status: 400 }
+                )
+            }
+
+            // Check if ANY of the sample codes belong to a DIFFERENT batch/order
+            const wrongBatchCodes = sampleCodes?.filter(code => code.batch_id !== batch_id) || []
+            const wrongOrderCodes = sampleCodes?.filter(code => {
+                const batch = code.qr_batches as any
+                return batch && batch.order_id !== order_id
+            }) || []
+
+            if (wrongBatchCodes.length > 0) {
+                const wrongBatch = wrongBatchCodes[0]
+                const wrongBatchInfo = wrongBatch.qr_batches as any
+                const wrongOrderNo = wrongBatchInfo?.orders?.order_no || wrongBatch.batch_id
+                return NextResponse.json(
+                    {
+                        error: `QR codes belong to DIFFERENT ORDER! You are in order "${currentOrderNo}" but these codes are from "${wrongOrderNo}". Please scan codes from the CURRENT order only.`,
+                        wrong_batch_id: wrongBatch.batch_id,
+                        current_batch_id: batch_id,
+                        current_order_no: currentOrderNo,
+                        wrong_order_no: wrongOrderNo,
+                        sample_code: wrongBatch.code
+                    },
+                    { status: 400 }
+                )
+            }
+
+            if (wrongOrderCodes.length > 0) {
+                const wrongCode = wrongOrderCodes[0]
+                const wrongOrderInfo = wrongCode.qr_batches as any
+                const wrongOrderNo = wrongOrderInfo?.orders?.order_no || 'unknown'
+                return NextResponse.json(
+                    {
+                        error: `QR codes belong to DIFFERENT ORDER! These codes are from order "${wrongOrderNo}". Please scan codes from the CURRENT order only.`,
+                        wrong_order_id: wrongOrderInfo?.order_id,
+                        current_order_id: order_id,
+                        sample_code: wrongCode.code
+                    },
+                    { status: 400 }
+                )
+            }
+
+            console.log('✅ Batch validation passed: All sample codes belong to this order')
+        }
+
+        // TASK 2: Intelligent Mixed Scan Classification
+        // Auto-classify as spoiled vs buffer codes
+        const classifiedSpoiled: Array<{
+            code_id: string
+            sequence_no: number
+            code: string
+        }> = []
+
+        const classifiedBuffer: Array<{
+            code_id: string
+            sequence_no: number
+            code: string
+        }> = []
+
+        const alreadyPackedCodes: number[] = []
+        const alreadySpoiledCodes: number[] = []
+        const invalidCodes: string[] = []
+
+        console.log('[MODE C] Classifying entries...', { total: entries.length })
+
+        for (const entry of entries) {
+            const sequenceNumber = entry.parsed?.sequenceNumber
+
+            if (!sequenceNumber) {
+                console.warn('⚠️ Entry missing sequence number:', entry)
+                invalidCodes.push(JSON.stringify(entry))
+                continue
+            }
+
+            // Fetch QR code with is_buffer flag
+            const { data: qrCode, error: qrError } = await supabase
+                .from('qr_codes')
+                .select('id, code, sequence_number, status, master_code_id, case_number, is_buffer')
+                .eq('batch_id', batch_id)
+                .eq('sequence_number', sequenceNumber)
+                .maybeSingle()
+
+            if (qrError) {
+                console.error(`❌ Error finding QR code for sequence ${sequenceNumber}:`, qrError)
+                invalidCodes.push(`SEQ:${sequenceNumber}`)
+                continue
+            }
+
+            if (!qrCode) {
+                console.warn(`⚠️ QR code not found for sequence ${sequenceNumber}`)
+                invalidCodes.push(`SEQ:${sequenceNumber}`)
+                continue
+            }
+
+            // Check if already packed
+            if (qrCode.master_code_id && qrCode.status === 'packed') {
+                alreadyPackedCodes.push(sequenceNumber)
+                continue
+            }
+
+            // Check if already spoiled
+            if (qrCode.status === 'spoiled') {
+                alreadySpoiledCodes.push(sequenceNumber)
+                continue
+            }
+
+            // TASK 2: Auto-classify as spoiled or buffer
+            // Rule: is_buffer=true OR sequence_number > unitsPerCase → buffer
+            // Rule: sequence_number <= unitsPerCase AND NOT is_buffer → spoiled
+            const isBuffer = qrCode.is_buffer || sequenceNumber > unitsPerCase
+
+            if (isBuffer) {
+                classifiedBuffer.push({
+                    code_id: qrCode.id,
+                    sequence_no: sequenceNumber,
+                    code: qrCode.code
+                })
+            } else {
+                classifiedSpoiled.push({
+                    code_id: qrCode.id,
+                    sequence_no: sequenceNumber,
+                    code: qrCode.code
+                })
+            }
+        }
+
+        console.log('[MODE C] Classification results:', {
+            spoiled: classifiedSpoiled.length,
+            buffer: classifiedBuffer.length,
+            alreadyPacked: alreadyPackedCodes.length,
+            alreadySpoiled: alreadySpoiledCodes.length,
+            invalid: invalidCodes.length
+        })
+
+        // Log detailed classification info
+        console.log('[MODE C] Classified spoiled codes:', classifiedSpoiled.map(s => ({
+            seq: s.sequence_no,
+            code_id: s.code_id,
+            code: s.code.substring(0, 50) + '...'
+        })))
+
+        console.log('[MODE C] Classified buffer codes:', classifiedBuffer.map(b => ({
+            seq: b.sequence_no,
+            code_id: b.code_id,
+            code: b.code.substring(0, 50) + '...'
+        })))
+
+        // CRITICAL VALIDATION: Check if buffer codes are already used
+        if (classifiedBuffer.length > 0) {
+            const bufferCodeIds = classifiedBuffer.map(b => b.code_id)
+
+            // Check for buffers that are already used (status = 'buffer_used' OR has master_code_id)
+            const { data: usedBufferCodes, error: bufferCheckError } = await supabase
+                .from('qr_codes')
+                .select('sequence_number, status, master_code_id, case_number, replaces_sequence_no')
+                .in('id', bufferCodeIds)
+                .or('status.eq.buffer_used,master_code_id.not.is.null')
+
+            if (bufferCheckError) {
+                console.error('❌ Error checking buffer codes:', bufferCheckError)
+                return NextResponse.json(
+                    { error: 'Failed to validate buffer codes', details: bufferCheckError.message },
+                    { status: 500 }
+                )
+            }
+            
+            if (usedBufferCodes && usedBufferCodes.length > 0) {
+                const usedDetails = usedBufferCodes.map(c => 
+                    `Seq ${c.sequence_number} (already used in Case #${c.case_number || 'unknown'}, replaced seq ${c.replaces_sequence_no || 'N/A'})`
+                ).join(', ')
+                
+                console.error('❌ Buffer codes already used:', usedBufferCodes)
+                
+                return NextResponse.json(
+                    {
+                        error: `Cannot use buffer codes: ${usedBufferCodes.length} buffer code(s) already used`,
+                        details: `Buffer codes already used: ${usedDetails}. Each buffer code can only be used once. Please scan different buffer codes.`
+                    },
+                    { status: 400 }
+                )
+            }
+        }
+
+        // Return error if codes are already packed
+        if (alreadyPackedCodes.length > 0) {
+            return NextResponse.json(
+                {
+                    error: `Cannot create reverse job: ${alreadyPackedCodes.length} code(s) already packed and linked to master case`,
+                    details: `Sequences already packed: ${alreadyPackedCodes.join(', ')}. These codes are already part of a complete case and cannot be reversed.`
+                },
+                { status: 400 }
+            )
+        }
+
+        // Return error if codes are already spoiled
+        if (alreadySpoiledCodes.length > 0) {
+            return NextResponse.json(
+                {
+                    error: `Cannot create reverse job: ${alreadySpoiledCodes.length} code(s) already marked as spoiled`,
+                    details: `Sequences already spoiled: ${alreadySpoiledCodes.join(', ')}. These codes may already be in another reverse job.`
+                },
+                { status: 400 }
+            )
+        }
+
+        // If all codes were classified as buffer, treat them as spoiled codes anyway
+        // This allows users to explicitly mark buffer codes as damaged/spoiled
+        if (classifiedSpoiled.length === 0 && classifiedBuffer.length > 0) {
+            console.log('[MODE C] All codes were classified as buffer, treating as spoiled for reversal')
+            // Move all buffer codes to spoiled classification
+            classifiedSpoiled.push(...classifiedBuffer)
+            classifiedBuffer.length = 0 // Clear buffer array
+        }
+
+        if (classifiedSpoiled.length === 0) {
+            return NextResponse.json(
+                {
+                    error: 'No valid spoiled codes found. Please provide at least one spoiled code.',
+                    details: `Parsed ${entries.length} entries but none were valid for processing. Check that the codes belong to this batch.`
+                },
+                { status: 400 }
+            )
+        }
+
+        // IMPORTANT: NO AUTO-ALLOCATION!
+        // User must explicitly provide buffer codes OR scan them separately
+
+        // Sort both lists ASC by sequence
+        classifiedSpoiled.sort((a, b) => a.sequence_no - b.sequence_no)
+        classifiedBuffer.sort((a, b) => a.sequence_no - b.sequence_no)
+
+        const pairings: Array<{
+            spoiled_seq: number
+            spoiled_code_id: string
+            spoiled_code: string
+            buffer_seq: number | null
+            buffer_code_id: string | null
+            buffer_code: string | null
+        }> = []
+
+        // Scenario 2: User provided BOTH spoiled and buffer codes together
+        if (classifiedBuffer.length > 0) {
+            console.log('[MODE C] Scenario 2: User provided spoiled + buffer codes together')
+
+            // Validate: buffer count must match spoiled count exactly
+            if (classifiedBuffer.length !== classifiedSpoiled.length) {
+                return NextResponse.json(
+                    {
+                        error: `Buffer code count mismatch. You provided ${classifiedSpoiled.length} spoiled code(s) and ${classifiedBuffer.length} buffer code(s). They must match exactly.`,
+                        details: `Either provide equal numbers of spoiled and buffer codes, OR provide only spoiled codes (scan buffers separately later).`
+                    },
+                    { status: 400 }
+                )
+            }
+
+            // Pair 1-to-1: spoiled with buffer
+            for (let i = 0; i < classifiedSpoiled.length; i++) {
+                const spoiled = classifiedSpoiled[i]
+                const buffer = classifiedBuffer[i]
+
+                pairings.push({
+                    spoiled_seq: spoiled.sequence_no,
+                    spoiled_code_id: spoiled.code_id,
+                    spoiled_code: spoiled.code,
+                    buffer_seq: buffer.sequence_no,
+                    buffer_code_id: buffer.code_id,
+                    buffer_code: buffer.code
+                })
+            }
+
+            console.log('[MODE C] Explicit pairing: ', pairings.length, 'pairs (spoiled + buffer)')
+        } else {
+            // Scenario 1: User provided ONLY spoiled codes (will scan buffers separately)
+            console.log('[MODE C] Scenario 1: User provided only spoiled codes (buffer scan required separately)')
+
+            for (const spoiled of classifiedSpoiled) {
+                pairings.push({
+                    spoiled_seq: spoiled.sequence_no,
+                    spoiled_code_id: spoiled.code_id,
+                    spoiled_code: spoiled.code,
+                    buffer_seq: null, // No buffer yet - user must scan separately
+                    buffer_code_id: null,
+                    buffer_code: null
+                })
+            }
+
+            console.log('[MODE C] Waiting for buffer scan:', classifiedSpoiled.length, 'spoiled codes marked')
+        }
+
+        // Create job items from pairings
+        const itemsToCreate = pairings.map(p => ({
+            spoiled_code_id: p.spoiled_code_id,
+            spoiled_sequence_no: p.spoiled_seq,
+            replacement_code_id: p.buffer_code_id,
+            replacement_sequence_no: p.buffer_seq
+        }))
+
+        console.log('[MODE C] Job items to create:', itemsToCreate.map(item => ({
+            spoiled_seq: item.spoiled_sequence_no,
+            spoiled_id: item.spoiled_code_id,
+            buffer_seq: item.replacement_sequence_no,
+            buffer_id: item.replacement_code_id
+        })))
+
+        // Check for existing jobs for this case
+        const { data: existingJobs } = await supabase
+            .from('qr_reverse_jobs')
+            .select('id, status')
+            .eq('order_id', order_id)
+            .eq('batch_id', batch_id)
+            .eq('case_number', caseNumber!) // Non-null asserted after validation
+            .in('status', ['queued', 'running'])
+
+        if (existingJobs && existingJobs.length > 0) {
+            return NextResponse.json(
+                {
+                    error: `A reverse job for Case #${caseNumber} is already in progress`,
+                    job_id: existingJobs[0].id
+                },
+                { status: 409 }
+            )
+        }
+
+        // TASK 2: Build debug log
+        const debugLog = {
+            timestamp: new Date().toISOString(),
+            classification: {
+                spoiled: classifiedSpoiled.map(s => ({ seq: s.sequence_no, code: s.code })),
+                buffer: classifiedBuffer.map(b => ({ seq: b.sequence_no, code: b.code }))
+            },
+            pairings: pairings.map(p => ({
+                spoiled: p.spoiled_seq,
+                buffer: p.buffer_seq || 'auto-allocate'
+            })),
+            validation: {
+                alreadyPacked: alreadyPackedCodes,
+                alreadySpoiled: alreadySpoiledCodes,
+                invalid: invalidCodes
+            }
+        }
+
+        // Create the reverse job with debug_log
+        const { data: job, error: jobError } = await supabase
+            .from('qr_reverse_jobs')
+            .insert({
+                order_id,
+                batch_id,
+                manufacturer_org_id: userProfile.organization_id!,
+                case_number: caseNumber,
+                variant_key: variantKey || null,
+                total_spoiled: itemsToCreate.length,
+                expected_units_per_case: unitsPerCase,
+                status: 'queued',
+                created_by: user.id,
+                created_at: new Date().toISOString(),
+                debug_log: JSON.stringify(debugLog, null, 2)
+            })
+            .select()
+            .single()
+
+        if (jobError || !job) {
+            console.error('❌ Failed to create job:', jobError)
+            return NextResponse.json(
+                { error: 'Failed to create reverse job' },
+                { status: 500 }
+            )
+        }
+
+        console.log('✅ Created job:', job.id)
+
+        // Create job items
+        const jobItems = itemsToCreate.map(item => ({
+            ...item,
+            job_id: job.id,
+            created_at: new Date().toISOString()
+        }))
+
+        const { error: itemsError } = await supabase
+            .from('qr_reverse_job_items')
+            .insert(jobItems)
+
+        if (itemsError) {
+            console.error('❌ Failed to create job items:', itemsError)
+            // Rollback: delete job
+            await supabase.from('qr_reverse_jobs').delete().eq('id', job.id)
+            return NextResponse.json(
+                { error: 'Failed to create job items' },
+                { status: 500 }
+            )
+        }
+
+        const duration = Date.now() - startTime
+        console.log(`✅ Job created successfully in ${duration}ms`)
+
+        // 🚀 AUTO-TRIGGER WORKER - User only clicks "Submit Background Job" once
+        try {
+            const isDevelopment = process.env.NODE_ENV === 'development'
+            const cronSecret = process.env.CRON_SECRET
+            
+            // Build proper base URL
+            let baseUrl = process.env.NEXT_PUBLIC_SITE_URL
+            if (!baseUrl && process.env.VERCEL_URL) {
+                baseUrl = process.env.VERCEL_URL.startsWith('http') 
+                    ? process.env.VERCEL_URL 
+                    : `https://${process.env.VERCEL_URL}`
+            }
+            if (!baseUrl) {
+                baseUrl = 'http://localhost:3000'
+            }
+            
+            const workerUrl = `${baseUrl}/api/cron/qr-reverse-worker`
+
+            console.log('🔄 AUTO-TRIGGERING WORKER (user only clicked Submit once)...', {
+                workerUrl,
+                isDevelopment,
+                hasCronSecret: !!cronSecret,
+                baseUrl
+            })
+
+            // Fire and forget - don't wait for response
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json'
+            }
+            
+            // Only add Authorization header in production
+            if (!isDevelopment && cronSecret) {
+                headers['Authorization'] = `Bearer ${cronSecret}`
+            }
+
+            fetch(workerUrl, {
+                method: 'POST',
+                headers
+            }).then(async response => {
+                console.log('✅ Worker auto-trigger response:', response.status, response.statusText)
+                try {
+                    const data = await response.json()
+                    console.log('✅ Worker auto-trigger data:', data)
+                } catch (e) {
+                    console.log('⚠️ Worker response not JSON (may be OK)')
+                }
+            }).catch(err => {
+                console.warn('⚠️ Worker auto-trigger failed (non-blocking):', err.message)
+            })
+        } catch (triggerError) {
+            console.warn('⚠️ Worker auto-trigger exception (non-blocking):', triggerError)
+        }
+
+        return NextResponse.json({
+            success: true,
+            job_id: job.id,
+            case_number: caseNumber,
+            variant_key: variantKey,
+            total_spoiled: classifiedSpoiled.length,
+            total_buffer: classifiedBuffer.length,
+            pairings: pairings.length,
+            message: `Reverse job created for Case #${caseNumber}. Classified ${classifiedSpoiled.length} spoiled code(s)${classifiedBuffer.length > 0 ? ` and ${classifiedBuffer.length} buffer code(s)` : ''}. Processing started automatically.`,
+            classification: {
+                spoiled: classifiedSpoiled.map(s => s.sequence_no),
+                buffer: classifiedBuffer.map(b => b.sequence_no)
+            },
+            duration_ms: duration
+        })
+
+    } catch (error: any) {
+        console.error('❌ Create job error:', error)
+        return NextResponse.json(
+            { error: error.message || 'Internal server error' },
+            { status: 500 }
+        )
+    }
+}

@@ -84,7 +84,8 @@ export async function generateQRExcel(data: QRExcelData): Promise<string> {
     await buildMasterSheet(workbook, data)
     await buildIndividualSheet(workbook, data, data.individualCodes)
     await buildProductBreakdownSheet(workbook, productGroups)
-    await buildPackingSheet(workbook, data, caseProductCounts)
+    // Packing List sheet removed - not needed
+    // await buildPackingSheet(workbook, data, caseProductCounts)
 
     await workbook.commit()
     await finished(writeStream)
@@ -234,23 +235,17 @@ async function buildMasterSheet(
   const sheet = workbook.addWorksheet('Master QR Codes')
   sheet.columns = [
     { header: '#', key: 'index', width: 6 },
-    { header: 'Master QR Code', key: 'masterCode', width: 45 },
     { header: 'Tracking URL', key: 'trackingUrl', width: 60 },
     { header: 'Case Number', key: 'caseNumber', width: 14 },
-    { header: 'Expected Units', key: 'expectedUnits', width: 16 },
-    { header: 'Order No', key: 'orderNo', width: 18 },
-    { header: 'Print Instructions', key: 'printInstructions', width: 38 }
+    { header: 'Expected Units', key: 'expectedUnits', width: 16 }
   ]
 
   data.masterCodes.forEach((master, index) => {
     const row = sheet.addRow({
       index: index + 1,
-      masterCode: master.code,
       trackingUrl: generateTrackingURL(master.code, 'master'),
       caseNumber: master.case_number,
-      expectedUnits: master.expected_unit_count,
-      orderNo: data.orderNo,
-      printInstructions: 'Print at 5cm x 5cm minimum size'
+      expectedUnits: master.expected_unit_count
     })
     row.commit()
   })
@@ -278,55 +273,42 @@ async function buildIndividualSheet(
 
   const sheet = workbook.addWorksheet(sheetName)
   
-  // Column order based on user requirements:
+  // Column order - simplified without removed columns:
   // 1. # (A)
-  // 2. Individual QR Code (B)
-  // 3. Product Name (C) - moved from position 9
-  // 4. Variant (D) - moved from position 10
-  // 5. Individual Tracking URL (E) - moved from position 3
-  // 6. Sequence (F)
-  // 7. Product Code (G)
-  // 8. Variant Code (H)
-  // 9. Master QR Code (I)
-  // 10. Case Number (J) - moved before Master Tracking URL
-  // 11. Master Tracking URL (K) - moved after Case Number
-  // 12. Order No (L)
-  // 13. Print Instructions (M)
+  // 2. Product Name (B)
+  // 3. Variant (C)
+  // 4. Individual Tracking URL (D)
+  // 5. Sequence (E)
+  // 6. Product Code (F)
+  // 7. Variant Code (G)
+  // 8. Case Number (H)
+  // 9. Is Buffer (I)
   sheet.columns = [
     { header: '#', key: 'index', width: 6 },
-    { header: 'Individual QR Code', key: 'code', width: 50 },
     { header: 'Product Name', key: 'productName', width: 32 },
     { header: 'Variant', key: 'variantName', width: 24 },
     { header: 'Individual Tracking URL', key: 'trackingUrl', width: 65 },
     { header: 'Sequence', key: 'sequence', width: 12 },
     { header: 'Product Code', key: 'productCode', width: 18 },
     { header: 'Variant Code', key: 'variantCode', width: 18 },
-    { header: 'Master QR Code (Case)', key: 'masterCode', width: 50 },
     { header: 'Case Number', key: 'caseNumber', width: 14 },
-    { header: 'Master Tracking URL', key: 'masterTrackingUrl', width: 65 },
-    { header: 'Order No', key: 'orderNo', width: 18 },
-    { header: 'Print Instructions', key: 'printInstructions', width: 32 }
+    { header: 'Is Buffer', key: 'isBuffer', width: 12 }
   ]
 
   for (let i = 0; i < codesSlice.length; i++) {
     const code = codesSlice[i]
-    const masterCode = caseToMasterCode.get(code.case_number) || ''
 
-    // Build row data with all URLs and Master QR Code
+    // Build row data without removed columns
     const rowData: any = {
       index: i + 1,
-      code: code.code,
       trackingUrl: generateTrackingURL(code.code, 'product'),
-      masterCode: masterCode,
-      masterTrackingUrl: masterCode ? generateTrackingURL(masterCode, 'master') : '',
       sequence: code.sequence_number,
       productCode: code.product_code,
       variantCode: code.variant_code,
       productName: code.product_name,
       variantName: code.variant_name,
       caseNumber: code.case_number,
-      orderNo: data.orderNo,
-      printInstructions: 'Print at 2cm x 2cm minimum size'
+      isBuffer: code.is_buffer ? 'TRUE' : 'FALSE'
     }
 
     const row = sheet.addRow(rowData)
