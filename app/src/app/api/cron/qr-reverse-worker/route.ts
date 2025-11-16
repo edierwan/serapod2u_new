@@ -132,27 +132,37 @@ async function recalculateMasterCaseStats(supabase: any, masterId: string, manuf
   }
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * Main worker processing function
+ * Used by both GET (Vercel cron) and POST (manual trigger)
+ */
+async function processJobs(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    // Verify cron secret (skip in development)
+    // Verify authorization for Vercel Cron
     const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
     const isDevelopment = process.env.NODE_ENV === 'development'
-
-    // In development, always allow (skip auth check)
-    // In production, require the CRON_SECRET for security
-    if (!isDevelopment && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn('⚠️ Unauthorized worker access attempt')
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    if (isDevelopment) {
-      console.log('🔓 Development mode: CRON_SECRET check skipped')
+    
+    // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
+    // Check if it's from Vercel Cron (has authorization header) or manual trigger
+    if (!isDevelopment && authHeader) {
+      const cronSecret = process.env.CRON_SECRET
+      
+      // If CRON_SECRET is set, validate it
+      if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+        console.warn('⚠️ Unauthorized worker access attempt - invalid CRON_SECRET')
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        )
+      }
+      
+      console.log('✅ Authorized: Vercel Cron job')
+    } else if (isDevelopment) {
+      console.log('🔓 Development mode: Auth check skipped')
+    } else {
+      console.log('ℹ️ Manual trigger (no auth header)')
     }
 
     const supabase = await createClient()
@@ -891,4 +901,22 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+/**
+ * GET handler - Called by Vercel Cron Jobs
+ * Vercel cron jobs use GET requests by default
+ */
+export async function GET(request: NextRequest) {
+  console.log('🔔 Cron trigger: GET request from Vercel')
+  return processJobs(request)
+}
+
+/**
+ * POST handler - Manual trigger for testing/debugging
+ * Can be called manually with CRON_SECRET for testing
+ */
+export async function POST(request: NextRequest) {
+  console.log('🔧 Manual trigger: POST request')
+  return processJobs(request)
 }
