@@ -57,25 +57,77 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
     try {
       setLoading(true)
       
-      // Fetch order with all related data
-      const { data, error } = await supabase
+      // Fetch order data
+      const { data: order, error } = await supabase
         .from('orders')
-        .select(`
-          *,
-          buyer_org:organizations!orders_buyer_org_id_fkey(org_name, org_code, address, contact_phone, contact_email),
-          seller_org:organizations!orders_seller_org_id_fkey(org_name, org_code, address, contact_phone, contact_email),
-          created_by_user:users!orders_created_by_fkey(full_name, email),
-          order_items(
-            *,
-            product:products(product_name, product_code),
-            variant:product_variants(variant_name)
-          )
-        `)
+        .select('*')
         .eq('id', orderId)
         .single()
 
       if (error) throw error
-      setOrderData(data)
+      if (!order) throw new Error('Order not found')
+
+      // Load buyer org
+      const { data: buyerOrg } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', order.buyer_org_id)
+        .single()
+
+      // Load seller org
+      const { data: sellerOrg } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', order.seller_org_id)
+        .single()
+
+      // Load created by user
+      const { data: createdByUser } = await supabase
+        .from('users')
+        .select('full_name, email')
+        .eq('id', order.created_by)
+        .single()
+
+      // Load order items
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', orderId)
+
+      // Load product details for each item
+      const itemsWithDetails = await Promise.all(
+        (orderItems || []).map(async (item: any) => {
+          const { data: product } = await supabase
+            .from('products')
+            .select('product_name, product_code')
+            .eq('id', item.product_id)
+            .single()
+
+          const { data: variant } = await supabase
+            .from('product_variants')
+            .select('variant_name')
+            .eq('id', item.variant_id)
+            .single()
+
+          return {
+            ...item,
+            product,
+            variant
+          }
+        })
+      )
+
+      // Combine all data
+      const completeOrderData = {
+        ...order,
+        buyer_org: buyerOrg,
+        seller_org: sellerOrg,
+        created_by_user: createdByUser,
+        order_items: itemsWithDetails
+      }
+
+      console.log('✅ Complete order data loaded:', completeOrderData)
+      setOrderData(completeOrderData)
     } catch (error: any) {
       console.error('Error loading order:', error?.message || 'Unknown error', error)
       toast({
@@ -252,8 +304,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Orders
           </Button>
-          <h1 className="text-2xl font-bold text-gray-900">Order Details (Read-Only)</h1>
-          <p className="text-gray-600 mt-1">View complete order information</p>
+          <h1 className="text-2xl font-bold text-gray-900">{orderData.order_no}</h1>
+          <p className="text-gray-600 mt-1">{orderData.order_type} • {orderData.buyer_org?.org_name} → {orderData.seller_org?.org_name}</p>
         </div>
         <div>
           <Badge 
@@ -264,6 +316,165 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
           </Badge>
         </div>
       </div>
+
+      {/* Order Summary - Similar to TrackOrderView */}
+      {orderData && (
+        <Card>
+          <CardHeader className="border-b bg-gray-50">
+            <CardTitle className="text-lg">Order Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Buyer */}
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Building2 className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Buyer</p>
+                <p className="font-semibold text-gray-900">{orderData?.buyer_org?.org_name || 'N/A'}</p>
+              </div>
+            </div>
+
+            {/* Seller */}
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <Building2 className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Seller</p>
+                <p className="font-semibold text-gray-900">{orderData?.seller_org?.org_name || 'N/A'}</p>
+              </div>
+            </div>
+
+            {/* Total Items */}
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Package className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Items</p>
+                <p className="font-semibold text-gray-900">{formatNumber(totalQuantity)} units</p>
+              </div>
+            </div>
+
+            {/* Total Amount */}
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <DollarSign className="w-5 h-5 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Amount</p>
+                <p className="font-semibold text-gray-900">RM {formatCurrency(subtotal)}</p>
+              </div>
+            </div>
+
+            {/* Created Date */}
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-indigo-100 rounded-lg">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Created Date</p>
+                <p className="font-semibold text-gray-900">{orderData?.created_at ? new Date(orderData.created_at).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Order Configuration */}
+          <div className="mt-6 pt-6 border-t">
+            <h4 className="text-sm font-semibold text-gray-900 mb-3">Order Configuration</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Lucky Draw */}
+              {orderData.enable_lucky_draw && (
+                <div className="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                  <Trophy className="w-4 h-4 text-purple-600" />
+                  <div>
+                    <p className="text-xs text-purple-600 font-medium">🎰 Lucky Draw</p>
+                    <p className="text-xs text-purple-700">Enabled</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Redeem */}
+              {orderData.enable_redeem && (
+                <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <Gift className="w-4 h-4 text-orange-600" />
+                  <div>
+                    <p className="text-xs text-orange-600 font-medium">🎁 Redeem</p>
+                    <p className="text-xs text-orange-700">Enabled</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Points */}
+              {orderData.has_points !== false && (
+                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  <div>
+                    <p className="text-xs text-blue-600 font-medium">💎 Points</p>
+                    <p className="text-xs text-blue-700">Enabled</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Units/Case */}
+              <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <Package className="w-4 h-4 text-gray-600" />
+                <div>
+                  <p className="text-xs text-gray-600 font-medium">📦 Units/Case</p>
+                  <p className="text-xs text-gray-700">{orderData.units_per_case || 100}</p>
+                </div>
+              </div>
+
+              {/* QR Buffer */}
+              <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <QrCode className="w-4 h-4 text-gray-600" />
+                <div>
+                  <p className="text-xs text-gray-600 font-medium">📊 QR Buffer</p>
+                  <p className="text-xs text-gray-700">{orderData.qr_buffer_percent || 10}%</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes */}
+          {orderData.notes && (
+            <div className="mt-6 pt-6 border-t">
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">Notes</h4>
+              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{orderData.notes}</p>
+            </div>
+          )}
+
+          {/* Customer Information if available */}
+          {(orderData.customer_name || orderData.phone_number || orderData.delivery_address) && (
+            <div className="mt-6 pt-6 border-t">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">Customer Information</h4>
+              <div className="grid md:grid-cols-3 gap-4">
+                {orderData.customer_name && (
+                  <div>
+                    <p className="text-xs text-gray-600">Customer Name</p>
+                    <p className="text-sm font-medium text-gray-900">{orderData.customer_name}</p>
+                  </div>
+                )}
+                {orderData.phone_number && (
+                  <div>
+                    <p className="text-xs text-gray-600">Phone Number</p>
+                    <p className="text-sm font-medium text-gray-900">{orderData.phone_number}</p>
+                  </div>
+                )}
+                {orderData.delivery_address && (
+                  <div className="md:col-span-3">
+                    <p className="text-xs text-gray-600">Delivery Address</p>
+                    <p className="text-sm font-medium text-gray-900">{orderData.delivery_address}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      )}
 
       {/* Order Information */}
       <Card>

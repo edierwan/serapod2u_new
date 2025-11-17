@@ -130,6 +130,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([])
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  
+  // Product filtering and search
+  const [productSearchQuery, setProductSearchQuery] = useState('')
+  const [selectedProductFilter, setSelectedProductFilter] = useState('')
 
   useEffect(() => {
     initializeOrder()
@@ -141,6 +145,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   const initializeOrder = async () => {
     try {
       setLoading(true)
+      
+      // Check if we're editing an existing order
+      const editingOrderId = sessionStorage.getItem('editingOrderId')
+      if (editingOrderId) {
+        await loadExistingOrder(editingOrderId)
+        sessionStorage.removeItem('editingOrderId')
+        return
+      }
       
       // Determine order type and buyer based on user's org type
       const userOrgType = userProfile.organizations.org_type_code
@@ -639,6 +651,170 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           line_total: newQty * item.unit_price
         }
       }))
+    }
+  }
+
+  const loadExistingOrder = async (orderId: string) => {
+    try {
+      // Load order data with organizations
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .single()
+
+      if (orderError) {
+        console.error('Error loading order:', orderError)
+        throw orderError
+      }
+      if (!orderData) throw new Error('Order not found')
+
+      console.log('📝 Loading order for edit:', orderData)
+
+      // Load buyer organization
+      const { data: buyerOrg } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', orderData.buyer_org_id)
+        .single()
+
+      // Load seller organization if exists
+      let sellerOrg = null
+      if (orderData.seller_org_id) {
+        const { data } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', orderData.seller_org_id)
+          .single()
+        sellerOrg = data
+      }
+
+      // Load order items
+      const { data: orderItems, error: itemsError } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', orderId)
+
+      if (itemsError) {
+        console.error('Error loading order items:', itemsError)
+        throw itemsError
+      }
+
+      console.log('📦 Loaded order items:', orderItems)
+
+      // Load product details for each order item
+      const itemsWithDetails = await Promise.all(
+        (orderItems || []).map(async (item: any) => {
+          // Load product
+          const { data: product } = await supabase
+            .from('products')
+            .select('product_name, product_code')
+            .eq('id', item.product_id)
+            .single()
+
+          // Load product variant
+          const { data: variant } = await supabase
+            .from('product_variants')
+            .select('variant_name, attributes, manufacturer_sku')
+            .eq('id', item.variant_id)
+            .single()
+
+          return {
+            ...item,
+            products: product,
+            product_variants: variant
+          }
+        })
+      )
+
+      console.log('📦 Order items with details:', itemsWithDetails)
+      console.log('📋 Order data for customer info:', {
+        customer_name: orderData.customer_name,
+        phone_number: orderData.phone_number,
+        delivery_address: orderData.delivery_address,
+        notes: orderData.notes
+      })
+
+      // Set order type
+      setOrderType(orderData.order_type)
+
+      // Set buyer and seller organizations
+      if (buyerOrg) {
+        setBuyerOrg(buyerOrg)
+      }
+      if (sellerOrg) {
+        setSellerOrg(sellerOrg)
+        setSelectedSellerOrgId(orderData.seller_org_id)
+      }
+
+      // Set customer information
+      // If customer info fields are empty, try to extract from notes field
+      if (!orderData.customer_name && !orderData.phone_number && !orderData.delivery_address && orderData.notes) {
+        // Parse notes field (format: "Customer: Name, Phone: Number, Address: Address")
+        const notesText = orderData.notes
+        const customerMatch = notesText.match(/Customer:\s*([^,]+)/)
+        const phoneMatch = notesText.match(/Phone:\s*([^,]+)/)
+        const addressMatch = notesText.match(/Address:\s*(.+)/)
+        
+        setCustomerName(customerMatch ? customerMatch[1].trim() : '')
+        setPhoneNumber(phoneMatch ? phoneMatch[1].trim() : '')
+        setDeliveryAddress(addressMatch ? addressMatch[1].trim() : '')
+      } else {
+        setCustomerName(orderData.customer_name || '')
+        setPhoneNumber(orderData.phone_number || '')
+        setDeliveryAddress(orderData.delivery_address || '')
+      }
+
+      // Set order configuration
+      setUnitsPerCase(orderData.units_per_case || 100)
+      setQrBuffer(orderData.qr_buffer_percent || 10)
+      setEnableRFID(orderData.rfid_enabled || false)
+      setHasPoints(orderData.has_points !== false)
+      setEnableLuckyDraw(orderData.enable_lucky_draw !== false)
+      setEnableRedeem(orderData.enable_redeem !== false)
+      setNotes(orderData.notes || '')
+
+      // Check if order uses individual case sizes
+      const hasIndividualCases = itemsWithDetails?.some((item: any) => item.units_per_case != null)
+      setUseIndividualCases(hasIndividualCases)
+
+      // Map order items to the correct format
+      const items: OrderItem[] = (itemsWithDetails || []).map((item: any) => ({
+        id: item.id,
+        order_id: orderId,
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        product_name: item.products?.product_name || 'Unknown Product',
+        variant_name: item.product_variants?.variant_name || 'Default',
+        attributes: item.product_variants?.attributes,
+        manufacturer_sku: item.product_variants?.manufacturer_sku,
+        qty: item.qty,
+        unit_price: item.unit_price,
+        line_total: item.line_total,
+        units_per_case: item.units_per_case
+      }))
+
+      setOrderItems(items)
+
+      // Load available products for the seller
+      if (orderData.seller_org_id) {
+        await loadAvailableProducts(orderData.seller_org_id)
+      }
+
+      toast({
+        title: 'Order Loaded',
+        description: `Editing order ${orderData.order_no}`,
+      })
+
+    } catch (error) {
+      console.error('Error loading order:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load order for editing',
+        variant: 'destructive'
+      })
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -1182,43 +1358,130 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               <CardTitle className="text-base font-semibold">Product Selection</CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Product
-                </label>
-                <div className="flex gap-2">
+              {/* Search and Filter */}
+              <div className="space-y-3 mb-4">
+                {/* Product Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Filter by Product
+                  </label>
                   <select
-                    value={selectedVariantId}
-                    onChange={(e) => setSelectedVariantId(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedProductFilter}
+                    onChange={(e) => {
+                      setSelectedProductFilter(e.target.value)
+                      setSelectedVariantId('') // Reset variant selection
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     disabled={availableVariants.length === 0}
                   >
-                    <option value="">
-                      {availableVariants.filter(v => !orderItems.find(item => item.variant_id === v.id)).length === 0 
-                        ? 'No more products available' 
-                        : 'Choose a product...'}
-                    </option>
-                    {availableVariants
-                      .filter(variant => !orderItems.find(item => item.variant_id === variant.id))
-                      .map(variant => {
-                        // Get attribute text (e.g., "6mg" or "3mg")
-                        const attrText = variant.attributes?.strength || variant.attributes?.nicotine || ''
-                        return (
-                          <option key={variant.id} value={variant.id}>
-                            {variant.product_name} - {variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {formatCurrency(variant.base_cost)}
-                          </option>
-                        )
-                      })}
+                    <option value="">All Products ({Array.from(new Set(availableVariants.map(v => v.product_name))).length})</option>
+                    {Array.from(new Set(availableVariants.map(v => v.product_name))).sort().map(productName => {
+                      const variantsCount = availableVariants.filter(v => v.product_name === productName && !orderItems.find(item => item.variant_id === v.id)).length
+                      return (
+                        <option key={productName} value={productName}>
+                          {productName} ({variantsCount} variant{variantsCount !== 1 ? 's' : ''})
+                        </option>
+                      )
+                    })}
                   </select>
-                  <Button 
-                    variant="outline" 
-                    className="bg-gray-600 text-white hover:bg-gray-700"
-                    onClick={handleAddProduct}
-                    disabled={!selectedVariantId}
-                  >
-                    Add Product
-                  </Button>
                 </div>
+
+                {/* Search */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Search Variant
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Search by variant name or attributes..."
+                    value={productSearchQuery}
+                    onChange={(e) => setProductSearchQuery(e.target.value)}
+                    className="w-full"
+                    disabled={availableVariants.length === 0}
+                  />
+                </div>
+
+                {/* Variant Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Variant
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedVariantId}
+                      onChange={(e) => setSelectedVariantId(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white max-h-[200px]"
+                      disabled={availableVariants.length === 0}
+                      size={Math.min(8, Math.max(3, availableVariants.filter(v => {
+                        const alreadyAdded = orderItems.find(item => item.variant_id === v.id)
+                        if (alreadyAdded) return false
+                        
+                        const matchesProduct = !selectedProductFilter || v.product_name === selectedProductFilter
+                        const searchLower = productSearchQuery.toLowerCase()
+                        const matchesSearch = !productSearchQuery || 
+                          v.variant_name.toLowerCase().includes(searchLower) ||
+                          v.product_name.toLowerCase().includes(searchLower) ||
+                          (v.attributes?.strength && String(v.attributes.strength).toLowerCase().includes(searchLower)) ||
+                          (v.attributes?.nicotine && String(v.attributes.nicotine).toLowerCase().includes(searchLower))
+                        
+                        return matchesProduct && matchesSearch
+                      }).length))}
+                    >
+                      <option value="">
+                        {(() => {
+                          const filteredVariants = availableVariants.filter(v => {
+                            const alreadyAdded = orderItems.find(item => item.variant_id === v.id)
+                            if (alreadyAdded) return false
+                            
+                            const matchesProduct = !selectedProductFilter || v.product_name === selectedProductFilter
+                            const searchLower = productSearchQuery.toLowerCase()
+                            const matchesSearch = !productSearchQuery || 
+                              v.variant_name.toLowerCase().includes(searchLower) ||
+                              v.product_name.toLowerCase().includes(searchLower) ||
+                              (v.attributes?.strength && String(v.attributes.strength).toLowerCase().includes(searchLower)) ||
+                              (v.attributes?.nicotine && String(v.attributes.nicotine).toLowerCase().includes(searchLower))
+                            
+                            return matchesProduct && matchesSearch
+                          })
+                          return filteredVariants.length === 0 ? 'No variants available' : `Select a variant (${filteredVariants.length} available)`
+                        })()}
+                      </option>
+                      {availableVariants
+                        .filter(variant => {
+                          const alreadyAdded = orderItems.find(item => item.variant_id === variant.id)
+                          if (alreadyAdded) return false
+                          
+                          const matchesProduct = !selectedProductFilter || variant.product_name === selectedProductFilter
+                          const searchLower = productSearchQuery.toLowerCase()
+                          const matchesSearch = !productSearchQuery || 
+                            variant.variant_name.toLowerCase().includes(searchLower) ||
+                            variant.product_name.toLowerCase().includes(searchLower) ||
+                            (variant.attributes?.strength && String(variant.attributes.strength).toLowerCase().includes(searchLower)) ||
+                            (variant.attributes?.nicotine && String(variant.attributes.nicotine).toLowerCase().includes(searchLower))
+                          
+                          return matchesProduct && matchesSearch
+                        })
+                        .sort((a, b) => a.product_name.localeCompare(b.product_name) || a.variant_name.localeCompare(b.variant_name))
+                        .map(variant => {
+                          const attrText = variant.attributes?.strength || variant.attributes?.nicotine || ''
+                          return (
+                            <option key={variant.id} value={variant.id}>
+                              {!selectedProductFilter ? `${variant.product_name} - ` : ''}{variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {formatCurrency(variant.base_cost)}
+                            </option>
+                          )
+                        })}
+                    </select>
+                    <Button 
+                      variant="outline" 
+                      className="bg-blue-600 text-white hover:bg-blue-700 shrink-0"
+                      onClick={handleAddProduct}
+                      disabled={!selectedVariantId}
+                    >
+                      Add Product
+                    </Button>
+                  </div>
+                </div>
+
                 {availableVariants.length === 0 && (
                   <p className="text-xs text-red-600 mt-1">
                     {orderType === 'H2M' 
@@ -1347,7 +1610,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           </div>
                           <div>
                             <span className="text-gray-500 block">QR Codes:</span>
-                            <span className="font-semibold">{Math.ceil(item.qty / unitsPerCase)} master + {Math.round(item.qty + (item.qty * qrBuffer / 100))} unique</span>
+                            <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} master + {Math.round(item.qty + (item.qty * qrBuffer / 100))} unique</span>
                           </div>
                         </div>
                       </div>
