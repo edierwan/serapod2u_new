@@ -436,81 +436,76 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           return (
             <div
               key={`order-${order.id}`}
-              className="flex items-start gap-4 p-4 border border-orange-200 rounded-lg bg-orange-50 hover:bg-orange-100 transition-colors"
+              className="p-3 sm:p-4 border border-orange-200 rounded-lg bg-orange-50"
             >
-              {/* Icon */}
-              <div className="p-2.5 rounded-lg bg-orange-600 text-white flex-shrink-0">
-                <Package className="w-5 h-5" />
-              </div>
-              
-              {/* Content */}
-              <div className="flex-1 min-w-0 space-y-2">
-                {/* Header Row */}
-                <div className="flex items-start justify-between gap-3">
+              {/* Mobile/Tablet Layout */}
+              <div className="space-y-3">
+                {/* Header */}
+                <div className="flex items-start gap-2">
+                  <div className="p-2 rounded-lg bg-orange-600 text-white flex-shrink-0">
+                    <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-semibold text-orange-900">
-                        Order Awaiting Approval
-                      </h4>
-                      <Badge variant="outline" className="text-xs font-mono bg-white">
+                    <h4 className="font-semibold text-orange-900 text-sm sm:text-base mb-1">
+                      Order Awaiting Approval
+                    </h4>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant="outline" className="text-[10px] sm:text-xs font-mono bg-white">
                         {order.order_no}
                       </Badge>
-                      <Badge className="text-xs bg-amber-500 hover:bg-amber-600">
+                      <Badge className="text-[10px] sm:text-xs bg-amber-500">
                         {order.order_type}
                       </Badge>
                     </div>
                   </div>
-                  
-                  <Button
-                    size="sm"
-                    className="flex-shrink-0 bg-orange-600 hover:bg-orange-700"
-                    onClick={() => {
-                      // Navigate to orders view to approve
-                      onViewChange('orders')
-                    }}
-                  >
-                    Review & Approve
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
                 </div>
 
                 {/* Notification Banner */}
-                <div className="w-full bg-white border border-orange-200 rounded-md px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0" />
-                    <span className="text-xs font-medium text-orange-900">
+                <div className="bg-white border border-orange-200 rounded-md px-2.5 py-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-[11px] sm:text-xs text-orange-900">
                       This order is waiting for your approval before it can be processed.
                     </span>
                   </div>
                 </div>
                 
-                {/* Details */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <p className="text-xs text-orange-600">Buyer</p>
-                    <p className="text-sm font-medium text-orange-900">{order.buyer_org.org_name}</p>
+                {/* Details Grid */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-orange-600 mb-0.5">Buyer</p>
+                    <p className="font-medium text-orange-900 truncate">{order.buyer_org.org_name}</p>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-orange-600">Seller</p>
-                    <p className="text-sm font-medium text-orange-900">{order.seller_org.org_name}</p>
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-orange-600 mb-0.5">Seller</p>
+                    <p className="font-medium text-orange-900 truncate">{order.seller_org.org_name}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <Package className="w-3.5 h-3.5 text-orange-600" />
-                    <span className="text-orange-700">{totalUnits} units</span>
+                {/* Stats */}
+                <div className="flex items-center gap-3 text-[11px] sm:text-xs text-orange-700">
+                  <div className="flex items-center gap-1">
+                    <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    <span>{totalUnits} units</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-orange-700">RM {totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
-                  </div>
+                  <div>RM {totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
                 </div>
                 
                 {/* Timestamp */}
-                <div className="flex items-center gap-1.5 text-xs text-orange-600">
-                  <Clock className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-1 text-[10px] sm:text-xs text-orange-600">
+                  <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   <span>Submitted {formatTimeAgo(order.created_at)}</span>
                 </div>
+
+                {/* Action Button - Full Width on Mobile */}
+                <Button
+                  size="sm"
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-xs sm:text-sm h-9"
+                  onClick={() => onViewChange('orders')}
+                >
+                  Review & Approve
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
               </div>
             </div>
           )
@@ -520,68 +515,61 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         {approvedH2MOrders.map((order) => (
           <div
             key={`h2m-${order.id}`}
-            className="flex items-start gap-4 p-4 border border-blue-200 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
+            className="p-3 sm:p-4 border border-blue-200 rounded-lg bg-blue-50"
           >
-            {/* Icon */}
-            <div className="p-2.5 rounded-lg bg-blue-600 text-white flex-shrink-0">
-              <Package className="w-5 h-5" />
-            </div>
-            
-            {/* Content */}
-            <div className="flex-1 min-w-0 space-y-2">
-              {/* Header Row */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-blue-900">
-                      H2M Order Approved - Ready to Order
-                    </h4>
-                    <Badge variant="outline" className="text-xs font-mono bg-white">
-                      {order.order_no}
-                    </Badge>
-                  </div>
+            <div className="space-y-3">
+              {/* Header */}
+              <div className="flex items-start gap-2">
+                <div className="p-2 rounded-lg bg-blue-600 text-white flex-shrink-0">
+                  <Package className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                
-                <Button
-                  size="sm"
-                  className="flex-shrink-0 bg-blue-600 hover:bg-blue-700"
-                  onClick={() => {
-                    // Navigate to create order page
-                    window.location.href = '/dashboard?view=create-order'
-                  }}
-                >
-                  Create D2H Order
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-blue-900 text-sm sm:text-base mb-1">
+                    H2M Order Approved
+                  </h4>
+                  <Badge variant="outline" className="text-[10px] sm:text-xs font-mono bg-white">
+                    {order.order_no}
+                  </Badge>
+                </div>
               </div>
 
               {/* Notification Banner */}
-              <div className="w-full bg-white border border-blue-200 rounded-md px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <div className="bg-white border border-blue-200 rounded-md px-2.5 py-2">
+                <div className="flex items-start gap-2">
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
-                  <span className="text-xs font-medium text-blue-900">
-                    HQ has approved this order. You can now place a D2H order to purchase these products.
+                  <span className="text-[11px] sm:text-xs text-blue-900">
+                    HQ approved. You can now create a D2H order.
                   </span>
                 </div>
               </div>
               
               {/* Details */}
-              <div className="space-y-1">
-                <p className="text-sm text-blue-700">
+              <div className="space-y-1 text-xs sm:text-sm">
+                <p className="text-blue-700">
                   From: <span className="font-medium text-blue-900">{order.buyer_org.org_name}</span>
                 </p>
-                <p className="text-xs text-blue-600">
-                  Order Type: {order.order_type} (HQ → Manufacturer)
+                <p className="text-[10px] sm:text-xs text-blue-600">
+                  {order.order_type} (HQ → Manufacturer)
                 </p>
               </div>
               
               {/* Timestamp */}
-              <div className="flex items-center gap-1.5 text-xs text-blue-600">
-                <Clock className="w-3.5 h-3.5" />
+              <div className="flex items-center gap-1 text-[10px] sm:text-xs text-blue-600">
+                <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span>Approved {formatTimeAgo(order.approved_at)}</span>
               </div>
+
+              {/* Action Button - Full Width on Mobile */}
+              <Button
+                size="sm"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-9"
+                onClick={() => window.location.href = '/dashboard?view=create-order'}
+              >
+                Create D2H Order
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             </div>
           </div>
         ))}
