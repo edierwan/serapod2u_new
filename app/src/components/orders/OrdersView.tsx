@@ -30,7 +30,8 @@ import {
   Trash2,
   ShoppingCart,
   Store,
-  TrendingUp
+  TrendingUp,
+  Copy
 } from 'lucide-react'
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
 
@@ -320,11 +321,71 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return order.buyer_org_id === userProfile.organization_id
   }
 
+  const canCopyOrder = (order: Order): boolean => {
+    // Can copy orders from any status (excluding cancelled)
+    if (order.status === 'cancelled') return false
+    
+    // User must be from the buyer organization
+    return order.buyer_org_id === userProfile.organization_id
+  }
+
   const handleEditOrder = (orderId: string) => {
     // Store order ID and navigate to edit view
     if (onViewChange) {
       sessionStorage.setItem('editingOrderId', orderId)
       onViewChange('create-order')
+    }
+  }
+
+  const handleCopyOrder = async (orderId: string, orderNo: string) => {
+    try {
+      setLoading(true)
+
+      // Fetch the order with all its items
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          order_items (
+            *,
+            product:products (*)
+          )
+        `)
+        .eq('id', orderId)
+        .single()
+
+      if (orderError) throw orderError
+      if (!orderData) throw new Error('Order not found')
+
+      // Create a copy object with the order data
+      const orderCopy = {
+        ...orderData,
+        order_items: orderData.order_items || []
+      }
+
+      // Store in sessionStorage for the create order view to pick up
+      sessionStorage.setItem('copyingOrderData', JSON.stringify(orderCopy))
+      
+      toast({
+        title: 'Order Copied',
+        description: `${orderNo} copied. You can now edit and submit as a new order.`,
+        duration: 3000,
+      })
+
+      // Navigate to create order view
+      if (onViewChange) {
+        onViewChange('create-order')
+      }
+    } catch (error: any) {
+      console.error('Error copying order:', error)
+      toast({
+        title: 'Copy Failed',
+        description: error.message || 'Failed to copy order',
+        variant: 'destructive',
+        duration: 5000,
+      })
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -811,6 +872,18 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             Edit
                           </Button>
                         )}
+                        {canCopyOrder(order) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                            onClick={() => handleCopyOrder(order.id, order.order_no)}
+                            title="Copy Order"
+                          >
+                            <Copy className="w-3 h-3" />
+                            Copy
+                          </Button>
+                        )}
                         {canApproveOrder(order) && (
                           <Button
                             variant="default"
@@ -968,6 +1041,18 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         >
                           <Edit className="w-3 h-3" />
                           Edit
+                        </Button>
+                      )}
+                      {canCopyOrder(order) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-1 text-xs h-8 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                          title="Copy Order"
+                          onClick={() => handleCopyOrder(order.id, order.order_no)}
+                        >
+                          <Copy className="w-3 h-3" />
+                          Copy
                         </Button>
                       )}
                       {canApproveOrder(order) && (

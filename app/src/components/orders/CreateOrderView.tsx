@@ -154,6 +154,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         return
       }
       
+      // Check if we're copying an order
+      const copyingOrderData = sessionStorage.getItem('copyingOrderData')
+      if (copyingOrderData) {
+        await loadCopiedOrder(JSON.parse(copyingOrderData))
+        sessionStorage.removeItem('copyingOrderData')
+        return
+      }
+      
       // Determine order type and buyer based on user's org type
       const userOrgType = userProfile.organizations.org_type_code
       
@@ -811,6 +819,110 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       toast({
         title: 'Error',
         description: 'Failed to load order for editing',
+        variant: 'destructive'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadCopiedOrder = async (orderData: any) => {
+    try {
+      console.log('📋 Loading copied order:', orderData)
+
+      // Set order type
+      setOrderType(orderData.order_type)
+
+      // Load buyer organization
+      const { data: buyerOrg } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', orderData.buyer_org_id)
+        .single()
+
+      // Load seller organization if exists
+      let sellerOrg = null
+      if (orderData.seller_org_id) {
+        const { data } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', orderData.seller_org_id)
+          .single()
+        sellerOrg = data
+      }
+
+      // Set buyer and seller organizations
+      if (buyerOrg) {
+        setBuyerOrg(buyerOrg)
+      }
+      if (sellerOrg) {
+        setSellerOrg(sellerOrg)
+        setSelectedSellerOrgId(orderData.seller_org_id)
+      }
+
+      // Set customer information from copied order
+      if (!orderData.customer_name && !orderData.phone_number && !orderData.delivery_address && orderData.notes) {
+        // Parse notes field (format: "Customer: Name, Phone: Number, Address: Address")
+        const notesText = orderData.notes
+        const customerMatch = notesText.match(/Customer:\s*([^,]+)/)
+        const phoneMatch = notesText.match(/Phone:\s*([^,]+)/)
+        const addressMatch = notesText.match(/Address:\s*(.+)/)
+        
+        setCustomerName(customerMatch ? customerMatch[1].trim() : '')
+        setPhoneNumber(phoneMatch ? phoneMatch[1].trim() : '')
+        setDeliveryAddress(addressMatch ? addressMatch[1].trim() : '')
+      } else {
+        setCustomerName(orderData.customer_name || '')
+        setPhoneNumber(orderData.phone_number || '')
+        setDeliveryAddress(orderData.delivery_address || '')
+      }
+
+      // Set order configuration from copied order
+      setUnitsPerCase(orderData.units_per_case || 100)
+      setQrBuffer(orderData.qr_buffer_percent || 10)
+      setEnableRFID(orderData.rfid_enabled || false)
+      setHasPoints(orderData.has_points !== false)
+      setEnableLuckyDraw(orderData.enable_lucky_draw !== false)
+      setEnableRedeem(orderData.enable_redeem !== false)
+      setNotes(orderData.notes || '')
+
+      // Check if order uses individual case sizes
+      const hasIndividualCases = orderData.order_items?.some((item: any) => item.units_per_case != null)
+      setUseIndividualCases(hasIndividualCases)
+
+      // Map order items to the correct format (without IDs since this is a new order)
+      const items: OrderItem[] = (orderData.order_items || []).map((item: any) => ({
+        // Don't include id or order_id for copied items
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        product_name: item.product?.product_name || 'Unknown Product',
+        variant_name: item.product_variants?.variant_name || item.variant_name || 'Default',
+        attributes: item.product_variants?.attributes || item.attributes,
+        manufacturer_sku: item.product_variants?.manufacturer_sku || item.manufacturer_sku,
+        qty: item.qty,
+        unit_price: item.unit_price,
+        line_total: item.qty * item.unit_price,
+        units_per_case: item.units_per_case
+      }))
+
+      setOrderItems(items)
+
+      // Load available products for the seller
+      if (orderData.seller_org_id) {
+        await loadAvailableProducts(orderData.seller_org_id)
+      }
+
+      toast({
+        title: 'Order Copied',
+        description: `Order copied successfully. Update details and submit as a new order.`,
+        duration: 4000,
+      })
+
+    } catch (error) {
+      console.error('Error loading copied order:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load copied order',
         variant: 'destructive'
       })
     } finally {
