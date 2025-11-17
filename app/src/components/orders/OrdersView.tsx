@@ -236,10 +236,27 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return false
   }
 
-  // Helper function to check if user can delete orders (Super Admin only)
+  // Helper function to check if user can delete orders (Power User or higher)
   const canDeleteOrder = (): boolean => {
-    // Only Super Admin (role_level = 1) can delete orders
-    return userProfile.roles.role_level === 1
+    // Power User or higher (role_level <= 20) can delete orders
+    return userProfile.roles.role_level <= 20
+  }
+
+  // Helper function to check if user can edit orders
+  const canEditOrder = (order: Order): boolean => {
+    // Can only edit draft or submitted orders
+    if (order.status !== 'draft' && order.status !== 'submitted') return false
+    
+    // User must be from the buyer organization
+    return order.buyer_org_id === userProfile.organization_id
+  }
+
+  const handleEditOrder = (orderId: string) => {
+    // Store order ID and navigate to edit view
+    if (onViewChange) {
+      sessionStorage.setItem('editingOrderId', orderId)
+      onViewChange('create-order')
+    }
   }
 
   useEffect(() => {
@@ -713,15 +730,18 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                       {/* Right: Actions */}
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1"
-                          onClick={() => handleTrackOrder(order.id)}
-                        >
-                          <TrendingUp className="w-3 h-3" />
-                          Track Order
-                        </Button>
+                        {canEditOrder(order) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1"
+                            onClick={() => handleEditOrder(order.id)}
+                            title="Edit Order"
+                          >
+                            <Edit className="w-3 h-3" />
+                            Edit
+                          </Button>
+                        )}
                         {canApproveOrder(order) && (
                           <Button
                             variant="default"
@@ -749,7 +769,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             size="sm" 
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                             onClick={() => handleDeleteOrder(order.id, order.order_no)}
-                            title="Delete Order (Super Admin Only)"
+                            title="Delete Order (Power User)"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -863,22 +883,24 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         variant="outline"
                         size="sm"
                         className="flex-1 gap-1 text-xs h-8"
-                        title="Track Order"
-                        onClick={() => handleTrackOrder(order.id)}
-                      >
-                        <TrendingUp className="w-3 h-3" />
-                        Track
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 gap-1 text-xs h-8"
                         title="View Details"
                         onClick={() => handleTrackOrder(order.id)}
                       >
                         <Eye className="w-3 h-3" />
                         View
                       </Button>
+                      {canEditOrder(order) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-1 text-xs h-8"
+                          title="Edit Order"
+                          onClick={() => handleEditOrder(order.id)}
+                        >
+                          <Edit className="w-3 h-3" />
+                          Edit
+                        </Button>
+                      )}
                       {canApproveOrder(order) && (
                         <Button
                           variant="default"
@@ -891,31 +913,16 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           Approve
                         </Button>
                       )}
-                      {(order.status === 'draft' || order.status === 'submitted') && (
-                        <>
-                          {order.status === 'draft' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex-1 gap-1 text-xs h-8"
-                              title="Edit Order"
-                            >
-                              <Edit className="w-3 h-3" />
-                              Edit
-                            </Button>
-                          )}
-                          {canDeleteOrder() && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title="Delete Order (Super Admin Only)"
-                              onClick={() => handleDeleteOrder(order.id, order.order_no)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </>
+                      {canDeleteOrder() && (order.status === 'draft' || order.status === 'submitted') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Delete Order (Power User)"
+                          onClick={() => handleDeleteOrder(order.id, order.order_no)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
                       )}
                     </div>
                   </CardContent>
