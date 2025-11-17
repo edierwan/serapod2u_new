@@ -80,8 +80,78 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     try {
       setLoading(true)
 
-      // Step 1: Validate if order can be deleted
-      console.log('🔍 Validating order deletion for:', orderNo)
+      // Step 1: Fetch comprehensive order details and all related records
+      console.log('🔍 Fetching order details for:', orderNo)
+      
+      // Get order items count
+      const { data: orderItems, error: itemsError } = await supabase
+        .from('order_items')
+        .select('id')
+        .eq('order_id', orderId)
+      
+      // Get documents count
+      const { data: documents, error: docsError } = await supabase
+        .from('documents')
+        .select('id, doc_type, doc_no')
+        .eq('order_id', orderId)
+      
+      // Get QR batches count
+      const { data: qrBatches, error: batchError } = await supabase
+        .from('qr_batches')
+        .select('id, status')
+        .eq('order_id', orderId)
+      
+      // Get QR codes count (both master and regular)
+      const { data: qrCodes, error: codesError } = await supabase
+        .from('qr_codes')
+        .select('id')
+        .eq('order_id', orderId)
+      
+      const { data: masterCodes, error: masterError } = await supabase
+        .from('qr_master_codes')
+        .select('id')
+        .eq('order_id', orderId)
+
+      // Get Excel files from storage
+      const { data: excelFiles, error: storageError } = await supabase
+        .storage
+        .from('order-excel')
+        .list(`${orderId}/`)
+
+      const itemsCount = orderItems?.length || 0
+      const docsCount = documents?.length || 0
+      const batchesCount = qrBatches?.length || 0
+      const codesCount = (qrCodes?.length || 0) + (masterCodes?.length || 0)
+      const excelCount = excelFiles?.length || 0
+
+      // Step 2: Show detailed confirmation
+      const docsList = documents?.map(d => `${d.doc_type}: ${d.doc_no}`).join('\n  ') || 'None'
+      
+      const confirmMessage = `⚠️ PERMANENT DELETION WARNING\n\n` +
+        `Are you sure you want to permanently delete order ${orderNo}?\n\n` +
+        `This will PERMANENTLY delete:\n` +
+        `• ${itemsCount} order item(s)\n` +
+        `• ${docsCount} document(s):\n  ${docsList}\n` +
+        `• ${batchesCount} QR batch(es)\n` +
+        `• ${codesCount} QR code(s) (master + regular)\n` +
+        `• ${excelCount} Excel file(s) from storage\n\n` +
+        `⚠️ The order number "${orderNo}" will be marked as deleted and CANNOT be reused.\n\n` +
+        `This action CANNOT be undone!\n\n` +
+        `Type "DELETE" to confirm:`
+
+      const userInput = prompt(confirmMessage)
+      
+      if (userInput !== 'DELETE') {
+        toast({
+          title: 'Delete Cancelled',
+          description: 'Order deletion was cancelled.'
+        })
+        setLoading(false)
+        return
+      }
+
+      // Step 3: Validate if order can be deleted
+      console.log('🔍 Validating order deletion...')
       const validation = await validateOrderDeletion(supabase, orderId)
 
       if (!validation.canDelete) {
@@ -95,22 +165,21 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         return
       }
 
-      // Step 2: Show confirmation with details
-      const relatedRecords = validation.relatedRecords || { orderItems: 0, qrBatchesPending: 0, qrCodesPending: 0, documents: 0 }
-      const confirmMessage = `⚠️ Are you sure you want to permanently delete order ${orderNo}?\n\nThis will also delete:\n• ${relatedRecords.orderItems} order item(s)\n• ${relatedRecords.qrBatchesPending} QR batch(es)\n• ${relatedRecords.qrCodesPending} pending QR code(s)\n• ${relatedRecords.documents} document(s)\n\nThis action CANNOT be undone!`
-
-      if (!confirm(confirmMessage)) {
-        setLoading(false)
-        return
+      // Step 4: Delete Excel files from storage
+      console.log('🗑️ Deleting Excel files from storage...')
+      if (excelFiles && excelFiles.length > 0) {
+        const filePaths = excelFiles.map(file => `${orderId}/${file.name}`)
+        await supabase.storage.from('order-excel').remove(filePaths)
       }
 
-      // Step 3: Cascade delete
-      console.log('🗑️ Cascade deleting order and related records...')
+      // Step 5: Cascade delete all database records
+      console.log('🗑️ Cascade deleting order and related database records...')
       await cascadeDeleteOrder(supabase, orderId)
 
       toast({
-        title: '✅ Order Deleted',
-        description: `Order ${orderNo} and all related records have been permanently deleted.`
+        title: '✅ Order Deleted Successfully',
+        description: `Order ${orderNo} and all related records have been permanently deleted. The order number cannot be reused.`,
+        duration: 5000
       })
 
       // Reload orders
@@ -120,7 +189,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       console.error('Error deleting order:', error)
       toast({
         title: '❌ Delete Failed',
-        description: error.message || 'Failed to delete order',
+        description: error.message || 'Failed to delete order. Please try again or contact support.',
         variant: 'destructive'
       })
     } finally {
@@ -236,10 +305,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return false
   }
 
-  // Helper function to check if user can delete orders (Power User or higher)
+  // Helper function to check if user can delete orders (Super Admin only)
   const canDeleteOrder = (): boolean => {
-    // Power User or higher (role_level <= 20) can delete orders
-    return userProfile.roles.role_level <= 20
+    // Only Super Admin (role_level = 1) can delete orders
+    return userProfile.roles.role_level === 1
   }
 
   // Helper function to check if user can edit orders
@@ -763,13 +832,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {canDeleteOrder() && (order.status === 'draft' || order.status === 'submitted') && (
+                        {canDeleteOrder() && (
                           <Button 
                             variant="ghost" 
                             size="sm" 
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                             onClick={() => handleDeleteOrder(order.id, order.order_no)}
-                            title="Delete Order (Power User)"
+                            title="Delete Order (Super Admin Only)"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -913,12 +982,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           Approve
                         </Button>
                       )}
-                      {canDeleteOrder() && (order.status === 'draft' || order.status === 'submitted') && (
+                      {canDeleteOrder() && (
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          title="Delete Order (Power User)"
+                          title="Delete Order (Super Admin Only)"
                           onClick={() => handleDeleteOrder(order.id, order.order_no)}
                         >
                           <Trash2 className="w-3 h-3" />
