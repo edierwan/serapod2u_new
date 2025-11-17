@@ -667,30 +667,16 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     const totalRemainder = productsWithRemainders.reduce((sum, p) => sum + p.remainder, 0)
     const canFormMixedCases = productsWithRemainders.length >= 2
     
-    // Find a common case size that can accommodate the remainders
+    // Use the same case size from the products for mixed cases
+    // Pick the first product's case size as the standard for mixed cases
     let suggestedMixedCaseSize = 0
     let mixedCasesNeeded = 0
     
     if (canFormMixedCases && totalRemainder > 0) {
-      // Try to find the smallest case size that fits the total remainder
-      const caseSizes = [50, 100, 200]
-      for (const size of caseSizes) {
-        if (totalRemainder <= size) {
-          suggestedMixedCaseSize = size
-          mixedCasesNeeded = 1
-          break
-        } else if (totalRemainder % size === 0) {
-          suggestedMixedCaseSize = size
-          mixedCasesNeeded = totalRemainder / size
-          break
-        }
-      }
-      
-      // If total remainder exceeds all case sizes or doesn't divide evenly
-      if (suggestedMixedCaseSize === 0) {
-        suggestedMixedCaseSize = 200 // Default to largest
-        mixedCasesNeeded = Math.ceil(totalRemainder / 200)
-      }
+      // Use the case size from the first product with remainder
+      suggestedMixedCaseSize = productsWithRemainders[0].unitsPerCase
+      // Calculate how many mixed cases are needed
+      mixedCasesNeeded = Math.ceil(totalRemainder / suggestedMixedCaseSize)
     }
 
     return {
@@ -1417,7 +1403,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         <div className="text-sm font-semibold text-gray-700">Full Cases:</div>
                         {packingPlan.plan.filter(p => p.fullCases > 0).map(p => (
                           <div key={p.variantId} className="text-sm pl-3">
-                            • {p.fullCases} case(s) of {p.productName} ({p.unitsPerCase}/case)
+                            • {p.fullCases} case(s) of {p.productName} - {p.variantName} ({p.unitsPerCase}/case)
                           </div>
                         ))}
                         
@@ -1428,7 +1414,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               • {packingPlan.mixedCasesNeeded} case(s) containing:
                               {packingPlan.productsWithRemainders.map(p => (
                                 <div key={p.variantId} className="pl-4">
-                                  - {p.productName}: {p.remainder} units
+                                  - {p.productName} - {p.variantName}: {p.remainder} units
                                 </div>
                               ))}
                               <div className="mt-1 font-medium">
