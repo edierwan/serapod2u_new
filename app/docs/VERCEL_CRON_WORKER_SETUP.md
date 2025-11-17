@@ -1,9 +1,11 @@
 # Vercel Cron Worker Setup Guide
 
 ## Issue
+
 Mode C worker keeps "Running..." on Vercel but doesn't process jobs.
 
 ## Root Cause
+
 **The worker only had a POST handler, but Vercel Cron jobs use GET requests.**
 
 ---
@@ -11,26 +13,29 @@ Mode C worker keeps "Running..." on Vercel but doesn't process jobs.
 ## ✅ Fix Applied
 
 ### 1. Added GET Handler for Vercel Cron
+
 **File**: `/src/app/api/cron/qr-reverse-worker/route.ts`
 
 ```typescript
 // NEW: GET handler for Vercel Cron
 export async function GET(request: NextRequest) {
-  console.log('🔔 Cron trigger: GET request from Vercel')
-  return processJobs(request)
+  console.log("🔔 Cron trigger: GET request from Vercel");
+  return processJobs(request);
 }
 
 // EXISTING: POST handler for manual testing
 export async function POST(request: NextRequest) {
-  console.log('🔧 Manual trigger: POST request')
-  return processJobs(request)
+  console.log("🔧 Manual trigger: POST request");
+  return processJobs(request);
 }
 ```
 
 ### 2. Refactored to Shared Function
+
 Both GET and POST now call the same `processJobs()` function.
 
 ### 3. Improved Authorization
+
 ```typescript
 // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
 // Development: Skip auth check
@@ -51,6 +56,7 @@ Both GET and POST now call the same `processJobs()` function.
    - **Environments**: Production, Preview, Development
 
 **Example**:
+
 ```bash
 # Generate a secure secret
 openssl rand -base64 32
@@ -59,6 +65,7 @@ openssl rand -base64 32
 ```
 
 Add this to Vercel:
+
 ```
 CRON_SECRET=abc123xyz456randomsecrethere==
 ```
@@ -153,6 +160,7 @@ curl -X GET https://your-domain.com/api/cron/qr-reverse-worker \
 ## 📊 How It Works
 
 ### Before Fix:
+
 ```
 Vercel Cron → GET /api/cron/qr-reverse-worker
                 ↓
@@ -162,6 +170,7 @@ Jobs stay "Queued" forever
 ```
 
 ### After Fix:
+
 ```
 Vercel Cron → GET /api/cron/qr-reverse-worker
                 ↓
@@ -183,6 +192,7 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 ### Issue: "No queued jobs to process"
 
 **Check**:
+
 1. Are there jobs in the database with status "queued"?
    ```sql
    SELECT * FROM qr_reverse_jobs WHERE status = 'queued';
@@ -195,6 +205,7 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 ### Issue: "Unauthorized" (401)
 
 **Solutions**:
+
 1. **CRON_SECRET mismatch**:
    - Verify CRON_SECRET in Vercel matches what the cron sends
    - Redeploy after changing environment variables
@@ -206,6 +217,7 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 ### Issue: Jobs stuck in "Running"
 
 **Check**:
+
 1. **Worker crashed mid-processing**:
    - Check Vercel function logs for errors
    - Look for timeout errors (Vercel free tier: 10s limit, Pro: 60s)
@@ -220,6 +232,7 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 ### Issue: Cron not triggering
 
 **Check**:
+
 1. **Cron job not registered**:
    - Verify `vercel.json` has correct `crons` array
    - Check Vercel Dashboard → Settings → Cron Jobs
@@ -237,22 +250,26 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 ## 🚀 Expected Behavior After Fix
 
 ### Step 1: User Submits Job
+
 - UI sends POST to `/api/manufacturer/modec/create-job`
 - Job created with status "queued"
 - UI shows "Queued (1 job) • Cases #3-3"
 
 ### Step 2: Vercel Cron Triggers (Every 1 Minute)
+
 - Vercel sends GET to `/api/cron/qr-reverse-worker`
 - Worker fetches all "queued" jobs
 - Updates status to "running"
 
 ### Step 3: Worker Processes Job
+
 - Validates master codes exist
 - Links spoiled codes to buffers
 - Updates counts and status
 - Marks job as "completed"
 
 ### Step 4: UI Updates
+
 - User clicks refresh or auto-refresh triggers
 - Job status changes from "Queued" → "Completed"
 - Shows results: "Spoiled: 5 | Replaced: 5"
@@ -264,11 +281,13 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 ## 📈 Performance Metrics
 
 ### Expected Processing Time:
+
 - **Per case**: <4 seconds (with batch optimizations)
 - **100 jobs**: ~6-10 minutes (10 jobs per cron run × 10 runs)
 - **450 jobs**: ~30-45 minutes
 
 ### Cron Frequency:
+
 - **Setting**: Every 1 minute (`*/1 * * * *`)
 - **Actual**: May run every 1-2 minutes on free tier
 - **Pro tier**: More consistent 1-minute intervals
@@ -278,12 +297,14 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 ## 🔐 Security Notes
 
 ### CRON_SECRET:
+
 - **Purpose**: Prevent unauthorized access to worker endpoint
 - **Format**: `Bearer <secret>` in Authorization header
 - **Generation**: Use cryptographically secure random string
 - **Rotation**: Change periodically for security
 
 ### Public Endpoint:
+
 - Worker endpoint is public but protected by CRON_SECRET
 - Without valid secret, returns 401 Unauthorized
 - Development mode skips auth check for local testing
@@ -306,13 +327,14 @@ Vercel Cron → GET /api/cron/qr-reverse-worker
 
 ## 🎯 Quick Reference
 
-| Environment | Auth Required | Endpoint | Method |
-|-------------|---------------|----------|--------|
-| Development | ❌ No | http://localhost:3000/api/cron/qr-reverse-worker | GET or POST |
-| Production (Cron) | ✅ Yes (auto) | https://your-domain.com/api/cron/qr-reverse-worker | GET |
-| Production (Manual) | ✅ Yes | https://your-domain.com/api/cron/qr-reverse-worker | POST |
+| Environment         | Auth Required | Endpoint                                           | Method      |
+| ------------------- | ------------- | -------------------------------------------------- | ----------- |
+| Development         | ❌ No         | http://localhost:3000/api/cron/qr-reverse-worker   | GET or POST |
+| Production (Cron)   | ✅ Yes (auto) | https://your-domain.com/api/cron/qr-reverse-worker | GET         |
+| Production (Manual) | ✅ Yes        | https://your-domain.com/api/cron/qr-reverse-worker | POST        |
 
 ### Cron Schedule Options:
+
 ```
 */1 * * * *   → Every 1 minute
 */5 * * * *   → Every 5 minutes

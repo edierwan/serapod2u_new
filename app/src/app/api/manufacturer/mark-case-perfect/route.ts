@@ -238,6 +238,42 @@ export async function POST(request: NextRequest) {
       
       if (allLinkedToThisMaster && alreadyLinked.length === caseCodes.length) {
         console.log('✅ All codes already linked to this master case')
+        
+        // IMPORTANT: Still need to update status to 'packed' even if already linked
+        // This handles the case where codes were linked but status wasn't updated
+        console.log('🔄 Updating status to packed for already-linked codes...')
+        
+        const { error: statusUpdateError } = await supabase
+          .from('qr_codes')
+          .update({
+            status: 'packed',
+            updated_at: new Date().toISOString()
+          })
+          .in('id', caseCodes.map(qr => qr.id))
+          .neq('status', 'packed') // Only update if not already packed
+        
+        if (statusUpdateError) {
+          console.error('❌ Failed to update code status:', statusUpdateError)
+        } else {
+          console.log('✅ Updated code status to packed')
+        }
+        
+        // Update master code status to packed
+        const { error: masterStatusError } = await supabase
+          .from('qr_master_codes')
+          .update({
+            status: 'packed',
+            actual_unit_count: caseCodes.length,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', masterCodeRecord.id)
+        
+        if (masterStatusError) {
+          console.error('❌ Failed to update master status:', masterStatusError)
+        } else {
+          console.log('✅ Updated master status to packed')
+        }
+        
         return NextResponse.json({
           success: true,
           message: 'Case already marked perfect (all codes linked)',
@@ -282,6 +318,37 @@ export async function POST(request: NextRequest) {
 
     if (availableCodes.length === 0) {
       console.log('✅ No new codes to link - case already complete')
+      
+      // IMPORTANT: Still update status to 'packed' for consistency
+      console.log('🔄 Ensuring all codes have packed status...')
+      
+      const { error: statusUpdateError } = await supabase
+        .from('qr_codes')
+        .update({
+          status: 'packed',
+          updated_at: new Date().toISOString()
+        })
+        .in('id', caseCodes.map(qr => qr.id))
+        .neq('status', 'packed')
+      
+      if (statusUpdateError) {
+        console.error('❌ Failed to update code status:', statusUpdateError)
+      }
+      
+      // Update master code status
+      const { error: masterStatusError } = await supabase
+        .from('qr_master_codes')
+        .update({
+          status: 'packed',
+          actual_unit_count: caseCodes.length,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', masterCodeRecord.id)
+      
+      if (masterStatusError) {
+        console.error('❌ Failed to update master status:', masterStatusError)
+      }
+      
       return NextResponse.json({
         success: true,
         message: 'Case already complete',
@@ -303,11 +370,12 @@ export async function POST(request: NextRequest) {
     
     console.log('📝 Linking codes to master:', {
       codes_to_link: codeIdsToLink.length,
-      master_code_id: masterCodeRecord.id
+      master_code_id: masterCodeRecord.id,
+      sample_code_ids: codeIdsToLink.slice(0, 3)
     })
 
     const updateStart = Date.now()
-    const { error: updateError } = await supabase
+    const { data: updatedCodes, error: updateError } = await supabase
       .from('qr_codes')
       .update({
         master_code_id: masterCodeRecord.id,
@@ -318,6 +386,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       })
       .in('id', codeIdsToLink)
+      .select('id, code, status, master_code_id')
 
     if (updateError) {
       console.error('❌ Failed to update QR codes:', updateError)
@@ -325,6 +394,25 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Updated ${codeIdsToLink.length} codes in ${Date.now() - updateStart}ms`)
+    console.log('📊 Updated codes sample:', updatedCodes?.slice(0, 3).map(c => ({
+      code: c.code,
+      status: c.status,
+      master_code_id: c.master_code_id
+    })))
+
+    // Verify the update actually worked (debugging)
+    const { data: verifyUpdates, error: verifyError } = await supabase
+      .from('qr_codes')
+      .select('id, code, status, master_code_id')
+      .in('id', codeIdsToLink.slice(0, 3))
+
+    if (!verifyError && verifyUpdates) {
+      console.log('🔍 Verification - Codes after update:', verifyUpdates.map(c => ({
+        code: c.code,
+        status: c.status,
+        master_linked: c.master_code_id === masterCodeRecord.id
+      })))
+    }
 
     // Update master code to packed status
     const newActualCount = (masterCodeRecord.actual_unit_count ?? 0) + availableCodes.length
