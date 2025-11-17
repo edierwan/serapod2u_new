@@ -77,6 +77,7 @@ interface OrderItem {
   unit_price: number
   line_total?: number
   company_id?: string
+  units_per_case?: number  // Individual units per case for this product (when useIndividualCases is true)
 }
 
 interface DistributorOption {
@@ -117,6 +118,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   
   // Order Configuration
   const [unitsPerCase, setUnitsPerCase] = useState(100)
+  const [useIndividualCases, setUseIndividualCases] = useState(false)  // Toggle for individual case sizes
   const [qrBuffer, setQrBuffer] = useState(10.00)
   const [enableRFID, setEnableRFID] = useState(false)
   const [hasPoints, setHasPoints] = useState(true)
@@ -551,7 +553,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       manufacturer_sku: variant.manufacturer_sku,
       qty: unitsPerCase,
       unit_price: variant.base_cost,
-      line_total: unitsPerCase * variant.base_cost
+      line_total: unitsPerCase * variant.base_cost,
+      units_per_case: useIndividualCases ? unitsPerCase : undefined  // Set individual case size if mode enabled
     }
 
     setOrderItems([...orderItems, newItem])
@@ -612,6 +615,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     setOrderItems(orderItems.map(item => 
       item.variant_id === variantId 
         ? { ...item, unit_price: price, line_total: item.qty * price } 
+        : item
+    ))
+  }
+
+  const handleUpdateIndividualUnitsPerCase = (variantId: string, units: number) => {
+    setOrderItems(orderItems.map(item => 
+      item.variant_id === variantId 
+        ? { ...item, units_per_case: units } 
         : item
     ))
   }
@@ -794,7 +805,12 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     const subtotal = orderItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
     const tax = subtotal * 0.0 // Adjust tax rate as needed
     const total = subtotal + tax
-    const totalCases = Math.ceil(orderItems.reduce((sum, item) => sum + item.qty, 0) / unitsPerCase)
+    
+    // Calculate total cases based on individual or global units per case
+    const totalCases = useIndividualCases
+      ? orderItems.reduce((sum, item) => sum + Math.ceil(item.qty / (item.units_per_case || unitsPerCase)), 0)
+      : Math.ceil(orderItems.reduce((sum, item) => sum + item.qty, 0) / unitsPerCase)
+    
     const masterQR = totalCases
     // Calculate unique QR per item with buffer, then sum them up (matches Product Selection logic)
     const uniqueQR = orderItems.reduce((sum, item) => sum + Math.round(item.qty + (item.qty * qrBuffer / 100)), 0)
@@ -988,21 +1004,67 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
+              {/* Case Size Configuration Mode Toggle */}
+              <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <label className="block text-sm font-medium text-gray-900 mb-3">
+                  Case Size Configuration
+                </label>
+                <div className="space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="caseMode"
+                      checked={!useIndividualCases}
+                      onChange={() => {
+                        setUseIndividualCases(false)
+                        // Reset individual case sizes when switching to global mode
+                        setOrderItems(orderItems.map(item => ({ ...item, units_per_case: undefined })))
+                      }}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-gray-900">Same units per case for all products</span>
+                      <p className="text-xs text-gray-500 mt-1">All products will use the same case size (recommended for standard orders)</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="caseMode"
+                      checked={useIndividualCases}
+                      onChange={() => {
+                        setUseIndividualCases(true)
+                        // Set default individual case sizes when switching to individual mode
+                        setOrderItems(orderItems.map(item => ({ ...item, units_per_case: item.units_per_case || unitsPerCase })))
+                      }}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-gray-900">Individual units per case for each product</span>
+                      <p className="text-xs text-gray-500 mt-1">Set different case sizes for each product variant (flexible for mixed orders)</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Units per Case
+                    {useIndividualCases ? 'Default Units per Case' : 'Units per Case'}
                   </label>
                   <select
                     value={unitsPerCase}
                     onChange={(e) => handleUnitsPerCaseChange(parseInt(e.target.value))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                    disabled={useIndividualCases}
                   >
                     <option value="100">100 units per case</option>
                     <option value="200">200 units per case</option>
                     <option value="50">50 units per case</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">This setting applies to all products in this order</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {useIndividualCases ? 'Default value for new products' : 'This setting applies to all products in this order'}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1116,7 +1178,23 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-3 gap-3">
+                          {useIndividualCases && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Units per Case
+                              </label>
+                              <select
+                                value={item.units_per_case || unitsPerCase}
+                                onChange={(e) => handleUpdateIndividualUnitsPerCase(item.variant_id, parseInt(e.target.value))}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                              </select>
+                            </div>
+                          )}
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Quantity
@@ -1126,11 +1204,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               value={item.qty}
                               onChange={(e) => handleUpdateQuantity(item.variant_id, parseInt(e.target.value) || 0)}
                               min="1"
-                              className={`text-sm ${item.qty > 0 && item.qty % unitsPerCase !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 ? 'border-red-500' : ''}`}
+                              className={`text-sm ${item.qty > 0 && item.qty % (item.units_per_case || unitsPerCase) !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 ? 'border-red-500' : ''}`}
                             />
-                            {item.qty > 0 && item.qty % unitsPerCase !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 && (
+                            {item.qty > 0 && item.qty % (item.units_per_case || unitsPerCase) !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 && (
                               <p className="text-xs text-red-600 mt-1">
-                                Please enter multiples of {unitsPerCase} (e.g., {unitsPerCase}, {unitsPerCase * 2}, {unitsPerCase * 3}) or exact case sizes (50, 100, 200)
+                                Please enter multiples of {item.units_per_case || unitsPerCase}
                               </p>
                             )}
                           </div>
@@ -1153,7 +1231,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-4 gap-2 text-xs">
                           <div>
                             <span className="text-gray-500 block">Cases:</span>
-                            <span className="font-semibold">{Math.ceil(item.qty / unitsPerCase)} cases</span>
+                            <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} cases</span>
+                            {useIndividualCases && (
+                              <span className="text-xs text-blue-600 block mt-0.5">({item.units_per_case || unitsPerCase}/case)</span>
+                            )}
                           </div>
                           <div>
                             <span className="text-gray-500 block">Unique Units (with {qrBuffer}% buffer):</span>
