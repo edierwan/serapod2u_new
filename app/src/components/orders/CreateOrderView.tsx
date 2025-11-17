@@ -1508,7 +1508,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           <span>{item.variant_name}</span>
                         </div>
                         <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>{item.qty} units • {Math.ceil(item.qty / unitsPerCase)} cases</span>
+                          <span>{item.qty} units • {Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} cases</span>
                           <span className="font-medium text-gray-700">
                             RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}
                           </span>
