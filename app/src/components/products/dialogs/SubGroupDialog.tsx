@@ -86,13 +86,14 @@ export default function SubGroupDialog({
       return false
     }
 
-    // Check for duplicate subgroup name (only among active subgroups)
+    // Check for duplicate subgroup name within the same group (only among active subgroups)
     if (isReady) {
       let query = supabase
         .from('product_subgroups')
-        .select('id, subgroup_name')
-        .ilike('subgroup_name', formData.subgroup_name)
-        .eq('is_active', true)  // Only check active subgroups
+        .select('id, subgroup_name, group_id')
+        .ilike('subgroup_name', formData.subgroup_name?.trim())
+        .eq('group_id', formData.group_id)  // Check within same group only
+        .eq('is_active', true)
       
       // Exclude current subgroup when editing
       if (subgroup?.id) {
@@ -102,7 +103,7 @@ export default function SubGroupDialog({
       const { data: existingSubGroups } = await query
       
       if (existingSubGroups && existingSubGroups.length > 0) {
-        newErrors.subgroup_name = 'This sub-group name is already in use. Please choose a different name.'
+        newErrors.subgroup_name = 'This sub-group name already exists in this group. Please choose a different name.'
         setErrors(newErrors)
         return false
       }

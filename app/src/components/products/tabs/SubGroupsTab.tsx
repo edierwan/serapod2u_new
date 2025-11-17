@@ -80,6 +80,7 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
       const { data, error } = await supabase
         .from('product_subgroups')
         .select('*, product_groups(group_name)')
+        .eq('is_active', true)  // Only load active subgroups
         .order('subgroup_name', { ascending: true })
 
       if (error) throw error
@@ -103,23 +104,41 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
   const handleSave = async (subgroupData: Partial<SubGroup>) => {
     try {
       setIsSaving(true)
+      
+      // Trim and clean the data
+      const cleanedData = {
+        ...subgroupData,
+        subgroup_name: subgroupData.subgroup_name?.trim(),
+        subgroup_description: subgroupData.subgroup_description?.trim() || null
+      }
+      
       if (editingSubGroup) {
         const { error } = await supabase
           .from('product_subgroups')
-          .update(subgroupData)
+          .update(cleanedData)
           .eq('id', editingSubGroup.id)
-        if (error) throw error
+        if (error) {
+          console.error('Update error:', error)
+          throw new Error(error.message || 'Failed to update sub-group')
+        }
         toast({
           title: 'Success',
           description: 'Sub-group updated successfully'
         })
       } else {
+        console.log('Inserting new subgroup:', cleanedData)
         const { data: newSubGroup, error } = await supabase
           .from('product_subgroups')
-          .insert([subgroupData])
+          .insert([cleanedData])
           .select('*, product_groups(group_name)')
           .single()
-        if (error) throw error
+        
+        if (error) {
+          console.error('Insert error:', error)
+          throw new Error(error.message || 'Failed to create sub-group')
+        }
+        
+        console.log('New subgroup created:', newSubGroup)
         
         // Immediately add the new sub-group to the list for instant feedback
         if (newSubGroup) {
@@ -207,7 +226,7 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
   const filteredSubGroups = subgroups.filter(subgroup => {
     const matchesSearch = subgroup.subgroup_name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesGroup = !selectedGroup || subgroup.group_id === selectedGroup
-    return matchesSearch && matchesGroup && subgroup.is_active
+    return matchesSearch && matchesGroup  // is_active already filtered in query
   })
 
   const handleSort = (column: string) => {
