@@ -827,7 +827,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           variant="ghost" 
                           size="sm" 
                           className="h-8 w-8 p-0"
-                          onClick={() => handleTrackOrder(order.id)}
+                          onClick={() => handleViewOrderDetails(order.id)}
                           title="View Order Details"
                         >
                           <Eye className="w-4 h-4" />
@@ -953,7 +953,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         size="sm"
                         className="flex-1 gap-1 text-xs h-8"
                         title="View Details"
-                        onClick={() => handleTrackOrder(order.id)}
+                        onClick={() => handleViewOrderDetails(order.id)}
                       >
                         <Eye className="w-3 h-3" />
                         View
