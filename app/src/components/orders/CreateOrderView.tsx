@@ -642,6 +642,68 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     }
   }
 
+  // Smart packing logic: Calculate how products can be packed into cases
+  const calculatePackingPlan = () => {
+    const plan = orderItems.map(item => {
+      const itemUnitsPerCase = item.units_per_case || unitsPerCase
+      const fullCases = Math.floor(item.qty / itemUnitsPerCase)
+      const remainder = item.qty % itemUnitsPerCase
+      
+      return {
+        variantId: item.variant_id,
+        productName: item.product_name,
+        variantName: item.variant_name,
+        qty: item.qty,
+        unitsPerCase: itemUnitsPerCase,
+        fullCases,
+        remainder
+      }
+    })
+
+    // Get all products with remainders
+    const productsWithRemainders = plan.filter(p => p.remainder > 0)
+    
+    // Calculate if remainders can be paired into complete cases
+    const totalRemainder = productsWithRemainders.reduce((sum, p) => sum + p.remainder, 0)
+    const canFormMixedCases = productsWithRemainders.length >= 2
+    
+    // Find a common case size that can accommodate the remainders
+    let suggestedMixedCaseSize = 0
+    let mixedCasesNeeded = 0
+    
+    if (canFormMixedCases && totalRemainder > 0) {
+      // Try to find the smallest case size that fits the total remainder
+      const caseSizes = [50, 100, 200]
+      for (const size of caseSizes) {
+        if (totalRemainder <= size) {
+          suggestedMixedCaseSize = size
+          mixedCasesNeeded = 1
+          break
+        } else if (totalRemainder % size === 0) {
+          suggestedMixedCaseSize = size
+          mixedCasesNeeded = totalRemainder / size
+          break
+        }
+      }
+      
+      // If total remainder exceeds all case sizes or doesn't divide evenly
+      if (suggestedMixedCaseSize === 0) {
+        suggestedMixedCaseSize = 200 // Default to largest
+        mixedCasesNeeded = Math.ceil(totalRemainder / 200)
+      }
+    }
+
+    return {
+      plan,
+      productsWithRemainders,
+      canFormMixedCases,
+      totalRemainder,
+      suggestedMixedCaseSize,
+      mixedCasesNeeded,
+      hasIssue: productsWithRemainders.length === 1 // Issue if only one product has remainder
+    }
+  }
+
   const saveOrder = async (status: 'draft' | 'submitted') => {
     try {
       // Validation
@@ -661,6 +723,35 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           variant: 'destructive'
         })
         return
+      }
+
+      // Smart packing validation when using individual case sizes
+      if (useIndividualCases) {
+        const packingPlan = calculatePackingPlan()
+        
+        if (packingPlan.hasIssue) {
+          const problem = packingPlan.productsWithRemainders[0]
+          toast({
+            title: '⚠️ Incomplete Case Packing',
+            description: `${problem.productName} has ${problem.remainder} units left over from ${problem.qty} units. Cannot pack into ${problem.unitsPerCase}/case. Add another product with a remainder to create a mixed case, or adjust the quantity to a multiple of ${problem.unitsPerCase}.`,
+            variant: 'destructive',
+            duration: 8000
+          })
+          return
+        }
+        
+        if (packingPlan.canFormMixedCases && packingPlan.totalRemainder > 0) {
+          // Show info about mixed cases that will be created
+          const remainderProducts = packingPlan.productsWithRemainders
+            .map(p => `${p.productName}: ${p.remainder} units`)
+            .join(', ')
+          
+          toast({
+            title: '✅ Mixed Cases Will Be Created',
+            description: `${packingPlan.mixedCasesNeeded} mixed case(s) will contain remainders: ${remainderProducts}`,
+            duration: 6000
+          })
+        }
       }
 
       if (orderItems.length === 0) {
@@ -1204,9 +1295,19 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               value={item.qty}
                               onChange={(e) => handleUpdateQuantity(item.variant_id, parseInt(e.target.value) || 0)}
                               min="1"
-                              className={`text-sm ${item.qty > 0 && item.qty % (item.units_per_case || unitsPerCase) !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 ? 'border-red-500' : ''}`}
+                              className="text-sm"
                             />
-                            {item.qty > 0 && item.qty % (item.units_per_case || unitsPerCase) !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 && (
+                            {useIndividualCases && item.qty > 0 && item.qty % (item.units_per_case || unitsPerCase) !== 0 && (() => {
+                              const itemUnitsPerCase = item.units_per_case || unitsPerCase
+                              const fullCases = Math.floor(item.qty / itemUnitsPerCase)
+                              const remainder = item.qty % itemUnitsPerCase
+                              return (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  {fullCases} full case(s) + {remainder} units remainder
+                                </p>
+                              )
+                            })()}
+                            {!useIndividualCases && item.qty > 0 && item.qty % (item.units_per_case || unitsPerCase) !== 0 && item.qty !== 50 && item.qty !== 100 && item.qty !== 200 && (
                               <p className="text-xs text-red-600 mt-1">
                                 Please enter multiples of {item.units_per_case || unitsPerCase}
                               </p>
@@ -1231,9 +1332,23 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-4 gap-2 text-xs">
                           <div>
                             <span className="text-gray-500 block">Cases:</span>
-                            <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} cases</span>
-                            {useIndividualCases && (
-                              <span className="text-xs text-blue-600 block mt-0.5">({item.units_per_case || unitsPerCase}/case)</span>
+                            {useIndividualCases && item.qty % (item.units_per_case || unitsPerCase) !== 0 ? (
+                              <>
+                                <span className="font-semibold">
+                                  {Math.floor(item.qty / (item.units_per_case || unitsPerCase))} full + 
+                                  {item.qty % (item.units_per_case || unitsPerCase)} units
+                                </span>
+                                {useIndividualCases && (
+                                  <span className="text-xs text-amber-600 block mt-0.5">⚠ Will mix with other remainders</span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} cases</span>
+                                {useIndividualCases && (
+                                  <span className="text-xs text-blue-600 block mt-0.5">({item.units_per_case || unitsPerCase}/case)</span>
+                                )}
+                              </>
                             )}
                           </div>
                           <div>
@@ -1255,6 +1370,83 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                 )}
               </CardContent>
             </Card>
+
+          {/* Packing Plan Summary - Show when using individual cases with remainders */}
+          {useIndividualCases && orderItems.length > 0 && (() => {
+            const packingPlan = calculatePackingPlan()
+            if (packingPlan.productsWithRemainders.length === 0) return null
+            
+            return (
+              <Card className={packingPlan.hasIssue ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}>
+                <CardHeader className="border-b bg-white">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Package className="w-4 h-4" />
+                    {packingPlan.hasIssue ? '⚠️ Packing Issue Detected' : '📦 Smart Packing Plan'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  {packingPlan.hasIssue ? (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-red-800">
+                        Cannot pack incomplete cases with only one product having a remainder.
+                      </p>
+                      <div className="bg-white rounded-lg p-3 border border-red-200">
+                        {packingPlan.productsWithRemainders.map(p => (
+                          <div key={p.variantId} className="text-sm">
+                            <span className="font-semibold">{p.productName}</span>: {p.qty} units
+                            <br />
+                            <span className="text-red-700">
+                              → {p.fullCases} full cases ({p.fullCases * p.unitsPerCase} units) + <strong>{p.remainder} units remainder</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-red-700">
+                        <strong>Solutions:</strong><br />
+                        • Add another product with a remainder to create mixed cases<br />
+                        • Adjust quantity to {packingPlan.productsWithRemainders[0].fullCases * packingPlan.productsWithRemainders[0].unitsPerCase} or {(packingPlan.productsWithRemainders[0].fullCases + 1) * packingPlan.productsWithRemainders[0].unitsPerCase} units<br />
+                        • Change units per case to match your quantity
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-amber-800">
+                        ✓ Remainders from multiple products will be mixed into {packingPlan.mixedCasesNeeded} case(s)
+                      </p>
+                      <div className="bg-white rounded-lg p-3 border border-amber-200 space-y-2">
+                        <div className="text-sm font-semibold text-gray-700">Full Cases:</div>
+                        {packingPlan.plan.filter(p => p.fullCases > 0).map(p => (
+                          <div key={p.variantId} className="text-sm pl-3">
+                            • {p.fullCases} case(s) of {p.productName} ({p.unitsPerCase}/case)
+                          </div>
+                        ))}
+                        
+                        {packingPlan.productsWithRemainders.length > 0 && (
+                          <>
+                            <div className="text-sm font-semibold text-amber-700 mt-3">Mixed Case(s):</div>
+                            <div className="text-sm pl-3 text-amber-700">
+                              • {packingPlan.mixedCasesNeeded} case(s) containing:
+                              {packingPlan.productsWithRemainders.map(p => (
+                                <div key={p.variantId} className="pl-4">
+                                  - {p.productName}: {p.remainder} units
+                                </div>
+                              ))}
+                              <div className="mt-1 font-medium">
+                                Total: {packingPlan.totalRemainder} units in {packingPlan.suggestedMixedCaseSize}/case format
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <p className="text-xs text-amber-700">
+                        Mixed cases will be labeled clearly for warehouse and manufacturing.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })()}
 
           {/* Lucky Draw & Redeem */}
           <Card>
