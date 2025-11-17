@@ -240,18 +240,23 @@ async function buildMasterSheet(
     { header: 'Expected Units', key: 'expectedUnits', width: 16 }
   ]
 
-  data.masterCodes.forEach((master, index) => {
-    const row = sheet.addRow({
-      index: index + 1,
-      trackingUrl: generateTrackingURL(master.code, 'master'),
-      caseNumber: master.case_number,
-      expectedUnits: master.expected_unit_count
-    })
-    row.commit()
+  let rowIndex = 1
+  // Repeat each master code 10 times for redundancy (backup copies)
+  data.masterCodes.forEach((master) => {
+    for (let i = 0; i < 10; i++) {
+      const row = sheet.addRow({
+        index: rowIndex++,
+        trackingUrl: generateTrackingURL(master.code, 'master'),
+        caseNumber: master.case_number,
+        expectedUnits: master.expected_unit_count
+      })
+      row.commit()
+    }
   })
 
   await sheet.commit()
-  console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} codes)`)
+  const totalRows = data.masterCodes.length * 10
+  console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} unique codes × 10 copies = ${totalRows} rows)`)
 }
 
 /**
