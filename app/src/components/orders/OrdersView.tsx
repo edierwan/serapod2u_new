@@ -31,7 +31,8 @@ import {
   ShoppingCart,
   Store,
   TrendingUp,
-  Copy
+  Copy,
+  User
 } from 'lucide-react'
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
 
@@ -429,7 +430,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           *,
           buyer_org:organizations!orders_buyer_org_id_fkey(id, org_name, org_code, org_type_code),
           seller_org:organizations!orders_seller_org_id_fkey(id, org_name, org_code, org_type_code),
-          created_by_user:users!orders_created_by_fkey(id, email, full_name)
+          created_by_user:users!orders_created_by_fkey(id, email, full_name),
+          approved_by_user:users!orders_approved_by_fkey(id, email, full_name)
         `)
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
@@ -858,6 +860,28 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </div>
 
+                      {/* Creator and Approver Info */}
+                      <div className="flex items-center gap-4 text-xs mt-2 pt-2 border-t border-gray-100">
+                        {order.created_by_user && (
+                          <div className="flex items-center gap-1.5">
+                            <User className="w-3 h-3 text-gray-400" />
+                            <span className="text-gray-500">By:</span>
+                            <span className="font-medium text-gray-700">
+                              {order.created_by_user.full_name || order.created_by_user.email}
+                            </span>
+                          </div>
+                        )}
+                        {order.status === 'approved' && order.approved_by_user && (
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle className="w-3 h-3 text-green-500" />
+                            <span className="text-gray-500">Approved by:</span>
+                            <span className="font-medium text-green-700">
+                              {order.approved_by_user.full_name || order.approved_by_user.email}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Right: Actions */}
                       <div className="flex items-center gap-2">
                         {canEditOrder(order) && (
@@ -1015,6 +1039,28 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       {order.notes && (
                         <div className="text-xs text-gray-500 line-clamp-2 bg-gray-50 p-2 rounded">
                           {order.notes}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Creator and Approver Info */}
+                    <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                      {order.created_by_user && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <User className="w-3 h-3 text-gray-400" />
+                          <span className="text-gray-500">Created by:</span>
+                          <span className="font-medium text-gray-700">
+                            {order.created_by_user.full_name || order.created_by_user.email}
+                          </span>
+                        </div>
+                      )}
+                      {order.status === 'approved' && order.approved_by_user && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <CheckCircle className="w-3 h-3 text-green-500" />
+                          <span className="text-gray-500">Approved by:</span>
+                          <span className="font-medium text-green-700">
+                            {order.approved_by_user.full_name || order.approved_by_user.email}
+                          </span>
                         </div>
                       )}
                     </div>
