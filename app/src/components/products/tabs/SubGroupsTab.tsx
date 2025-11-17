@@ -66,9 +66,8 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
 
       if (error) throw error
       setGroups((data || []) as Group[])
-      if (data && data.length > 0 && !selectedGroup) {
-        setSelectedGroup(data[0].id)
-      }
+      // Don't auto-select first group - show "All Groups" by default
+      console.log('📦 Loaded groups:', data?.length || 0)
     } catch (error) {
       console.error('Error loading groups:', error)
     }
@@ -89,6 +88,8 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
         group_name: subgroup.product_groups?.group_name || '-'
       }))
       setSubGroups(subgroupsData as SubGroup[])
+      console.log('📋 Loaded sub-groups:', subgroupsData.length, 'records')
+      console.log('Sub-groups by group:', subgroupsData.map(s => `${s.subgroup_name} (${s.group_name})`).join(', '))
     } catch (error) {
       console.error('Error loading subgroups:', error)
       toast({
@@ -226,7 +227,8 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
   const filteredSubGroups = subgroups.filter(subgroup => {
     const matchesSearch = subgroup.subgroup_name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesGroup = !selectedGroup || subgroup.group_id === selectedGroup
-    return matchesSearch && matchesGroup  // is_active already filtered in query
+    const matches = matchesSearch && matchesGroup  // is_active already filtered in query
+    return matches
   })
 
   const handleSort = (column: string) => {
