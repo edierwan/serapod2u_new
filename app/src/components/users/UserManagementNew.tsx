@@ -156,7 +156,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
     }
   }
 
-  const handleSaveUser = async (userData: Partial<UserType> & { password?: string }, avatarFile?: File | null) => {
+  const handleSaveUser = async (userData: Partial<UserType> & { password?: string }, avatarFile?: File | null, resetPassword?: { password: string }) => {
     try {
       setIsSaving(true)
       
@@ -168,6 +168,40 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
           role_code: userData.role_code,
           organization_id: userData.organization_id,
           is_active: userData.is_active ?? true,
+        }
+        
+        // Handle password reset (Super Admin only)
+        if (resetPassword && resetPassword.password) {
+          try {
+            const response = await fetch('/api/users/reset-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: editingUser.id,
+                new_password: resetPassword.password
+              })
+            })
+            
+            const result = await response.json()
+            
+            if (!response.ok || !result.success) {
+              throw new Error(result.error || 'Failed to reset password')
+            }
+            
+            toast({ 
+              title: 'Password Reset', 
+              description: 'User password has been reset successfully', 
+              variant: 'default' 
+            })
+          } catch (resetError: any) {
+            console.error('Password reset error:', resetError)
+            toast({ 
+              title: 'Password Reset Failed', 
+              description: resetError.message || 'Failed to reset password', 
+              variant: 'destructive' 
+            })
+            // Don't throw - continue with other updates
+          }
         }
         
         // Handle avatar upload

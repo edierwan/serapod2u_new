@@ -82,7 +82,7 @@ interface UserDialogNewProps {
   isSaving?: boolean
   currentUserRoleLevel?: number
   onOpenChange: (open: boolean) => void
-  onSave: (userData: Partial<User>, avatarFile?: File | null) => void
+  onSave: (userData: Partial<User>, avatarFile?: File | null, resetPassword?: { password: string }) => void
 }
 
 export default function UserDialogNew({
@@ -116,6 +116,12 @@ export default function UserDialogNew({
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Password reset for Super Admin only
+  const [showPasswordReset, setShowPasswordReset] = useState(false)
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState('')
+  const isSuperAdmin = currentUserRoleLevel === 1
 
   // Filter roles based on current user's role level
   const availableRoles = roles.filter(role => role.role_level >= currentUserRoleLevel)
@@ -191,6 +197,9 @@ export default function UserDialogNew({
       setErrors({})
       setEmailCheckStatus('idle')
       setIsCheckingEmail(false)
+      setShowPasswordReset(false)
+      setResetPassword('')
+      setResetPasswordConfirm('')
     }
   }, [user, open])
 
@@ -335,6 +344,21 @@ export default function UserDialogNew({
       newErrors.confirmPassword = 'Passwords do not match'
     }
 
+    // Validate password reset for existing users (Super Admin only)
+    if (user && showPasswordReset) {
+      if (!resetPassword) {
+        newErrors.resetPassword = 'New password is required'
+      } else if (resetPassword.length < 6) {
+        newErrors.resetPassword = 'Password must be at least 6 characters'
+      }
+
+      if (!resetPasswordConfirm) {
+        newErrors.resetPasswordConfirm = 'Please confirm the new password'
+      } else if (resetPassword !== resetPasswordConfirm) {
+        newErrors.resetPasswordConfirm = 'Passwords do not match'
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -343,7 +367,13 @@ export default function UserDialogNew({
     if (validateForm()) {
       // Remove confirmPassword before saving
       const { confirmPassword, ...dataToSave } = formData
-      onSave(dataToSave, avatarFile)
+      
+      // Include password reset if Super Admin is resetting password
+      const passwordReset = (user && showPasswordReset && resetPassword) 
+        ? { password: resetPassword }
+        : undefined
+      
+      onSave(dataToSave, avatarFile, passwordReset)
     }
   }
 
@@ -616,6 +646,124 @@ export default function UserDialogNew({
               </div>
             </div>
           </div>
+
+          {/* Password Reset (Super Admin only - for existing users) */}
+          {user && isSuperAdmin && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Reset User Password</h3>
+                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
+                  Super Admin Only
+                </span>
+              </div>
+              
+              {!showPasswordReset ? (
+                <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="text-sm text-gray-600 mb-3">
+                    Reset this user's password without knowing their current password.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowPasswordReset(true)}
+                    disabled={isSaving}
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                  >
+                    Reset Password
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4 p-4 border-2 border-red-200 rounded-lg bg-red-50">
+                  <div className="flex items-start gap-2 text-sm text-red-700 mb-4">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium">Warning: Password Reset</p>
+                      <p className="text-xs text-red-600 mt-1">
+                        This will change the user's password. They will need to use the new password to log in.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="resetPassword">
+                      New Password <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="resetPassword"
+                      type="password"
+                      placeholder="Enter new password"
+                      value={resetPassword}
+                      onChange={(e) => {
+                        setResetPassword(e.target.value)
+                        if (errors.resetPassword) {
+                          setErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.resetPassword
+                            return newErrors
+                          })
+                        }
+                      }}
+                      disabled={isSaving}
+                      className={`${errors.resetPassword ? 'border-red-500' : ''} bg-white placeholder:text-gray-400 placeholder:italic`}
+                    />
+                    {errors.resetPassword && <p className="text-xs text-red-500">{errors.resetPassword}</p>}
+                    <p className="text-xs text-gray-600">Minimum 6 characters</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="resetPasswordConfirm">
+                      Confirm New Password <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="resetPasswordConfirm"
+                      type="password"
+                      placeholder="Re-enter new password"
+                      value={resetPasswordConfirm}
+                      onChange={(e) => {
+                        setResetPasswordConfirm(e.target.value)
+                        if (errors.resetPasswordConfirm) {
+                          setErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.resetPasswordConfirm
+                            return newErrors
+                          })
+                        }
+                      }}
+                      disabled={isSaving}
+                      className={`${errors.resetPasswordConfirm ? 'border-red-500' : ''} bg-white placeholder:text-gray-400 placeholder:italic`}
+                    />
+                    {errors.resetPasswordConfirm && <p className="text-xs text-red-500">{errors.resetPasswordConfirm}</p>}
+                    {!errors.resetPasswordConfirm && resetPassword && resetPasswordConfirm && resetPassword === resetPasswordConfirm && (
+                      <p className="text-xs text-green-600">✓ Passwords match</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowPasswordReset(false)
+                        setResetPassword('')
+                        setResetPasswordConfirm('')
+                        setErrors(prev => {
+                          const newErrors = { ...prev }
+                          delete newErrors.resetPassword
+                          delete newErrors.resetPasswordConfirm
+                          return newErrors
+                        })
+                      }}
+                      disabled={isSaving}
+                    >
+                      Cancel Reset
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Settings */}
           <div className="space-y-4">
