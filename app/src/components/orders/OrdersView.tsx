@@ -1030,17 +1030,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       </div>
                     </div>
 
-                    {/* Date and Notes */}
+                    {/* Date */}
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-xs text-gray-500">
                         <Calendar className="w-3 h-3" />
                         <span>Created {new Date(order.created_at).toLocaleDateString('en-MY')}</span>
                       </div>
-                      {order.notes && (
-                        <div className="text-xs text-gray-500 line-clamp-2 bg-gray-50 p-2 rounded">
-                          {order.notes}
-                        </div>
-                      )}
                     </div>
 
                     {/* Creator and Approver Info */}
