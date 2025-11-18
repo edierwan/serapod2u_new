@@ -42,9 +42,10 @@ export async function POST(request: NextRequest) {
     let masterCodeRecord: any = null
 
     // Step 1: Try exact match (fastest - uses index, no joins)
+    // PERFORMANCE: Select only required columns
     const { data: exactMatch } = await supabase
       .from('qr_master_codes')
-      .select('*')
+      .select('id, master_code, batch_id, case_number, expected_unit_count, actual_unit_count, status, manufacturer_org_id')
       .eq('master_code', masterCodeToScan)
       .maybeSingle()
 
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       // Step 2: Fallback to LIKE pattern for codes with hash suffix
       const { data: likeMatch } = await supabase
         .from('qr_master_codes')
-        .select('*')
+        .select('id, master_code, batch_id, case_number, expected_unit_count, actual_unit_count, status, manufacturer_org_id')
         .like('master_code', `${masterCodeToScan}-%`)
         .limit(1)
         .maybeSingle()
@@ -177,13 +178,13 @@ export async function POST(request: NextRequest) {
     
     console.log('🎯 Fetching codes by case_number (supports normal & mixed cases)')
     
+    // PERFORMANCE: Select only required columns, remove ORDER BY (not needed for logic)
     const { data: caseCodes, error: caseCodesError } = await supabase
       .from('qr_codes')
-      .select('id, code, sequence_number, master_code_id, status, variant_id, last_scanned_by, last_scanned_at, is_buffer')
+      .select('id, master_code_id, status, variant_id, last_scanned_by')
       .eq('batch_id', masterCodeRecord.batch_id)
       .eq('case_number', caseNumber) // ✅ Link by case_number
       .eq('is_buffer', false)         // ✅ Exclude buffer codes
-      .order('sequence_number')
       .limit(100000) // Handle large cases
     
     // Detect if this is a mixed case
@@ -233,19 +234,33 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // CRITICAL: Check if this case has been worked on by workers
-    // Check if any codes in this case have been individually scanned by workers
-    // last_scanned_by will be populated if workers manually scanned the codes
-    // "Mark Perfect" should ONLY be used for truly perfect cases with NO worker intervention
-    const codesWithWorkerScans = caseCodes.filter(qr => qr.last_scanned_by !== null)
+    // ============================================================================
+    // PERFORMANCE: Single-pass processing - categorize all codes in one loop
+    // ============================================================================
+    const codesWithWorkerScans: any[] = []
+    const alreadyLinkedToThisMaster: any[] = []
+    const linkedToDifferentMaster: any[] = []
+    const unlinkedCodes: any[] = []
     
+    for (const qr of caseCodes) {
+      // Check worker scans first (highest priority check)
+      if (qr.last_scanned_by !== null) {
+        codesWithWorkerScans.push(qr)
+      }
+      
+      // Categorize by master_code_id
+      if (qr.master_code_id === null) {
+        unlinkedCodes.push(qr)
+      } else if (qr.master_code_id === masterCodeRecord.id) {
+        alreadyLinkedToThisMaster.push(qr)
+      } else {
+        linkedToDifferentMaster.push(qr)
+      }
+    }
+    
+    // CRITICAL: Check if this case has been worked on by workers
     if (codesWithWorkerScans.length > 0) {
       console.warn('⚠️ Case has worker scan history - cannot use Mark Perfect')
-      console.log('Codes scanned by workers:', codesWithWorkerScans.map(qr => ({
-        code: qr.code,
-        sequence: qr.sequence_number,
-        scanned_by: qr.last_scanned_by
-      })))
       
       return NextResponse.json(
         { 
@@ -260,12 +275,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for already-linked codes
-    const alreadyLinked = caseCodes.filter(qr => qr.master_code_id !== null)
-    if (alreadyLinked.length > 0) {
+    const alreadyLinkedCount = alreadyLinkedToThisMaster.length + linkedToDifferentMaster.length
+    if (alreadyLinkedCount > 0) {
       // If ALL codes are already linked to THIS master, treat as success
-      const allLinkedToThisMaster = alreadyLinked.every(qr => qr.master_code_id === masterCodeRecord.id)
+      const allLinkedToThisMaster = alreadyLinkedToThisMaster.length === caseCodes.length
       
-      if (allLinkedToThisMaster && alreadyLinked.length === caseCodes.length) {
+      if (allLinkedToThisMaster && alreadyLinkedCount === caseCodes.length) {
         console.log('✅ All codes already linked to this master case')
         
         // IMPORTANT: Still need to update status to 'packed' even if already linked
@@ -319,26 +334,19 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Some codes linked to different masters
-      const linkedToDifferent = alreadyLinked.filter(qr => qr.master_code_id !== masterCodeRecord.id)
-      if (linkedToDifferent.length > 0) {
+      // Some codes linked to different masters (use pre-categorized array)
+      if (linkedToDifferentMaster.length > 0) {
         // Codes are linked to different masters - this is an error
         // Fetch the master codes these codes are linked to
-        const conflictingMasterIds = Array.from(new Set(linkedToDifferent.map(qr => qr.master_code_id).filter((id): id is string => id !== null)))
+        const conflictingMasterIds = Array.from(new Set(linkedToDifferentMaster.map(qr => qr.master_code_id).filter((id): id is string => id !== null)))
         const { data: conflictingMasters } = await supabase
           .from('qr_master_codes')
           .select('id, master_code, case_number')
           .in('id', conflictingMasterIds)
           
-          const masterMap = new Map(conflictingMasters?.map(m => [m.id, m]) || [])
-          
           console.error('❌ Codes linked to different masters:', {
             trying_to_mark: { master_code: masterCodeRecord.master_code, case_number: caseNumber },
-            conflicting_count: linkedToDifferent.length,
-            conflicting_masters: conflictingMasters?.map(m => ({
-              master_code: m.master_code,
-              case_number: m.case_number
-            }))
+            conflicting_count: linkedToDifferentMaster.length
           })
           
           // Build detailed error message
@@ -348,17 +356,12 @@ export async function POST(request: NextRequest) {
           
           return NextResponse.json(
             { 
-              error: `${linkedToDifferent.length} code(s) already linked to different master cases. Cannot mark as perfect.`,
-              message: `Cannot mark Case #${caseNumber} as perfect because ${linkedToDifferent.length} codes in this range are already linked to ${mastersList}. This usually means the case was already processed or the units_per_case configuration changed after generation.`,
-              already_linked_count: linkedToDifferent.length,
+              error: `${linkedToDifferentMaster.length} code(s) already linked to different master cases. Cannot mark as perfect.`,
+              message: `Cannot mark Case #${caseNumber} as perfect because ${linkedToDifferentMaster.length} codes in this range are already linked to ${mastersList}. This usually means the case was already processed or the units_per_case configuration changed after generation.`,
+              already_linked_count: linkedToDifferentMaster.length,
               conflicting_masters: conflictingMasters?.map(m => ({
                 master_code: m.master_code,
                 case_number: m.case_number
-              })),
-              codes_sample: linkedToDifferent.slice(0, 5).map(qr => ({
-                code: qr.code,
-                sequence: qr.sequence_number,
-                linked_to_case: masterMap.get(qr.master_code_id!)?.case_number
               }))
             },
             { status: 400 }
@@ -366,17 +369,16 @@ export async function POST(request: NextRequest) {
           }
       }
 
-    // Get codes to process (only unlinked codes)
-    const codesToProcess = caseCodes.filter(qr => qr.master_code_id === null)
+    // PERFORMANCE: Use pre-categorized unlinked codes array
     console.log('📊 Code status:', {
       total: caseCodes.length,
-      already_linked_to_this_master: alreadyLinked.filter(qr => qr.master_code_id === masterCodeRecord.id).length,
-      available_to_link: codesToProcess.length,
+      already_linked_to_this_master: alreadyLinkedToThisMaster.length,
+      available_to_link: unlinkedCodes.length,
       is_mixed_case: isMixedCase,
       unique_products: uniqueVariants.size
     })
 
-    if (codesToProcess.length === 0) {
+    if (unlinkedCodes.length === 0) {
       console.log('✅ No new codes to link - case already complete')
       
       // IMPORTANT: Still update status to 'packed' for consistency
@@ -425,8 +427,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Batch update codes to process
-    const codeIdsToLink = codesToProcess.map(qr => qr.id)
+    // PERFORMANCE: Use pre-categorized unlinked codes
+    const codeIdsToLink = unlinkedCodes.map(qr => qr.id)
     
     console.log('📝 Linking codes to master:', {
       codes_to_link: codeIdsToLink.length,
@@ -454,25 +456,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Updated ${codeIdsToLink.length} codes in ${Date.now() - updateStart}ms`)
-    console.log('📊 Updated codes sample:', updatedCodes?.slice(0, 3).map(c => ({
-      code: c.code,
-      status: c.status,
-      master_code_id: c.master_code_id
-    })))
 
-    // Verify the update actually worked (debugging)
-    const { data: verifyUpdates, error: verifyError } = await supabase
-      .from('qr_codes')
-      .select('id, code, status, master_code_id')
-      .in('id', codeIdsToLink.slice(0, 3))
-
-    if (!verifyError && verifyUpdates) {
-      console.log('🔍 Verification - Codes after update:', verifyUpdates.map(c => ({
-        code: c.code,
-        status: c.status,
-        master_linked: c.master_code_id === masterCodeRecord.id
-      })))
-    }
+    // PERFORMANCE: Debug verification removed in production (saves 1 DB round-trip)
+    // Uncomment for development debugging if needed:
+    // if (process.env.NODE_ENV === 'development') {
+    //   const { data: verifyUpdates } = await supabase
+    //     .from('qr_codes')
+    //     .select('id, status, master_code_id')
+    //     .in('id', codeIdsToLink.slice(0, 3))
+    //   console.log('Verification:', verifyUpdates?.length, 'codes checked')
+    // }
 
     // Update master code to packed status
     // IMPORTANT: Set actual_unit_count to the TOTAL codes in this case (not add to existing)
