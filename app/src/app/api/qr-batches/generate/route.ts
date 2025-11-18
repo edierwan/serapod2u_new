@@ -231,10 +231,13 @@ export async function POST(request: NextRequest) {
     console.log('✅ Created batch record:', batch.id)
 
     // 7. Insert master codes and individual codes
+    // Ensure company_id is set (use seller_org as company if not set)
+    const companyId = order.company_id || order.seller_org_id
+    
     console.log('📝 Inserting master codes with org IDs:', {
       manufacturer_org_id: order.seller_org_id,
-      warehouse_org_id: order.warehouse_org_id,
-      company_id: order.company_id
+      warehouse_org_id: order.warehouse_org_id || order.seller_org_id,
+      company_id: companyId
     })
 
     const masterCodesData = qrBatch.masterCodes.map(master => ({
@@ -245,8 +248,8 @@ export async function POST(request: NextRequest) {
       expected_unit_count: master.expected_unit_count,
       actual_unit_count: 0,
       manufacturer_org_id: order.seller_org_id,
-      warehouse_org_id: order.warehouse_org_id,
-      company_id: order.company_id,
+      warehouse_org_id: order.warehouse_org_id || order.seller_org_id, // Fallback to seller
+      company_id: companyId,
       manufacturer_scanned_at: null,
       warehouse_received_at: null
     }))
@@ -305,7 +308,7 @@ export async function POST(request: NextRequest) {
       supabase,
       batch.id,
       order.id,
-      order.company_id || order.seller_org.id,
+      companyId,
       order.seller_org_id,
       order.warehouse_org_id || order.seller_org_id, // Fallback to seller if warehouse not set
       codesWithMasterIds,
