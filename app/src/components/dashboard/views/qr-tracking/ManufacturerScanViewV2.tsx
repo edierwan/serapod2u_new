@@ -1744,7 +1744,17 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
             totalLinked += result.linked_count || 0
           }
         } catch (error: any) {
-          console.error(`Failed to mark ${code}:`, error.message)
+          console.error(`Failed to mark ${code}:`, error)
+          // Check if this is a network/fetch error
+          if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+            toast({
+              title: 'Connection Error',
+              description: 'Unable to connect to server. Please check your internet connection and try again.',
+              variant: 'destructive'
+            })
+            setMarkingPerfect(false)
+            return // Stop processing on network error
+          }
           failedCodes.push(code.trim())
         }
       }
@@ -1843,9 +1853,22 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       setMasterCode('')
       loadProgress(selectedOrder)
     } catch (error: any) {
+      console.error('Mark Perfect error:', error)
+      // Better error messages for common issues
+      let errorTitle = 'Error'
+      let errorDescription = error.message || 'An unexpected error occurred'
+      
+      if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+        errorTitle = 'Connection Error'
+        errorDescription = 'Unable to connect to server. Please check your internet connection and try again.'
+      } else if (error.message?.includes('network') || error.message?.includes('timeout')) {
+        errorTitle = 'Network Error'
+        errorDescription = 'Request timed out. Please check your connection and try again.'
+      }
+      
       toast({
-        title: 'Error',
-        description: error.message,
+        title: errorTitle,
+        description: errorDescription,
         variant: 'destructive'
       })
     } finally {
