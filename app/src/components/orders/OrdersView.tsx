@@ -136,7 +136,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       const scannedCount = scannedQR?.length || 0
       const docsList = documents?.map(d => `${d.doc_type}: ${d.doc_no}`).join('\n  ') || 'None'
 
-      // Step 3: Show single consistent confirmation prompt (always "FORCE DELETE")
+      // Step 3: Show confirmation dialog
       const confirmMessage = 
         `⚠️ DELETE ORDER ${orderNo}\n\n` +
         (scannedCount > 0 
@@ -149,12 +149,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         `• ${codesCount} QR code(s)${scannedCount > 0 ? ` (${scannedCount} scanned)` : ''}\n` +
         `• ${excelCount} Excel file(s)\n\n` +
         `⚠️ This action CANNOT be undone!\n\n` +
-        `Type "FORCE DELETE" to confirm:`
+        `Are you sure you want to delete this order?`
 
-      // Show confirmation prompt
-      const userInput = prompt(confirmMessage)
+      // Show confirmation dialog
+      const confirmed = window.confirm(confirmMessage)
       
-      if (userInput !== 'FORCE DELETE') {
+      if (!confirmed) {
         toast({
           title: 'Delete Cancelled',
           description: 'Order deletion was cancelled.'
@@ -163,7 +163,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         return
       }
 
-      console.log('✅ User confirmed hard deletion')
+      console.log('✅ User confirmed deletion')
 
       // Step 4: Delete Excel files from storage
       console.log('🗑️ Deleting Excel files from storage...')
