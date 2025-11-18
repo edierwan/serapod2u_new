@@ -26,7 +26,8 @@ import {
   ArrowDown,
   XOctagon,
   XCircle,
-  Info
+  Info,
+  Zap
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
@@ -2418,7 +2419,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
         {/* "Show Master Case Batch Assign" button removed in V2 - simplified workflow */}
         {/* Unique Codes & Master Codes summary removed - simplified workflow */}
 
-        <div className="w-full">
+        <div className="w-full space-y-2">
           <Button
             onClick={handleMarkCasePerfect}
             disabled={markingPerfect || !masterCode || scannedCodes.length > 0 || isOrderLocked}

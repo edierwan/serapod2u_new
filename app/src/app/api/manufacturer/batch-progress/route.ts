@@ -82,6 +82,7 @@ export async function GET(request: NextRequest) {
           .eq('batch_id', batch.id)
           .in('status', ['packed', 'buffer_used', 'ready_to_ship', 'received_warehouse', 'shipped_distributor', 'opened'])
           .not('master_code_id', 'is', null)
+          .limit(100000) // Fix: Handle large batches with 10k+ codes
 
         const masterLinkedCounts = new Map<string, number>()
           ; (qrCodesForMasters || []).forEach((qr) => {
@@ -104,6 +105,7 @@ export async function GET(request: NextRequest) {
           .select('id, status, is_buffer, sequence_number')
           .eq('batch_id', batch.id)
           .eq('is_buffer', true)
+          .limit(100000) // Fix: Handle large batches with 10k+ codes
         
         const usedBufferCodes = (allBufferCodes || []).filter(qr => qr.status === 'buffer_used').length
         
@@ -154,7 +156,7 @@ export async function GET(request: NextRequest) {
           .eq('batch_id', batch.id)
           .not('last_scanned_at', 'is', null)
           .order('last_scanned_at', { ascending: false })
-          .limit(5)
+          .limit(5) // Already limited to 5 - OK
 
         const mastersProgress = totalMasters ? (packedMasters || 0) / totalMasters * 100 : 0
         const uniquesProgress = plannedUniqueCodes

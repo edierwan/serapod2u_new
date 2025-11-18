@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
  * all codes in that case's sequence range without individual scanning.
  */
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
   try {
     const supabase = await createClient()
     const body = await request.json()
@@ -37,77 +38,71 @@ export async function POST(request: NextRequest) {
 
     console.log('🔍 Searching for master code:', masterCodeToScan)
 
-    // Find master code in database with order info for validation
-    // Support both exact match and partial match (for codes with hash suffix)
-    const { data: masterCodeRecord, error: masterError } = await supabase
-      .from('qr_master_codes')
-      .select(`
-        *,
-        qr_batches!inner(
-          order_id,
-          orders!inner(order_no)
-        )
-      `)
-      .or(`master_code.eq.${masterCodeToScan},master_code.like.${masterCodeToScan}-%`)
-      .single()
+    // PERFORMANCE CRITICAL: Use simple query without joins, then fetch related data only if needed
+    let masterCodeRecord: any = null
 
-    if (masterError || !masterCodeRecord) {
-      console.error('❌ Master code not found:', {
-        searched_code: masterCodeToScan,
-        error_code: masterError?.code,
-        error_message: masterError?.message,
-        error_details: masterError?.details,
-        error_hint: masterError?.hint
-      })
-      
-      // Try to find if code exists without joins to debug
-      const { data: simpleCheck, error: simpleError } = await supabase
+    // Step 1: Try exact match (fastest - uses index, no joins)
+    const { data: exactMatch } = await supabase
+      .from('qr_master_codes')
+      .select('*')
+      .eq('master_code', masterCodeToScan)
+      .maybeSingle()
+
+    if (exactMatch) {
+      masterCodeRecord = exactMatch
+    } else {
+      // Step 2: Fallback to LIKE pattern for codes with hash suffix
+      const { data: likeMatch } = await supabase
         .from('qr_master_codes')
-        .select('id, master_code, batch_id, case_number')
-        .or(`master_code.eq.${masterCodeToScan},master_code.like.${masterCodeToScan}-%`)
-        .single()
+        .select('*')
+        .like('master_code', `${masterCodeToScan}-%`)
+        .limit(1)
+        .maybeSingle()
       
-      if (simpleCheck) {
-        console.log('⚠️ Master code EXISTS in qr_master_codes table:', simpleCheck)
-        console.log('⚠️ But failed with joins - possible batch/order issue')
-      } else {
-        console.log('❌ Master code does NOT exist in qr_master_codes table')
-      }
-      
+      masterCodeRecord = likeMatch
+    }
+
+    if (!masterCodeRecord) {
+      console.error('❌ Master code not found:', masterCodeToScan)
       return NextResponse.json(
-        { 
-          error: 'Master code not found in system',
-          details: masterError?.message || 'Code may not exist or batch data is incomplete'
-        },
+        { error: 'Master code not found in system' },
         { status: 404 }
       )
     }
 
+    // Fetch batch and order info separately (faster than joins)
+    const { data: batchData } = await supabase
+      .from('qr_batches')
+      .select('order_id')
+      .eq('id', masterCodeRecord.batch_id)
+      .single()
+
+    if (!batchData) {
+      return NextResponse.json(
+        { error: 'Batch not found for this master code' },
+        { status: 404 }
+      )
+    }
+
+    const masterOrderId = batchData.order_id
+
     // CRITICAL: Validate that the master code belongs to the selected order
-    const masterBatch = Array.isArray(masterCodeRecord.qr_batches) 
-      ? masterCodeRecord.qr_batches[0] 
-      : masterCodeRecord.qr_batches
-    const masterOrderId = masterBatch?.order_id
-    const masterOrderNo = masterBatch?.orders ? 
-      (Array.isArray(masterBatch.orders) ? masterBatch.orders[0]?.order_no : masterBatch.orders?.order_no) 
-      : null
-
     if (order_id && masterOrderId !== order_id) {
-      // Get current order number for better error message
-      const { data: currentOrder } = await supabase
+      // Fetch order numbers for error message
+      const { data: orderData } = await supabase
         .from('orders')
-        .select('order_no')
-        .eq('id', order_id)
-        .single()
+        .select('id, order_no')
+        .in('id', [order_id, masterOrderId])
 
-      const currentOrderNo = currentOrder?.order_no || order_id.substring(0, 8)
-      const wrongOrderDisplay = masterOrderNo || masterOrderId?.substring(0, 8)
+      const orderMap = new Map(orderData?.map(o => [o.id, o.order_no]) || [])
+      const currentOrderNo = orderMap.get(order_id) || order_id.substring(0, 8)
+      const wrongOrderDisplay = orderMap.get(masterOrderId) || masterOrderId.substring(0, 8)
 
       console.warn('⚠️ Wrong order detected:', {
         expected_order: order_id,
         expected_order_no: currentOrderNo,
         master_order: masterOrderId,
-        master_order_no: masterOrderNo
+        master_order_no: wrongOrderDisplay
       })
 
       return NextResponse.json(
@@ -125,8 +120,7 @@ export async function POST(request: NextRequest) {
       expected_unit_count: masterCodeRecord.expected_unit_count,
       current_actual_count: masterCodeRecord.actual_unit_count,
       status: masterCodeRecord.status,
-      order_id: masterOrderId,
-      order_no: masterOrderNo
+      order_id: masterOrderId
     })
 
     // Check if case is already marked perfect/packed
@@ -149,83 +143,91 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Calculate sequence range for this case
+    // Get case information
     const caseNumber = masterCodeRecord.case_number
     const expectedUnits = masterCodeRecord.expected_unit_count
-    const minSequence = ((caseNumber - 1) * expectedUnits) + 1
-    const maxSequence = caseNumber * expectedUnits
 
-    console.log('🔢 Sequence range for Case #' + caseNumber + ':', {
-      min: minSequence,
-      max: maxSequence,
-      total_expected: expectedUnits
+    console.log('📦 Case #' + caseNumber + ':', {
+      case_number: caseNumber,
+      expected_units: expectedUnits
     })
 
-    // Get batch and order info
-    const { data: batchInfo, error: batchInfoError } = await supabase
-      .from('qr_batches')
-      .select(`
-        id,
-        order_id,
-        orders (
-          id,
-          order_no,
-          buyer_org_id,
-          seller_org_id
-        )
-      `)
-      .eq('id', masterCodeRecord.batch_id)
-      .maybeSingle()
+    // Fetch buyer_org_id for warehouse assignment (if needed later)
+    const { data: orderInfo } = await supabase
+      .from('orders')
+      .select('buyer_org_id, order_no')
+      .eq('id', masterOrderId)
+      .single()
+    
+    const targetWarehouseOrgId = orderInfo?.buyer_org_id || null
+    
+    console.log('📋 Order configuration:', {
+      buyer_org_id: orderInfo?.buyer_org_id
+    })
 
-    if (batchInfoError) {
-      console.error('❌ Failed to load batch info:', batchInfoError)
-      throw batchInfoError
-    }
-
-    const orderRecord = batchInfo?.orders
-      ? (Array.isArray(batchInfo.orders) ? batchInfo.orders[0] : batchInfo.orders)
-      : null
-    const targetWarehouseOrgId = orderRecord?.buyer_org_id || null
-
-    // Find all QR codes in this case's sequence range
+    // ============================================================================
+    // CORRECT STRATEGY: Link by case_number (supports both normal and mixed cases)
+    // ============================================================================
+    // Get ALL non-buffer codes for this specific case_number
+    // This automatically handles:
+    // - Normal cases: 1 product per case
+    // - Mixed cases: Multiple products in same case_number
+    // - Variable sizes: Different expected_unit_count per case
+    // ============================================================================
+    
+    console.log('🎯 Fetching codes by case_number (supports normal & mixed cases)')
+    
     const { data: caseCodes, error: caseCodesError } = await supabase
       .from('qr_codes')
-      .select('id, code, sequence_number, master_code_id, status, variant_id, last_scanned_by, last_scanned_at')
+      .select('id, code, sequence_number, master_code_id, status, variant_id, last_scanned_by, last_scanned_at, is_buffer')
       .eq('batch_id', masterCodeRecord.batch_id)
-      .gte('sequence_number', minSequence)
-      .lte('sequence_number', maxSequence)
+      .eq('case_number', caseNumber) // ✅ Link by case_number
+      .eq('is_buffer', false)         // ✅ Exclude buffer codes
       .order('sequence_number')
+      .limit(100000) // Handle large cases
+    
+    // Detect if this is a mixed case
+    const uniqueVariants = new Set(caseCodes?.map(c => c.variant_id).filter(Boolean) || [])
+    const isMixedCase = uniqueVariants.size > 1
+    
+    console.log('📊 Found codes for case #' + caseNumber + ':', {
+      total_found: caseCodes?.length || 0,
+      expected: expectedUnits,
+      match: caseCodes?.length === expectedUnits,
+      is_mixed_case: isMixedCase,
+      unique_products: uniqueVariants.size
+    })
 
     if (caseCodesError) {
       console.error('❌ Failed to fetch case codes:', caseCodesError)
       throw caseCodesError
     }
 
-    console.log('📊 Found codes in sequence range:', {
-      total_found: caseCodes?.length || 0,
-      expected: expectedUnits,
-      match: caseCodes?.length === expectedUnits
-    })
-
-    // Validation: Check if we found exactly the expected number
+    // Validation: Check if we found codes
     if (!caseCodes || caseCodes.length === 0) {
       return NextResponse.json(
         { 
-          error: `No QR codes found in sequence range ${minSequence}-${maxSequence}. Case may not have been generated yet.`,
-          expected_range: { min: minSequence, max: maxSequence },
+          error: `No QR codes found for case #${caseNumber}. Case may not have been generated yet.`,
+          case_number: caseNumber,
           found_count: 0
         },
         { status: 400 }
       )
     }
 
+    // Validate unit count matches expected (strict validation)
     if (caseCodes.length !== expectedUnits) {
+      const message = `Expected ${expectedUnits} codes but found ${caseCodes.length} for case #${caseNumber}. Case may be incomplete or over-filled.`
+      console.error(`❌ ${message}${isMixedCase ? ' (mixed case)' : ''}`)
+      
       return NextResponse.json(
         { 
-          error: `Expected ${expectedUnits} codes but found ${caseCodes.length} in range ${minSequence}-${maxSequence}. Case may be incomplete.`,
+          error: message,
+          case_number: caseNumber,
           expected_count: expectedUnits,
           found_count: caseCodes.length,
-          expected_range: { min: minSequence, max: maxSequence }
+          is_mixed_case: isMixedCase,
+          unique_products: uniqueVariants.size
         },
         { status: 400 }
       )
@@ -317,33 +319,64 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Some codes linked to different masters - this is an error
+      // Some codes linked to different masters
       const linkedToDifferent = alreadyLinked.filter(qr => qr.master_code_id !== masterCodeRecord.id)
       if (linkedToDifferent.length > 0) {
-        return NextResponse.json(
-          { 
-            error: `${linkedToDifferent.length} code(s) already linked to different master cases. Cannot mark as perfect.`,
-            already_linked_count: linkedToDifferent.length,
-            codes_sample: linkedToDifferent.slice(0, 5).map(qr => ({
-              code: qr.code,
-              sequence: qr.sequence_number
+        // Codes are linked to different masters - this is an error
+        // Fetch the master codes these codes are linked to
+        const conflictingMasterIds = Array.from(new Set(linkedToDifferent.map(qr => qr.master_code_id).filter((id): id is string => id !== null)))
+        const { data: conflictingMasters } = await supabase
+          .from('qr_master_codes')
+          .select('id, master_code, case_number')
+          .in('id', conflictingMasterIds)
+          
+          const masterMap = new Map(conflictingMasters?.map(m => [m.id, m]) || [])
+          
+          console.error('❌ Codes linked to different masters:', {
+            trying_to_mark: { master_code: masterCodeRecord.master_code, case_number: caseNumber },
+            conflicting_count: linkedToDifferent.length,
+            conflicting_masters: conflictingMasters?.map(m => ({
+              master_code: m.master_code,
+              case_number: m.case_number
             }))
-          },
-          { status: 400 }
-        )
+          })
+          
+          // Build detailed error message
+          const mastersList = conflictingMasters?.map(m => 
+            `Case #${m.case_number} (${m.master_code})`
+          ).join(', ') || 'other cases'
+          
+          return NextResponse.json(
+            { 
+              error: `${linkedToDifferent.length} code(s) already linked to different master cases. Cannot mark as perfect.`,
+              message: `Cannot mark Case #${caseNumber} as perfect because ${linkedToDifferent.length} codes in this range are already linked to ${mastersList}. This usually means the case was already processed or the units_per_case configuration changed after generation.`,
+              already_linked_count: linkedToDifferent.length,
+              conflicting_masters: conflictingMasters?.map(m => ({
+                master_code: m.master_code,
+                case_number: m.case_number
+              })),
+              codes_sample: linkedToDifferent.slice(0, 5).map(qr => ({
+                code: qr.code,
+                sequence: qr.sequence_number,
+                linked_to_case: masterMap.get(qr.master_code_id!)?.case_number
+              }))
+            },
+            { status: 400 }
+          )
+          }
       }
-    }
 
-    // Get available codes (not yet linked)
-    const availableCodes = caseCodes.filter(qr => qr.master_code_id === null)
-    
+    // Get codes to process (only unlinked codes)
+    const codesToProcess = caseCodes.filter(qr => qr.master_code_id === null)
     console.log('📊 Code status:', {
       total: caseCodes.length,
       already_linked_to_this_master: alreadyLinked.filter(qr => qr.master_code_id === masterCodeRecord.id).length,
-      available_to_link: availableCodes.length
+      available_to_link: codesToProcess.length,
+      is_mixed_case: isMixedCase,
+      unique_products: uniqueVariants.size
     })
 
-    if (availableCodes.length === 0) {
+    if (codesToProcess.length === 0) {
       console.log('✅ No new codes to link - case already complete')
       
       // IMPORTANT: Still update status to 'packed' for consistency
@@ -392,8 +425,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Batch update all available QR codes
-    const codeIdsToLink = availableCodes.map(qr => qr.id)
+    // Batch update codes to process
+    const codeIdsToLink = codesToProcess.map(qr => qr.id)
     
     console.log('📝 Linking codes to master:', {
       codes_to_link: codeIdsToLink.length,
@@ -442,7 +475,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Update master code to packed status
-    const newActualCount = (masterCodeRecord.actual_unit_count ?? 0) + availableCodes.length
+    // IMPORTANT: Set actual_unit_count to the TOTAL codes in this case (not add to existing)
+    // This prevents double-counting when API is called multiple times
+    const newActualCount = caseCodes.length
     const masterUpdates: Record<string, any> = {
       actual_unit_count: newActualCount,
       status: 'packed',
@@ -498,41 +533,44 @@ export async function POST(request: NextRequest) {
     }
 
     const totalProcessingTime = Date.now() - updateStart
-    console.log(`⚡ Total processing time: ${totalProcessingTime}ms`)
+    const totalApiTime = Date.now() - startTime
+    console.log(`⚡ Processing: ${totalProcessingTime}ms | Total API: ${totalApiTime}ms`)
     console.log('✨ CASE MARKED PERFECT - All codes automatically linked!')
 
     return NextResponse.json({
       success: true,
       message: `Case #${caseNumber} marked perfect! All ${caseCodes.length} codes linked automatically.`,
-      linked_count: availableCodes.length,
+      linked_count: caseCodes.length,
       master_code_info: {
         id: masterCodeRecord.id,
         master_code: masterCodeRecord.master_code,
         case_number: masterCodeRecord.case_number,
         expected_units: masterCodeRecord.expected_unit_count,
         actual_units: newActualCount,
-        linked_this_session: availableCodes.length,
+        linked_this_session: caseCodes.length,
         status: 'packed',
         warehouse_org_id: masterUpdates.warehouse_org_id || null
       },
-      sequence_range: {
-        min: minSequence,
-        max: maxSequence
+      case_info: {
+        case_number: caseNumber,
+        is_mixed_case: isMixedCase,
+        unique_products: uniqueVariants.size
       },
       performance: {
         processing_time_ms: totalProcessingTime,
-        codes_per_second: Math.round((availableCodes.length / totalProcessingTime) * 1000)
+        total_api_time_ms: totalApiTime,
+        codes_per_second: Math.round((caseCodes.length / totalProcessingTime) * 1000)
       },
-      order_info: orderRecord ? {
-        order_id: orderRecord.id,
-        order_no: orderRecord.order_no,
-        buyer_org_id: orderRecord.buyer_org_id,
-        seller_org_id: orderRecord.seller_org_id
+      order_info: orderInfo ? {
+        order_id: masterOrderId,
+        order_no: orderInfo.order_no,
+        buyer_org_id: orderInfo.buyer_org_id
       } : undefined
     })
 
   } catch (error: any) {
-    console.error('❌ Error marking case perfect:', error)
+    const totalTime = Date.now() - startTime
+    console.error('❌ Error marking case perfect:', error, `(${totalTime}ms)`)
     return NextResponse.json(
       { error: error.message || 'Failed to mark case perfect' },
       { status: 500 }

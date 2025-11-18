@@ -3,8 +3,9 @@
 ## WHERE IS THE PAYMENT TERMS SECTION?
 
 ### ⚠️ IMPORTANT: Payment Terms Only Shows for These Types:
+
 - ✅ Manufacturer (MANU)
-- ✅ Distributor (DIST)  
+- ✅ Distributor (DIST)
 - ✅ Shop (SHOP)
 - ❌ HQ (no payment terms)
 - ❌ Warehouse (no payment terms)
@@ -174,6 +175,7 @@
 ## Why You Might Not See Payment Terms
 
 ### ❌ Reason 1: Wrong Organization Type Selected
+
 ```
 Selected: HQ or Warehouse
 ❌ Payment Terms will NOT show
@@ -182,6 +184,7 @@ Solution: Select Manufacturer, Distributor, or Shop
 ```
 
 ### ❌ Reason 2: Organization Type Not Selected Yet
+
 ```
 Organization Type: [Select organization type]
                     ↑↑↑ Still showing placeholder
@@ -192,6 +195,7 @@ Solution: Click dropdown and select MANU/DIST/SHOP
 ```
 
 ### ❌ Reason 3: Not Scrolling Down Enough
+
 ```
 You're still at Address Information section
 Payment Terms is BELOW Address Information
@@ -200,6 +204,7 @@ Solution: Scroll down past Address section
 ```
 
 ### ✅ Correct Setup
+
 ```
 Organization Type: Manufacturer ✓
 Scrolled to: After Address Information ✓
@@ -264,19 +269,20 @@ If you still can't see Payment Terms section:
    SELECT * FROM payment_terms;
    -- Should return 6 rows
    ```
-5. **Check component rendering** - Look for the text "Payment Terms" on the page (Ctrl+F)
+5. **Check component rendering** - Look for the text "Payment Terms" on the page
+   (Ctrl+F)
 
 ---
 
 ## Expected Behavior Summary
 
 | Organization Type | Payment Terms Section Visible? |
-|-------------------|-------------------------------|
-| HQ                | ❌ NO                         |
-| Manufacturer      | ✅ YES                        |
-| Distributor       | ✅ YES                        |
-| Shop              | ✅ YES                        |
-| Warehouse         | ❌ NO                         |
+| ----------------- | ------------------------------ |
+| HQ                | ❌ NO                          |
+| Manufacturer      | ✅ YES                         |
+| Distributor       | ✅ YES                         |
+| Shop              | ✅ YES                         |
+| Warehouse         | ❌ NO                          |
 
 **Location:** Between Address Information and Contact Information
 
