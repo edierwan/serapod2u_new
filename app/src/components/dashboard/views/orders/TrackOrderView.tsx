@@ -814,20 +814,19 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       />
 
       {/* Documents Dialog */}
-      {showDocumentsDialog && (
-        <OrderDocumentsDialogEnhanced
-          orderId={orderDetails.id}
-          orderNo={orderDetails.order_no}
-          userProfile={userProfile}
-          initialTab={initialDocumentTab ?? undefined}
-          onClose={() => {
-            setShowDocumentsDialog(false)
-            setInitialDocumentTab(null)
-            // Reload order details to refresh timeline after any document changes
-            loadOrderDetails()
-          }}
-        />
-      )}
+      <OrderDocumentsDialogEnhanced
+        orderId={orderDetails.id}
+        orderNo={orderDetails.order_no}
+        userProfile={userProfile}
+        initialTab={initialDocumentTab ?? undefined}
+        open={showDocumentsDialog}
+        onClose={() => {
+          setShowDocumentsDialog(false)
+          setInitialDocumentTab(null)
+          // Reload order details to refresh timeline after any document changes
+          loadOrderDetails()
+        }}
+      />
     </div>
   )
 }

@@ -20,9 +20,11 @@ interface DocumentWorkflowProgressProps {
   }
   onTabChange?: (tab: string) => void
   use50_50Split?: boolean
+  depositPercentage?: number
 }
 
-export default function DocumentWorkflowProgress({ documents, onTabChange, use50_50Split = false }: DocumentWorkflowProgressProps) {
+export default function DocumentWorkflowProgress({ documents, onTabChange, use50_50Split = false, depositPercentage = 50 }: DocumentWorkflowProgressProps) {
+  const balancePercentage = 100 - depositPercentage
   // Define steps based on workflow type
   type Step = {
     key: string
@@ -74,7 +76,7 @@ export default function DocumentWorkflowProgress({ documents, onTabChange, use50
     },
     {
       key: 'depositInvoice',
-      label: 'Deposit Invoice (50%)',
+      label: `Deposit Invoice (${depositPercentage}%)`,
       shortLabel: 'Deposit Invoice',
       icon: FileCheck,
       color: 'green',
@@ -82,7 +84,7 @@ export default function DocumentWorkflowProgress({ documents, onTabChange, use50
     },
     {
       key: 'depositPayment',
-      label: 'Deposit Payment (50%)',
+      label: `Deposit Payment (${depositPercentage}%)`,
       shortLabel: 'Deposit Pay',
       icon: CreditCard,
       color: 'purple',
@@ -90,7 +92,7 @@ export default function DocumentWorkflowProgress({ documents, onTabChange, use50
     },
     {
       key: 'balanceRequest',
-      label: 'Balance Request (50%)',
+      label: `Balance Request (${balancePercentage}%)`,
       shortLabel: 'Balance Req',
       icon: FileText,
       color: 'teal',
@@ -98,7 +100,7 @@ export default function DocumentWorkflowProgress({ documents, onTabChange, use50
     },
     {
       key: 'balancePayment',
-      label: 'Balance Payment (50%)',
+      label: `Balance Payment (${balancePercentage}%)`,
       shortLabel: 'Balance Pay',
       icon: CreditCard,
       color: 'indigo',
@@ -186,11 +188,15 @@ export default function DocumentWorkflowProgress({ documents, onTabChange, use50
           const depositReceipt = documents.depositReceipt
           const finalReceipt = documents.finalReceipt
 
+          // Receipt status logic:
+          // - If both deposit and final receipts exist: 'completed' (green)
+          // - If only deposit receipt exists: 'partial' (yellow/amber)
+          // - If no receipts exist: 'not-started' (gray)
           const status = isReceiptStep
             ? finalReceipt
-              ? 'completed'
+              ? 'completed'  // Both receipts complete
               : depositReceipt
-                ? 'partial'
+                ? 'partial'  // Only deposit receipt
                 : getStepStatus(step.document)
             : getStepStatus(step.document)
           const StepIcon = step.icon
@@ -257,7 +263,7 @@ export default function DocumentWorkflowProgress({ documents, onTabChange, use50
       <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
         <p className="text-sm text-blue-900">
           <strong>Workflow:</strong> {use50_50Split 
-            ? 'Orders use a 50/50 payment split: Deposit Invoice (50%) → Deposit Payment (50%) → Warehouse Receive → Balance Payment Request (50%) → Balance Payment (50%) → Receipt.' 
+            ? `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Production Complete → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.` 
             : 'Each document is automatically created when the previous one is acknowledged. The Receipt marks the completion of the order.'}
         </p>
       </div>

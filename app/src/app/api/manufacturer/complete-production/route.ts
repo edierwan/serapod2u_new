@@ -235,6 +235,38 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Batch marked as completed and ready for warehouse shipment')
 
+    // ============================================================================
+    // CREATE BALANCE PAYMENT REQUEST
+    // Trigger balance payment request creation when production is complete
+    // ============================================================================
+
+    console.log('💰 Creating balance payment request for order:', orderInfo.id)
+    
+    const { data: balancePaymentDoc, error: balanceError } = await supabase
+      .rpc('fn_create_balance_payment_request', { 
+        p_order_id: orderInfo.id 
+      })
+
+    let balancePaymentCreated = false
+    let balanceDocumentNo = null
+
+    if (balanceError) {
+      // Log error but don't fail the whole operation
+      console.error('⚠️  Failed to create balance payment request:', balanceError)
+    } else if (balancePaymentDoc) {
+      balancePaymentCreated = true
+      console.log('✅ Balance payment request created:', balancePaymentDoc)
+      
+      // Fetch the created document to get its doc_no
+      const { data: docData } = await supabase
+        .from('documents')
+        .select('doc_no')
+        .eq('id', balancePaymentDoc)
+        .single()
+      
+      balanceDocumentNo = docData?.doc_no
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Production completed successfully. Batch is now ready for warehouse shipment.',
@@ -245,7 +277,9 @@ export async function POST(request: NextRequest) {
       total_master_codes: totalMasters,
       packed_master_codes: packedMasters,
       progress_percentage: progressPercentage,
-      production_completed_at: new Date().toISOString()
+      production_completed_at: new Date().toISOString(),
+      balance_payment_created: balancePaymentCreated,
+      balance_document_no: balanceDocumentNo
     })
   } catch (error: any) {
     console.error('❌ Complete production error:', error)

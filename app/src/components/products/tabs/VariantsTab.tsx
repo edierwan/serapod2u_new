@@ -332,14 +332,6 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                 </div>
               </TableHead>
               <TableHead 
-                className="cursor-pointer hover:bg-gray-100 select-none"
-                onClick={() => handleSort('barcode')}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  Barcode {renderSortIcon('barcode')}
-                </div>
-              </TableHead>
-              <TableHead 
                 className="text-right cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('base_cost')}
               >
@@ -394,7 +386,6 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                   </TableCell>
                   <TableCell>{variant.variant_name}</TableCell>
                   <TableCell className="text-sm text-gray-600">{variant.product_name}</TableCell>
-                  <TableCell className="text-sm text-gray-600">{variant.barcode || '-'}</TableCell>
                   <TableCell className="text-right text-sm">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>
                   <TableCell className="text-right text-sm">{variant.suggested_retail_price ? `$${variant.suggested_retail_price.toFixed(2)}` : '-'}</TableCell>
                   <TableCell className="text-center">

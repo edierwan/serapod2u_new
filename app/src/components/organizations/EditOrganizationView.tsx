@@ -51,6 +51,17 @@ interface DistrictOption {
   state_id: string
 }
 
+interface PaymentTerm {
+  id: string
+  term_code: string
+  term_name: string
+  deposit_percentage: number
+  balance_percentage: number
+  description: string | null
+  is_default: boolean
+  is_active: boolean
+}
+
 export default function EditOrganizationView({ userProfile, onViewChange }: EditOrganizationViewProps) {
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [loading, setLoading] = useState(true)
@@ -60,6 +71,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   const [filteredParentOrgs, setFilteredParentOrgs] = useState<ParentOrganization[]>([])
   const [states, setStates] = useState<StateOption[]>([])
   const [districts, setDistricts] = useState<DistrictOption[]>([])
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([])
   const [childOrgs, setChildOrgs] = useState<any[]>([])
   const [shopDistributors, setShopDistributors] = useState<any[]>([])
   const [orgUsers, setOrgUsers] = useState<any[]>([])
@@ -87,6 +99,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   useEffect(() => {
     if (isReady) {
       loadStates()
+      loadPaymentTerms()
       const orgId = sessionStorage.getItem('selectedOrgId')
       if (orgId) {
         loadOrganization(orgId)
@@ -152,6 +165,21 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       setParentOrgs(data || [])
     } catch (error) {
       console.error('Error loading parent organizations:', error)
+    }
+  }
+
+  const loadPaymentTerms = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('payment_terms')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order')
+
+      if (error) throw error
+      setPaymentTerms(data || [])
+    } catch (error) {
+      console.error('Error loading payment terms:', error)
     }
   }
 
@@ -399,6 +427,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (formData.country_code !== undefined) updatePayload.country_code = formData.country_code || null
       if (formData.website !== undefined) updatePayload.website = formData.website || null
       if (logo_url !== undefined) updatePayload.logo_url = logo_url
+      if (formData.payment_term_id !== undefined) updatePayload.payment_term_id = formData.payment_term_id || null
 
       // Handle parent_org_id - include if changed OR if org type requires parent and it's missing
       const needsParent = isParentRequired(organization?.org_type_code as OrgType)
@@ -741,16 +770,22 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             <div className="space-y-2">
               <Label htmlFor="state_id">State</Label>
               <Select
-                value={formData.state_id || undefined}
+                value={formData.state_id || 'none'}
                 onValueChange={(value) => {
-                  handleInputChange('state_id', value)
-                  handleInputChange('district_id', null)
+                  if (value === 'none') {
+                    handleInputChange('state_id', '')
+                    handleInputChange('district_id', '')
+                  } else {
+                    handleInputChange('state_id', value)
+                    handleInputChange('district_id', null)
+                  }
                 }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select state" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">None (Not defined)</SelectItem>
                   {states.map((state) => (
                     <SelectItem key={state.id} value={state.id}>
                       {state.state_name}
@@ -763,14 +798,15 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             <div className="space-y-2">
               <Label htmlFor="district_id">District</Label>
               <Select
-                value={formData.district_id || undefined}
-                onValueChange={(value) => handleInputChange('district_id', value)}
+                value={formData.district_id || 'none'}
+                onValueChange={(value) => handleInputChange('district_id', value === 'none' ? '' : value)}
                 disabled={!formData.state_id}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={formData.state_id ? 'Select district' : 'Select state first'} />
+                  <SelectValue placeholder={formData.state_id ? 'Select district' : 'None (Not defined)'} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">None (Not defined)</SelectItem>
                   {districts.map((district) => (
                     <SelectItem key={district.id} value={district.id}>
                       {district.district_name}
@@ -860,6 +896,52 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                   To manage distributor relationships, close this page and click the &quot;Distributors&quot; button on the organization card.
                 </AlertDescription>
               </Alert>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Payment Terms - Only show for manufacturers, distributors, and shops */}
+      {(formData.org_type_code === 'MFG' || formData.org_type_code === 'DIST' || formData.org_type_code === 'SHOP') && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Terms</CardTitle>
+            <CardDescription>Default payment terms for orders with this organization as seller</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="payment_term_id">Payment Terms</Label>
+              <Select
+                value={formData.payment_term_id || undefined}
+                onValueChange={(value) => handleInputChange('payment_term_id', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment terms" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentTerms.map((term) => (
+                    <SelectItem key={term.id} value={term.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{term.term_name}</span>
+                        {term.is_default && (
+                          <span className="text-xs text-blue-600">(Default)</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formData.payment_term_id && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {paymentTerms.find(t => t.id === formData.payment_term_id)?.description}
+                </p>
+              )}
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800">
+                  <strong>Note:</strong> This payment term will be automatically applied when creating orders with this organization as the seller.
+                  It determines the deposit and balance payment split in the document workflow.
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>

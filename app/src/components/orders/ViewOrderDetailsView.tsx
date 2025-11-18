@@ -5,9 +5,10 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode } from 'lucide-react'
+import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
+import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
 
 interface UserProfile {
   id: string
@@ -33,6 +34,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
   const [journeyData, setJourneyData] = useState<any>(null)
   const [qrStats, setQrStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [documentsDialogOpen, setDocumentsDialogOpen] = useState(false)
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -756,6 +758,34 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
             <p className="text-sm text-gray-700">{orderData.notes}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* View Documents Button */}
+      <Card>
+        <CardContent className="pt-6">
+          <Button 
+            onClick={() => setDocumentsDialogOpen(true)}
+            className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
+            size="lg"
+          >
+            <FileText className="w-5 h-5" />
+            View Order Documents
+          </Button>
+          <p className="text-sm text-center text-gray-600 mt-3">
+            View and manage all documents including Purchase Orders, Invoices, Payments, and Receipts
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Order Documents Dialog */}
+      {orderData && (
+        <OrderDocumentsDialogEnhanced
+          orderId={orderData.id}
+          orderNo={orderData.order_no}
+          userProfile={userProfile}
+          open={documentsDialogOpen}
+          onClose={() => setDocumentsDialogOpen(false)}
+        />
       )}
     </div>
   )

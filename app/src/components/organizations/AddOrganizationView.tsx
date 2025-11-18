@@ -57,6 +57,17 @@ interface Organization {
   org_type_code: string
 }
 
+interface PaymentTerm {
+  id: string
+  term_code: string
+  term_name: string
+  deposit_percentage: number
+  balance_percentage: number
+  description: string | null
+  is_default: boolean
+  is_active: boolean
+}
+
 export default function AddOrganizationView({ userProfile, onViewChange }: AddOrganizationViewProps) {
   const [loading, setLoading] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
@@ -69,6 +80,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
   const [parentOrgs, setParentOrgs] = useState<Organization[]>([])
   const [filteredParentOrgs, setFilteredParentOrgs] = useState<Organization[]>([])
   const [autoAssignedHQ, setAutoAssignedHQ] = useState<Organization | null>(null)
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([])
 
   const [formData, setFormData] = useState({
     org_type_code: '',
@@ -91,6 +103,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     contact_title: '',
     contact_phone: '',
     contact_email: '',
+    payment_term_id: '',
     is_active: true
   })
 
@@ -140,13 +153,13 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
       setFilteredParentOrgs(validParents as Organization[])
       
       // Smart auto-assignment logic for DIST and MANU
-      if ((formData.org_type_code === 'DIST' || formData.org_type_code === 'MANU') && validParents.length === 1) {
+      if ((formData.org_type_code === 'DIST' || formData.org_type_code === 'MFG') && validParents.length === 1) {
         // Only 1 HQ exists - auto-assign it
         const singleHQ = validParents[0]
         handleInputChange('parent_org_id', singleHQ.id)
         setAutoAssignedHQ(singleHQ)
         console.log('✅ Auto-assigned to single HQ:', singleHQ.org_name)
-      } else if ((formData.org_type_code === 'DIST' || formData.org_type_code === 'MANU') && validParents.length > 1) {
+      } else if ((formData.org_type_code === 'DIST' || formData.org_type_code === 'MFG') && validParents.length > 1) {
         // Multiple HQs - user must choose
         setAutoAssignedHQ(null)
         // Don't clear selection if already valid
@@ -236,6 +249,22 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
       if (parentsError) throw parentsError
       setParentOrgs(parents || [])
+
+      // Fetch payment terms
+      const { data: termsData, error: termsError } = await supabase
+        .from('payment_terms')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+
+      if (termsError) throw termsError
+      setPaymentTerms(termsData || [])
+
+      // Set default payment term if available
+      const defaultTerm = (termsData || []).find((t: any) => t.is_default)
+      if (defaultTerm) {
+        setFormData(prev => ({ ...prev, payment_term_id: defaultTerm.id }))
+      }
 
     } catch (error: any) {
       console.error('Error fetching form data:', error)
@@ -474,6 +503,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         contact_title: formData.contact_title || null,
         contact_phone: formData.contact_phone || null,
         contact_email: formData.contact_email || null,
+        payment_term_id: formData.payment_term_id || null,
         is_active: formData.is_active,
         logo_url: null, // Will be updated after upload
         created_by: userProfile.id,
@@ -791,7 +821,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                         </SelectContent>
                       </Select>
                       
-                      {filteredParentOrgs.length > 1 && (formData.org_type_code === 'DIST' || formData.org_type_code === 'MANU') && (
+                      {filteredParentOrgs.length > 1 && (formData.org_type_code === 'DIST' || formData.org_type_code === 'MFG') && (
                         <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
                           Multiple headquarters detected - please select one
@@ -926,13 +956,21 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
               <div>
                 <Label htmlFor="state_id">State</Label>
                 <Select
-                  value={formData.state_id || undefined}
-                  onValueChange={(value) => handleInputChange('state_id', value)}
+                  value={formData.state_id || 'none'}
+                  onValueChange={(value) => {
+                    if (value === 'none') {
+                      handleInputChange('state_id', '')
+                      handleInputChange('district_id', '')
+                    } else {
+                      handleInputChange('state_id', value)
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select state" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">None (Not defined)</SelectItem>
                     {states.map((state) => (
                       <SelectItem key={state.id} value={state.id}>
                         {state.state_name}
@@ -945,14 +983,15 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
               <div>
                 <Label htmlFor="district_id">District</Label>
                 <Select
-                  value={formData.district_id || undefined}
-                  onValueChange={(value) => handleInputChange('district_id', value)}
+                  value={formData.district_id || 'none'}
+                  onValueChange={(value) => handleInputChange('district_id', value === 'none' ? '' : value)}
                   disabled={!formData.state_id}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={formData.state_id ? "Select district" : "Select state first"} />
+                    <SelectValue placeholder={formData.state_id ? "Select district" : "None (Not defined)"} />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">None (Not defined)</SelectItem>
                     {districts.map((district) => (
                       <SelectItem key={district.id} value={district.id}>
                         {district.district_name}
@@ -1038,6 +1077,52 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
             </div>
           </CardContent>
         </Card>
+
+        {/* Payment Terms - Only show for manufacturers, distributors, and shops */}
+        {(formData.org_type_code === 'MFG' || formData.org_type_code === 'DIST' || formData.org_type_code === 'SHOP') && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Terms</CardTitle>
+              <CardDescription>Default payment terms for orders with this organization as seller</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="payment_term_id">Payment Terms</Label>
+                <Select
+                  value={formData.payment_term_id || undefined}
+                  onValueChange={(value) => handleInputChange('payment_term_id', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment terms" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentTerms.map((term) => (
+                      <SelectItem key={term.id} value={term.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{term.term_name}</span>
+                          {term.is_default && (
+                            <span className="text-xs text-blue-600">(Default)</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formData.payment_term_id && (
+                  <p className="text-sm text-gray-600 mt-2">
+                    {paymentTerms.find(t => t.id === formData.payment_term_id)?.description}
+                  </p>
+                )}
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-800">
+                    <strong>Note:</strong> This payment term will be automatically applied when creating orders with this organization as the seller.
+                    It determines the deposit and balance payment split in the document workflow.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Contact Information */}
         <Card>

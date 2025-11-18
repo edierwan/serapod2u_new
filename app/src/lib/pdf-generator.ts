@@ -1819,22 +1819,22 @@ export class PDFGenerator {
     y = await this.addCompanyLogo(y)
     y += 5
 
-    // Determine payment percentage from document
+    // Determine payment percentage from document - now dynamic based on payment terms
     const paymentPercentage = documentData.payment_percentage || 100
-    const isDepositReceipt = paymentPercentage === 50
     const isFinalReceipt = paymentPercentage === 100
+    const isDepositReceipt = paymentPercentage < 100
 
-    // Document Title with payment percentage
-    const receiptTitle = isDepositReceipt 
-      ? 'RECEIPT - DEPOSIT PAYMENT (50%)' 
-      : 'RECEIPT - FINAL PAYMENT (100%)'
+    // Document Title with dynamic payment percentage
+    const receiptTitle = isFinalReceipt 
+      ? 'RECEIPT - FINAL PAYMENT (100%)' 
+      : `RECEIPT - DEPOSIT PAYMENT (${paymentPercentage}%)`
     y = this.addDocumentHeader(receiptTitle, y)
     y += 3
 
-    // Receipt Information Table
-    const paymentStatus = isDepositReceipt 
-      ? '50% PAYMENT RECEIVED' 
-      : '100% PAYMENT COMPLETED'
+    // Receipt Information Table with dynamic percentage
+    const paymentStatus = isFinalReceipt 
+      ? '100% PAYMENT COMPLETED' 
+      : `${paymentPercentage}% PAYMENT RECEIVED`
     
     const receiptInfo = [
       { label: 'Receipt Number', value: documentData.doc_no },
@@ -1853,13 +1853,11 @@ export class PDFGenerator {
     // Summary Section
     y = this.addSummarySection(orderData, y)
     
-    // Pre-calculate totals for receipt summary
+    // Pre-calculate totals for receipt summary - now using dynamic payment percentage
     const orderTotal = orderData.order_items.reduce((sum, item) => sum + (parseFloat(item.line_total.toString()) || 0), 0)
-    const receiptPayload = (documentData.payload || {}) as { is_final_receipt?: boolean; is_deposit_receipt?: boolean }
-
-    const receiptPortionPercentage = receiptPayload?.is_final_receipt || receiptPayload?.is_deposit_receipt
-      ? 50
-      : paymentPercentage
+    
+    // Use the payment_percentage from the document (30, 50, 70, etc.) instead of hardcoded 50
+    const receiptPortionPercentage = paymentPercentage
 
     let receiptAmount = typeof documentData.total_amount === 'number'
       ? documentData.total_amount

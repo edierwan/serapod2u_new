@@ -1083,6 +1083,34 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase()
       const generatedOrderNo = `${orderType}-${dateStr}-${randomSuffix}`
 
+      // Fetch seller organization's payment terms
+      const { data: sellerOrgData, error: sellerOrgError } = await supabase
+        .from('organizations')
+        .select('payment_term_id, payment_terms(deposit_percentage, balance_percentage)')
+        .eq('id', sellerOrg.id)
+        .single()
+
+      if (sellerOrgError) {
+        console.error('Error fetching seller payment terms:', sellerOrgError)
+      }
+
+      // Build payment_terms jsonb based on organization's payment term
+      let paymentTermsData: any = {
+        deposit_pct: 0.5,
+        balance_pct: 0.5,
+        balance_trigger: 'on_first_receive'
+      }
+
+      if (sellerOrgData?.payment_terms) {
+        const depositPct = (sellerOrgData.payment_terms as any).deposit_percentage / 100
+        const balancePct = (sellerOrgData.payment_terms as any).balance_percentage / 100
+        paymentTermsData = {
+          deposit_pct: depositPct,
+          balance_pct: balancePct,
+          balance_trigger: 'on_first_receive'
+        }
+      }
+
       // STEP 1: Always create order in 'draft' status first (required by RLS policy)
       const orderData = {
         order_type: orderType,
@@ -1098,6 +1126,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         has_points: hasPoints,
         has_lucky_draw: enableLuckyDraw,
         has_redeem: enableRedeem,
+        payment_terms: paymentTermsData,
         notes: notes || `Customer: ${customerName}, Phone: ${phoneNumber}, Address: ${deliveryAddress}`,
         created_by: userProfile.id
       }

@@ -229,7 +229,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         .select(`
           *,
           org_types:organization_types(type_name, type_description),
-          parent_org:organizations!parent_org_id(org_name, org_code)
+          parent_org:organizations!parent_org_id(org_name, org_code),
+          payment_terms(term_name, deposit_percentage, balance_percentage)
         `)
         .eq('is_active', true)  // Only fetch active organizations
       
@@ -752,10 +753,16 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         {getOrgInitials(org.org_name)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1">
+                    <div className="flex-1 flex items-center gap-2 flex-wrap">
                       <Badge className={getOrgTypeColor(org.org_type_code)}>
                         {org.org_types?.type_name || org.org_type_code}
                       </Badge>
+                      {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') && 
+                       (org as any).payment_terms && (
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
+                          💰 {(org as any).payment_terms.term_name}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <Badge className={getStatusColor(org.is_active, org.is_verified)}>
@@ -766,7 +773,15 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <div className="flex items-center gap-2">
                     <CardTitle className="text-lg">{org.org_name}</CardTitle>
                   </div>
-                  <CardDescription>{org.org_code}</CardDescription>
+                  <CardDescription className="flex items-center gap-2">
+                    {org.org_code}
+                    {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') && 
+                     (org as any).payment_terms && (
+                      <span className="text-xs text-purple-600">
+                        • {(org as any).payment_terms.deposit_percentage}% / {(org as any).payment_terms.balance_percentage}% split
+                      </span>
+                    )}
+                  </CardDescription>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">

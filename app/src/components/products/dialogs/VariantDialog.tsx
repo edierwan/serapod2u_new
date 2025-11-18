@@ -24,6 +24,9 @@ interface Variant {
   manufacturer_sku: string | null
   base_cost: number | null
   suggested_retail_price: number | null
+  retailer_price?: number | null
+  distributor_price?: number | null
+  other_price?: number | null
   is_active: boolean
   is_default: boolean
   image_url?: string | null
@@ -54,6 +57,9 @@ export default function VariantDialog({
     manufacturer_sku: '',
     base_cost: null,
     suggested_retail_price: null,
+    retailer_price: null,
+    distributor_price: null,
+    other_price: null,
     is_active: true,
     is_default: false,
     image_url: null
@@ -73,6 +79,9 @@ export default function VariantDialog({
           manufacturer_sku: variant.manufacturer_sku || '',
           base_cost: variant.base_cost,
           suggested_retail_price: variant.suggested_retail_price,
+          retailer_price: variant.retailer_price,
+          distributor_price: variant.distributor_price,
+          other_price: variant.other_price,
           is_active: variant.is_active,
           is_default: variant.is_default,
           image_url: variant.image_url || null
@@ -87,6 +96,9 @@ export default function VariantDialog({
           manufacturer_sku: '',
           base_cost: null,
           suggested_retail_price: null,
+          retailer_price: null,
+          distributor_price: null,
+          other_price: null,
           is_active: true,
           is_default: false,
           image_url: null
@@ -239,18 +251,17 @@ export default function VariantDialog({
             <Label>Variant Image</Label>
             <div className="flex items-center gap-4">
               <Avatar className="w-20 h-20 rounded-lg border-2 border-gray-200">
-                <AvatarImage 
-                  src={imagePreview || undefined} 
-                  alt={`${formData.variant_name || 'Variant'} image`}
-                  className="object-cover"
-                />
-                <AvatarFallback className="rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 text-gray-400">
-                  {formData.variant_name ? (
-                    <span className="text-lg font-semibold">{getVariantInitials(formData.variant_name)}</span>
-                  ) : (
+                {imagePreview ? (
+                  <AvatarImage 
+                    src={imagePreview} 
+                    alt={`${formData.variant_name || 'Variant'} image`}
+                    className="object-cover"
+                  />
+                ) : (
+                  <AvatarFallback className="rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 text-gray-400">
                     <ImageIcon className="w-8 h-8" />
-                  )}
-                </AvatarFallback>
+                  </AvatarFallback>
+                )}
               </Avatar>
               <div className="flex-1">
                 <div className="flex gap-2">
@@ -377,6 +388,55 @@ export default function VariantDialog({
                   className="flex-1"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="retailerPrice">Retailer Price (RM)</Label>
+              <div className="flex items-center">
+                <span className="text-gray-600 mr-2">RM</span>
+                <Input
+                  id="retailerPrice"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.retailer_price || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, retailer_price: e.target.value ? parseFloat(e.target.value) : null }))}
+                  className="flex-1"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="distributorPrice">Distributor Price (RM)</Label>
+              <div className="flex items-center">
+                <span className="text-gray-600 mr-2">RM</span>
+                <Input
+                  id="distributorPrice"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.distributor_price || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, distributor_price: e.target.value ? parseFloat(e.target.value) : null }))}
+                  className="flex-1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="otherPrice">Other Price (RM)</Label>
+            <div className="flex items-center">
+              <span className="text-gray-600 mr-2">RM</span>
+              <Input
+                id="otherPrice"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={formData.other_price || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, other_price: e.target.value ? parseFloat(e.target.value) : null }))}
+                className="flex-1"
+              />
             </div>
           </div>
 

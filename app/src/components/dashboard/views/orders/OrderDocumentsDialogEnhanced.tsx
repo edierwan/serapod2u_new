@@ -28,6 +28,7 @@ interface OrderDocumentsDialogEnhancedProps {
     }
   }
   initialTab?: 'po' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
+  open: boolean
   onClose: () => void
 }
 
@@ -36,6 +37,7 @@ export default function OrderDocumentsDialogEnhanced({
   orderNo,
   userProfile,
   initialTab,
+  open,
   onClose
 }: OrderDocumentsDialogEnhancedProps) {
   type DocumentTab = 'po' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
@@ -76,16 +78,30 @@ export default function OrderDocumentsDialogEnhanced({
     return roleCode === 'HQ_ADMIN' || roleCode === 'POWER_USER' || roleLevel >= 80 || userProfile?.organizations?.org_type_code === 'HQ'
   }, [userProfile])
 
-  // Check if this order uses 50/50 payment split
-  const is50_50Split = useMemo(() => {
-    // Default to 50/50 split for all orders (new standard)
-    // Only use traditional 4-step if explicitly set to false
-    if (orderData?.payment_terms?.deposit_percentage === 0 || orderData?.payment_terms?.use_traditional === true) {
-      return false
-    }
-    // Default is 50/50 split
-    return true
-  }, [orderData, documents])
+  // Check if this order uses split payment (deposit + balance)
+  const useSplitPayment = useMemo(() => {
+    // Check if deposit percentage is greater than 0 and less than 100
+    // payment_terms is a JSONB field with deposit_pct (decimal like 0.3 for 30%)
+    const depositPct = orderData?.payment_terms?.deposit_pct ?? 0.5
+    return depositPct > 0 && depositPct < 1
+  }, [orderData])
+
+  // Get deposit percentage for display
+  const depositPercentage = useMemo(() => {
+    // Convert decimal to percentage (0.3 -> 30, 0.5 -> 50, 0.7 -> 70)
+    const depositPct = orderData?.payment_terms?.deposit_pct ?? 0.5
+    return Math.round(depositPct * 100)
+  }, [orderData])
+
+  // Get balance percentage for display
+  const balancePercentage = useMemo(() => {
+    // Convert decimal to percentage (0.7 -> 70, 0.5 -> 50, 0.3 -> 30)
+    const balancePct = orderData?.payment_terms?.balance_pct ?? 0.5
+    return Math.round(balancePct * 100)
+  }, [orderData])
+
+  // For backwards compatibility, map to old variable name
+  const is50_50Split = useSplitPayment
 
   const isDocumentTab = (value: string): value is DocumentTab =>
     value === 'po' || value === 'invoice' || value === 'payment' || value === 'receipt' ||
@@ -218,9 +234,12 @@ export default function OrderDocumentsDialogEnhanced({
       }
 
       // Assign receipts based on payment_percentage
+      // Note: Receipts are created with dynamic percentages from payment_terms
+      // - Deposit receipt: payment_percentage = Math.round(deposit_pct * 100) (e.g., 30, 50, 70)
+      // - Final receipt: payment_percentage = 100
       if (receipts.length > 0) {
-        const depositReceipt = receipts.find((r: any) => r.payment_percentage === 50)
         const finalReceipt = receipts.find((r: any) => r.payment_percentage === 100)
+        const depositReceipt = receipts.find((r: any) => r.payment_percentage < 100)
         
         if (depositReceipt) {
           docs.depositReceipt = depositReceipt
@@ -742,6 +761,8 @@ export default function OrderDocumentsDialogEnhanced({
     )
   }
 
+  if (!open) return null
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
       <div className="min-h-screen px-4 py-8">
@@ -764,6 +785,7 @@ export default function OrderDocumentsDialogEnhanced({
               documents={documents as any} 
               onTabChange={handleTabChange}
               use50_50Split={is50_50Split}
+              depositPercentage={depositPercentage}
             />
 
             {/* Document Tabs */}
@@ -1092,7 +1114,7 @@ export default function OrderDocumentsDialogEnhanced({
                 {documents.depositInvoice ? (
                   <div className="space-y-4">
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-green-900 mb-2">Deposit Invoice Details (50%)</h3>
+                      <h3 className="font-semibold text-green-900 mb-2">Deposit Invoice Details ({depositPercentage}%)</h3>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-green-700">Document No:</span>{' '}
@@ -1133,13 +1155,25 @@ export default function OrderDocumentsDialogEnhanced({
                           </>
                         )}
                       </Button>
-
-                      <AcknowledgeButton
-                        document={documents.depositInvoice}
-                        userProfile={userProfileWithSignature}
-                        onSuccess={loadData}
-                      />
                     </div>
+
+                    {requiresPaymentProof && documents.depositInvoice.status === 'pending' && (
+                      <PaymentProofUpload
+                        documentId={documents.depositInvoice.id}
+                        orderId={orderId}
+                        companyId={orderData?.company_id}
+                        onUploadComplete={setPaymentProofUrl}
+                        existingFileUrl={paymentProofUrl}
+                      />
+                    )}
+
+                    <AcknowledgeButton
+                      document={documents.depositInvoice}
+                      userProfile={userProfileWithSignature}
+                      onSuccess={loadData}
+                      requiresPaymentProof={requiresPaymentProof}
+                      paymentProofUrl={paymentProofUrl}
+                    />
                   </div>
                 ) : (
                   <div className="text-center py-12 text-gray-500">
@@ -1153,7 +1187,7 @@ export default function OrderDocumentsDialogEnhanced({
                 {documents.depositPayment ? (
                   <div className="space-y-4">
                     <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-purple-900 mb-2">Deposit Payment Details (50%)</h3>
+                      <h3 className="font-semibold text-purple-900 mb-2">Deposit Payment Details ({depositPercentage}%)</h3>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-purple-700">Document No:</span>{' '}
@@ -1281,7 +1315,7 @@ export default function OrderDocumentsDialogEnhanced({
                 {documents.balancePaymentRequest ? (
                   <div className="space-y-4">
                     <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-teal-900 mb-2">Balance Payment Request (50%)</h3>
+                      <h3 className="font-semibold text-teal-900 mb-2">Balance Payment Request ({balancePercentage}%)</h3>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-teal-700">Document No:</span>{' '}
@@ -1383,7 +1417,7 @@ export default function OrderDocumentsDialogEnhanced({
                 {documents.balancePayment ? (
                   <div className="space-y-4">
                     <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-indigo-900 mb-2">Balance Payment Details (50%)</h3>
+                      <h3 className="font-semibold text-indigo-900 mb-2">Balance Payment Details ({balancePercentage}%)</h3>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-indigo-700">Document No:</span>{' '}
@@ -1474,31 +1508,43 @@ export default function OrderDocumentsDialogEnhanced({
                 )}
               </TabsContent>
 
-              {/* Receipt Tab */}
+              {/* Receipt Tab - Shows deposit receipt (partial) or both receipts (complete) */}
               <TabsContent value="receipt" className="space-y-4">
                 {documents.depositReceipt || documents.finalReceipt ? (
                   <div className="space-y-6">
-                    {/* Deposit Receipt (50%) */}
+                    {/* Deposit Receipt - Dynamic percentage based on payment_terms */}
                     {documents.depositReceipt && (
                       <div className="space-y-4">
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <div className={`rounded-lg p-4 ${
+                          documents.finalReceipt 
+                            ? 'bg-emerald-50 border border-emerald-200' 
+                            : 'bg-amber-50 border border-amber-200'
+                        }`}>
                           <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-semibold text-amber-900">Deposit Receipt (50%)</h3>
-                            <span className="px-2 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded">
+                            <h3 className={`font-semibold ${
+                              documents.finalReceipt ? 'text-emerald-900' : 'text-amber-900'
+                            }`}>
+                              Deposit Receipt ({depositPercentage}%)
+                            </h3>
+                            <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                              documents.finalReceipt 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
                               DEPOSIT
                             </span>
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
-                              <span className="text-amber-700">Document No:</span>{' '}
+                              <span className={documents.finalReceipt ? 'text-emerald-700' : 'text-amber-700'}>Document No:</span>{' '}
                               <span className="font-medium">{documents.depositReceipt.doc_no}</span>
                             </div>
                             <div>
-                              <span className="text-amber-700">Status:</span>{' '}
-                              <span className="font-medium">50% Payment Received</span>
+                              <span className={documents.finalReceipt ? 'text-emerald-700' : 'text-amber-700'}>Status:</span>{' '}
+                              <span className="font-medium">{depositPercentage}% Payment Received</span>
                             </div>
                             <div>
-                              <span className="text-amber-700">Created:</span>{' '}
+                              <span className={documents.finalReceipt ? 'text-emerald-700' : 'text-amber-700'}>Created:</span>{' '}
                               <span>{formatDate(documents.depositReceipt.created_at)}</span>
                             </div>
                           </div>
@@ -1507,7 +1553,11 @@ export default function OrderDocumentsDialogEnhanced({
                         <Button
                           onClick={() => handleDownload(documents.depositReceipt!.id, 'RECEIPT')}
                           disabled={downloading === documents.depositReceipt!.id}
-                          className="w-full bg-amber-600 hover:bg-amber-700"
+                          className={`w-full ${
+                            documents.finalReceipt 
+                              ? 'bg-emerald-600 hover:bg-emerald-700' 
+                              : 'bg-amber-600 hover:bg-amber-700'
+                          }`}
                         >
                           {downloading === documents.depositReceipt!.id ? (
                             <>
@@ -1517,21 +1567,25 @@ export default function OrderDocumentsDialogEnhanced({
                           ) : (
                             <>
                               <Download className="w-4 h-4 mr-2" />
-                              Download Deposit Receipt (50%)
+                              Download Deposit Receipt ({depositPercentage}%)
                             </>
                           )}
                         </Button>
                       </div>
                     )}
 
-                    {/* Final Receipt (100%) */}
+                    {/* Final/Balance Receipt - Shows balance percentage if deposit exists */}
                     {documents.finalReceipt && (
                       <div className="space-y-4">
                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-semibold text-emerald-900">Final Receipt (100%)</h3>
+                            <h3 className="font-semibold text-emerald-900">
+                              {documents.depositReceipt 
+                                ? `Balance Receipt (${balancePercentage}%)` 
+                                : 'Receipt (100%)'}
+                            </h3>
                             <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded">
-                              FINAL
+                              {documents.depositReceipt ? 'BALANCE' : 'FINAL'}
                             </span>
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1570,7 +1624,9 @@ export default function OrderDocumentsDialogEnhanced({
                           ) : (
                             <>
                               <Download className="w-4 h-4 mr-2" />
-                              Download Final Receipt (100%)
+                              {documents.depositReceipt 
+                                ? `Download Balance Receipt (${balancePercentage}%)` 
+                                : 'Download Receipt (100%)'}
                             </>
                           )}
                         </Button>
@@ -1598,7 +1654,9 @@ export default function OrderDocumentsDialogEnhanced({
                   </div>
                 ) : (
                   <div className="text-center py-12 text-gray-500">
-                    Receipt will be created after Payment is acknowledged
+                    {useSplitPayment 
+                      ? `Receipts will be created after each payment acknowledgment: Deposit Receipt (${depositPercentage}%) → Balance Receipt (${balancePercentage}%)`
+                      : 'Receipt will be created after Payment is acknowledged'}
                   </div>
                 )}
               </TabsContent>
