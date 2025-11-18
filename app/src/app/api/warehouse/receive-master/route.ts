@@ -303,10 +303,25 @@ const receiveSingleMaster = async (
       }
     }
 
+    // ============================================================================
+    // CORRECT STRATEGY: Fetch codes by case_number (same as manufacturer logic)
+    // ============================================================================
+    // Get ALL non-buffer codes for this specific case_number
+    // This automatically handles:
+    // - Normal cases: 1 product per case
+    // - Mixed cases: Multiple products in same case_number
+    // - Variable sizes: Different expected_unit_count per case
+    // ============================================================================
+    
+    console.log('🎯 [Warehouse Receive] Fetching codes by case_number (supports normal & mixed cases)')
+    
     const { data: uniqueCodes, error: uniqueCodesError } = await supabase
       .from('qr_codes')
-      .select('id, code, variant_id')
-      .eq('master_code_id', masterRecord.id)
+      .select('id, code, variant_id, case_number, is_buffer')
+      .eq('batch_id', masterRecord.batch_id)
+      .eq('case_number', masterRecord.case_number) // ✅ Link by case_number
+      .eq('is_buffer', false)                       // ✅ Exclude buffer codes
+      .limit(100000)                                // Handle large cases
 
     if (uniqueCodesError) {
       console.error('❌ Failed to load child codes for master receive:', uniqueCodesError)
@@ -316,6 +331,52 @@ const receiveSingleMaster = async (
         outcome: 'error',
         message: 'Failed to load unique codes for master case',
         details: uniqueCodesError
+      }
+    }
+
+    // Detect if this is a mixed case
+    const uniqueVariants = new Set((uniqueCodes || []).map(c => c.variant_id).filter(Boolean))
+    const isMixedCase = uniqueVariants.size > 1
+    
+    console.log('📊 [Warehouse Receive] Found codes for case #' + masterRecord.case_number + ':', {
+      total_found: uniqueCodes?.length || 0,
+      expected: masterRecord.expected_unit_count,
+      match: uniqueCodes?.length === masterRecord.expected_unit_count,
+      is_mixed_case: isMixedCase,
+      unique_products: uniqueVariants.size
+    })
+
+    // Validation: Check if we found codes
+    if (!uniqueCodes || uniqueCodes.length === 0) {
+      return {
+        master_code: masterRecord.master_code,
+        normalized_code: normalizedMasterCode,
+        outcome: 'error',
+        message: `No QR codes found for case #${masterRecord.case_number}. Case may not have been generated yet.`,
+        order_id: resolvedOrderId,
+        warehouse_org_id: resolvedWarehouseOrgId
+      }
+    }
+
+    // Validate unit count matches expected (strict validation)
+    if (uniqueCodes.length !== masterRecord.expected_unit_count) {
+      const message = `Expected ${masterRecord.expected_unit_count} codes but found ${uniqueCodes.length} for case #${masterRecord.case_number}. Case may be incomplete or over-filled.`
+      console.error(`❌ [Warehouse Receive] ${message}${isMixedCase ? ' (mixed case)' : ''}`)
+      
+      return {
+        master_code: masterRecord.master_code,
+        normalized_code: normalizedMasterCode,
+        outcome: 'error',
+        message,
+        order_id: resolvedOrderId,
+        warehouse_org_id: resolvedWarehouseOrgId,
+        details: {
+          case_number: masterRecord.case_number,
+          expected_count: masterRecord.expected_unit_count,
+          found_count: uniqueCodes.length,
+          is_mixed_case: isMixedCase,
+          unique_products: uniqueVariants.size
+        }
       }
     }
 
@@ -355,7 +416,18 @@ const receiveSingleMaster = async (
     console.log('✅ [Warehouse Receive] Successfully updated master case:', {
       master_code: masterRecord.master_code,
       master_id: masterRecord.id,
-      new_status: 'received_warehouse'
+      new_status: 'received_warehouse',
+      is_mixed_case: isMixedCase,
+      unique_products: uniqueVariants.size
+    })
+
+    // Update ONLY the codes for this specific case (by IDs from validated query)
+    const codeIds = (uniqueCodes || []).map(c => c.id)
+    
+    console.log('📝 [Warehouse Receive] Updating codes:', {
+      codes_to_update: codeIds.length,
+      case_number: masterRecord.case_number,
+      sample_code_ids: codeIds.slice(0, 3)
     })
 
     const { error: codesUpdateError } = await supabase
@@ -367,7 +439,7 @@ const receiveSingleMaster = async (
         last_scanned_by: requestingUserId,
         updated_at: receivedAt
       })
-      .eq('master_code_id', masterRecord.id)
+      .in('id', codeIds) // ✅ Update only validated codes (excludes buffer codes)
 
     if (codesUpdateError) {
       console.error('❌ Failed to update child codes during warehouse receive:', codesUpdateError)
