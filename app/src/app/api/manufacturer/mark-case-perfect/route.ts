@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Searching for master code:', masterCodeToScan)
 
     // Find master code in database with order info for validation
+    // Support both exact match and partial match (for codes with hash suffix)
     const { data: masterCodeRecord, error: masterError } = await supabase
       .from('qr_master_codes')
       .select(`
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
           orders!inner(order_no)
         )
       `)
-      .eq('master_code', masterCodeToScan)
+      .or(`master_code.eq.${masterCodeToScan},master_code.like.${masterCodeToScan}-%`)
       .single()
 
     if (masterError || !masterCodeRecord) {
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       const { data: simpleCheck, error: simpleError } = await supabase
         .from('qr_master_codes')
         .select('id, master_code, batch_id, case_number')
-        .eq('master_code', masterCodeToScan)
+        .or(`master_code.eq.${masterCodeToScan},master_code.like.${masterCodeToScan}-%`)
         .single()
       
       if (simpleCheck) {
