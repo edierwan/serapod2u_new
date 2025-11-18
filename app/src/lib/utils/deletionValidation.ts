@@ -4,8 +4,9 @@ import { SupabaseClient } from '@supabase/supabase-js'
 /**
  * Check if an order can be deleted
  * Returns canDelete = false if any QR codes have been scanned/activated
+ * Super admins can override this with a force delete option
  */
-export async function validateOrderDeletion(supabase: SupabaseClient, orderId: string) {
+export async function validateOrderDeletion(supabase: SupabaseClient, orderId: string, isSuperAdmin: boolean = false) {
   try {
     // Check for scanned/activated QR codes
     const { data: scannedQR, error: qrError } = await supabase
@@ -18,11 +19,22 @@ export async function validateOrderDeletion(supabase: SupabaseClient, orderId: s
     if (qrError) throw qrError
 
     if (scannedQR && scannedQR.length > 0) {
+      // Count all scanned QR codes
+      const { count: totalScannedCount } = await supabase
+        .from('qr_codes')
+        .select('id', { count: 'exact', head: true })
+        .eq('order_id', orderId)
+        .neq('status', 'pending')
+
       return {
         canDelete: false,
         reason: 'QR_CODES_SCANNED',
-        message: `This order cannot be deleted because ${scannedQR.length} QR code(s) have already been scanned by the manufacturer. Once QR codes are scanned, the order becomes part of the audit trail.`,
-        scannedCodes: scannedQR
+        message: isSuperAdmin 
+          ? `⚠️ WARNING: This order has ${totalScannedCount || scannedQR.length} scanned QR code(s). Deleting will remove these from the database and may affect audit trail. Only super admins can proceed with this deletion.`
+          : `This order cannot be deleted because ${totalScannedCount || scannedQR.length} QR code(s) have already been scanned. Once QR codes are scanned, the order becomes part of the audit trail. Contact a super admin if deletion is absolutely necessary.`,
+        scannedCodes: scannedQR,
+        requiresSuperAdmin: true,
+        scannedCount: totalScannedCount || scannedQR.length
       }
     }
 
@@ -69,17 +81,23 @@ export async function validateOrderDeletion(supabase: SupabaseClient, orderId: s
 /**
  * Cascade delete an order and all related records
  * ONLY call this after validateOrderDeletion returns canDelete = true
+ * @param forceDelete - If true, deletes ALL QR codes including scanned ones (super admin only)
  */
-export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: string) {
+export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: string, forceDelete: boolean = false) {
   try {
     // Delete in correct order (child tables first)
     
-    // 1. Delete pending QR codes
-    const { error: qrError } = await supabase
+    // 1. Delete QR codes (all if forceDelete, otherwise only pending)
+    const qrQuery = supabase
       .from('qr_codes')
       .delete()
       .eq('order_id', orderId)
-      .eq('status', 'pending')
+    
+    if (!forceDelete) {
+      qrQuery.eq('status', 'pending')
+    }
+    
+    const { error: qrError } = await qrQuery
 
     if (qrError) throw qrError
 

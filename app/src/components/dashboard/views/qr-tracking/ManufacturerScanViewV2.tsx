@@ -580,11 +580,15 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
           order_no,
           status,
           created_at,
+          payment_terms,
           organizations!orders_buyer_org_id_fkey (
             org_name
           ),
           qr_batches (
             id
+          ),
+          order_items (
+            line_total
           )
         `)
         .eq('seller_org_id', userProfile.organization_id)
@@ -1974,9 +1978,19 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
 
       const result = await response.json()
 
+      // Calculate balance percentage from payment terms
+      const selectedOrderData = orders.find(o => o.id === selectedOrder)
+      const balancePct = selectedOrderData?.payment_terms?.balance_pct || 0.5
+      const balancePercentage = Math.round(balancePct * 100)
+
+      // Show success message with balance payment info
+      const balanceMessage = result.balance_payment_created 
+        ? ` Balance payment request (${balancePercentage}%) has been sent to admin for approval.`
+        : ''
+
       toast({
         title: 'Production Complete! 🎉',
-        description: `Batch ${currentBatchProgress.batch_code} is now ready for warehouse shipment. ${result.packed_master_codes} of ${result.total_master_codes} cases packed.`,
+        description: `Batch ${currentBatchProgress.batch_code} is now ready for warehouse shipment. ${result.packed_master_codes} of ${result.total_master_codes} cases packed.${balanceMessage}`,
       })
 
       // Refresh batch progress to show updated status
@@ -2896,6 +2910,55 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
                   }
                 </Button>
               </div>
+              
+              {/* Balance Payment Info - Before Production Complete */}
+              {currentBatchProgress?.batch_status !== 'completed' && masterPercent === 100 && (() => {
+                const selectedOrderData = orders.find(o => o.id === selectedOrder)
+                const balancePct = selectedOrderData?.payment_terms?.balance_pct || 0.5
+                const balancePercentage = Math.round(balancePct * 100)
+                return (
+                  <p className="text-xs text-gray-600 mt-2 text-right">
+                    💡 <strong>Note:</strong> Balance payment request ({balancePercentage}%) will be sent to admin when production is marked complete.
+                  </p>
+                )
+              })()}
+
+              {/* Balance Payment Notification - After Production Complete */}
+              {currentBatchProgress?.batch_status === 'completed' && (() => {
+                const selectedOrderData = orders.find(o => o.id === selectedOrder)
+                const balancePct = selectedOrderData?.payment_terms?.balance_pct || 0.5
+                const balancePercentage = Math.round(balancePct * 100)
+                
+                // Calculate total order amount from order items
+                const orderItems = selectedOrderData?.order_items || []
+                const orderTotal = orderItems.reduce((sum: number, item: any) => {
+                  const lineTotal = parseFloat(item.line_total) || 0
+                  return sum + lineTotal
+                }, 0)
+                
+                // Debug logging
+                console.log('Balance Payment Debug:', {
+                  orderId: selectedOrder,
+                  orderItems: orderItems.length,
+                  orderTotal,
+                  balancePct,
+                  selectedOrderData
+                })
+                
+                const balanceAmount = orderTotal * balancePct
+                const formattedAmount = new Intl.NumberFormat('en-MY', {
+                  style: 'currency',
+                  currency: 'MYR',
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }).format(balanceAmount)
+                
+                return (
+                  <p className="text-xs text-blue-600 mt-2 text-right font-medium">
+                    ✓ Balance payment ({balancePercentage}%) of {formattedAmount} notified to Serapod
+                  </p>
+                )
+              })()}
             </div>
           </CardContent>
         </Card>

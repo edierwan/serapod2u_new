@@ -126,37 +126,50 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       const codesCount = (qrCodes?.length || 0) + (masterCodes?.length || 0)
       const excelCount = excelFiles?.length || 0
 
-      // Step 2: Show detailed confirmation
-      const docsList = documents?.map(d => `${d.doc_type}: ${d.doc_no}`).join('\n  ') || 'None'
-      
-      const confirmMessage = `⚠️ PERMANENT DELETION WARNING\n\n` +
-        `Are you sure you want to permanently delete order ${orderNo}?\n\n` +
-        `This will PERMANENTLY delete:\n` +
-        `• ${itemsCount} order item(s)\n` +
-        `• ${docsCount} document(s):\n  ${docsList}\n` +
-        `• ${batchesCount} QR batch(es)\n` +
-        `• ${codesCount} QR code(s) (master + regular)\n` +
-        `• ${excelCount} Excel file(s) from storage\n\n` +
-        `⚠️ The order number "${orderNo}" will be marked as deleted and CANNOT be reused.\n\n` +
-        `This action CANNOT be undone!\n\n` +
-        `Type "DELETE" to confirm:`
-
-      const userInput = prompt(confirmMessage)
-      
-      if (userInput !== 'DELETE') {
-        toast({
-          title: 'Delete Cancelled',
-          description: 'Order deletion was cancelled.'
-        })
-        setLoading(false)
-        return
-      }
+      // Step 2: Check if user is super admin
+      const isSuperAdmin = userProfile.role_code === 'SUPER' || userProfile.roles?.role_level <= 10
 
       // Step 3: Validate if order can be deleted
       console.log('🔍 Validating order deletion...')
-      const validation = await validateOrderDeletion(supabase, orderId)
+      const validation = await validateOrderDeletion(supabase, orderId, isSuperAdmin)
 
-      if (!validation.canDelete) {
+      // Step 4: Build single confirmation message based on validation
+      const docsList = documents?.map(d => `${d.doc_type}: ${d.doc_no}`).join('\n  ') || 'None'
+      let confirmMessage = ''
+      let confirmKeyword = ''
+      let isForceDelete = false
+
+      if (!validation.canDelete && validation.reason === 'QR_CODES_SCANNED') {
+        if (!isSuperAdmin) {
+          // Block deletion for non-super admins
+          console.error('❌ Cannot delete order - scanned QR codes exist')
+          toast({
+            title: '❌ Cannot Delete Order',
+            description: validation.message,
+            variant: 'destructive'
+          })
+          setLoading(false)
+          return
+        }
+
+        // Super admin - show force delete warning in single prompt
+        console.warn('⚠️ Order has scanned QR codes - super admin can force delete')
+        isForceDelete = true
+        confirmMessage = 
+          `⚠️ SUPER ADMIN FORCE DELETE - ORDER ${orderNo}\n\n` +
+          `WARNING: This order has ${validation.scannedCount} SCANNED QR code(s)!\n\n` +
+          `This will PERMANENTLY delete:\n` +
+          `• ${itemsCount} order item(s)\n` +
+          `• ${docsCount} document(s):\n  ${docsList}\n` +
+          `• ${batchesCount} QR batch(es)\n` +
+          `• ${validation.scannedCount} SCANNED QR code(s)\n` +
+          `• ${excelCount} Excel file(s)\n\n` +
+          `⚠️ Deleting scanned QR codes affects audit trails!\n` +
+          `⚠️ This action CANNOT be undone!\n\n` +
+          `Type "FORCE DELETE" to confirm:`
+        confirmKeyword = 'FORCE DELETE'
+      } else if (!validation.canDelete) {
+        // Other validation issues
         console.error('❌ Cannot delete order:', validation.reason)
         toast({
           title: '❌ Cannot Delete Order',
@@ -165,22 +178,53 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         })
         setLoading(false)
         return
+      } else {
+        // Normal deletion (no scanned QR codes)
+        confirmMessage = 
+          `⚠️ DELETE ORDER ${orderNo}\n\n` +
+          `This will PERMANENTLY delete:\n` +
+          `• ${itemsCount} order item(s)\n` +
+          `• ${docsCount} document(s):\n  ${docsList}\n` +
+          `• ${batchesCount} QR batch(es)\n` +
+          `• ${codesCount} QR code(s)\n` +
+          `• ${excelCount} Excel file(s)\n\n` +
+          `This action CANNOT be undone!\n\n` +
+          `Type "DELETE" to confirm:`
+        confirmKeyword = 'DELETE'
       }
 
-      // Step 4: Delete Excel files from storage
+      // Show single confirmation prompt
+      const userInput = prompt(confirmMessage)
+      
+      if (userInput !== confirmKeyword) {
+        toast({
+          title: 'Delete Cancelled',
+          description: 'Order deletion was cancelled.'
+        })
+        setLoading(false)
+        return
+      }
+
+      if (isForceDelete) {
+        console.log('✅ Super admin confirmed force deletion')
+      }
+
+      // Step 5: Delete Excel files from storage
       console.log('🗑️ Deleting Excel files from storage...')
       if (excelFiles && excelFiles.length > 0) {
         const filePaths = excelFiles.map(file => `${orderId}/${file.name}`)
         await supabase.storage.from('order-excel').remove(filePaths)
       }
 
-      // Step 5: Cascade delete all database records
+      // Step 6: Cascade delete all database records
       console.log('🗑️ Cascade deleting order and related database records...')
-      await cascadeDeleteOrder(supabase, orderId)
+      await cascadeDeleteOrder(supabase, orderId, isForceDelete)
 
       toast({
         title: '✅ Order Deleted Successfully',
-        description: `Order ${orderNo} and all related records have been permanently deleted. The order number cannot be reused.`,
+        description: isForceDelete 
+          ? `Order ${orderNo} and ALL related records (including ${validation.scannedCount} scanned QR codes) have been permanently deleted.`
+          : `Order ${orderNo} and all related records have been permanently deleted.`,
         duration: 5000
       })
 
@@ -422,6 +466,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         .rpc('get_company_id', { p_org_id: userProfile.organization_id })
       
       const companyId = companyData || userProfile.organization_id
+      const orgType = userProfile.organizations.org_type_code
       
       // First, get orders
       let query = supabase
@@ -433,9 +478,17 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           created_by_user:users!orders_created_by_fkey(id, email, full_name),
           approved_by_user:users!orders_approved_by_fkey(id, email, full_name)
         `)
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: false })
-        .limit(50)
+      
+      // Filter based on organization type
+      if (orgType === 'MFG') {
+        // Manufacturers see orders where they are the seller
+        query = query.eq('seller_org_id', userProfile.organization_id)
+      } else {
+        // HQ and others see all orders in their company
+        query = query.eq('company_id', companyId)
+      }
+      
+      query = query.order('created_at', { ascending: false }).limit(50)
 
       // Apply status filter
       if (statusFilter !== 'all') {
