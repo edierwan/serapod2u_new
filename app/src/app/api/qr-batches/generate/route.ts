@@ -251,16 +251,34 @@ export async function POST(request: NextRequest) {
       warehouse_received_at: null
     }))
 
+    console.log('📋 Sample master codes to insert (first 3):', masterCodesData.slice(0, 3).map(m => ({
+      master_code: m.master_code,
+      case_number: m.case_number,
+      expected_unit_count: m.expected_unit_count
+    })))
+
     const { data: insertedMasters, error: masterError } = await supabase
       .from('qr_master_codes')
       .insert(masterCodesData)
       .select('id, case_number, master_code, expected_unit_count')
 
     if (masterError) {
-      console.error('❌ Master codes insert error:', masterError)
-      // Continue despite error - batch is already created
+      console.error('❌ Master codes insert error:', {
+        error_code: masterError.code,
+        error_message: masterError.message,
+        error_details: masterError.details,
+        error_hint: masterError.hint,
+        sample_data: masterCodesData.slice(0, 2)
+      })
+      // CRITICAL: Throw error instead of continuing - without master codes, the batch is useless
+      throw new Error(`Failed to insert master codes: ${masterError.message}`)
     } else {
       console.log(`✅ Inserted ${masterCodesData.length} master codes`)
+      console.log('📋 Sample inserted masters:', insertedMasters?.slice(0, 3).map(m => ({
+        id: m.id,
+        master_code: m.master_code,
+        case_number: m.case_number
+      })))
     }
 
     // Create a map of case_number to master_code_id for linking
@@ -296,7 +314,25 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Inserted ${totalInserted} individual QR codes`)
 
-    // 9. Return success response
+    // 9. Verify master codes were actually inserted
+    const { data: verifyMasters, error: verifyError } = await supabase
+      .from('qr_master_codes')
+      .select('id, master_code, case_number')
+      .eq('batch_id', batch.id)
+      .limit(5)
+
+    if (verifyError || !verifyMasters || verifyMasters.length === 0) {
+      console.error('⚠️ CRITICAL: Master codes verification failed!', {
+        error: verifyError,
+        found_count: verifyMasters?.length || 0,
+        batch_id: batch.id
+      })
+      throw new Error('Master codes were not saved to database. Batch generation incomplete.')
+    }
+
+    console.log(`✅ Verified ${verifyMasters.length} master codes exist in database`)
+
+    // 10. Return success response
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2)
     console.log(`✅ QR Batch generation complete in ${totalTime}s`)
 

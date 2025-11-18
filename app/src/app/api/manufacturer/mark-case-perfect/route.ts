@@ -35,6 +35,8 @@ export async function POST(request: NextRequest) {
       masterCodeToScan = parts[parts.length - 1]
     }
 
+    console.log('🔍 Searching for master code:', masterCodeToScan)
+
     // Find master code in database with order info for validation
     const { data: masterCodeRecord, error: masterError } = await supabase
       .from('qr_master_codes')
@@ -49,9 +51,33 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (masterError || !masterCodeRecord) {
-      console.error('❌ Master code not found:', masterError)
+      console.error('❌ Master code not found:', {
+        searched_code: masterCodeToScan,
+        error_code: masterError?.code,
+        error_message: masterError?.message,
+        error_details: masterError?.details,
+        error_hint: masterError?.hint
+      })
+      
+      // Try to find if code exists without joins to debug
+      const { data: simpleCheck, error: simpleError } = await supabase
+        .from('qr_master_codes')
+        .select('id, master_code, batch_id, case_number')
+        .eq('master_code', masterCodeToScan)
+        .single()
+      
+      if (simpleCheck) {
+        console.log('⚠️ Master code EXISTS in qr_master_codes table:', simpleCheck)
+        console.log('⚠️ But failed with joins - possible batch/order issue')
+      } else {
+        console.log('❌ Master code does NOT exist in qr_master_codes table')
+      }
+      
       return NextResponse.json(
-        { error: 'Master code not found in system' },
+        { 
+          error: 'Master code not found in system',
+          details: masterError?.message || 'Code may not exist or batch data is incomplete'
+        },
         { status: 404 }
       )
     }
