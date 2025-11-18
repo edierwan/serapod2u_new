@@ -309,174 +309,23 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
           <h1 className="text-2xl font-bold text-gray-900">{orderData.order_no}</h1>
           <p className="text-gray-600 mt-1">{orderData.order_type} • {orderData.buyer_org?.org_name} → {orderData.seller_org?.org_name}</p>
         </div>
-        <div>
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={() => setDocumentsDialogOpen(true)}
+            className="gap-2 bg-blue-600 hover:bg-blue-700"
+            size="default"
+          >
+            <FileText className="w-4 h-4" />
+            View Order Documents
+          </Button>
           <Badge 
             variant={orderData.status === 'approved' ? 'default' : 'secondary'}
-            className="text-sm px-3 py-1 font-medium"
+            className="text-sm px-4 py-2 font-medium"
           >
             {orderData.status?.toUpperCase()}
           </Badge>
         </div>
       </div>
-
-      {/* Order Summary - Similar to TrackOrderView */}
-      {orderData && (
-        <Card>
-          <CardHeader className="border-b bg-gray-50">
-            <CardTitle className="text-lg">Order Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Buyer */}
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Building2 className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Buyer</p>
-                <p className="font-semibold text-gray-900">{orderData?.buyer_org?.org_name || 'N/A'}</p>
-              </div>
-            </div>
-
-            {/* Seller */}
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Building2 className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Seller</p>
-                <p className="font-semibold text-gray-900">{orderData?.seller_org?.org_name || 'N/A'}</p>
-              </div>
-            </div>
-
-            {/* Total Items */}
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Package className="w-5 h-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Items</p>
-                <p className="font-semibold text-gray-900">{formatNumber(totalQuantity)} units</p>
-              </div>
-            </div>
-
-            {/* Total Amount */}
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <DollarSign className="w-5 h-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Amount</p>
-                <p className="font-semibold text-gray-900">RM {formatCurrency(subtotal)}</p>
-              </div>
-            </div>
-
-            {/* Created Date */}
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <Calendar className="w-5 h-5 text-indigo-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Created Date</p>
-                <p className="font-semibold text-gray-900">{orderData?.created_at ? new Date(orderData.created_at).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Order Configuration */}
-          <div className="mt-6 pt-6 border-t">
-            <h4 className="text-sm font-semibold text-gray-900 mb-3">Order Configuration</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Lucky Draw */}
-              {orderData.enable_lucky_draw && (
-                <div className="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                  <Trophy className="w-4 h-4 text-purple-600" />
-                  <div>
-                    <p className="text-xs text-purple-600 font-medium">🎰 Lucky Draw</p>
-                    <p className="text-xs text-purple-700">Enabled</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Redeem */}
-              {orderData.enable_redeem && (
-                <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                  <Gift className="w-4 h-4 text-orange-600" />
-                  <div>
-                    <p className="text-xs text-orange-600 font-medium">🎁 Redeem</p>
-                    <p className="text-xs text-orange-700">Enabled</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Points */}
-              {orderData.has_points !== false && (
-                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <Sparkles className="w-4 h-4 text-blue-600" />
-                  <div>
-                    <p className="text-xs text-blue-600 font-medium">💎 Points</p>
-                    <p className="text-xs text-blue-700">Enabled</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Units/Case */}
-              <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <Package className="w-4 h-4 text-gray-600" />
-                <div>
-                  <p className="text-xs text-gray-600 font-medium">📦 Units/Case</p>
-                  <p className="text-xs text-gray-700">{orderData.units_per_case || 100}</p>
-                </div>
-              </div>
-
-              {/* QR Buffer */}
-              <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <QrCode className="w-4 h-4 text-gray-600" />
-                <div>
-                  <p className="text-xs text-gray-600 font-medium">📊 QR Buffer</p>
-                  <p className="text-xs text-gray-700">{orderData.qr_buffer_percent || 10}%</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Notes */}
-          {orderData.notes && (
-            <div className="mt-6 pt-6 border-t">
-              <h4 className="text-sm font-semibold text-gray-900 mb-2">Notes</h4>
-              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{orderData.notes}</p>
-            </div>
-          )}
-
-          {/* Customer Information if available */}
-          {(orderData.customer_name || orderData.phone_number || orderData.delivery_address) && (
-            <div className="mt-6 pt-6 border-t">
-              <h4 className="text-sm font-semibold text-gray-900 mb-3">Customer Information</h4>
-              <div className="grid md:grid-cols-3 gap-4">
-                {orderData.customer_name && (
-                  <div>
-                    <p className="text-xs text-gray-600">Customer Name</p>
-                    <p className="text-sm font-medium text-gray-900">{orderData.customer_name}</p>
-                  </div>
-                )}
-                {orderData.phone_number && (
-                  <div>
-                    <p className="text-xs text-gray-600">Phone Number</p>
-                    <p className="text-sm font-medium text-gray-900">{orderData.phone_number}</p>
-                  </div>
-                )}
-                {orderData.delivery_address && (
-                  <div className="md:col-span-3">
-                    <p className="text-xs text-gray-600">Delivery Address</p>
-                    <p className="text-sm font-medium text-gray-900">{orderData.delivery_address}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      )}
 
       {/* Order Information */}
       <Card>
@@ -611,61 +460,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         </CardContent>
       </Card>
 
-      {/* Summary */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Order Summary Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="w-5 h-5" />
-              Order Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex justify-between border-t pt-2">
-                <span className="text-lg font-bold">Grand Total:</span>
-                <span className="text-lg font-bold text-blue-600">{formatCurrency(subtotal)}</span>
-              </div>
-            </div>
-            
-            {/* Journey Features - based on order configuration */}
-            <div className="mt-6 pt-6 border-t">
-              <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-600" />
-                Features
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {/* Show features based on order has_lucky_draw and has_redeem flags */}
-                {!orderData.has_lucky_draw && !orderData.has_redeem && (
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                    <Package className="w-3 h-3 mr-1" />
-                    Points (default)
-                  </Badge>
-                )}
-                {orderData.has_lucky_draw && (
-                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                    <Trophy className="w-3 h-3 mr-1" />
-                    Lucky Draw
-                  </Badge>
-                )}
-                {orderData.has_redeem && (
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    <Gift className="w-3 h-3 mr-1" />
-                    Redemption
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* QR Code Requirements & Statistics Combined */}
-        <Card>
+      {/* QR Code Requirements - Full Width */}
+      <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <QrCode className="w-5 h-5" />
@@ -743,39 +539,38 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                   Master cases are calculated based on order quantity only ({formatNumber(totalQuantity)} ÷ {formatNumber(orderData.units_per_case || 100)} = {formatNumber(masterQR)} cases).
                 </p>
               </div>
+
+              {/* Features Section - Moved from Order Summary */}
+              <div className="mt-6 pt-6 border-t">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  Features
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {/* Show features based on order has_lucky_draw and has_redeem flags */}
+                  {!orderData.has_lucky_draw && !orderData.has_redeem && (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Points
+                    </Badge>
+                  )}
+                  {orderData.has_lucky_draw && (
+                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                      <Trophy className="w-3 h-3 mr-1" />
+                      Lucky Draw
+                    </Badge>
+                  )}
+                  {orderData.has_redeem && (
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                      <Gift className="w-3 h-3 mr-1" />
+                      Redemption
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Notes */}
-      {orderData.notes && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-700">{orderData.notes}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* View Documents Button */}
-      <Card>
-        <CardContent className="pt-6">
-          <Button 
-            onClick={() => setDocumentsDialogOpen(true)}
-            className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
-            size="lg"
-          >
-            <FileText className="w-5 h-5" />
-            View Order Documents
-          </Button>
-          <p className="text-sm text-center text-gray-600 mt-3">
-            View and manage all documents including Purchase Orders, Invoices, Payments, and Receipts
-          </p>
-        </CardContent>
-      </Card>
 
       {/* Order Documents Dialog */}
       {orderData && (
