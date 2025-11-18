@@ -343,16 +343,12 @@ async function buildProductBreakdownSheet(
     { header: 'First Code', key: 'firstCode', width: 48 },
     { header: 'Last Code', key: 'lastCode', width: 48 },
     { header: 'Case Range', key: 'caseRange', width: 20 },
-    { header: 'Cases Box', key: 'casesBox', width: 14 },
     { header: 'Total Cases', key: 'totalCases', width: 14 }
   ]
-
-  let grandTotalCases = 0
 
   productGroups.forEach(group => {
     // Calculate total cases for this product (case range end - start + 1)
     const totalCases = group.lastCode.case_number - group.firstCode.case_number + 1
-    grandTotalCases += totalCases
 
     const row = sheet.addRow({
       productCode: group.firstCode.product_code,
@@ -363,35 +359,13 @@ async function buildProductBreakdownSheet(
       firstCode: group.firstCode.code,
       lastCode: group.lastCode.code,
       caseRange: `${group.firstCode.case_number} - ${group.lastCode.case_number}`,
-      casesBox: group.firstCode.units_per_case || 100,
       totalCases: totalCases
     })
     row.commit()
   })
 
-  // Add empty row
-  sheet.addRow({}).commit()
-
-  // Add Grand Total row
-  const grandTotalRow = sheet.addRow({
-    productCode: '',
-    variantCode: '',
-    productName: '',
-    variantName: '',
-    totalQrCodes: '',
-    firstCode: '',
-    lastCode: '',
-    caseRange: '',
-    casesBox: 'Grand Total:',
-    totalCases: grandTotalCases
-  })
-  
-  // Make the grand total row bold
-  grandTotalRow.font = { bold: true }
-  grandTotalRow.commit()
-
   await sheet.commit()
-  console.log('✅ Product Breakdown sheet created with Grand Total Cases:', grandTotalCases)
+  console.log('✅ Product Breakdown sheet created')
 }
 
 async function buildPackingSheet(
