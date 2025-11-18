@@ -358,9 +358,13 @@ const receiveSingleMaster = async (
       }
     }
 
-    // Validate unit count matches expected (strict validation)
-    if (uniqueCodes.length !== masterRecord.expected_unit_count) {
-      const message = `Expected ${masterRecord.expected_unit_count} codes but found ${uniqueCodes.length} for case #${masterRecord.case_number}. Case may be incomplete or over-filled.`
+    // ============================================================================
+    // STRICT VALIDATION: Ensure data integrity before receiving
+    // ============================================================================
+
+    // Validation 2: Strict count validation against expected_unit_count
+    if (masterRecord.expected_unit_count !== null && uniqueCodes.length !== masterRecord.expected_unit_count) {
+      const message = `Expected ${masterRecord.expected_unit_count} codes but found ${uniqueCodes.length} for case #${masterRecord.case_number}. Case is incomplete or over-filled.`
       console.error(`❌ [Warehouse Receive] ${message}${isMixedCase ? ' (mixed case)' : ''}`)
       
       return {
@@ -378,6 +382,50 @@ const receiveSingleMaster = async (
           unique_products: uniqueVariants.size
         }
       }
+    }
+
+    // Validation 3: Check actual_unit_count consistency (if set by manufacturer)
+    if (masterRecord.actual_unit_count !== null && 
+        masterRecord.actual_unit_count > 0 && 
+        uniqueCodes.length !== masterRecord.actual_unit_count) {
+      console.warn(`⚠️ [Warehouse Receive] actual_unit_count mismatch for case #${masterRecord.case_number}:`, {
+        actual_unit_count: masterRecord.actual_unit_count,
+        found_codes: uniqueCodes.length,
+        master_code: masterRecord.master_code
+      })
+    }
+
+    // Validation 4: Ensure all codes in this case are linked to THIS master (or unlinked)
+    const codesLinkedToOtherMasters = (uniqueCodes || []).filter(
+      c => c.master_code_id !== null && c.master_code_id !== masterRecord.id
+    )
+    
+    if (codesLinkedToOtherMasters.length > 0) {
+      console.error('❌ [Warehouse Receive] Codes in this case are linked to different masters:', {
+        case_number: masterRecord.case_number,
+        this_master: masterRecord.id,
+        conflicting_codes: codesLinkedToOtherMasters.length
+      })
+      
+      return {
+        master_code: masterRecord.master_code,
+        normalized_code: normalizedMasterCode,
+        outcome: 'error',
+        message: `${codesLinkedToOtherMasters.length} code(s) in case #${masterRecord.case_number} are linked to different master cases. Data integrity issue - cannot receive.`,
+        order_id: resolvedOrderId,
+        warehouse_org_id: resolvedWarehouseOrgId,
+        details: {
+          case_number: masterRecord.case_number,
+          conflicting_codes: codesLinkedToOtherMasters.length,
+          expected_master: masterRecord.id
+        }
+      }
+    }
+
+    // Validation 5: Warn if codes don't have master_code_id set (manufacturer didn't pack properly)
+    const codesWithoutMaster = (uniqueCodes || []).filter(c => c.master_code_id === null)
+    if (codesWithoutMaster.length > 0) {
+      console.warn(`⚠️ [Warehouse Receive] ${codesWithoutMaster.length} codes in case #${masterRecord.case_number} have no master_code_id. Case may not have been properly packed by manufacturer.`)
     }
 
     const receivedAt = new Date().toISOString()
@@ -421,12 +469,18 @@ const receiveSingleMaster = async (
       unique_products: uniqueVariants.size
     })
 
-    // Update ONLY the codes for this specific case (by IDs from validated query)
+    // ============================================================================
+    // CONSISTENCY: Use the SAME set of codes (uniqueCodes) for status update
+    // ============================================================================
+    // Update ONLY the validated codes from case_number query
+    // This ensures inventory and status updates use identical code sets
     const codeIds = (uniqueCodes || []).map(c => c.id)
     
-    console.log('📝 [Warehouse Receive] Updating codes:', {
+    console.log('📝 [Warehouse Receive] Updating codes (using validated IDs):', {
       codes_to_update: codeIds.length,
       case_number: masterRecord.case_number,
+      codes_with_master_link: uniqueCodes.filter(c => c.master_code_id === masterRecord.id).length,
+      codes_without_master_link: codesWithoutMaster.length,
       sample_code_ids: codeIds.slice(0, 3)
     })
 
@@ -439,7 +493,7 @@ const receiveSingleMaster = async (
         last_scanned_by: requestingUserId,
         updated_at: receivedAt
       })
-      .in('id', codeIds) // ✅ Update only validated codes (excludes buffer codes)
+      .in('id', codeIds) // ✅ Update only validated codes from case_number query
 
     if (codesUpdateError) {
       console.error('❌ Failed to update child codes during warehouse receive:', codesUpdateError)
@@ -462,14 +516,58 @@ const receiveSingleMaster = async (
     let variantEntries = Array.from(variantCounts.entries())
     let inventoryWarning: string | null = null
 
+    // ============================================================================
+    // REFINED FALLBACK: Only use for simple single-variant orders with valid data
+    // ============================================================================
     if (variantEntries.length === 0) {
-      const fallbackVariantId = await resolveSingleVariantForOrder(supabase, resolvedOrderId)
-      const fallbackQuantity = masterRecord.actual_unit_count || masterRecord.expected_unit_count || 0
-
-      if (fallbackVariantId && fallbackQuantity > 0) {
-        variantEntries = [[fallbackVariantId, fallbackQuantity]]
+      // Only attempt fallback if:
+      // 1. We have codes (uniqueCodes.length > 0)
+      // 2. Count matches expected
+      // 3. Order has exactly one variant
+      if (uniqueCodes.length > 0 && 
+          uniqueCodes.length === masterRecord.expected_unit_count) {
+        const fallbackVariantId = await resolveSingleVariantForOrder(supabase, resolvedOrderId)
+        
+        if (fallbackVariantId) {
+          // Use actual counted codes, not expected_unit_count
+          variantEntries = [[fallbackVariantId, uniqueCodes.length]]
+          inventoryWarning = 'Variant IDs missing in QR codes. Used order-level fallback for single-variant order.'
+          console.warn(`⚠️ [Warehouse Receive] Using fallback variant for case #${masterRecord.case_number}:`, {
+            fallback_variant_id: fallbackVariantId,
+            quantity: uniqueCodes.length
+          })
+        } else {
+          // Multiple variants in order or no variants found - cannot fallback
+          return {
+            master_code: masterRecord.master_code,
+            normalized_code: normalizedMasterCode,
+            outcome: 'error',
+            message: `Cannot determine product variants for case #${masterRecord.case_number}. QR codes have no variant_id and order has multiple or no variants.`,
+            order_id: resolvedOrderId,
+            warehouse_org_id: resolvedWarehouseOrgId,
+            details: {
+              case_number: masterRecord.case_number,
+              codes_count: uniqueCodes.length,
+              variant_ids_in_codes: 0
+            }
+          }
+        }
       } else {
-        inventoryWarning = 'No product variants available to update inventory automatically.'
+        // No codes or count mismatch - this is a data integrity error
+        return {
+          master_code: masterRecord.master_code,
+          normalized_code: normalizedMasterCode,
+          outcome: 'error',
+          message: `No product variants found in QR codes for case #${masterRecord.case_number}. Cannot process inventory.`,
+          order_id: resolvedOrderId,
+          warehouse_org_id: resolvedWarehouseOrgId,
+          details: {
+            case_number: masterRecord.case_number,
+            codes_count: uniqueCodes.length,
+            expected_count: masterRecord.expected_unit_count,
+            variant_ids_in_codes: 0
+          }
+        }
       }
     }
 
@@ -623,8 +721,11 @@ const receiveSingleMaster = async (
       console.warn('⚠️ Failed to insert warehouse movement log:', movementLogError)
     }
 
-    const totalProducts =
-      (uniqueCodes?.length ?? 0) || masterRecord.actual_unit_count || masterRecord.expected_unit_count || 0
+    // ============================================================================
+    // CONSISTENCY: Use actual counted codes, no fallbacks
+    // ============================================================================
+    // totalProducts should always equal uniqueCodes.length (validated earlier)
+    const totalProducts = uniqueCodes.length
 
     return {
       master_code: masterRecord.master_code,
