@@ -343,13 +343,10 @@ async function buildProductBreakdownSheet(
     { header: 'First Code', key: 'firstCode', width: 48 },
     { header: 'Last Code', key: 'lastCode', width: 48 },
     { header: 'Case Range', key: 'caseRange', width: 20 },
-    { header: 'Total Cases', key: 'totalCases', width: 14 }
+    { header: 'Cases Box', key: 'casesBox', width: 14 }
   ]
 
   productGroups.forEach(group => {
-    // Calculate total cases for this product (case range end - start + 1)
-    const totalCases = group.lastCode.case_number - group.firstCode.case_number + 1
-
     const row = sheet.addRow({
       productCode: group.firstCode.product_code,
       variantCode: group.firstCode.variant_code,
@@ -359,7 +356,7 @@ async function buildProductBreakdownSheet(
       firstCode: group.firstCode.code,
       lastCode: group.lastCode.code,
       caseRange: `${group.firstCode.case_number} - ${group.lastCode.case_number}`,
-      totalCases: totalCases
+      casesBox: group.firstCode.units_per_case || 100
     })
     row.commit()
   })
