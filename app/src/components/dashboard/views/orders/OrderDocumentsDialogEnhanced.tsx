@@ -255,16 +255,29 @@ export default function OrderDocumentsDialogEnhanced({
 
       // Check for manufacturer document if PO exists
       if (docs.po) {
-        const { data: mfgFile } = await supabase
+        console.log('🔍 Checking for manufacturer document for PO:', docs.po.id)
+        const { data: mfgFiles, error: mfgError } = await supabase
           .from('document_files')
-          .select('file_url')
+          .select('file_url, uploaded_at')
           .eq('document_id', docs.po.id)
-          .eq('file_type', 'manufacturer_doc')
-          .single()
+          .order('uploaded_at', { ascending: false })
 
-        if (mfgFile) {
-          setManufacturerDocUrl((mfgFile as any).file_url)
+        if (mfgError) {
+          console.log('⚠️ Error fetching manufacturer document:', mfgError.message)
         }
+
+        if (mfgFiles && mfgFiles.length > 0) {
+          // Get the most recent file
+          const latestFile = mfgFiles[0]
+          console.log('✅ Manufacturer document found:', (latestFile as any).file_url)
+          setManufacturerDocUrl((latestFile as any).file_url)
+        } else {
+          console.log('❌ No manufacturer document file found')
+          setManufacturerDocUrl(null)
+        }
+      } else {
+        console.log('⚠️ No PO document exists yet')
+        setManufacturerDocUrl(null)
       }
 
       // Check for payment proof if payment document exists
@@ -1113,6 +1126,7 @@ export default function OrderDocumentsDialogEnhanced({
               <TabsContent value="depositInvoice" className="space-y-4">
                 {documents.depositInvoice ? (
                   <div className="space-y-4">
+                    {console.log('📄 Deposit Invoice Tab - manufacturerDocUrl:', manufacturerDocUrl)}
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                       <h3 className="font-semibold text-green-900 mb-2">Deposit Invoice Details ({depositPercentage}%)</h3>
                       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1156,6 +1170,66 @@ export default function OrderDocumentsDialogEnhanced({
                         )}
                       </Button>
                     </div>
+
+                    {/* Show manufacturer document if uploaded */}
+                    {manufacturerDocUrl && (
+                      <div className="space-y-3">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <p className="text-sm text-blue-800 font-medium mb-3">
+                            📄 Proforma Invoice (PI) Available
+                          </p>
+                          <Button
+                            onClick={async () => {
+                              setDownloading('manufacturer-doc')
+                              try {
+                                const { data, error } = await supabase.storage
+                                  .from('order-documents')
+                                  .download(manufacturerDocUrl)
+
+                                if (error) throw error
+
+                                const url = URL.createObjectURL(data)
+                                const a = document.createElement('a')
+                                a.href = url
+                                a.download = manufacturerDocUrl.split('/').pop() || 'proforma-invoice.pdf'
+                                document.body.appendChild(a)
+                                a.click()
+                                document.body.removeChild(a)
+                                URL.revokeObjectURL(url)
+
+                                toast({
+                                  title: 'Success',
+                                  description: 'Proforma Invoice downloaded successfully'
+                                })
+                              } catch (error: any) {
+                                console.error('Error downloading proforma invoice:', error)
+                                toast({
+                                  title: 'Download Failed',
+                                  description: 'Failed to download Proforma Invoice',
+                                  variant: 'destructive'
+                                })
+                              } finally {
+                                setDownloading(null)
+                              }
+                            }}
+                            disabled={downloading === 'manufacturer-doc'}
+                            className="w-full bg-blue-600 hover:bg-blue-700"
+                          >
+                            {downloading === 'manufacturer-doc' ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Downloading...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4 mr-2" />
+                                Download Proforma Invoice (PI)
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
                     {requiresPaymentProof && documents.depositInvoice.status === 'pending' && (
                       <PaymentProofUpload

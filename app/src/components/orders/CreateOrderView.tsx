@@ -1078,10 +1078,48 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         warehouseOrgId = hqData.default_warehouse_org_id
       }
 
-      // Generate order number (format: ORD-YYYYMMDD-RANDOM)
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-      const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase()
-      const generatedOrderNo = `${orderType}-${dateStr}-${randomSuffix}`
+      // Generate order number (format: ORD-HM-MMDD-XX)
+      // Find the next available sequence number (reuse deleted numbers)
+      const now = new Date()
+      const monthDay = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+      const orderPrefix = `${orderType}-${monthDay}-`
+      
+      // Fetch existing orders for today to find available sequence numbers
+      const { data: existingOrders, error: orderQueryError } = await supabase
+        .from('orders')
+        .select('order_no')
+        .like('order_no', `${orderPrefix}%`)
+        .order('order_no', { ascending: true })
+      
+      if (orderQueryError) {
+        console.error('❌ Error fetching existing orders:', orderQueryError)
+        throw orderQueryError
+      }
+
+      console.log(`🔍 Found ${existingOrders?.length || 0} existing orders with prefix ${orderPrefix}:`, existingOrders?.map(o => o.order_no))
+      
+      // Extract sequence numbers from existing orders
+      const usedSequences = new Set(
+        (existingOrders || [])
+          .map(order => {
+            const parts = order.order_no.split('-')
+            return parseInt(parts[parts.length - 1])
+          })
+          .filter(num => !isNaN(num))
+      )
+      
+      console.log(`📊 Used sequence numbers:`, Array.from(usedSequences).sort((a, b) => a - b))
+      
+      // Find the lowest available sequence number (including deleted slots)
+      let sequenceNumber = 1
+      while (usedSequences.has(sequenceNumber)) {
+        sequenceNumber++
+      }
+      
+      const sequenceSuffix = String(sequenceNumber).padStart(2, '0')
+      const generatedOrderNo = `${orderPrefix}${sequenceSuffix}`
+      
+      console.log(`📝 Generated order number: ${generatedOrderNo} (sequence ${sequenceNumber}, reusing gaps if any)`)
 
       // Fetch seller organization's payment terms
       const { data: sellerOrgData, error: sellerOrgError } = await supabase

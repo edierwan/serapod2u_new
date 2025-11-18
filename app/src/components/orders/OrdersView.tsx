@@ -126,77 +126,35 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       const codesCount = (qrCodes?.length || 0) + (masterCodes?.length || 0)
       const excelCount = excelFiles?.length || 0
 
-      // Step 2: Check if user is super admin
-      const isSuperAdmin = userProfile.role_code === 'SUPER' || userProfile.roles?.role_level <= 10
-
-      // Step 3: Validate if order can be deleted
-      console.log('🔍 Validating order deletion...')
-      const validation = await validateOrderDeletion(supabase, orderId, isSuperAdmin)
-
-      // Step 4: Build single confirmation message based on validation
+      // Step 2: Get count of scanned QR codes (if any)
+      const { data: scannedQR } = await supabase
+        .from('qr_codes')
+        .select('id')
+        .eq('order_id', orderId)
+        .neq('status', 'pending')
+      
+      const scannedCount = scannedQR?.length || 0
       const docsList = documents?.map(d => `${d.doc_type}: ${d.doc_no}`).join('\n  ') || 'None'
-      let confirmMessage = ''
-      let confirmKeyword = ''
-      let isForceDelete = false
 
-      if (!validation.canDelete && validation.reason === 'QR_CODES_SCANNED') {
-        if (!isSuperAdmin) {
-          // Block deletion for non-super admins
-          console.error('❌ Cannot delete order - scanned QR codes exist')
-          toast({
-            title: '❌ Cannot Delete Order',
-            description: validation.message,
-            variant: 'destructive'
-          })
-          setLoading(false)
-          return
-        }
+      // Step 3: Show single consistent confirmation prompt (always "FORCE DELETE")
+      const confirmMessage = 
+        `⚠️ DELETE ORDER ${orderNo}\n\n` +
+        (scannedCount > 0 
+          ? `⚠️ WARNING: This order has ${scannedCount} SCANNED QR code(s)!\n⚠️ Deleting scanned QR codes affects audit trails!\n\n`
+          : '') +
+        `This will PERMANENTLY delete:\n` +
+        `• ${itemsCount} order item(s)\n` +
+        `• ${docsCount} document(s):\n  ${docsList}\n` +
+        `• ${batchesCount} QR batch(es)\n` +
+        `• ${codesCount} QR code(s)${scannedCount > 0 ? ` (${scannedCount} scanned)` : ''}\n` +
+        `• ${excelCount} Excel file(s)\n\n` +
+        `⚠️ This action CANNOT be undone!\n\n` +
+        `Type "FORCE DELETE" to confirm:`
 
-        // Super admin - show force delete warning in single prompt
-        console.warn('⚠️ Order has scanned QR codes - super admin can force delete')
-        isForceDelete = true
-        confirmMessage = 
-          `⚠️ SUPER ADMIN FORCE DELETE - ORDER ${orderNo}\n\n` +
-          `WARNING: This order has ${validation.scannedCount} SCANNED QR code(s)!\n\n` +
-          `This will PERMANENTLY delete:\n` +
-          `• ${itemsCount} order item(s)\n` +
-          `• ${docsCount} document(s):\n  ${docsList}\n` +
-          `• ${batchesCount} QR batch(es)\n` +
-          `• ${validation.scannedCount} SCANNED QR code(s)\n` +
-          `• ${excelCount} Excel file(s)\n\n` +
-          `⚠️ Deleting scanned QR codes affects audit trails!\n` +
-          `⚠️ This action CANNOT be undone!\n\n` +
-          `Type "FORCE DELETE" to confirm:`
-        confirmKeyword = 'FORCE DELETE'
-      } else if (!validation.canDelete) {
-        // Other validation issues
-        console.error('❌ Cannot delete order:', validation.reason)
-        toast({
-          title: '❌ Cannot Delete Order',
-          description: validation.message,
-          variant: 'destructive'
-        })
-        setLoading(false)
-        return
-      } else {
-        // Normal deletion (no scanned QR codes)
-        confirmMessage = 
-          `⚠️ DELETE ORDER ${orderNo}\n\n` +
-          `This will PERMANENTLY delete:\n` +
-          `• ${itemsCount} order item(s)\n` +
-          `• ${docsCount} document(s):\n  ${docsList}\n` +
-          `• ${batchesCount} QR batch(es)\n` +
-          `• ${codesCount} QR code(s)\n` +
-          `• ${excelCount} Excel file(s)\n\n` +
-          `This action CANNOT be undone!\n\n` +
-          `Type "DELETE" to confirm:`
-        confirmKeyword = 'DELETE'
-      }
-
-      // Show single confirmation prompt
+      // Show confirmation prompt
       const userInput = prompt(confirmMessage)
       
-      if (userInput !== confirmKeyword) {
+      if (userInput !== 'FORCE DELETE') {
         toast({
           title: 'Delete Cancelled',
           description: 'Order deletion was cancelled.'
@@ -205,25 +163,23 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         return
       }
 
-      if (isForceDelete) {
-        console.log('✅ Super admin confirmed force deletion')
-      }
+      console.log('✅ User confirmed hard deletion')
 
-      // Step 5: Delete Excel files from storage
+      // Step 4: Delete Excel files from storage
       console.log('🗑️ Deleting Excel files from storage...')
       if (excelFiles && excelFiles.length > 0) {
         const filePaths = excelFiles.map(file => `${orderId}/${file.name}`)
         await supabase.storage.from('order-excel').remove(filePaths)
       }
 
-      // Step 6: Cascade delete all database records
+      // Step 5: Cascade delete all database records (always force delete = hard delete everything)
       console.log('🗑️ Cascade deleting order and related database records...')
-      await cascadeDeleteOrder(supabase, orderId, isForceDelete)
+      await cascadeDeleteOrder(supabase, orderId, true)
 
       toast({
         title: '✅ Order Deleted Successfully',
-        description: isForceDelete 
-          ? `Order ${orderNo} and ALL related records (including ${validation.scannedCount} scanned QR codes) have been permanently deleted.`
+        description: scannedCount > 0
+          ? `Order ${orderNo} and ALL related records (including ${scannedCount} scanned QR codes) have been permanently deleted.`
           : `Order ${orderNo} and all related records have been permanently deleted.`,
         duration: 5000
       })
@@ -386,14 +342,15 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     try {
       setLoading(true)
 
-      // Fetch the order with all its items
+      // Fetch the order with all its items (including units_per_case)
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select(`
           *,
           order_items (
             *,
-            product:products (*)
+            product:products (*),
+            product_variants (*)
           )
         `)
         .eq('id', orderId)

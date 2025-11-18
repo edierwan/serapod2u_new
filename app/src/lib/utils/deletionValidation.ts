@@ -85,6 +85,8 @@ export async function validateOrderDeletion(supabase: SupabaseClient, orderId: s
  */
 export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: string, forceDelete: boolean = false) {
   try {
+    console.log(`🗑️ Starting cascade delete for order: ${orderId}, forceDelete: ${forceDelete}`)
+    
     // Delete in correct order (child tables first)
     
     // 1. Delete QR codes (all if forceDelete, otherwise only pending)
@@ -97,41 +99,93 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
       qrQuery.eq('status', 'pending')
     }
     
-    const { error: qrError } = await qrQuery
+    const { error: qrError, count: qrCount } = await qrQuery
 
-    if (qrError) throw qrError
+    if (qrError) {
+      console.error('❌ Error deleting QR codes:', qrError)
+      throw qrError
+    }
+    console.log(`✅ Deleted ${qrCount || 0} QR codes`)
+
+    // 1b. Delete QR master codes
+    const { error: masterError, count: masterCount } = await supabase
+      .from('qr_master_codes')
+      .delete()
+      .eq('shipment_order_id', orderId)
+
+    if (masterError) {
+      console.error('❌ Error deleting QR master codes:', masterError)
+      throw masterError
+    }
+    console.log(`✅ Deleted ${masterCount || 0} QR master codes`)
 
     // 2. Delete QR batches
-    const { error: batchError } = await supabase
+    const { error: batchError, count: batchCount } = await supabase
       .from('qr_batches')
       .delete()
       .eq('order_id', orderId)
 
-    if (batchError) throw batchError
+    if (batchError) {
+      console.error('❌ Error deleting QR batches:', batchError)
+      throw batchError
+    }
+    console.log(`✅ Deleted ${batchCount || 0} QR batches`)
 
-    // 3. Delete documents
-    const { error: docError } = await supabase
+    // 3. Delete document files first (they reference documents)
+    const { data: documents } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('order_id', orderId)
+
+    if (documents && documents.length > 0) {
+      const documentIds = documents.map(doc => doc.id)
+      const { error: filesError } = await supabase
+        .from('document_files')
+        .delete()
+        .in('document_id', documentIds)
+
+      if (filesError) {
+        console.warn('Warning: Could not delete document files:', filesError)
+        // Continue anyway - might not have any files
+      }
+    }
+
+    // 4. Delete documents
+    const { error: docError, count: docCount } = await supabase
       .from('documents')
       .delete()
       .eq('order_id', orderId)
 
-    if (docError) throw docError
+    if (docError) {
+      console.error('❌ Error deleting documents:', docError)
+      throw docError
+    }
+    console.log(`✅ Deleted ${docCount || 0} documents`)
 
-    // 4. Delete order items
-    const { error: itemsError } = await supabase
+    // 5. Delete order items
+    const { error: itemsError, count: itemsCount } = await supabase
       .from('order_items')
       .delete()
       .eq('order_id', orderId)
 
-    if (itemsError) throw itemsError
+    if (itemsError) {
+      console.error('❌ Error deleting order items:', itemsError)
+      throw itemsError
+    }
+    console.log(`✅ Deleted ${itemsCount || 0} order items`)
 
-    // 5. Finally, delete the order
-    const { error: orderError } = await supabase
+    // 6. Finally, delete the order
+    const { error: orderError, count: orderCount } = await supabase
       .from('orders')
       .delete()
       .eq('id', orderId)
 
-    if (orderError) throw orderError
+    if (orderError) {
+      console.error('❌ Error deleting order:', orderError)
+      throw orderError
+    }
+    console.log(`✅ Deleted ${orderCount || 0} order record(s)`)
+    console.log('🎉 Cascade delete completed successfully')
 
     return { success: true }
   } catch (error) {

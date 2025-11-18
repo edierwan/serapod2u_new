@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
           qty,
           product_id,
           variant_id,
+          units_per_case,
           product:products(
             id,
             product_code,
@@ -89,24 +90,55 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Prepare data for QR generation
-    const orderItems = order.order_items.map((item: any) => ({
-      product_id: item.product_id,
-      variant_id: item.variant_id,
-      product_code: item.product.product_code,
-      variant_code: item.variant.variant_code,
-      product_name: item.product.product_name,
-      variant_name: item.variant.variant_name,
-      qty: item.qty
-    }))
+    const orderItems = order.order_items.map((item: any) => {
+      // Determine units_per_case: use item value, or infer from product type
+      let itemUnitsPerCase = item.units_per_case
+      
+      // If not set, infer from product name/code
+      if (itemUnitsPerCase == null) {
+        const productCode = item.product.product_code?.toUpperCase() || ''
+        const productName = item.product.product_name?.toLowerCase() || ''
+        
+        if (productCode.includes('SLINE') || productName.includes('s.line')) {
+          itemUnitsPerCase = 200
+        } else if (productCode.includes('SBOX') || productName.includes('s.box')) {
+          itemUnitsPerCase = 50
+        } else {
+          itemUnitsPerCase = 100 // Default
+        }
+        
+        console.log(`📦 Inferred units_per_case for ${item.product.product_name}: ${itemUnitsPerCase}`)
+      }
+      
+      return {
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        product_code: item.product.product_code,
+        variant_code: item.variant.variant_code,
+        product_name: item.product.product_name,
+        variant_name: item.variant.variant_name,
+        qty: item.qty,
+        units_per_case: itemUnitsPerCase
+      }
+    })
+    
+    console.log('📋 Order items with case sizes:', orderItems.map(i => `${i.product_name}: ${i.qty} units @ ${i.units_per_case}/case`))
 
     // 3. Generate QR codes
     console.log('⏳ Generating QR batch...')
+    
+    // Check if order uses individual case sizes per product
+    const hasIndividualCaseSizes = orderItems.some(item => item.units_per_case != null)
+    
+    console.log('📦 Case configuration:', hasIndividualCaseSizes ? 'Individual case sizes per product' : `Standard ${order.units_per_case || 100} units/case`)
+    
     const qrBatch = generateQRBatch({
       orderNo: order.order_no,
       manufacturerCode: order.seller_org.org_code,  // Pass manufacturer code for variant_key
       orderItems,
       bufferPercent: order.qr_buffer_percent || 10,
-      unitsPerCase: order.units_per_case || 100
+      unitsPerCase: order.units_per_case || 100, // Default/fallback for non-individual mode
+      useIndividualCaseSizes: hasIndividualCaseSizes
     })
 
     console.log('✅ Generated QR Batch:', {

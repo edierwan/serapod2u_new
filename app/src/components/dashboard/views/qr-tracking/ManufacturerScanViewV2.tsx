@@ -1497,7 +1497,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
 
     // Validate QR code types - detect unique codes vs master codes
     const uniqueCodes: string[] = []
-    const validMasterCodes: string[] = []
+    const masterCodesSet = new Set<string>()
     const alreadyScannedCodes: string[] = []
 
     for (const code of inputCodes) {
@@ -1509,9 +1509,14 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
           (cleanCode.includes('PROD-') && !cleanCode.endsWith('-M'))) {
         uniqueCodes.push(cleanCode)
       } else {
-        validMasterCodes.push(cleanCode)
+        // Extract the base master code (remove hash if present)
+        const baseMasterCode = cleanCode.split('-').slice(0, -1).join('-')
+        masterCodesSet.add(baseMasterCode || cleanCode)
       }
     }
+
+    // Convert set back to array (now deduplicated)
+    const validMasterCodes = Array.from(masterCodesSet)
 
     // Handle case: Only unique codes entered (user mistake)
     if (uniqueCodes.length > 0 && validMasterCodes.length === 0) {
@@ -1523,12 +1528,25 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       return
     }
 
+    // Show info about deduplication if duplicates were removed
+    const totalInputCodes = inputCodes.length
+    const totalUniqueCodes = uniqueCodes.length
+    const totalDuplicates = totalInputCodes - validMasterCodes.length - totalUniqueCodes
+    
+    if (totalDuplicates > 0) {
+      toast({
+        title: 'Duplicate Codes Removed',
+        description: `Removed ${totalDuplicates} duplicate master code${totalDuplicates > 1 ? 's' : ''}. Processing ${validMasterCodes.length} unique master case${validMasterCodes.length > 1 ? 's' : ''}.`,
+        variant: 'default'
+      })
+    }
+
     // Handle case: Mixed codes entered
     if (uniqueCodes.length > 0 && validMasterCodes.length > 0) {
       const proceed = window.confirm(
         `⚠️ Mixed QR Codes Detected\n\n` +
         `You entered:\n` +
-        `• ${validMasterCodes.length} master case QR code${validMasterCodes.length > 1 ? 's' : ''}\n` +
+        `• ${validMasterCodes.length} unique master case QR code${validMasterCodes.length > 1 ? 's' : ''}\n` +
         `• ${uniqueCodes.length} unique product QR code${uniqueCodes.length > 1 ? 's' : ''}\n\n` +
         `Do you want to proceed with only the master case QR codes?\n\n` +
         `(The unique product codes will be removed)`

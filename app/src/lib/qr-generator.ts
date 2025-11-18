@@ -64,9 +64,11 @@ export interface QRCodeGenerationParams {
     product_name: string
     variant_name: string
     qty: number
+    units_per_case?: number  // Individual case size for this product
   }>
   bufferPercent: number
-  unitsPerCase: number
+  unitsPerCase: number  // Default case size (fallback)
+  useIndividualCaseSizes?: boolean  // Whether to use individual case sizes
 }
 
 export interface GeneratedQRCode {
@@ -82,6 +84,7 @@ export interface GeneratedQRCode {
   case_number: number
   is_buffer: boolean  // NEW: Flag for buffer codes
   variant_key: string  // NEW: PROD-{product_code}-{variant_code} for grouping
+  units_per_case?: number  // Units per case for this product
 }
 
 export interface GeneratedMasterCode {
@@ -105,7 +108,7 @@ export interface QRBatchResult {
  * Buffer QR codes are NOT assigned to master cases - they're spares for damaged/lost codes
  */
 export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
-  const { orderNo, manufacturerCode, orderItems, bufferPercent, unitsPerCase } = params
+  const { orderNo, manufacturerCode, orderItems, bufferPercent, unitsPerCase, useIndividualCaseSizes } = params
 
   // Calculate total base units (actual order quantity)
   const totalBaseUnits = orderItems.reduce((sum, item) => sum + item.qty, 0)
@@ -116,74 +119,193 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
   // Total unique codes = base units + buffer
   const totalUniqueCodes = totalBaseUnits + bufferQuantity
 
-  // Calculate number of cases based on BASE units only (buffer codes are NOT in cases)
-  const totalMasterCodes = Math.ceil(totalBaseUnits / unitsPerCase)
+  // Case packing logic depends on whether using individual case sizes
+  let totalMasterCodes: number
+  let casePacking: Array<{ caseNumber: number; expectedCount: number; items: Array<{ item: any; qty: number }> }> = []
 
-  // Generate Master QR codes for cases (only for base units, not buffer)
+  if (useIndividualCaseSizes) {
+    // Individual case sizes: Pack each product into full cases, then mix remainders
+    const remainders: Array<{ item: any; qty: number }> = []
+    let caseNumber = 1
+
+    // First pass: Pack full cases for each product
+    for (const item of orderItems) {
+      const itemCaseSize = item.units_per_case || unitsPerCase
+      const fullCases = Math.floor(item.qty / itemCaseSize)
+      const remainder = item.qty % itemCaseSize
+
+      // Generate full cases
+      for (let i = 0; i < fullCases; i++) {
+        casePacking.push({
+          caseNumber: caseNumber++,
+          expectedCount: itemCaseSize,
+          items: [{ item, qty: itemCaseSize }]
+        })
+      }
+
+      // Collect remainder
+      if (remainder > 0) {
+        remainders.push({ item, qty: remainder })
+      }
+    }
+
+    // Second pass: Mix remainders into shared cases (using 200 units/case for mixed cases)
+    const mixedCaseSize = 200
+    let currentMixedCase: Array<{ item: any; qty: number }> = []
+    let currentMixedCaseQty = 0
+
+    for (const { item, qty } of remainders) {
+      let remainingQty = qty
+
+      while (remainingQty > 0) {
+        const spaceInCurrentCase = mixedCaseSize - currentMixedCaseQty
+        const qtyToAdd = Math.min(remainingQty, spaceInCurrentCase)
+
+        currentMixedCase.push({ item, qty: qtyToAdd })
+        currentMixedCaseQty += qtyToAdd
+        remainingQty -= qtyToAdd
+
+        // If case is full, add it to packing
+        if (currentMixedCaseQty >= mixedCaseSize) {
+          casePacking.push({
+            caseNumber: caseNumber++,
+            expectedCount: currentMixedCaseQty,
+            items: [...currentMixedCase]
+          })
+          currentMixedCase = []
+          currentMixedCaseQty = 0
+        }
+      }
+    }
+
+    // Add final mixed case if not empty
+    if (currentMixedCase.length > 0) {
+      casePacking.push({
+        caseNumber: caseNumber++,
+        expectedCount: currentMixedCaseQty,
+        items: [...currentMixedCase]
+      })
+    }
+
+    totalMasterCodes = casePacking.length
+  } else {
+    // Standard mode: Use single case size for all products
+    totalMasterCodes = Math.ceil(totalBaseUnits / unitsPerCase)
+
+    // Create simple case packing
+    let remainingUnits = totalBaseUnits
+    for (let i = 1; i <= totalMasterCodes; i++) {
+      const expectedCount = Math.min(unitsPerCase, remainingUnits)
+      casePacking.push({
+        caseNumber: i,
+        expectedCount,
+        items: [] // Will be filled during individual code generation
+      })
+      remainingUnits -= expectedCount
+    }
+  }
+
+  // Generate Master QR codes based on case packing
   const masterCodes: GeneratedMasterCode[] = []
-  for (let i = 1; i <= totalMasterCodes; i++) {
-    const isLastCase = i === totalMasterCodes
-    const expectedCount = isLastCase
-      ? totalBaseUnits - ((i - 1) * unitsPerCase)
-      : unitsPerCase
-
-    const secureCode = generateMasterQRCode(orderNo, i, true)
-    const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-')) // Extract base code before hash
+  for (const caseInfo of casePacking) {
+    const secureCode = generateMasterQRCode(orderNo, caseInfo.caseNumber, true)
+    const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-'))
 
     masterCodes.push({
       code: secureCode,
       hash: hash,
-      case_number: i,
-      expected_unit_count: expectedCount
+      case_number: caseInfo.caseNumber,
+      expected_unit_count: caseInfo.expectedCount
     })
   }
 
-  // Generate individual QR codes
+  // Generate individual QR codes based on case packing
   const individualCodes: GeneratedQRCode[] = []
   let globalSequence = 1
-  let currentCaseNumber = 1
-  let codesInCurrentCase = 0
 
-  // First, generate codes for base units and assign to cases
-  for (const item of orderItems) {
-    // Build variant_key: PROD-{product_code}-{variant_code}-{manufacturer_code}
-    const variantKey = manufacturerCode
-      ? `PROD-${item.product_code}-${item.variant_code}-${manufacturerCode}`
-      : `PROD-${item.product_code}-${item.variant_code}`
+  if (useIndividualCaseSizes) {
+    // Use the pre-calculated case packing
+    for (const caseInfo of casePacking) {
+      for (const { item, qty } of caseInfo.items) {
+        const variantKey = manufacturerCode
+          ? `PROD-${item.product_code}-${item.variant_code}-${manufacturerCode}`
+          : `PROD-${item.product_code}-${item.variant_code}`
 
-    for (let i = 0; i < item.qty; i++) {
-      // Move to next case if current is full
-      if (codesInCurrentCase >= unitsPerCase && currentCaseNumber < totalMasterCodes) {
-        currentCaseNumber++
-        codesInCurrentCase = 0
+        for (let i = 0; i < qty; i++) {
+          const secureCode = generateProductQRCode(
+            item.product_code,
+            item.variant_code,
+            orderNo,
+            globalSequence,
+            true
+          )
+          const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-'))
+
+          individualCodes.push({
+            code: secureCode,
+            hash: hash,
+            sequence_number: globalSequence,
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            product_code: item.product_code,
+            variant_code: item.variant_code,
+            product_name: item.product_name,
+            variant_name: item.variant_name,
+            case_number: caseInfo.caseNumber,
+            is_buffer: false,
+            variant_key: variantKey,
+            units_per_case: item.units_per_case || unitsPerCase
+          })
+
+          globalSequence++
+        }
       }
+    }
+  } else {
+    // Standard mode: Pack sequentially
+    let currentCaseNumber = 1
+    let codesInCurrentCase = 0
 
-      const secureCode = generateProductQRCode(
-        item.product_code,
-        item.variant_code,
-        orderNo,
-        globalSequence,
-        true
-      )
-      const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-'))
+    for (const item of orderItems) {
+      const variantKey = manufacturerCode
+        ? `PROD-${item.product_code}-${item.variant_code}-${manufacturerCode}`
+        : `PROD-${item.product_code}-${item.variant_code}`
 
-      individualCodes.push({
-        code: secureCode,
-        hash: hash,
-        sequence_number: globalSequence,
-        product_id: item.product_id,
-        variant_id: item.variant_id,
-        product_code: item.product_code,
-        variant_code: item.variant_code,
-        product_name: item.product_name,
-        variant_name: item.variant_name,
-        case_number: currentCaseNumber,
-        is_buffer: false,  // Normal codes are not buffer
-        variant_key: variantKey
-      })
+      for (let i = 0; i < item.qty; i++) {
+        // Move to next case if current is full
+        if (codesInCurrentCase >= unitsPerCase && currentCaseNumber < totalMasterCodes) {
+          currentCaseNumber++
+          codesInCurrentCase = 0
+        }
 
-      globalSequence++
-      codesInCurrentCase++
+        const secureCode = generateProductQRCode(
+          item.product_code,
+          item.variant_code,
+          orderNo,
+          globalSequence,
+          true
+        )
+        const hash = generateQRHash(secureCode.split('-').slice(0, -1).join('-'))
+
+        individualCodes.push({
+          code: secureCode,
+          hash: hash,
+          sequence_number: globalSequence,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          product_code: item.product_code,
+          variant_code: item.variant_code,
+          product_name: item.product_name,
+          variant_name: item.variant_name,
+          case_number: currentCaseNumber,
+          is_buffer: false,
+          variant_key: variantKey,
+          units_per_case: item.units_per_case || unitsPerCase
+        })
+
+        globalSequence++
+        codesInCurrentCase++
+      }
     }
   }
 
@@ -235,7 +357,8 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
         variant_name: item.variant_name,
         case_number: currentBufferCase, // ASSIGN buffer to specific case
         is_buffer: true,  // Mark as buffer code
-        variant_key: variantKey
+        variant_key: variantKey,
+        units_per_case: item.units_per_case || unitsPerCase
       })
 
       globalSequence++
@@ -283,7 +406,8 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
         variant_name: firstItem.variant_name,
         case_number: currentBufferCase, // ASSIGN to specific case
         is_buffer: true,  // Mark as buffer code
-        variant_key: variantKey
+        variant_key: variantKey,
+        units_per_case: firstItem.units_per_case || unitsPerCase
       })
 
       globalSequence++
