@@ -118,6 +118,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   
   // Order Configuration
   const [unitsPerCase, setUnitsPerCase] = useState(100)
+  const [customUnitsPerCase, setCustomUnitsPerCase] = useState('')
+  const [useCustomUnitsPerCase, setUseCustomUnitsPerCase] = useState(false)
   const [useIndividualCases, setUseIndividualCases] = useState(false)  // Toggle for individual case sizes
   const [qrBuffer, setQrBuffer] = useState(10.00)
   const [enableRFID, setEnableRFID] = useState(false)
@@ -736,10 +738,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       )
 
       console.log('📦 Order items with details:', itemsWithDetails)
+      
+      // Cast to any to access custom fields not in generated types
+      const orderDataAny = orderData as any
+      
       console.log('📋 Order data for customer info:', {
-        customer_name: orderData.customer_name,
-        phone_number: orderData.phone_number,
-        delivery_address: orderData.delivery_address,
+        customer_name: orderDataAny.customer_name,
+        phone_number: orderDataAny.phone_number,
+        delivery_address: orderDataAny.delivery_address,
         notes: orderData.notes
       })
 
@@ -757,7 +763,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
       // Set customer information
       // If customer info fields are empty, try to extract from notes field
-      if (!orderData.customer_name && !orderData.phone_number && !orderData.delivery_address && orderData.notes) {
+      if (!orderDataAny.customer_name && !orderDataAny.phone_number && !orderDataAny.delivery_address && orderData.notes) {
         // Parse notes field (format: "Customer: Name, Phone: Number, Address: Address")
         const notesText = orderData.notes
         const customerMatch = notesText.match(/Customer:\s*([^,]+)/)
@@ -768,18 +774,18 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         setPhoneNumber(phoneMatch ? phoneMatch[1].trim() : '')
         setDeliveryAddress(addressMatch ? addressMatch[1].trim() : '')
       } else {
-        setCustomerName(orderData.customer_name || '')
-        setPhoneNumber(orderData.phone_number || '')
-        setDeliveryAddress(orderData.delivery_address || '')
+        setCustomerName(orderDataAny.customer_name || '')
+        setPhoneNumber(orderDataAny.phone_number || '')
+        setDeliveryAddress(orderDataAny.delivery_address || '')
       }
 
       // Set order configuration
       setUnitsPerCase(orderData.units_per_case || 100)
       setQrBuffer(orderData.qr_buffer_percent || 10)
-      setEnableRFID(orderData.rfid_enabled || false)
+      setEnableRFID(orderDataAny.rfid_enabled || orderData.has_rfid || false)
       setHasPoints(orderData.has_points !== false)
-      setEnableLuckyDraw(orderData.enable_lucky_draw !== false)
-      setEnableRedeem(orderData.enable_redeem !== false)
+      setEnableLuckyDraw(orderDataAny.enable_lucky_draw !== false || orderData.has_lucky_draw !== false)
+      setEnableRedeem(orderDataAny.enable_redeem !== false || orderData.has_redeem !== false)
       setNotes(orderData.notes || '')
 
       // Check if order uses individual case sizes
@@ -861,7 +867,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       }
 
       // Set customer information from copied order
-      if (!orderData.customer_name && !orderData.phone_number && !orderData.delivery_address && orderData.notes) {
+      const orderDataAny = orderData as any
+      if (!orderDataAny.customer_name && !orderDataAny.phone_number && !orderDataAny.delivery_address && orderData.notes) {
         // Parse notes field (format: "Customer: Name, Phone: Number, Address: Address")
         const notesText = orderData.notes
         const customerMatch = notesText.match(/Customer:\s*([^,]+)/)
@@ -872,9 +879,9 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         setPhoneNumber(phoneMatch ? phoneMatch[1].trim() : '')
         setDeliveryAddress(addressMatch ? addressMatch[1].trim() : '')
       } else {
-        setCustomerName(orderData.customer_name || '')
-        setPhoneNumber(orderData.phone_number || '')
-        setDeliveryAddress(orderData.delivery_address || '')
+        setCustomerName(orderDataAny.customer_name || '')
+        setPhoneNumber(orderDataAny.phone_number || '')
+        setDeliveryAddress(orderDataAny.delivery_address || '')
       }
 
       // Set order configuration from copied order
@@ -915,8 +922,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       toast({
         title: 'Order Copied',
         description: `Order copied successfully. Update details and submit as a new order.`,
-        duration: 4000,
-      })
+      } as any)
 
     } catch (error) {
       console.error('Error loading copied order:', error)
@@ -1009,8 +1015,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             title: '⚠️ Incomplete Case Packing',
             description: `${problem.productName} has ${problem.remainder} units left over from ${problem.qty} units. Cannot pack into ${problem.unitsPerCase}/case. Add another product with a remainder to create a mixed case, or adjust the quantity to a multiple of ${problem.unitsPerCase}.`,
             variant: 'destructive',
-            duration: 8000
-          })
+          } as any)
           return
         }
         
@@ -1023,8 +1028,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           toast({
             title: '✅ Mixed Cases Will Be Created',
             description: `${packingPlan.mixedCasesNeeded} mixed case(s) will contain remainders: ${remainderProducts}`,
-            duration: 6000
-          })
+          } as any)
         }
       }
 
@@ -1124,7 +1128,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       // Fetch seller organization's payment terms
       const { data: sellerOrgData, error: sellerOrgError } = await supabase
         .from('organizations')
-        .select('payment_term_id, payment_terms(deposit_percentage, balance_percentage)')
+        .select('*')
         .eq('id', sellerOrg.id)
         .single()
 
@@ -1139,9 +1143,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         balance_trigger: 'on_first_receive'
       }
 
-      if (sellerOrgData?.payment_terms) {
-        const depositPct = (sellerOrgData.payment_terms as any).deposit_percentage / 100
-        const balancePct = (sellerOrgData.payment_terms as any).balance_percentage / 100
+      const sellerOrgAny = sellerOrgData as any
+      if (sellerOrgAny?.payment_terms) {
+        const depositPct = sellerOrgAny.payment_terms.deposit_percentage / 100
+        const balancePct = sellerOrgAny.payment_terms.balance_percentage / 100
         paymentTermsData = {
           deposit_pct: depositPct,
           balance_pct: balancePct,
@@ -1158,7 +1163,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         seller_org_id: sellerOrg.id,
         warehouse_org_id: warehouseOrgId, // Set warehouse for H2M orders
         status: 'draft' as const, // ← Always draft first! RLS policy requires this
-        units_per_case: unitsPerCase,
+        units_per_case: useCustomUnitsPerCase && customUnitsPerCase ? parseInt(customUnitsPerCase) : unitsPerCase,
         qr_buffer_percent: qrBuffer,
         has_rfid: enableRFID,
         has_points: hasPoints,
@@ -1484,16 +1489,59 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     {useIndividualCases ? 'Default Units per Case' : 'Units per Case'}
                   </label>
-                  <select
-                    value={unitsPerCase}
-                    onChange={(e) => handleUnitsPerCaseChange(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                    disabled={useIndividualCases}
-                  >
-                    <option value="100">100 units per case</option>
-                    <option value="200">200 units per case</option>
-                    <option value="50">50 units per case</option>
-                  </select>
+                  {useCustomUnitsPerCase ? (
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        value={customUnitsPerCase}
+                        onChange={(e) => {
+                          setCustomUnitsPerCase(e.target.value)
+                          const value = parseInt(e.target.value)
+                          if (value > 0) {
+                            handleUnitsPerCaseChange(value)
+                          }
+                        }}
+                        placeholder="Enter custom units"
+                        className="flex-1"
+                        disabled={useIndividualCases}
+                        min="1"
+                      />
+                      <button
+                        onClick={() => {
+                          setUseCustomUnitsPerCase(false)
+                          setCustomUnitsPerCase('')
+                        }}
+                        className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
+                        disabled={useIndividualCases}
+                      >
+                        Presets
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <select
+                        value={unitsPerCase}
+                        onChange={(e) => handleUnitsPerCaseChange(parseInt(e.target.value))}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                        disabled={useIndividualCases}
+                      >
+                        <option value="20">20 units per case</option>
+                        <option value="50">50 units per case</option>
+                        <option value="100">100 units per case</option>
+                        <option value="200">200 units per case</option>
+                      </select>
+                      <button
+                        onClick={() => {
+                          setUseCustomUnitsPerCase(true)
+                          setCustomUnitsPerCase(unitsPerCase.toString())
+                        }}
+                        className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
+                        disabled={useIndividualCases}
+                      >
+                        Custom
+                      </button>
+                    </div>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">
                     {useIndividualCases ? 'Default value for new products' : 'This setting applies to all products in this order'}
                   </p>
@@ -1507,6 +1555,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     value={qrBuffer}
                     onChange={(e) => setQrBuffer(parseFloat(e.target.value))}
                     className="bg-gray-50"
+                    step="0.1"
+                    min="0"
                   />
                   <p className="text-xs text-gray-500 mt-1">Additional QR codes for manufacturing (default 10%)</p>
                 </div>

@@ -317,7 +317,7 @@ const receiveSingleMaster = async (
     
     const { data: uniqueCodes, error: uniqueCodesError } = await supabase
       .from('qr_codes')
-      .select('id, code, variant_id, case_number, is_buffer')
+      .select('id, code, variant_id, case_number, is_buffer, master_code_id')
       .eq('batch_id', masterRecord.batch_id)
       .eq('case_number', masterRecord.case_number) // ✅ Link by case_number
       .eq('is_buffer', false)                       // ✅ Exclude buffer codes

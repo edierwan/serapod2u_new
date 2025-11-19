@@ -91,23 +91,13 @@ export async function POST(request: NextRequest) {
 
     // 2. Prepare data for QR generation
     const orderItems = order.order_items.map((item: any) => {
-      // Determine units_per_case: use item value, or infer from product type
+      // Determine units_per_case: use item value, or fall back to order-level setting
       let itemUnitsPerCase = item.units_per_case
       
-      // If not set, infer from product name/code
+      // If not set at item level, use order-level units_per_case
       if (itemUnitsPerCase == null) {
-        const productCode = item.product.product_code?.toUpperCase() || ''
-        const productName = item.product.product_name?.toLowerCase() || ''
-        
-        if (productCode.includes('SLINE') || productName.includes('s.line')) {
-          itemUnitsPerCase = 200
-        } else if (productCode.includes('SBOX') || productName.includes('s.box')) {
-          itemUnitsPerCase = 50
-        } else {
-          itemUnitsPerCase = 100 // Default
-        }
-        
-        console.log(`📦 Inferred units_per_case for ${item.product.product_name}: ${itemUnitsPerCase}`)
+        itemUnitsPerCase = order.units_per_case || 100 // Use order setting or default 100
+        console.log(`📦 Using order-level units_per_case for ${item.product.product_name}: ${itemUnitsPerCase}`)
       }
       
       return {
@@ -158,7 +148,8 @@ export async function POST(request: NextRequest) {
       individualCodes: qrBatch.individualCodes,
       totalMasterCodes: qrBatch.totalMasterCodes,
       totalUniqueCodes: qrBatch.totalUniqueCodes,
-      bufferPercent: qrBatch.bufferPercent
+      bufferPercent: qrBatch.bufferPercent,
+      extraQrMaster: (order as any).extra_qr_master || 10
     })
 
     const excelFilename = generateQRExcelFilename(order.order_no)
