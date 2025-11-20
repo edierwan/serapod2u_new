@@ -385,15 +385,16 @@ async function buildIndividualSheet(
       // Production code - use the global case number assigned during QR generation
       caseNumber = code.case_number
     } else {
-      // Buffer code - generate BUFFER-N and Buffer Group
+      // Buffer code - use fixed BUFFER-1 label and generate unique Buffer Group
       const variantKey = `${code.product_code}-${code.variant_code}`
       const currentBufferSeq = (variantBufferSeq.get(variantKey) || 0) + 1
       variantBufferSeq.set(variantKey, currentBufferSeq)
       
-      // Case Number shows BUFFER-N for identification
-      caseNumber = `BUFFER-${currentBufferSeq}`
+      // Case Number shows fixed BUFFER-1 for all buffer codes
+      // This allows filtering all buffer codes at once per variant
+      caseNumber = 'BUFFER-1'
       
-      // Buffer Group: B{variant_code}-{0001 format}
+      // Buffer Group: B{variant_code}-{0001 format} - remains unique per buffer QR
       // Example: BCHI-449021-0012
       bufferGroup = `B${code.variant_code}-${String(currentBufferSeq).padStart(4, '0')}`
     }
