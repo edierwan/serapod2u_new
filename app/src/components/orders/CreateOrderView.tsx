@@ -1130,7 +1130,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       // Fetch seller organization's payment terms
       const { data: sellerOrgData, error: sellerOrgError } = await supabase
         .from('organizations')
-        .select('*')
+        .select('*, payment_terms(*)')  // Join with payment_terms table
         .eq('id', sellerOrg.id)
         .single()
 
