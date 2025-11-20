@@ -54,6 +54,7 @@ export interface QRExcelData {
   individualCodes: GeneratedQRCode[]
   totalMasterCodes: number
   totalUniqueCodes: number
+  totalBaseUnits: number
   bufferPercent: number
   extraQrMaster: number
 }
@@ -221,6 +222,7 @@ async function buildSummarySheet(
     ['Total Master Codes (Cases):', data.totalMasterCodes.toString()],
     ['Total Individual Codes:', data.totalUniqueCodes.toString()],
     ['Buffer Percentage:', `${data.bufferPercent}%`],
+    ['Total Buffer Generated:', Math.floor(data.totalBaseUnits * data.bufferPercent / 100).toString()],
     ['', ''],
     ['Tracking System', ''],
     ['Base URL:', getBaseURL()],
