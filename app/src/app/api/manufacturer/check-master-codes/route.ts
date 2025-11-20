@@ -30,16 +30,63 @@ export async function POST(request: NextRequest) {
       return cleanCode
     })
 
-    // Query database for all codes
-    const { data: masterRecords, error: queryError } = await supabase
-      .from('qr_master_codes')
-      .select('master_code, status, actual_unit_count, expected_unit_count')
-      .in('master_code', cleanCodes)
+    // Query database - use parallel batching for large arrays
+    console.log(`🔍 Checking ${cleanCodes.length} master codes`)
+    
+    let masterRecords: any[] = []
+    const BATCH_SIZE = 300 // Smaller batches to avoid network timeouts
+    
+    try {
+      if (cleanCodes.length <= BATCH_SIZE) {
+        // Single query for small batches (fast path)
+        const { data, error: queryError } = await supabase
+          .from('qr_master_codes')
+          .select('master_code, status, actual_unit_count, expected_unit_count')
+          .in('master_code', cleanCodes)
 
-    if (queryError) {
-      console.error('Error checking master codes:', queryError)
+        if (queryError) throw queryError
+        masterRecords = data || []
+        console.log(`✅ Found ${masterRecords.length} records`)
+      } else {
+        // Parallel batch processing for large arrays (>300 codes)
+        console.log(`📦 Large batch detected, processing in parallel chunks of ${BATCH_SIZE}`)
+        
+        // Split into batches
+        const batchPromises: Promise<any>[] = []
+        for (let i = 0; i < cleanCodes.length; i += BATCH_SIZE) {
+          const batch = cleanCodes.slice(i, i + BATCH_SIZE)
+          const batchNum = Math.floor(i / BATCH_SIZE) + 1
+          
+          const promise = supabase
+            .from('qr_master_codes')
+            .select('master_code, status, actual_unit_count, expected_unit_count')
+            .in('master_code', batch)
+            .then(({ data, error }) => {
+              if (error) throw error
+              console.log(`✅ Batch ${batchNum}: ${data?.length || 0} records`)
+              return data || []
+            })
+          
+          batchPromises.push(promise)
+        }
+        
+        // Execute all batches in parallel
+        const results = await Promise.all(batchPromises)
+        masterRecords = results.flat()
+        console.log(`✅ Total found: ${masterRecords.length} records`)
+      }
+    } catch (queryError: any) {
+      console.error('❌ Error checking master codes:', {
+        error: queryError,
+        message: queryError.message,
+        details: queryError.details,
+        hint: queryError.hint,
+        code: queryError.code,
+        codesCount: cleanCodes.length,
+        sampleCodes: cleanCodes.slice(0, 3)
+      })
       return NextResponse.json(
-        { error: 'Failed to check master codes' },
+        { error: `Failed to check master codes: ${queryError.message || 'Database error'}` },
         { status: 500 }
       )
     }

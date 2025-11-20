@@ -25,7 +25,9 @@ import {
   Truck,
   AlertTriangle,
   ClipboardPaste,
-  Unlink
+  Unlink,
+  XCircle,
+  Search
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
@@ -111,6 +113,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   const [batchProcessingStatus, setBatchProcessingStatus] = useState('')
   const [batchProcessingSummary, setBatchProcessingSummary] = useState({ total: 0, success: 0, duplicates: 0, errors: 0 })
   const [confirming, setConfirming] = useState(false)
+  const [canceling, setCanceling] = useState(false)
   const [unlinking, setUnlinking] = useState<string | null>(null)
   const [sessionQuantities, setSessionQuantities] = useState({
     total_units: 0,
@@ -121,9 +124,12 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   // Manual stock state
   const [selectedVariant, setSelectedVariant] = useState<string>('')
   const [variants, setVariants] = useState<any[]>([])
+  const [variantsWithStock, setVariantsWithStock] = useState<any[]>([])
+  const [variantSearchTerm, setVariantSearchTerm] = useState<string>('')
   const [manualStockBalance, setManualStockBalance] = useState<number>(0)
   const [manualQty, setManualQty] = useState<number>(0)
   const [loadingManualStock, setLoadingManualStock] = useState(false)
+  const [loadingVariants, setLoadingVariants] = useState(false)
   
   const { toast } = useToast()
   const supabase = createClient()
@@ -138,6 +144,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     if (selectedDistributor) {
       createOrLoadSession(selectedDistributor)
       loadScanHistory()
+      loadVariants() // Refresh variants when distributor changes
     } else {
       setSessionId(null)
       setShipmentProgress(null)
@@ -187,28 +194,49 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
   const loadVariants = async () => {
     try {
-      const { data, error } = await supabase
-        .from('product_variants')
+      setLoadingVariants(true)
+      
+      // Get variants with manual stock balance for this warehouse
+      const { data: stockData, error: stockError } = await supabase
+        .from('vw_manual_stock_balance')
         .select(`
-          id,
-          variant_code,
-          variant_name,
-          products (
-            product_name
+          variant_id,
+          manual_balance_qty,
+          product_variants (
+            id,
+            variant_code,
+            variant_name,
+            products (
+              product_name
+            )
           )
         `)
-        .eq('is_active', true)
-        .order('variant_name', { ascending: true })
+        .eq('warehouse_id', userProfile.organization_id)
+        .gt('manual_balance_qty', 0)
+        .order('manual_balance_qty', { ascending: false })
 
-      if (error) throw error
-      setVariants(data || [])
+      if (stockError) throw stockError
+      
+      // Transform data to include balance info
+      const variantsData = (stockData || []).map(item => {
+        const variant = item.product_variants
+        return {
+          ...variant,
+          manual_balance_qty: item.manual_balance_qty
+        }
+      }).filter(v => v.id) // Filter out any null variants
+      
+      setVariantsWithStock(variantsData)
+      setVariants(variantsData)
     } catch (error: any) {
       console.error('Error loading variants:', error)
       toast({
         title: 'Error',
-        description: 'Failed to load product variants',
+        description: 'Failed to load product variants with stock',
         variant: 'destructive'
       })
+    } finally {
+      setLoadingVariants(false)
     }
   }
 
@@ -459,6 +487,9 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     const allCodes = [...masterCodes, ...uniqueCodes]
     if (allCodes.length > 0) {
       await loadExistingScannedCodes(allCodes)
+    } else {
+      // No codes in session - clear the scanned codes list
+      setScannedCodes([])
     }
   }
 
@@ -977,14 +1008,41 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         description: result.message,
       })
 
-      // Remove from scanned codes list
+      // Remove from scanned codes list immediately for responsive UI
       setScannedCodes(prev => prev.filter(c => c.code !== code))
 
-      // Reload progress
-      if (selectedDistributor) {
-        createOrLoadSession(selectedDistributor)
+      // Update session state directly from API response (faster than requery)
+      if (result.session_update) {
+        const masterCount = result.session_update.master_codes_scanned?.length || 0
+        const uniqueCount = result.session_update.unique_codes_scanned?.length || 0
+        const distributor = distributors.find(d => d.id === selectedDistributor)
+        
+        setShipmentProgress({
+          distributor_id: selectedDistributor || '',
+          distributor_name: distributor?.org_name || 'Unknown',
+          master_cases_scanned: masterCount,
+          unique_codes_scanned: uniqueCount,
+          progress_percentage: 0,
+          created_at: new Date().toISOString()
+        })
+
+        if (result.session_update.scanned_quantities) {
+          const quantities = result.session_update.scanned_quantities
+          setSessionQuantities({
+            total_units: quantities.total_units || 0,
+            total_cases: quantities.total_cases || 0,
+            per_variant: quantities.per_variant || {}
+          })
+        }
       }
-      loadScanHistory()
+
+      // Reload session to get updated counts and progress (as backup/verification)
+      if (selectedDistributor) {
+        await createOrLoadSession(selectedDistributor)
+      }
+      
+      // Reload scan history
+      await loadScanHistory()
 
     } catch (error: any) {
       toast({
@@ -1040,6 +1098,76 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       })
     } finally {
       setUnlinking(null)
+    }
+  }
+
+  const handleCancelShipment = async () => {
+    if (!sessionId) {
+      toast({
+        title: 'Error',
+        description: 'No active shipment session to cancel',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    const itemCount = masterCasesCount + looseItemsCount + manualQty
+    const confirmMsg = `Cancel this shipment and reset ${itemCount} item${itemCount === 1 ? '' : 's'} back to warehouse_packed status?`
+    
+    if (!confirm(confirmMsg)) {
+      return
+    }
+
+    try {
+      setCanceling(true)
+
+      const response = await fetch('/api/warehouse/cancel-shipment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_id: userProfile.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to cancel shipment')
+      }
+
+      toast({
+        title: 'Success',
+        description: result.message || 'Shipment cancelled successfully',
+      })
+
+      // Clear all state
+      setScannedCodes([])
+      setManualQty(0)
+      setSessionId(null)
+      setShipmentProgress(null)
+      setSessionQuantities({ total_units: 0, total_cases: 0, per_variant: {} })
+
+      // Reload manual stock balance if variant selected
+      if (selectedVariant) {
+        await loadManualStockBalance(selectedVariant)
+      }
+
+      // Create fresh session
+      if (selectedDistributor) {
+        await createOrLoadSession(selectedDistributor)
+      }
+
+      await loadScanHistory()
+
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to cancel shipment',
+        variant: 'destructive'
+      })
+    } finally {
+      setCanceling(false)
     }
   }
 
@@ -1413,26 +1541,101 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Variant Selection */}
+              {/* Variant Selection with Search */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Product Variant
+                  Select Product Variant {variantsWithStock.length > 0 && `(${variantsWithStock.length} available)`}
                 </label>
-                <select
-                  value={selectedVariant}
-                  onChange={(e) => setSelectedVariant(e.target.value)}
-                  className="w-full px-4 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white"
-                >
-                  <option value="">Choose variant...</option>
-                  {variants.map(variant => {
-                    const product = Array.isArray(variant.products) ? variant.products[0] : variant.products
-                    return (
-                      <option key={variant.id} value={variant.id}>
-                        {product?.product_name} - {variant.variant_name}
-                      </option>
-                    )
-                  })}
-                </select>
+                {selectedVariant && (
+                  <div className="mb-2 p-2 bg-purple-100 border border-purple-300 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="text-xs text-purple-600 font-medium">Selected:</p>
+                        <p className="text-sm font-semibold text-purple-900">
+                          {(() => {
+                            const variant = variantsWithStock.find(v => v.id === selectedVariant)
+                            const product = variant ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
+                            return variant ? `${product?.product_name} - ${variant.variant_name}` : 'Unknown'
+                          })()}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedVariant('')}
+                        className="h-8 w-8 p-0 hover:bg-purple-200"
+                      >
+                        <XCircle className="h-4 w-4 text-purple-600" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search product variant..."
+                    value={variantSearchTerm}
+                    onChange={(e) => setVariantSearchTerm(e.target.value)}
+                    onFocus={() => setVariantSearchTerm('')}
+                    className="w-full pl-10 pr-4 py-2 border border-purple-300 rounded-t-lg focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                  />
+                </div>
+                <div className="border border-t-0 border-purple-300 rounded-b-lg bg-white max-h-64 overflow-y-auto">
+                  {loadingVariants ? (
+                    <div className="p-4 text-center text-gray-500">
+                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2" />
+                      Loading variants...
+                    </div>
+                  ) : variantsWithStock.length === 0 ? (
+                    <div className="p-4 text-center text-gray-500">
+                      <Box className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                      <p className="text-sm">No variants with manual stock available</p>
+                    </div>
+                  ) : (
+                    variantsWithStock
+                      .filter(variant => {
+                        if (!variantSearchTerm) return true
+                        const product = Array.isArray(variant.products) ? variant.products[0] : variant.products
+                        const searchLower = variantSearchTerm.toLowerCase()
+                        const productName = product?.product_name?.toLowerCase() || ''
+                        const variantName = variant.variant_name?.toLowerCase() || ''
+                        return productName.includes(searchLower) || variantName.includes(searchLower)
+                      })
+                      .map(variant => {
+                        const product = Array.isArray(variant.products) ? variant.products[0] : variant.products
+                        const isSelected = selectedVariant === variant.id
+                        return (
+                          <div
+                            key={variant.id}
+                            onClick={() => {
+                              setSelectedVariant(variant.id)
+                              setVariantSearchTerm('')
+                            }}
+                            className={`px-4 py-3 cursor-pointer hover:bg-purple-50 border-b border-gray-100 last:border-b-0 ${
+                              isSelected ? 'bg-purple-100' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900">
+                                  {product?.product_name}
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  {variant.variant_name}
+                                </p>
+                              </div>
+                              <Badge variant="secondary" className="ml-2">
+                                {variant.manual_balance_qty} units
+                              </Badge>
+                            </div>
+                          </div>
+                        )
+                      })
+                  )}
+                </div>
               </div>
 
               {/* Manual Quantity Input */}
@@ -1500,18 +1703,33 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 Current Ship Progress: Distributor: {shipmentProgress.distributor_name}
               </CardTitle>
               {(masterCasesCount > 0 || looseItemsCount > 0 || manualQty > 0) && (
-                <Button
-                  onClick={handleConfirmShipment}
-                  disabled={confirming || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  {confirming ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                  )}
-                  Confirm Shipment
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleCancelShipment}
+                    disabled={canceling || confirming || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
+                    variant="outline"
+                    className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  >
+                    {canceling ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <XCircle className="h-4 w-4 mr-2" />
+                    )}
+                    Cancel Shipment
+                  </Button>
+                  <Button
+                    onClick={handleConfirmShipment}
+                    disabled={confirming || canceling || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {confirming ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                    )}
+                    Confirm Shipment
+                  </Button>
+                </div>
               )}
             </div>
           </CardHeader>

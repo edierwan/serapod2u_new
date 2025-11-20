@@ -24,8 +24,12 @@ interface Product {
   product_code: string
   product_name: string
   brand_id: string | null
+  manufacturer_id: string | null
   brands?: {
     brand_name: string
+  } | null
+  organizations?: {
+    org_name: string
   } | null
 }
 
@@ -87,9 +91,18 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   useEffect(() => {
     if (selectedProduct) {
       loadVariants(selectedProduct)
+      
+      // Auto-select manufacturer based on product
+      const product = products.find(p => p.id === selectedProduct)
+      if (product?.manufacturer_id) {
+        setSelectedManufacturer(product.manufacturer_id)
+      } else {
+        setSelectedManufacturer('')
+      }
     } else {
       setVariants([])
       setSelectedVariant('')
+      setSelectedManufacturer('')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
@@ -104,8 +117,12 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
           product_code,
           product_name,
           brand_id,
+          manufacturer_id,
           brands (
             brand_name
+          ),
+          organizations:manufacturer_id (
+            org_name
           )
         `)
         .eq('is_active', true)
@@ -113,13 +130,15 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
       if (error) throw error
       
-      // Transform the data to handle brands array
+      // Transform the data to handle brands and organizations array
       const transformedData: Product[] = (data || []).map((item: any) => ({
         id: item.id,
         product_code: item.product_code,
         product_name: item.product_name,
         brand_id: item.brand_id,
-        brands: Array.isArray(item.brands) ? item.brands[0] : item.brands
+        manufacturer_id: item.manufacturer_id,
+        brands: Array.isArray(item.brands) ? item.brands[0] : item.brands,
+        organizations: Array.isArray(item.organizations) ? item.organizations[0] : item.organizations
       }))
       
       setProducts(transformedData)
@@ -522,22 +541,53 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 <CardDescription>Track stock source</CardDescription>
               </CardHeader>
               <CardContent>
-                <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select manufacturer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">Not specified</SelectItem>
-                    {manufacturers.map(mfg => (
-                      <SelectItem key={mfg.id} value={mfg.id}>
-                        {mfg.org_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500 mt-2">
-                  Optional: Record which manufacturer supplied this stock
-                </p>
+                {selectedProduct && selectedManufacturer ? (
+                  <div className="space-y-2">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <span className="text-xs font-medium text-green-700">Auto-selected from product</span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {manufacturers.find(m => m.id === selectedManufacturer)?.org_name || 'Unknown Manufacturer'}
+                      </p>
+                    </div>
+                    <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder="Change manufacturer..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {manufacturers.map(mfg => (
+                          <SelectItem key={mfg.id} value={mfg.id}>
+                            {mfg.org_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">
+                      Manufacturer is automatically selected based on product relationship. You can change it if needed.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select manufacturer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">Not specified</SelectItem>
+                        {manufacturers.map(mfg => (
+                          <SelectItem key={mfg.id} value={mfg.id}>
+                            {mfg.org_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-2">
+                      {selectedProduct ? 'No manufacturer linked to this product' : 'Select a product first'}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

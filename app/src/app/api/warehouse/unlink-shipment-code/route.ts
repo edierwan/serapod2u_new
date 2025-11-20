@@ -103,18 +103,82 @@ export async function POST(request: NextRequest) {
       // Remove from session master_codes_scanned array
       const masterList = (session.master_codes_scanned || []).filter((c: string) => c !== code)
       
-      await supabase
+      // Recalculate scanned_quantities by querying remaining codes
+      let remainingMasters: any[] = []
+      if (masterList.length > 0) {
+        const { data } = await supabase
+          .from('qr_master_codes')
+          .select('master_code, id')
+          .in('master_code', masterList)
+          .eq('status', 'warehouse_packed')
+        remainingMasters = data || []
+      }
+
+      const uniqueCodes = session.unique_codes_scanned || []
+      let remainingUniques: any[] = []
+      if (uniqueCodes.length > 0) {
+        const { data } = await supabase
+          .from('qr_codes')
+          .select('code, variant_id, product_variants(variant_name, products(product_name))')
+          .in('code', uniqueCodes)
+          .eq('status', 'warehouse_packed')
+        remainingUniques = data || []
+      }
+
+      // Calculate new quantities
+      const newScannedQuantities: any = {
+        total_units: remainingUniques.length,
+        total_cases: remainingMasters.length,
+        per_variant: {}
+      }
+
+      // Aggregate by variant
+      remainingUniques.forEach((qr: any) => {
+        const variant = Array.isArray(qr.product_variants) ? qr.product_variants[0] : qr.product_variants
+        const product = variant?.products ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
+        const variantKey = qr.variant_id || 'unknown'
+        
+        if (!newScannedQuantities.per_variant[variantKey]) {
+          newScannedQuantities.per_variant[variantKey] = {
+            variant_id: qr.variant_id,
+            variant_name: variant?.variant_name || 'Unknown',
+            product_name: product?.product_name || 'Unknown',
+            scanned_qty: 0
+          }
+        }
+        newScannedQuantities.per_variant[variantKey].scanned_qty++
+      })
+
+      const { error: updateSessionError } = await supabase
         .from('qr_validation_reports')
         .update({
           master_codes_scanned: masterList,
+          scanned_quantities: newScannedQuantities,
           updated_at: now
         })
         .eq('id', session_id)
 
+      if (updateSessionError) {
+        console.error('❌ Failed to update session after unlinking master:', updateSessionError)
+        throw new Error('Failed to update shipment session')
+      }
+
+      console.log('✅ Session updated successfully:', {
+        session_id,
+        remaining_masters: masterList.length,
+        remaining_uniques: uniqueCodes.length,
+        new_quantities: newScannedQuantities
+      })
+
       return NextResponse.json({
         success: true,
         message: `Master case #${masterCode.case_number} unlinked successfully`,
-        code_type: 'master'
+        code_type: 'master',
+        session_update: {
+          master_codes_scanned: masterList,
+          unique_codes_scanned: uniqueCodes,
+          scanned_quantities: newScannedQuantities
+        }
       })
 
     } else {
@@ -169,18 +233,82 @@ export async function POST(request: NextRequest) {
       // Remove from session unique_codes_scanned array
       const uniqueList = (session.unique_codes_scanned || []).filter((c: string) => c !== code)
       
-      await supabase
+      // Recalculate scanned_quantities by querying remaining codes
+      const masterCodes = session.master_codes_scanned || []
+      let remainingMasters: any[] = []
+      if (masterCodes.length > 0) {
+        const { data } = await supabase
+          .from('qr_master_codes')
+          .select('master_code, id')
+          .in('master_code', masterCodes)
+          .eq('status', 'warehouse_packed')
+        remainingMasters = data || []
+      }
+
+      let remainingUniques: any[] = []
+      if (uniqueList.length > 0) {
+        const { data } = await supabase
+          .from('qr_codes')
+          .select('code, variant_id, product_variants(variant_name, products(product_name))')
+          .in('code', uniqueList)
+          .eq('status', 'warehouse_packed')
+        remainingUniques = data || []
+      }
+
+      // Calculate new quantities
+      const newScannedQuantities: any = {
+        total_units: remainingUniques.length,
+        total_cases: remainingMasters.length,
+        per_variant: {}
+      }
+
+      // Aggregate by variant
+      remainingUniques.forEach((qr: any) => {
+        const variant = Array.isArray(qr.product_variants) ? qr.product_variants[0] : qr.product_variants
+        const product = variant?.products ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
+        const variantKey = qr.variant_id || 'unknown'
+        
+        if (!newScannedQuantities.per_variant[variantKey]) {
+          newScannedQuantities.per_variant[variantKey] = {
+            variant_id: qr.variant_id,
+            variant_name: variant?.variant_name || 'Unknown',
+            product_name: product?.product_name || 'Unknown',
+            scanned_qty: 0
+          }
+        }
+        newScannedQuantities.per_variant[variantKey].scanned_qty++
+      })
+
+      const { error: updateSessionError } = await supabase
         .from('qr_validation_reports')
         .update({
           unique_codes_scanned: uniqueList,
+          scanned_quantities: newScannedQuantities,
           updated_at: now
         })
         .eq('id', session_id)
 
+      if (updateSessionError) {
+        console.error('❌ Failed to update session after unlinking unique code:', updateSessionError)
+        throw new Error('Failed to update shipment session')
+      }
+
+      console.log('✅ Session updated successfully:', {
+        session_id,
+        remaining_masters: masterCodes.length,
+        remaining_uniques: uniqueList.length,
+        new_quantities: newScannedQuantities
+      })
+
       return NextResponse.json({
         success: true,
         message: 'Unique code unlinked successfully',
-        code_type: 'unique'
+        code_type: 'unique',
+        session_update: {
+          master_codes_scanned: masterCodes,
+          unique_codes_scanned: uniqueList,
+          scanned_quantities: newScannedQuantities
+        }
       })
     }
 

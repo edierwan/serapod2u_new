@@ -41,6 +41,7 @@ export interface QRExcelData {
   totalMasterCodes: number
   totalUniqueCodes: number
   bufferPercent: number
+  extraQrMaster: number
 }
 
 const URL_THRESHOLD = 10_000
@@ -242,9 +243,10 @@ async function buildMasterSheet(
   ]
 
   let rowIndex = 1
-  // Repeat each master code 10 times for redundancy (backup copies)
+  // Repeat each master code N times for redundancy (backup copies)
+  const copiesPerMaster = data.extraQrMaster || 10
   data.masterCodes.forEach((master) => {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < copiesPerMaster; i++) {
       const row = sheet.addRow({
         index: rowIndex++,
         trackingUrl: generateTrackingURL(master.code, 'master'),
@@ -256,8 +258,8 @@ async function buildMasterSheet(
   })
 
   await sheet.commit()
-  const totalRows = data.masterCodes.length * 10
-  console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} unique codes × 10 copies = ${totalRows} rows)`)
+  const totalRows = data.masterCodes.length * copiesPerMaster
+  console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} unique codes × ${copiesPerMaster} copies = ${totalRows} rows)`)
 }
 
 /**
