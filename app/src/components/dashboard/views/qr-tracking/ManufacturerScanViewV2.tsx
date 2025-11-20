@@ -612,22 +612,44 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
     }
     
     try {
-      const params = new URLSearchParams()
-      if (orderId) params.append('order_id', orderId)
-      params.append('manufacturer_id', userProfile.organization_id)
-
-      console.log('📡 [loadProgress] Fetching batch progress...')
-      const response = await fetch(`/api/manufacturer/batch-progress?${params.toString()}`)
-      if (!response.ok) throw new Error('Failed to load progress')
-
-      const result = await response.json()
+      // Try to use new DB-driven endpoint if we have a batch_id
+      const currentBatch = batchProgress[0]
+      const batchId = currentBatch?.batch_id
       
-      // Guard: Only update state if component is still mounted
-      if (isMounted) {
-        setBatchProgress(result.batches || [])
-        console.log('✅ [loadProgress] Batch progress updated')
+      if (batchId) {
+        // 🚀 NEW: Use optimized DB-driven progress endpoint with indexes
+        console.log('📡 [loadProgress] Fetching batch progress (DB-driven with indexes)...')
+        const response = await fetch(`/api/qr/batches/${batchId}/progress`)
+        if (!response.ok) throw new Error('Failed to load progress')
+
+        const result = await response.json()
+        
+        // Guard: Only update state if component is still mounted
+        if (isMounted) {
+          setBatchProgress([result]) // New endpoint returns single batch object
+          console.log('✅ [loadProgress] Batch progress updated (DB-driven)')
+        } else {
+          console.log('⚠️ [loadProgress] Component unmounted during fetch - discarding result')
+        }
       } else {
-        console.log('⚠️ [loadProgress] Component unmounted during fetch - discarding result')
+        // Fallback to old endpoint for initial load or when batch_id not available
+        const params = new URLSearchParams()
+        if (orderId) params.append('order_id', orderId)
+        params.append('manufacturer_id', userProfile.organization_id)
+
+        console.log('📡 [loadProgress] Fetching batch progress (legacy endpoint)...')
+        const response = await fetch(`/api/manufacturer/batch-progress?${params.toString()}`)
+        if (!response.ok) throw new Error('Failed to load progress')
+
+        const result = await response.json()
+        
+        // Guard: Only update state if component is still mounted
+        if (isMounted) {
+          setBatchProgress(result.batches || [])
+          console.log('✅ [loadProgress] Batch progress updated (legacy)')
+        } else {
+          console.log('⚠️ [loadProgress] Component unmounted during fetch - discarding result')
+        }
       }
     } catch (error: any) {
       console.error('❌ [loadProgress] Error loading progress:', error)
