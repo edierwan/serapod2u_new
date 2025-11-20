@@ -1481,7 +1481,7 @@ export default function OrderDocumentsDialogEnhanced({
                   </div>
                 ) : (
                   <div className="text-center py-12 text-gray-500">
-                    Balance Payment Request will be auto-generated when products are received at warehouse
+                    Balance Payment Request will be auto-generated when production is completed
                   </div>
                 )}
               </TabsContent>
