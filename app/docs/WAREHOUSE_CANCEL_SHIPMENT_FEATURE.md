@@ -1,7 +1,11 @@
 # Warehouse Ship: Cancel Shipment Feature
 
 ## Overview
-Added a "Cancel Shipment" button that allows warehouse users to reset all scanned items back to their previous state before confirmation. This is useful when:
+
+Added a "Cancel Shipment" button that allows warehouse users to reset all
+scanned items back to their previous state before confirmation. This is useful
+when:
+
 - Items were scanned incorrectly
 - Wrong distributor was selected
 - Need to restart the shipment preparation
@@ -12,22 +16,25 @@ Added a "Cancel Shipment" button that allows warehouse users to reset all scanne
 ### Frontend Changes (`WarehouseShipV2.tsx`)
 
 #### 1. New State Variable
+
 ```typescript
-const [canceling, setCanceling] = useState(false)
+const [canceling, setCanceling] = useState(false);
 ```
 
 #### 2. Cancel Handler Function
+
 ```typescript
 const handleCancelShipment = async () => {
-  // Validates session exists
-  // Confirms with user
-  // Calls cancel API
-  // Clears all local state
-  // Reloads session and history
-}
+   // Validates session exists
+   // Confirms with user
+   // Calls cancel API
+   // Clears all local state
+   // Reloads session and history
+};
 ```
 
 #### 3. UI Updates
+
 - Added "Cancel Shipment" button next to "Confirm Shipment" button
 - Button styled with red outline theme (border-red-300, text-red-600)
 - Shows spinning icon during cancellation
@@ -37,31 +44,35 @@ const handleCancelShipment = async () => {
 ### Backend API (`/api/warehouse/cancel-shipment/route.ts`)
 
 #### Endpoint Details
+
 - **Method**: POST
 - **Path**: `/api/warehouse/cancel-shipment`
 - **Auth**: Requires user_id
 
 #### Request Body
+
 ```json
 {
-  "session_id": "uuid",
-  "user_id": "uuid"
+   "session_id": "uuid",
+   "user_id": "uuid"
 }
 ```
 
 #### Response
+
 ```json
 {
-  "success": true,
-  "message": "Shipment cancelled. X master cases and Y unique codes reverted to warehouse.",
-  "reverted": {
-    "master_codes": 3,
-    "unique_codes": 60
-  }
+   "success": true,
+   "message": "Shipment cancelled. X master cases and Y unique codes reverted to warehouse.",
+   "reverted": {
+      "master_codes": 3,
+      "unique_codes": 60
+   }
 }
 ```
 
 #### Process Flow
+
 1. **Validate Session**
    - Checks if session exists
    - Only allows canceling sessions with status `pending`
@@ -89,6 +100,7 @@ const handleCancelShipment = async () => {
 ## Database Changes
 
 ### Status Flow
+
 ```
 Before Cancel:
 QR Codes: warehouse_packed
@@ -100,6 +112,7 @@ Session: deleted (removed from database)
 ```
 
 ### Movement Log
+
 - **Type**: `warehouse_cancel`
 - **From/To**: warehouse_org_id (same location)
 - **Status**: `received_warehouse`
@@ -108,11 +121,14 @@ Session: deleted (removed from database)
 ## User Experience
 
 ### Confirmation Dialog
+
 - User clicks "Cancel Shipment"
-- Shows confirmation: "Cancel this shipment and reset X items back to warehouse_packed status?"
+- Shows confirmation: "Cancel this shipment and reset X items back to
+  warehouse_packed status?"
 - User must confirm to proceed
 
 ### After Cancellation
+
 1. Scanned codes list is cleared
 2. Manual quantity is reset to 0
 3. Progress counters reset to 0
@@ -122,6 +138,7 @@ Session: deleted (removed from database)
 7. History tables refresh to show cancellation
 
 ### Button States
+
 - **Enabled**: When items are scanned and session is pending
 - **Disabled**: When confirming, canceling, or no items scanned
 - **Loading**: Shows spinning icon while processing
@@ -157,12 +174,14 @@ Session: deleted (removed from database)
 ## Error Handling
 
 ### Common Errors
+
 1. **No Session**: "No active shipment session to cancel"
 2. **Invalid Status**: "Cannot cancel shipment with status: [status]"
 3. **Session Not Found**: "Shipment session not found"
 4. **Database Error**: "Failed to revert master codes/unique codes"
 
 ### Rollback Strategy
+
 - If any step fails, error is thrown and returned to frontend
 - Database operations are separate updates (master codes, unique codes, session)
 - If one fails, others may succeed - manual intervention may be needed
@@ -171,9 +190,11 @@ Session: deleted (removed from database)
 ## Files Modified/Created
 
 ### Created
+
 1. `/app/src/app/api/warehouse/cancel-shipment/route.ts` - API endpoint
 
 ### Modified
+
 1. `/app/src/components/dashboard/views/qr-tracking/WarehouseShipV2.tsx`
    - Added `canceling` state
    - Added `handleCancelShipment` function
@@ -182,9 +203,9 @@ Session: deleted (removed from database)
 
 ## Benefits
 
-✅ **Quick Recovery**: Easily reset shipment without manual intervention
-✅ **Audit Trail**: All cancellations logged in movement history
-✅ **Clean State**: Creates fresh session for new attempt
-✅ **Safe Operation**: Requires confirmation to prevent accidents
-✅ **Complete Reversal**: Reverts all codes back to warehouse status
-✅ **Clean Database**: Pending sessions are deleted (movement logs remain for audit)
+✅ **Quick Recovery**: Easily reset shipment without manual intervention ✅
+**Audit Trail**: All cancellations logged in movement history ✅ **Clean
+State**: Creates fresh session for new attempt ✅ **Safe Operation**: Requires
+confirmation to prevent accidents ✅ **Complete Reversal**: Reverts all codes
+back to warehouse status ✅ **Clean Database**: Pending sessions are deleted
+(movement logs remain for audit)

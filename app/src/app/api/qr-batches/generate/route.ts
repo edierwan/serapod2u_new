@@ -139,6 +139,16 @@ export async function POST(request: NextRequest) {
 
     // 4. Generate Excel file (streaming for large batches)
     console.log('⏳ Generating Excel file (this may take a while for large batches)...')
+    
+    // Fix Master QR duplicates logic: 0 is a valid value, don't fallback to 10
+    const extraQrMasterRaw = (order as any).extra_qr_master
+    let extraQrMaster = Number.isFinite(Number(extraQrMasterRaw))
+      ? Number(extraQrMasterRaw)
+      : 0  // Default to 0 if undefined or NaN
+    
+    // Clamp to valid range (0-10)
+    extraQrMaster = Math.max(0, Math.min(10, extraQrMaster))
+    
     const excelFilePath = await generateQRExcel({
       orderNo: order.order_no,
       orderDate: new Date(order.created_at || new Date().toISOString()).toLocaleDateString(),
@@ -149,7 +159,7 @@ export async function POST(request: NextRequest) {
       totalMasterCodes: qrBatch.totalMasterCodes,
       totalUniqueCodes: qrBatch.totalUniqueCodes,
       bufferPercent: qrBatch.bufferPercent,
-      extraQrMaster: (order as any).extra_qr_master || 10
+      extraQrMaster: extraQrMaster
     })
 
     const excelFilename = generateQRExcelFilename(order.order_no)
