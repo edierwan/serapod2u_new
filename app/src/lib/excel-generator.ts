@@ -369,7 +369,26 @@ async function buildIndividualSheet(
     { header: 'Buffer Group', key: 'bufferGroup', width: 22 }
   ]
 
-  // Track buffer sequence per variant (for buffer codes only)
+  // Build variant → buffer index map (one BUFFER-N per variant)
+  // Extract unique variants and assign fixed BUFFER index
+  const variantKeys: string[] = []
+  const seenVariants = new Set<string>()
+  
+  for (const code of codesSlice) {
+    const variantKey = `${code.product_code}|${code.variant_code}`
+    if (!seenVariants.has(variantKey)) {
+      seenVariants.add(variantKey)
+      variantKeys.push(variantKey)
+    }
+  }
+  
+  // Assign BUFFER index: Variant 1 → BUFFER-1, Variant 2 → BUFFER-2, etc.
+  const bufferIndexByVariant = new Map<string, number>()
+  variantKeys.forEach((variantKey, index) => {
+    bufferIndexByVariant.set(variantKey, index + 1)
+  })
+  
+  // Track buffer sequence per variant (for Buffer Group only)
   const variantBufferSeq = new Map<string, number>()
   
   for (let i = 0; i < codesSlice.length; i++) {
@@ -377,7 +396,7 @@ async function buildIndividualSheet(
     
     // Use global case number from QR generator
     // - Production codes: Use code.case_number (already calculated globally during generation)
-    // - Buffer codes: Show BUFFER-N and generate Buffer Group ID
+    // - Buffer codes: Use fixed BUFFER-N per variant
     let caseNumber: number | string | null = null
     let bufferGroup = ''
     
@@ -385,21 +404,18 @@ async function buildIndividualSheet(
       // Production code - use the global case number assigned during QR generation
       caseNumber = code.case_number
     } else {
-      // Buffer code - group into buffer cases based on units_per_case
-      const variantKey = `${code.product_code}-${code.variant_code}`
-      const currentBufferSeq = (variantBufferSeq.get(variantKey) || 0) + 1
-      variantBufferSeq.set(variantKey, currentBufferSeq)
+      // Buffer code - use fixed BUFFER index for this variant
+      const variantKey = `${code.product_code}|${code.variant_code}`
+      const bufferIndex = bufferIndexByVariant.get(variantKey) || 1
       
-      // Calculate buffer case index based on case size
-      // Example: units_per_case=20, seq 1-20 → BUFFER-1, seq 21-40 → BUFFER-2, etc.
-      const caseSize = code.units_per_case || 20
-      const bufferCaseIndex = Math.ceil(currentBufferSeq / caseSize)
-      
-      // Case Number shows buffer case group (BUFFER-1, BUFFER-2, ...)
-      caseNumber = `BUFFER-${bufferCaseIndex}`
+      // Case Number shows fixed buffer index per variant (BUFFER-1, BUFFER-2, ...)
+      // All buffer codes for Variant 1 → BUFFER-1
+      // All buffer codes for Variant 2 → BUFFER-2, etc.
+      caseNumber = `BUFFER-${bufferIndex}`
       
       // Buffer Group: B{variant_code}-{0001 format} - remains unique per buffer QR
-      // Example: BCHI-449021-0012
+      const currentBufferSeq = (variantBufferSeq.get(variantKey) || 0) + 1
+      variantBufferSeq.set(variantKey, currentBufferSeq)
       bufferGroup = `B${code.variant_code}-${String(currentBufferSeq).padStart(4, '0')}`
     }
 
