@@ -84,7 +84,7 @@ export async function generateQRExcel(data: QRExcelData): Promise<string> {
     await buildSummarySheet(workbook, data)
     await buildMasterSheet(workbook, data)
     await buildIndividualSheet(workbook, data, data.individualCodes)
-    await buildProductBreakdownSheet(workbook, productGroups)
+    await buildProductBreakdownSheet(workbook, data, productGroups)
     // Packing List sheet removed - not needed
     // await buildPackingSheet(workbook, data, caseProductCounts)
 
@@ -265,6 +265,10 @@ async function buildMasterSheet(
 /**
  * Build Individual QR Codes sheet for a single Excel file
  * Streams row-by-row with immediate commit for memory efficiency
+ * 
+ * Case Number Logic:
+ * - Production codes: Use per-variant local sequence to calculate case number
+ * - Buffer codes: Show BUFFER-N and Buffer Group for identification
  */
 async function buildIndividualSheet(
   workbook: ExcelJS.stream.xlsx.WorkbookWriter,
@@ -273,15 +277,9 @@ async function buildIndividualSheet(
 ): Promise<void> {
   const sheetName = 'Individual QR Codes'
 
-  // Create a map of case numbers to master codes for quick lookup
-  const caseToMasterCode = new Map<number, string>()
-  data.masterCodes.forEach(master => {
-    caseToMasterCode.set(master.case_number, master.code)
-  })
-
   const sheet = workbook.addWorksheet(sheetName)
   
-  // Column order - simplified without removed columns:
+  // Column order:
   // 1. # (A)
   // 2. Product Name (B)
   // 3. Variant (C)
@@ -291,6 +289,7 @@ async function buildIndividualSheet(
   // 7. Variant Code (G)
   // 8. Case Number (H)
   // 9. Is Buffer (I)
+  // 10. Buffer Group (J) - NEW: Identifies which variant each buffer belongs to
   sheet.columns = [
     { header: '#', key: 'index', width: 6 },
     { header: 'Product Name', key: 'productName', width: 32 },
@@ -300,13 +299,49 @@ async function buildIndividualSheet(
     { header: 'Product Code', key: 'productCode', width: 18 },
     { header: 'Variant Code', key: 'variantCode', width: 18 },
     { header: 'Case Number', key: 'caseNumber', width: 14 },
-    { header: 'Is Buffer', key: 'isBuffer', width: 12 }
+    { header: 'Is Buffer', key: 'isBuffer', width: 12 },
+    { header: 'Buffer Group', key: 'bufferGroup', width: 22 }
   ]
 
+  // Track local sequence per variant (for production codes only)
+  const variantLocalSeq = new Map<string, number>()
+  
+  // Track buffer sequence per variant (for buffer codes only)
+  const variantBufferSeq = new Map<string, number>()
+  
   for (let i = 0; i < codesSlice.length; i++) {
     const code = codesSlice[i]
+    
+    // Calculate case number and buffer group based on logic:
+    // - Production codes: Use per-variant local sequence and case size
+    // - Buffer codes: Show BUFFER-N and generate Buffer Group ID
+    let caseNumber: number | string | null = null
+    let bufferGroup = ''
+    
+    if (!code.is_buffer) {
+      // Production code - calculate case number from local sequence
+      const variantKey = `${code.product_code}-${code.variant_code}`
+      const currentLocalSeq = (variantLocalSeq.get(variantKey) || 0) + 1
+      variantLocalSeq.set(variantKey, currentLocalSeq)
+      
+      // Case number = ceil(localSeq / caseSize)
+      const caseSize = code.units_per_case || 20 // Default to 20 if not specified
+      caseNumber = Math.ceil(currentLocalSeq / caseSize)
+    } else {
+      // Buffer code - generate BUFFER-N and Buffer Group
+      const variantKey = `${code.product_code}-${code.variant_code}`
+      const currentBufferSeq = (variantBufferSeq.get(variantKey) || 0) + 1
+      variantBufferSeq.set(variantKey, currentBufferSeq)
+      
+      // Case Number shows BUFFER-N for identification
+      caseNumber = `BUFFER-${currentBufferSeq}`
+      
+      // Buffer Group: B{variant_code}-{0001 format}
+      // Example: BCHI-449021-0012
+      bufferGroup = `B${code.variant_code}-${String(currentBufferSeq).padStart(4, '0')}`
+    }
 
-    // Build row data without removed columns
+    // Build row data with new Buffer Group column
     const rowData: any = {
       index: i + 1,
       trackingUrl: generateTrackingURL(code.code, 'product'),
@@ -315,8 +350,9 @@ async function buildIndividualSheet(
       variantCode: code.variant_code,
       productName: code.product_name,
       variantName: code.variant_name,
-      caseNumber: code.case_number,
-      isBuffer: code.is_buffer ? 'TRUE' : 'FALSE'
+      caseNumber: caseNumber, // Number for production, BUFFER-N for buffer codes
+      isBuffer: code.is_buffer ? 'TRUE' : 'FALSE',
+      bufferGroup: bufferGroup // Empty for production, B{variant}-{seq} for buffer
     }
 
     const row = sheet.addRow(rowData)
@@ -333,6 +369,7 @@ async function buildIndividualSheet(
 
 async function buildProductBreakdownSheet(
   workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+  data: QRExcelData,
   productGroups: Map<string, ProductGroupAggregate>
 ): Promise<void> {
   const sheet = workbook.addWorksheet('Product Breakdown')
@@ -349,6 +386,20 @@ async function buildProductBreakdownSheet(
   ]
 
   productGroups.forEach(group => {
+    // Filter production codes only (exclude buffer codes) for this variant
+    const allCodesForGroup = data.individualCodes.filter(
+      c => c.product_code === group.firstCode.product_code &&
+           c.variant_code === group.firstCode.variant_code &&
+           !c.is_buffer    // production only - exclude buffer codes
+    )
+
+    // Sort by case_number (numeric) to get first and last production cases
+    allCodesForGroup.sort((a, b) => Number(a.case_number) - Number(b.case_number))
+
+    // Get first and last production case numbers
+    const firstCase = allCodesForGroup[0]?.case_number || ''
+    const lastCase = allCodesForGroup[allCodesForGroup.length - 1]?.case_number || ''
+
     const row = sheet.addRow({
       productCode: group.firstCode.product_code,
       variantCode: group.firstCode.variant_code,
@@ -357,7 +408,7 @@ async function buildProductBreakdownSheet(
       totalQrCodes: group.count,
       firstCode: group.firstCode.code,
       lastCode: group.lastCode.code,
-      caseRange: `${group.firstCode.case_number} - ${group.lastCode.case_number}`,
+      caseRange: `${firstCase} - ${lastCase}`,  // Now shows production cases only
       casesBox: group.firstCode.units_per_case || 100
     })
     row.commit()
