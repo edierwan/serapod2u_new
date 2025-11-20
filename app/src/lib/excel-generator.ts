@@ -239,19 +239,71 @@ async function buildMasterSheet(
     { header: '#', key: 'index', width: 6 },
     { header: 'Tracking URL', key: 'trackingUrl', width: 60 },
     { header: 'Case Number', key: 'caseNumber', width: 14 },
-    { header: 'Expected Units', key: 'expectedUnits', width: 16 }
+    { header: 'Expected Units', key: 'expectedUnits', width: 16 },
+    { header: 'Variant', key: 'variantLabel', width: 50 }  // NEW: Show which variant(s) in this case
   ]
+
+  // Build helper maps to determine which variants are in each case
+  // caseNumber -> Set<variantKey>
+  // variantKey -> "Product Name - Variant Name"
+  const caseVariants = new Map<number, Set<string>>()
+  const variantNames = new Map<string, string>()
+
+  // Analyze individual codes (excluding buffer codes) to map case → variants
+  for (const code of data.individualCodes) {
+    if (code.is_buffer) continue // Ignore buffer codes - they're not packed in cases
+
+    const caseNo = code.case_number
+    const variantKey = `${code.product_code}-${code.variant_code}`
+
+    // Store the friendly name for this variant
+    if (!variantNames.has(variantKey)) {
+      variantNames.set(
+        variantKey,
+        `${code.product_name} - ${code.variant_name}`
+      )
+    }
+
+    // Track which variants appear in this case
+    if (!caseVariants.has(caseNo)) {
+      caseVariants.set(caseNo, new Set())
+    }
+    caseVariants.get(caseNo)!.add(variantKey)
+  }
 
   let rowIndex = 1
   // Repeat each master code N times for redundancy (backup copies)
-  const copiesPerMaster = data.extraQrMaster || 10
+  // extraQrMaster is the number of ADDITIONAL duplicates (0-10)
+  // So total copies = 1 (original) + duplicates
+  const duplicateCount = data.extraQrMaster ?? 0  // Default to 0 duplicates
+  const copiesPerMaster = 1 + duplicateCount        // Always print at least 1, plus duplicates
+  
   data.masterCodes.forEach((master) => {
+    // Determine variant label for this case
+    const variantsSet = caseVariants.get(master.case_number)
+    let variantLabel = ''
+
+    if (variantsSet && variantsSet.size > 0) {
+      const keys = Array.from(variantsSet)
+      if (keys.length === 1) {
+        // Single variant case
+        const key = keys[0]
+        variantLabel = variantNames.get(key) ?? key
+      } else {
+        // Mixed variant case
+        const names = keys.map(k => variantNames.get(k) ?? k)
+        variantLabel = `MIXED: ${names.join(' + ')}`
+      }
+    }
+
+    // Repeat master code for redundancy with variant info
     for (let i = 0; i < copiesPerMaster; i++) {
       const row = sheet.addRow({
         index: rowIndex++,
         trackingUrl: generateTrackingURL(master.code, 'master'),
         caseNumber: master.case_number,
-        expectedUnits: master.expected_unit_count
+        expectedUnits: master.expected_unit_count,
+        variantLabel  // Show which variant(s) are in this case
       })
       row.commit()
     }
@@ -259,7 +311,7 @@ async function buildMasterSheet(
 
   await sheet.commit()
   const totalRows = data.masterCodes.length * copiesPerMaster
-  console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} unique codes × ${copiesPerMaster} copies = ${totalRows} rows)`)
+  console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} unique codes × ${copiesPerMaster} copies (1 + ${duplicateCount} duplicates) = ${totalRows} rows)`)
 }
 
 /**

@@ -122,6 +122,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   const [useCustomUnitsPerCase, setUseCustomUnitsPerCase] = useState(false)
   const [useIndividualCases, setUseIndividualCases] = useState(false)  // Toggle for individual case sizes
   const [qrBuffer, setQrBuffer] = useState(10.00)
+  const [masterQrDuplicates, setMasterQrDuplicates] = useState(0)  // Number of duplicate Master QR per case (0-10)
   const [enableRFID, setEnableRFID] = useState(false)
   const [hasPoints, setHasPoints] = useState(true)
   const [enableLuckyDraw, setEnableLuckyDraw] = useState(true)
@@ -782,6 +783,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       // Set order configuration
       setUnitsPerCase(orderData.units_per_case || 100)
       setQrBuffer(orderData.qr_buffer_percent || 10)
+      setMasterQrDuplicates(orderDataAny.extra_qr_master ?? 0) // Default to 0 if not set
       setEnableRFID(orderDataAny.rfid_enabled || orderData.has_rfid || false)
       setHasPoints(orderData.has_points !== false)
       setEnableLuckyDraw(orderDataAny.enable_lucky_draw !== false || orderData.has_lucky_draw !== false)
@@ -1165,6 +1167,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         status: 'draft' as const, // ← Always draft first! RLS policy requires this
         units_per_case: useCustomUnitsPerCase && customUnitsPerCase ? parseInt(customUnitsPerCase) : unitsPerCase,
         qr_buffer_percent: qrBuffer,
+        extra_qr_master: Math.max(0, Math.min(10, masterQrDuplicates)), // Clamp between 0-10
         has_rfid: enableRFID,
         has_points: hasPoints,
         has_lucky_draw: enableLuckyDraw,
@@ -1189,7 +1192,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         variant_id: item.variant_id,
         qty: item.qty,
         unit_price: item.unit_price,
-        company_id: companyId
+        company_id: companyId,
+        ...(useIndividualCases && item.units_per_case ? { units_per_case: item.units_per_case } : {})
       }))
 
       const { error: itemsError } = await supabase
@@ -1560,6 +1564,29 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   />
                   <p className="text-xs text-gray-500 mt-1">Additional QR codes for manufacturing (default 10%)</p>
                 </div>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Master QR copies per case
+                </label>
+                <Input
+                  type="number"
+                  value={masterQrDuplicates}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value)
+                    // Clamp between 0 and 10
+                    if (value >= 0 && value <= 10) {
+                      setMasterQrDuplicates(value)
+                    }
+                  }}
+                  className="bg-gray-50"
+                  min="0"
+                  max="10"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  How many duplicate Master QR stickers to print per case (0-10). 0 = only 1 sticker per case, 10 = 11 stickers per case.
+                </p>
               </div>
               
               <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
