@@ -31,6 +31,20 @@ function generateTrackingURL(code: string, type: 'product' | 'master'): string {
   return `${baseUrl}/track/${type}/${code}`
 }
 
+/**
+ * Extract only the flavor/variant name from brackets
+ * Example: "Cellera Hero - Deluxe Cellera Cartridge [ Keladi Cheese ]" → "[ Keladi Cheese ]"
+ * Example: "Product - Variant [ Flavor ]" → "[ Flavor ]"
+ */
+function extractFlavorOnly(variantName: string): string {
+  const match = variantName.match(/\[([^\]]+)\]/)
+  if (match) {
+    return `[ ${match[1].trim()} ]`
+  }
+  // If no brackets found, return the original variant name
+  return variantName
+}
+
 export interface QRExcelData {
   orderNo: string
   orderDate: string
@@ -256,11 +270,11 @@ async function buildMasterSheet(
     const caseNo = code.case_number
     const variantKey = `${code.product_code}-${code.variant_code}`
 
-    // Store the friendly name for this variant
+    // Store the friendly name for this variant (flavor only)
     if (!variantNames.has(variantKey)) {
       variantNames.set(
         variantKey,
-        `${code.product_name} - ${code.variant_name}`
+        extractFlavorOnly(code.variant_name)
       )
     }
 
@@ -355,30 +369,21 @@ async function buildIndividualSheet(
     { header: 'Buffer Group', key: 'bufferGroup', width: 22 }
   ]
 
-  // Track local sequence per variant (for production codes only)
-  const variantLocalSeq = new Map<string, number>()
-  
   // Track buffer sequence per variant (for buffer codes only)
   const variantBufferSeq = new Map<string, number>()
   
   for (let i = 0; i < codesSlice.length; i++) {
     const code = codesSlice[i]
     
-    // Calculate case number and buffer group based on logic:
-    // - Production codes: Use per-variant local sequence and case size
+    // Use global case number from QR generator
+    // - Production codes: Use code.case_number (already calculated globally during generation)
     // - Buffer codes: Show BUFFER-N and generate Buffer Group ID
     let caseNumber: number | string | null = null
     let bufferGroup = ''
     
     if (!code.is_buffer) {
-      // Production code - calculate case number from local sequence
-      const variantKey = `${code.product_code}-${code.variant_code}`
-      const currentLocalSeq = (variantLocalSeq.get(variantKey) || 0) + 1
-      variantLocalSeq.set(variantKey, currentLocalSeq)
-      
-      // Case number = ceil(localSeq / caseSize)
-      const caseSize = code.units_per_case || 20 // Default to 20 if not specified
-      caseNumber = Math.ceil(currentLocalSeq / caseSize)
+      // Production code - use the global case number assigned during QR generation
+      caseNumber = code.case_number
     } else {
       // Buffer code - generate BUFFER-N and Buffer Group
       const variantKey = `${code.product_code}-${code.variant_code}`
@@ -401,7 +406,7 @@ async function buildIndividualSheet(
       productCode: code.product_code,
       variantCode: code.variant_code,
       productName: code.product_name,
-      variantName: code.variant_name,
+      variantName: extractFlavorOnly(code.variant_name),  // Show only flavor in brackets
       caseNumber: caseNumber, // Number for production, BUFFER-N for buffer codes
       isBuffer: code.is_buffer ? 'TRUE' : 'FALSE',
       bufferGroup: bufferGroup // Empty for production, B{variant}-{seq} for buffer
