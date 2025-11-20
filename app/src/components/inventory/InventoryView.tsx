@@ -54,10 +54,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [productFilter, setProductFilter] = useState('all')
+  const [variantFilter, setVariantFilter] = useState('all')
   const [valueRangeFilter, setValueRangeFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [locations, setLocations] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
+  const [variants, setVariants] = useState<any[]>([])
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   
@@ -76,12 +78,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       fetchInventory()
       fetchLocations()
       fetchProducts()
+      fetchVariants()
     }
   }, [isReady])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, locationFilter, statusFilter, productFilter, valueRangeFilter])
+  }, [searchQuery, locationFilter, statusFilter, productFilter, variantFilter, valueRangeFilter])
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -110,6 +113,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       const matchesProduct = productFilter === 'all' || item.product_name === productFilter
 
+      const matchesVariant = variantFilter === 'all' || item.variant_code === variantFilter
+
       let matchesValueRange = true
       const totalValue = item.total_value ?? 0
       if (valueRangeFilter === 'under_1000') {
@@ -123,7 +128,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       }
 
       if (!normalizedSearch) {
-        return matchesLocation && matchesStatus && matchesProduct && matchesValueRange
+        return matchesLocation && matchesStatus && matchesProduct && matchesVariant && matchesValueRange
       }
 
       const haystack = [
@@ -139,9 +144,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       const matchesSearch = haystack.some(value => value.includes(normalizedSearch))
 
-      return matchesLocation && matchesStatus && matchesProduct && matchesValueRange && matchesSearch
+      return matchesLocation && matchesStatus && matchesProduct && matchesVariant && matchesValueRange && matchesSearch
     })
-  }, [inventory, searchQuery, locationFilter, statusFilter, productFilter, valueRangeFilter])
+  }, [inventory, searchQuery, locationFilter, statusFilter, productFilter, variantFilter, valueRangeFilter])
 
   const sortedInventory = useMemo(() => {
     if (!sortColumn) {
@@ -590,20 +595,106 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
   const fetchProducts = async () => {
     try {
+      // Fetch products that have inventory records
       const { data, error } = await supabase
-        .from('products')
-        .select('product_name')
+        .from('product_inventory')
+        .select(`
+          product_variants (
+            products (
+              product_name
+            )
+          )
+        `)
         .eq('is_active', true)
-        .order('product_name')
+        .gt('quantity_on_hand', 0)
 
       if (error) throw error
-      // Get unique product names
-      const uniqueProducts = Array.from(new Set((data || []).map(p => p.product_name)))
+      
+      // Extract unique product names from inventory records
+      const productNames = new Set<string>()
+      data?.forEach((item: any) => {
+        const variant = Array.isArray(item.product_variants) 
+          ? item.product_variants[0] 
+          : item.product_variants
+        const product = variant?.products
+          ? Array.isArray(variant.products)
+            ? variant.products[0]
+            : variant.products
+          : null
+        if (product?.product_name) {
+          productNames.add(product.product_name)
+        }
+      })
+      
+      const uniqueProducts = Array.from(productNames).sort()
       setProducts(uniqueProducts.map(name => ({ product_name: name })))
     } catch (error) {
       console.error('Error fetching products:', error)
     }
   }
+
+  const fetchVariants = async () => {
+    try {
+      // Fetch variants that have inventory records
+      const { data, error } = await supabase
+        .from('product_inventory')
+        .select(`
+          product_variants (
+            variant_code,
+            variant_name,
+            products (
+              product_name
+            )
+          )
+        `)
+        .eq('is_active', true)
+        .gt('quantity_on_hand', 0)
+
+      if (error) throw error
+      
+      // Extract unique variants from inventory records
+      const variantMap = new Map()
+      data?.forEach((item: any) => {
+        const variant = Array.isArray(item.product_variants) 
+          ? item.product_variants[0] 
+          : item.product_variants
+        if (variant?.variant_code) {
+          variantMap.set(variant.variant_code, variant)
+        }
+      })
+      
+      const uniqueVariants = Array.from(variantMap.values()).sort((a, b) => 
+        a.variant_code.localeCompare(b.variant_code)
+      )
+      setVariants(uniqueVariants)
+    } catch (error) {
+      console.error('Error fetching variants:', error)
+    }
+  }
+
+  // Filter variants based on selected product
+  const filteredVariants = useMemo(() => {
+    if (productFilter === 'all') {
+      return variants
+    }
+    return variants.filter(variant => {
+      const product = Array.isArray(variant.products) 
+        ? variant.products[0] 
+        : variant.products
+      return product?.product_name === productFilter
+    })
+  }, [variants, productFilter])
+
+  // Reset variant filter when product filter changes
+  useEffect(() => {
+    if (productFilter !== 'all' && variantFilter !== 'all') {
+      // Check if current variant filter is still valid for the selected product
+      const isValidVariant = filteredVariants.some(v => v.variant_code === variantFilter)
+      if (!isValidVariant) {
+        setVariantFilter('all')
+      }
+    }
+  }, [productFilter, variantFilter, filteredVariants])
 
   const formatCurrency = (value?: number | null) => {
     const numeric = value !== null && value !== undefined && !Number.isNaN(value) ? value : 0
@@ -729,7 +820,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             </div>
 
             {/* Filter Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
               <div>
                 <label className="text-xs font-medium text-gray-700 mb-1.5 block">Location</label>
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
@@ -758,6 +849,27 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {products.map((product, idx) => (
                       <SelectItem key={idx} value={product.product_name}>
                         {product.product_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Variant</label>
+                <Select 
+                  value={variantFilter} 
+                  onValueChange={setVariantFilter}
+                  disabled={productFilter === 'all'}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={productFilter === 'all' ? 'Select a product first' : 'All Variants'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Variants</SelectItem>
+                    {filteredVariants.map((variant) => (
+                      <SelectItem key={variant.variant_code} value={variant.variant_code}>
+                        {variant.variant_code} - {variant.variant_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -797,13 +909,14 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             </div>
 
             {/* Active Filters & Clear Button */}
-            {(searchQuery || locationFilter !== 'all' || statusFilter !== 'all' || productFilter !== 'all' || valueRangeFilter !== 'all') && (
+            {(searchQuery || locationFilter !== 'all' || statusFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || valueRangeFilter !== 'all') && (
               <div className="flex items-center justify-between pt-2 border-t">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-gray-600">Active filters:</span>
                   {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
                   {locationFilter !== 'all' && <Badge variant="secondary">Location</Badge>}
                   {productFilter !== 'all' && <Badge variant="secondary">Product</Badge>}
+                  {variantFilter !== 'all' && <Badge variant="secondary">Variant</Badge>}
                   {statusFilter !== 'all' && <Badge variant="secondary">Status</Badge>}
                   {valueRangeFilter !== 'all' && <Badge variant="secondary">Value Range</Badge>}
                 </div>
@@ -814,6 +927,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     setSearchQuery('')
                     setLocationFilter('all')
                     setProductFilter('all')
+                    setVariantFilter('all')
                     setStatusFilter('all')
                     setValueRangeFilter('all')
                   }}
@@ -921,35 +1035,35 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               ) : (
                 paginatedInventory.map((item: InventoryItem) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-mono text-sm">
+                    <TableCell className="font-mono text-xs">
                       {item.variant_code || 'N/A'}
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium">
+                        <p className="text-xs font-medium">
                           {item.product_name || 'Unknown Product'}
                         </p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs text-gray-600">
                           {item.variant_name || 'No variant'}
                         </p>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{item.organization_name || 'Unknown Location'}</p>
+                        <p className="text-xs font-medium">{item.organization_name || 'Unknown Location'}</p>
                         {item.warehouse_location && (
-                          <p className="text-sm text-gray-600">{item.warehouse_location}</p>
+                          <p className="text-xs text-gray-600">{item.warehouse_location}</p>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">{formatNumber(item.quantity_on_hand)}</span>
+                      <span className="text-xs font-medium">{formatNumber(item.quantity_on_hand)}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-gray-600">{formatNumber(item.quantity_allocated)}</span>
+                      <span className="text-xs text-gray-600">{formatNumber(item.quantity_allocated)}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">{formatNumber(item.quantity_available)}</span>
+                      <span className="text-xs font-medium">{formatNumber(item.quantity_available)}</span>
                     </TableCell>
                     <TableCell>
                       <div className="space-y-2">
@@ -971,11 +1085,11 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                         </p>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-xs text-right">
                       <span className="font-medium">
                         RM {formatCurrency(item.total_value ?? 0)}
                       </span>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-xs text-gray-600">
                         @ RM {formatCurrency(item.unit_cost ?? 0)} per unit
                       </p>
                     </TableCell>

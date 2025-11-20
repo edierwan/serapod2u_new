@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -53,6 +53,38 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     const [cumulativePoints, setCumulativePoints] = useState(0)
     const [isCollectingPoints, setIsCollectingPoints] = useState(false)
 
+    // Check if points were already collected for this QR code on component mount
+    useEffect(() => {
+        async function checkCollectionStatus() {
+            if (!qrCode) {
+                console.log('⚠️ No QR code provided, skipping collection status check')
+                return
+            }
+
+            console.log('🔍 Checking collection status for QR code:', qrCode)
+
+            try {
+                const response = await fetch(`/api/consumer/check-collection-status?qr_code=${encodeURIComponent(qrCode)}`)
+                const result = await response.json()
+
+                console.log('📊 Collection status result:', result)
+
+                if (result.success && result.already_collected) {
+                    console.log('✅ Points already collected! Setting state...')
+                    setPointsCollected(true)
+                    setTotalPoints(result.points_earned || 0)
+                    setCumulativePoints(result.total_balance || 0)
+                } else {
+                    console.log('❌ Points not collected yet')
+                }
+            } catch (error) {
+                console.error('Error checking collection status:', error)
+            }
+        }
+
+        checkCollectionStatus()
+    }, [qrCode])
+
     async function handleCollectPoints() {
         if (!userId || !password) {
             alert('Please enter Shop ID and Password')
@@ -78,8 +110,25 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 const result = await response.json()
 
                 if (!response.ok || !result.success) {
-                    alert(result.error || 'Failed to collect points')
+                    // Check if it's a preview mode error
+                    if (result.preview) {
+                        alert('This is a demo/preview QR code. Point collection is not available for codes that haven\'t been activated yet.')
+                    } else {
+                        alert(result.error || 'Failed to collect points')
+                    }
                     setIsCollectingPoints(false)
+                    return
+                }
+
+                // Check if points were already collected
+                if (result.already_collected) {
+                    console.log('⚠️ Points already collected for this QR code')
+                    alert('Points already collected for this QR code!')
+                    setTotalPoints(result.points_earned || 0)
+                    setCumulativePoints(result.total_balance || 0)
+                    setPointsCollected(true)
+                    setIsCollectingPoints(false)
+                    setCurrentPage('thank-you')
                     return
                 }
 
@@ -91,6 +140,20 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 setCumulativePoints(totalBalance)
                 setPointsCollected(true)
                 setIsCollectingPoints(false)
+
+                // Track successful point collection for statistics
+                try {
+                    await fetch('/api/consumer/track-scan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            qr_code: qrCode,
+                            action: 'collect_points'
+                        })
+                    })
+                } catch (err) {
+                    console.error('Failed to track points collection:', err)
+                }
 
                 console.log('Points collected:', result)
             } catch (error) {
@@ -314,8 +377,34 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     {/* Points */}
                     {config.points_enabled && (
                         <button
-                            onClick={() => setCurrentPage('collect-points')}
-                            className="w-full bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:border-blue-300 transition-colors text-left"
+                            onClick={async () => {
+                                // Prevent clicking if already collected
+                                if (pointsCollected) {
+                                    return
+                                }
+                                setCurrentPage('collect-points')
+                                // Track that user clicked on collect points
+                                if (qrCode) {
+                                    try {
+                                        await fetch('/api/consumer/track-scan', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                qr_code: qrCode,
+                                                action: 'view_collect_points'
+                                            })
+                                        })
+                                    } catch (err) {
+                                        console.error('Failed to track collect points view:', err)
+                                    }
+                                }
+                            }}
+                            disabled={pointsCollected}
+                            className={`w-full bg-white rounded-lg p-4 shadow-sm border border-gray-200 transition-colors text-left ${
+                                pointsCollected 
+                                    ? 'opacity-60 cursor-not-allowed' 
+                                    : 'hover:border-blue-300 cursor-pointer'
+                            }`}
                         >
                             <div className="flex items-center gap-3">
                                 <div

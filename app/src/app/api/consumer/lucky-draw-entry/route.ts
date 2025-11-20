@@ -77,7 +77,11 @@ export async function POST(request: NextRequest) {
       console.error('QR code not found:', qrError)
       console.error('Tried codes:', { full: qr_code, base: baseCode })
       return NextResponse.json(
-        { success: false, error: 'QR code not found' },
+        { 
+          success: false, 
+          error: 'This QR code is not yet active in the system. This is a preview/demo code.',
+          preview: true
+        },
         { status: 404 }
       )
     }

@@ -99,14 +99,20 @@ export async function POST(request: NextRequest) {
       viewed_welcome: true
     }
 
-    // Set action flags
+    // Set action flags based on the action type
     if (action === 'collect_points') {
       scanData.collected_points = true
       scanData.points_collected_at = new Date().toISOString()
+    } else if (action === 'view_collect_points') {
+      // User clicked on collect points button (but hasn't collected yet)
+      scanData.viewed_welcome = true
     } else if (action === 'lucky_draw') {
       scanData.entered_lucky_draw = true
     } else if (action === 'redeem') {
       scanData.redeemed_gift = true
+    } else if (action === 'view_journey') {
+      // Initial page view
+      scanData.viewed_welcome = true
     }
 
     // Insert consumer scan record
@@ -122,6 +128,35 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Failed to record scan' },
         { status: 500 }
       )
+    }
+
+    // Update QR code statistics - increment total_consumer_scans
+    // First get current count
+    const { data: currentQrData } = await supabaseAdmin
+      .from('qr_codes')
+      .select('total_consumer_scans, first_consumer_scan_at')
+      .eq('id', qrCodeData.id)
+      .single()
+
+    const updateData: any = {
+      total_consumer_scans: (currentQrData?.total_consumer_scans || 0) + 1
+    }
+
+    // Set first_consumer_scan_at if this is the first scan and it's a welcome view
+    if (scanData.viewed_welcome && !currentQrData?.first_consumer_scan_at) {
+      updateData.first_consumer_scan_at = new Date().toISOString()
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('qr_codes')
+      .update(updateData)
+      .eq('id', qrCodeData.id)
+
+    if (updateError) {
+      console.error('⚠️ Failed to update QR code stats:', updateError)
+      // Don't fail the request, just log the error
+    } else {
+      console.log('✅ Updated QR code stats - Total scans:', updateData.total_consumer_scans)
     }
 
     return NextResponse.json({

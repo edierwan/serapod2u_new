@@ -77,6 +77,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   const [movementTypeFilter, setMovementTypeFilter] = useState('all')
   const [referenceTypeFilter, setReferenceTypeFilter] = useState('all')
   const [productFilter, setProductFilter] = useState('all')
+  const [variantFilter, setVariantFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
   const [quantityRangeFilter, setQuantityRangeFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
@@ -85,6 +86,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   const [sortColumn, setSortColumn] = useState<string | null>('created_at')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [products, setProducts] = useState<any[]>([])
+  const [variants, setVariants] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
   
   const { isReady, supabase } = useSupabaseAuth()
@@ -128,11 +130,12 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       loadMovements()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, locationFilter, quantityRangeFilter, dateFrom, dateTo, currentPage])
+  }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, variantFilter, locationFilter, quantityRangeFilter, dateFrom, dateTo, currentPage])
 
   useEffect(() => {
     if (isReady) {
       fetchProducts()
+      fetchVariants()
       fetchLocations()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,17 +143,76 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
   const fetchProducts = async () => {
     try {
+      // Fetch products that have stock movement records
       const { data, error } = await supabase
-        .from('products')
-        .select('product_name')
-        .eq('is_active', true)
-        .order('product_name')
+        .from('stock_movements')
+        .select(`
+          product_variants (
+            products (
+              product_name
+            )
+          )
+        `)
 
       if (error) throw error
-      const uniqueProducts = Array.from(new Set((data || []).map(p => p.product_name)))
+      
+      // Extract unique product names from movement records
+      const productNames = new Set<string>()
+      data?.forEach((item: any) => {
+        const variant = Array.isArray(item.product_variants) 
+          ? item.product_variants[0] 
+          : item.product_variants
+        const product = variant?.products
+          ? Array.isArray(variant.products)
+            ? variant.products[0]
+            : variant.products
+          : null
+        if (product?.product_name) {
+          productNames.add(product.product_name)
+        }
+      })
+      
+      const uniqueProducts = Array.from(productNames).sort()
       setProducts(uniqueProducts.map(name => ({ product_name: name })))
     } catch (error) {
       console.error('Error fetching products:', error)
+    }
+  }
+
+  const fetchVariants = async () => {
+    try {
+      // Fetch variants that have stock movement records
+      const { data, error } = await supabase
+        .from('stock_movements')
+        .select(`
+          product_variants (
+            variant_code,
+            variant_name,
+            products (
+              product_name
+            )
+          )
+        `)
+
+      if (error) throw error
+      
+      // Extract unique variants from movement records
+      const variantMap = new Map()
+      data?.forEach((item: any) => {
+        const variant = Array.isArray(item.product_variants) 
+          ? item.product_variants[0] 
+          : item.product_variants
+        if (variant?.variant_code) {
+          variantMap.set(variant.variant_code, variant)
+        }
+      })
+      
+      const uniqueVariants = Array.from(variantMap.values()).sort((a, b) => 
+        a.variant_code.localeCompare(b.variant_code)
+      )
+      setVariants(uniqueVariants)
+    } catch (error) {
+      console.error('Error fetching variants:', error)
     }
   }
 
@@ -169,6 +231,29 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       console.error('Error fetching locations:', error)
     }
   }
+
+  // Filter variants based on selected product
+  const filteredVariants = useMemo(() => {
+    if (productFilter === 'all') {
+      return variants
+    }
+    return variants.filter(variant => {
+      const product = Array.isArray(variant.products) 
+        ? variant.products[0] 
+        : variant.products
+      return product?.product_name === productFilter
+    })
+  }, [variants, productFilter])
+
+  // Reset variant filter when product filter changes
+  useEffect(() => {
+    if (productFilter !== 'all' && variantFilter !== 'all') {
+      const isValidVariant = filteredVariants.some(v => v.variant_code === variantFilter)
+      if (!isValidVariant) {
+        setVariantFilter('all')
+      }
+    }
+  }, [productFilter, variantFilter, filteredVariants])
 
   const loadMovements = async () => {
     try {
@@ -831,6 +916,27 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
               </div>
 
               <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Variant</label>
+                <Select 
+                  value={variantFilter} 
+                  onValueChange={setVariantFilter}
+                  disabled={productFilter === 'all'}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={productFilter === 'all' ? 'Select a product first' : 'All Variants'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Variants</SelectItem>
+                    {filteredVariants.map((variant) => (
+                      <SelectItem key={variant.variant_code} value={variant.variant_code}>
+                        {variant.variant_code} - {variant.variant_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                 <label className="text-xs font-medium text-gray-700 mb-1.5 block">Location</label>
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
                   <SelectTrigger>
@@ -898,6 +1004,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                     setMovementTypeFilter('all')
                     setReferenceTypeFilter('all')
                     setProductFilter('all')
+                    setVariantFilter('all')
                     setLocationFilter('all')
                     setQuantityRangeFilter('all')
                     setDateFrom('')
@@ -913,13 +1020,14 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             </div>
 
             {/* Active Filters Display */}
-            {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || dateFrom || dateTo) && (
+            {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || dateFrom || dateTo) && (
               <div className="flex items-center gap-2 flex-wrap pt-2 border-t">
                 <span className="text-sm text-gray-600 font-medium">Active:</span>
                 {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
                 {movementTypeFilter !== 'all' && <Badge variant="secondary">Type</Badge>}
                 {referenceTypeFilter !== 'all' && <Badge variant="secondary">Reference</Badge>}
                 {productFilter !== 'all' && <Badge variant="secondary">Product</Badge>}
+                {variantFilter !== 'all' && <Badge variant="secondary">Variant</Badge>}
                 {locationFilter !== 'all' && <Badge variant="secondary">Location</Badge>}
                 {quantityRangeFilter !== 'all' && <Badge variant="secondary">Quantity Range</Badge>}
                 {dateFrom && <Badge variant="secondary">From: {dateFrom}</Badge>}
@@ -1062,33 +1170,33 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                 ) : (
                   getSortedMovements().map((movement) => (
                     <TableRow key={movement.id}>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-xs">
                         {formatDate(movement.created_at)}
                       </TableCell>
                       <TableCell>
                         {getMovementTypeBadge(movement.movement_type)}
                       </TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="text-xs font-medium">
                         {movement.product_variants?.products?.product_name || 'N/A'}
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <Badge variant="secondary" className="text-xs">
-                            {movement.product_variants?.variant_code}
-                          </Badge>
-                          <p className="text-xs text-gray-600 mt-1">
-                            {movement.product_variants?.variant_name}
-                          </p>
-                        </div>
+                        <p className="text-xs text-gray-600">
+                          {(() => {
+                            const variantName = movement.product_variants?.variant_name || ''
+                            // Extract text between [ and ] if it exists, otherwise show full name
+                            const match = variantName.match(/\[(.*?)\]/)
+                            return match ? `[ ${match[1]} ]` : variantName
+                          })()}
+                        </p>
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-xs">
                         {movement.organizations?.org_name || 'N/A'}
                         {movement.warehouse_location && (
                           <p className="text-xs text-gray-500">{movement.warehouse_location}</p>
                         )}
                       </TableCell>
                       <TableCell
-                        className={`text-right font-semibold ${
+                        className={`text-xs text-right font-semibold ${
                           movement.quantity_change > 0
                             ? 'text-green-600'
                             : movement.quantity_change < 0
@@ -1098,13 +1206,13 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       >
                         {formatSignedNumber(movement.quantity_change)}
                       </TableCell>
-                      <TableCell className="text-right text-gray-600">
+                      <TableCell className="text-xs text-right text-gray-600">
                         {formatNumber(movement.quantity_before)}
                       </TableCell>
-                      <TableCell className="text-right font-semibold">
+                      <TableCell className="text-xs text-right font-semibold">
                         {formatNumber(movement.quantity_after)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-xs text-right">
                         {(() => {
                           const formattedUnitCost = formatCurrency(movement.unit_cost)
                           const formattedTotalCost = formatCurrency(movement.total_cost)
@@ -1115,7 +1223,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
                           return (
                             <div>
-                              <p className="text-sm">{formattedUnitCost}</p>
+                              <p className="text-xs">{formattedUnitCost}</p>
                               {formattedTotalCost && (
                                 <p className="text-xs text-gray-500">
                                   Total: {formattedTotalCost}
@@ -1125,9 +1233,9 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                           )
                         })()}
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-xs">
                         {movement.reference_no ? (
-                          <Badge variant="outline">{movement.reference_no}</Badge>
+                          <Badge variant="outline" className="text-xs">{movement.reference_no}</Badge>
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}
@@ -1135,7 +1243,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                           <p className="text-xs text-gray-500 mt-1">{movement.reference_type}</p>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm max-w-xs">
+                      <TableCell className="text-xs max-w-xs">
                         {(() => {
                           const reasonText = getReasonText(movement)
                           if (!reasonText) return null
@@ -1145,11 +1253,6 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                             </p>
                           )
                         })()}
-                        {movement.manufacturers && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Mfg: {movement.manufacturers.org_name}
-                          </p>
-                        )}
                         {movement.users && (
                           <p className="text-xs text-gray-500 mt-1">
                             By: {movement.users.email.split('@')[0]}
