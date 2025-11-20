@@ -612,7 +612,31 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
     }
     
     try {
-      // Try to use new DB-driven endpoint if we have a batch_id
+      // If orderId is explicitly provided (e.g., when user selects different order),
+      // always use legacy endpoint to fetch fresh batch data for that order
+      // This ensures we don't use stale batch_id from previous order
+      if (orderId) {
+        const params = new URLSearchParams()
+        params.append('order_id', orderId)
+        params.append('manufacturer_id', userProfile.organization_id)
+
+        console.log('📡 [loadProgress] Fetching batch progress for order change (legacy endpoint)...', orderId)
+        const response = await fetch(`/api/manufacturer/batch-progress?${params.toString()}`)
+        if (!response.ok) throw new Error('Failed to load progress')
+
+        const result = await response.json()
+        
+        // Guard: Only update state if component is still mounted
+        if (isMounted) {
+          setBatchProgress(result.batches || [])
+          console.log('✅ [loadProgress] Batch progress updated for new order (legacy)')
+        } else {
+          console.log('⚠️ [loadProgress] Component unmounted during fetch - discarding result')
+        }
+        return
+      }
+
+      // Try to use new DB-driven endpoint if we have a batch_id (for refresh polling)
       const currentBatch = batchProgress[0]
       const batchId = currentBatch?.batch_id
       
@@ -634,10 +658,9 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       } else {
         // Fallback to old endpoint for initial load or when batch_id not available
         const params = new URLSearchParams()
-        if (orderId) params.append('order_id', orderId)
         params.append('manufacturer_id', userProfile.organization_id)
 
-        console.log('📡 [loadProgress] Fetching batch progress (legacy endpoint)...')
+        console.log('📡 [loadProgress] Fetching batch progress (legacy endpoint - initial load)...')
         const response = await fetch(`/api/manufacturer/batch-progress?${params.toString()}`)
         if (!response.ok) throw new Error('Failed to load progress')
 
