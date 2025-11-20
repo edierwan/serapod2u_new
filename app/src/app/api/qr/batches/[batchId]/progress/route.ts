@@ -39,11 +39,11 @@ import { NextRequest, NextResponse } from 'next/server'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { batchId: string } }
+  { params }: { params: Promise<{ batchId: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const { batchId } = params
+    const { batchId } = await params
 
     if (!batchId) {
       return NextResponse.json(

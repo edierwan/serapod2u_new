@@ -158,6 +158,7 @@ export async function POST(request: NextRequest) {
       individualCodes: qrBatch.individualCodes,
       totalMasterCodes: qrBatch.totalMasterCodes,
       totalUniqueCodes: qrBatch.totalUniqueCodes,
+      totalBaseUnits: qrBatch.totalBaseUnits,
       bufferPercent: qrBatch.bufferPercent,
       extraQrMaster: extraQrMaster
     })

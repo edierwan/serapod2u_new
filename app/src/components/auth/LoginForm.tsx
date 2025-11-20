@@ -96,8 +96,8 @@ export default function LoginForm() {
 
       if (!userProfile || (Array.isArray(userProfile) && userProfile.length === 0)) {
         console.warn('⚠️ No user profile found, waiting for trigger to create user record')
-        // Wait a moment for trigger to create the user record
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        // Wait briefly for trigger to create the user record
+        await new Promise(resolve => setTimeout(resolve, 500))
 
         // Retry profile lookup
         const { data: retryProfile, error: retryError } = (await supabase
@@ -134,28 +134,24 @@ export default function LoginForm() {
         // Don't fail login if this fails
       }
 
-      // Capture and store client IP address
-      try {
-        console.log('🌐 Capturing client IP address...')
-        const ipResponse = await fetch('/api/update-login-ip', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (ipResponse.ok) {
-          const ipData = await ipResponse.json()
-          const friendlyIp = ipData.displayIp || ipData.ip || 'Unknown'
-          console.log('🌐 IP captured:', friendlyIp)
-        } else {
-          const errorText = await ipResponse.text()
-          console.error('🌐 Failed to capture IP:', errorText)
+      // Capture and store client IP address (fire and forget - don't block login)
+      fetch('/api/update-login-ip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
         }
-      } catch (ipError) {
+      }).then(ipResponse => {
+        if (ipResponse.ok) {
+          return ipResponse.json().then(ipData => {
+            const friendlyIp = ipData.displayIp || ipData.ip || 'Unknown'
+            console.log('🌐 IP captured:', friendlyIp)
+          })
+        } else {
+          console.error('🌐 Failed to capture IP')
+        }
+      }).catch(ipError => {
         console.error('🌐 Exception capturing IP:', ipError)
-        // Don't fail login if IP capture fails
-      }
+      })
 
       // Successful login - force refresh and redirect to dashboard
       // This ensures server components fetch fresh data for the new user

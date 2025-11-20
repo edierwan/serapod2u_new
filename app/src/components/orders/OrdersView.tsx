@@ -64,10 +64,38 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
+  const [typeFilter, setTypeFilter] = useState<OrderType | 'all'>('all')
+  const [sellerFilter, setSellerFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
   const supabase = createClient()
   const { toast } = useToast()
+
+  // Extract unique sellers from orders
+  const uniqueSellers = orders.reduce((acc, order) => {
+    if (order.seller_org && !acc.find(s => s.id === order.seller_org.id)) {
+      acc.push(order.seller_org)
+    }
+    return acc
+  }, [] as Array<{ id: string; org_name: string }>)
+
+  // Filter orders based on all criteria
+  const filteredOrders = orders.filter(order => {
+    // Search filter
+    const matchesSearch = order.order_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.notes?.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    // Status filter
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter
+    
+    // Type filter
+    const matchesType = typeFilter === 'all' || order.order_type === typeFilter
+    
+    // Seller filter
+    const matchesSeller = !sellerFilter || order.seller_org_id === sellerFilter
+    
+    return matchesSearch && matchesStatus && matchesType && matchesSeller
+  })
 
   const handleTrackOrder = (orderId: string) => {
     // Store order ID and navigate to track view
@@ -703,56 +731,92 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       {/* Filters and View Toggle */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search orders by order number or notes..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+        <CardContent className="pt-6 space-y-4">
+          {/* Filter Row */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Order Type Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Order Type</label>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as OrderType | 'all')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="all">All Types</option>
+                <option value="H2M">H2M (HQ → Manufacturer)</option>
+                <option value="D2H">D2H (Distributor → HQ)</option>
+                <option value="S2D">S2D (Shop → Distributor)</option>
+              </select>
             </div>
-            
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
-              className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="submitted">Submitted</option>
-              <option value="approved">Approved</option>
-              <option value="closed">Closed</option>
-            </select>
+
+            {/* Manufacturer/Seller Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Seller/Manufacturer</label>
+              <select
+                value={sellerFilter}
+                onChange={(e) => setSellerFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">All Sellers</option>
+                {uniqueSellers.map(seller => (
+                  <option key={seller.id} value={seller.id}>
+                    {seller.org_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="approved">Approved</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
 
             {/* View Mode Toggle */}
-            <div className="flex border border-gray-300 rounded-md overflow-hidden">
-              <Button
-                variant={viewMode === 'cards' ? 'default' : 'ghost'}
-                size="sm"
-                className={`rounded-none ${viewMode === 'cards' ? 'bg-blue-600' : ''}`}
-                onClick={() => setViewMode('cards')}
-              >
-                <Grid3x3 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                className={`rounded-none ${viewMode === 'list' ? 'bg-blue-600' : ''}`}
-                onClick={() => setViewMode('list')}
-              >
-                <List className="w-4 h-4" />
-              </Button>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">View Mode</label>
+              <div className="flex border border-gray-300 rounded-md overflow-hidden">
+                <Button
+                  variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={`flex-1 rounded-none ${viewMode === 'cards' ? 'bg-blue-600' : ''}`}
+                  onClick={() => setViewMode('cards')}
+                >
+                  <Grid3x3 className="w-4 h-4 mr-2" />
+                  Cards
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={`flex-1 rounded-none ${viewMode === 'list' ? 'bg-blue-600' : ''}`}
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="w-4 h-4 mr-2" />
+                  List
+                </Button>
+              </div>
             </div>
+          </div>
 
-            <Button variant="outline" className="gap-2">
-              <Filter className="w-4 h-4" />
-              More Filters
-            </Button>
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search orders by order number or notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
           </div>
         </CardContent>
       </Card>
@@ -761,12 +825,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Recent Orders</h2>
-          {orders.length > 0 && (
-            <span className="text-sm text-gray-500">{orders.length} orders found</span>
+          {filteredOrders.length > 0 && (
+            <span className="text-sm text-gray-500">{filteredOrders.length} orders found</span>
           )}
         </div>
 
-        {orders.length === 0 ? (
+        {filteredOrders.length === 0 ? (
           <Card>
             <CardContent className="py-12">
               <div className="text-center">
@@ -792,7 +856,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         ) : viewMode === 'list' ? (
           /* LIST VIEW */
           <div className="space-y-3">
-            {orders.map((order) => {
+            {filteredOrders.map((order) => {
               const totalAmount = calculateOrderTotal(order)
               const itemCount = order.order_items?.length || 0
               const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
@@ -960,7 +1024,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         ) : (
           /* CARD VIEW */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orders.map((order) => {
+            {filteredOrders.map((order) => {
               const totalAmount = calculateOrderTotal(order)
               const itemCount = order.order_items?.length || 0
               const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { loadSession, processShipmentScan } from '../scan-for-shipment/route'
 
+// Performance optimization: Process codes in concurrent batches
+const CONCURRENT_BATCH_SIZE = 10 // Process 10 codes at a time
+const PROGRESS_UPDATE_INTERVAL = 5 // Send progress update every 5 codes
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -47,35 +51,79 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for (let index = 0; index < codes.length; index++) {
-            const code = codes[index]
+          // Process codes in concurrent batches for better performance
+          for (let batchStart = 0; batchStart < codes.length; batchStart += CONCURRENT_BATCH_SIZE) {
+            const batchEnd = Math.min(batchStart + CONCURRENT_BATCH_SIZE, codes.length)
+            const batchCodes = codes.slice(batchStart, batchEnd)
 
-            const { result, status } = await processShipmentScan({
-              supabase,
-              session,
-              code,
-              requestingUserId
+            // Process current batch concurrently
+            const batchPromises = batchCodes.map(async (code, batchIndex) => {
+              const globalIndex = batchStart + batchIndex
+              
+              try {
+                const { result, status } = await processShipmentScan({
+                  supabase,
+                  session,
+                  code,
+                  requestingUserId
+                })
+
+                return {
+                  index: globalIndex,
+                  code,
+                  result,
+                  status
+                }
+              } catch (error: any) {
+                console.error(`❌ Error processing code at index ${globalIndex}:`, error)
+                return {
+                  index: globalIndex,
+                  code,
+                  result: {
+                    code,
+                    normalized_code: code,
+                    code_type: 'master' as const,
+                    outcome: 'error' as const,
+                    message: error?.message || 'Processing failed'
+                  },
+                  status: 500
+                }
+              }
             })
 
-            if (result.outcome === 'shipped') {
-              successCount++
-            } else if (result.outcome === 'duplicate') {
-              duplicateCount++
-            } else {
-              errorCount++
-            }
+            // Wait for current batch to complete
+            const batchResults = await Promise.all(batchPromises)
 
-            const payload = {
-              type: 'progress' as const,
-              index: index + 1,
-              total,
-              status,
-              result
-            }
+            // Process results and send progress updates
+            for (const { index, code, result, status } of batchResults) {
+              if (result.outcome === 'shipped') {
+                successCount++
+              } else if (result.outcome === 'duplicate') {
+                duplicateCount++
+              } else {
+                errorCount++
+              }
 
-            controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'))
+              // Send progress update (every N codes or last code in batch)
+              const shouldSendUpdate = 
+                (index + 1) % PROGRESS_UPDATE_INTERVAL === 0 || 
+                index === batchResults[batchResults.length - 1].index
+
+              if (shouldSendUpdate) {
+                const payload = {
+                  type: 'progress' as const,
+                  index: index + 1,
+                  total,
+                  status,
+                  result
+                }
+
+                controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'))
+              }
+            }
           }
 
+          // Send final summary
           const finalPayload = {
             type: 'complete' as const,
             summary: {

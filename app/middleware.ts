@@ -137,19 +137,15 @@ export async function middleware(request: NextRequest) {
     }
 
     // Update last_login_at when user first accesses any dashboard page
+    // Fire and forget - don't await to avoid blocking middleware
     if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
-      try {
-        console.log('🔍 Middleware - Updating last_login for user:', user.id)
-        // Use RPC function to bypass RLS
-        const { error: updateError } = await supabase.rpc('update_last_login', { user_id: user.id })
+      supabase.rpc('update_last_login', { user_id: user.id }).then(({ error: updateError }) => {
         if (updateError) {
           console.error('🔍 Failed to update last_login_at:', updateError)
-        } else {
-          console.log('🔍 Successfully updated last_login_at for user:', user.id)
         }
-      } catch (error) {
+      }).catch((error) => {
         console.error('🔍 Exception updating last_login_at:', error)
-      }
+      })
     }
 
     // Handle protected routes

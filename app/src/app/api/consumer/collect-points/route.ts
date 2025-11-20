@@ -163,7 +163,11 @@ export async function POST(request: NextRequest) {
       console.error('QR code not found:', qrError)
       console.error('Tried codes:', { full: qr_code, base: baseCode })
       return NextResponse.json(
-        { success: false, error: 'QR code not found' },
+        { 
+          success: false, 
+          error: 'This QR code is not yet active in the system. This is a preview/demo code.',
+          preview: true
+        },
         { status: 404 }
       )
     }
@@ -248,12 +252,19 @@ export async function POST(request: NextRequest) {
     // 4. Check if points already collected for this QR code
     const { data: existingCollection, error: checkError } = await supabaseAdmin
       .from('consumer_qr_scans')
-      .select('id, points_amount')
+      .select('id, points_amount, shop_id, points_collected_at')
       .eq('qr_code_id', qrCodeData.id)
       .eq('collected_points', true)
       .maybeSingle()
 
     if (existingCollection) {
+      console.log('⚠️ Points already collected:', {
+        qr_code: qrCodeData.code,
+        collected_at: existingCollection.points_collected_at,
+        shop_id: existingCollection.shop_id,
+        points: existingCollection.points_amount
+      })
+      
       return NextResponse.json({
         success: true,
         already_collected: true,
@@ -261,6 +272,8 @@ export async function POST(request: NextRequest) {
         message: 'Points already collected for this QR code'
       })
     }
+
+    console.log('✅ No existing collection found, proceeding to award points')
 
     // 5. Get points configuration from organization's point rules
     const { data: pointRule, error: ruleError } = await supabaseAdmin
@@ -289,6 +302,27 @@ export async function POST(request: NextRequest) {
 
     if (scanError) {
       console.error('Error recording point collection:', scanError)
+      
+      // Check if it's a duplicate key violation (unique constraint)
+      if (scanError.code === '23505') {
+        console.log('⚠️ Duplicate collection attempt detected by database constraint')
+        
+        // Fetch the existing collection to return proper response
+        const { data: existing } = await supabaseAdmin
+          .from('consumer_qr_scans')
+          .select('points_amount')
+          .eq('qr_code_id', qrCodeData.id)
+          .eq('collected_points', true)
+          .single()
+        
+        return NextResponse.json({
+          success: true,
+          already_collected: true,
+          points_earned: existing?.points_amount || 0,
+          message: 'Points already collected for this QR code'
+        })
+      }
+      
       return NextResponse.json(
         { success: false, error: 'Failed to record point collection: ' + scanError.message },
         { status: 500 }

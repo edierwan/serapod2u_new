@@ -262,8 +262,9 @@ describe('QR Batch Case Number Logic', () => {
         individualCodes: batch.individualCodes,
         totalMasterCodes: batch.totalMasterCodes,
         totalUniqueCodes: batch.totalUniqueCodes,
+        totalBaseUnits: batch.totalBaseUnits,
         bufferPercent: params.bufferPercent,
-        extraQrMaster: 10
+        extraQrMaster: 0
       }
 
       const excelPath = await generateQRExcel(excelData)
@@ -345,6 +346,7 @@ describe('QR Batch Case Number Logic', () => {
         individualCodes: batch.individualCodes,
         totalMasterCodes: batch.totalMasterCodes,
         totalUniqueCodes: batch.totalUniqueCodes,
+        totalBaseUnits: batch.totalBaseUnits,
         bufferPercent: params.bufferPercent,
         extraQrMaster: 10
       }

@@ -62,6 +62,9 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState('')
+  const [orgFilter, setOrgFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [roles, setRoles] = useState<Role[]>([])
@@ -411,10 +414,26 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
   }
 
   const filteredUsers = users
-    .filter(user => 
-      user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    .filter(user => {
+      // Search filter
+      const matchesSearch = user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchQuery.toLowerCase())
+      
+      // Role filter
+      const matchesRole = !roleFilter || user.role_code === roleFilter
+      
+      // Organization filter
+      const matchesOrg = !orgFilter || user.organization_id === orgFilter
+      
+      // Status filter
+      const matchesStatus = !statusFilter || 
+        (statusFilter === 'active' && user.is_active) ||
+        (statusFilter === 'inactive' && !user.is_active) ||
+        (statusFilter === 'verified' && user.is_verified) ||
+        (statusFilter === 'unverified' && !user.is_verified)
+      
+      return matchesSearch && matchesRole && matchesOrg && matchesStatus
+    })
     .sort((a, b) => {
       let aVal: any = a[sortField]
       let bVal: any = b[sortField]
@@ -566,9 +585,63 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         </Card>
       </div>
 
-      {/* Search */}
+      {/* Filters and Search */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
+          {/* Filters Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Role Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Role</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setRoleFilter(e.target.value)}
+                value={roleFilter}
+              >
+                <option value="">All Roles</option>
+                {roles.map(role => (
+                  <option key={role.role_code} value={role.role_code}>
+                    {role.role_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Organization Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Organization</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setOrgFilter(e.target.value)}
+                value={orgFilter}
+              >
+                <option value="">All Organizations</option>
+                {organizations.map(org => (
+                  <option key={org.id} value={org.id}>
+                    {org.org_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Status</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setStatusFilter(e.target.value)}
+                value={statusFilter}
+              >
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="verified">Verified</option>
+                <option value="unverified">Unverified</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Search Box */}
           <div className="flex items-center gap-2">
             <Search className="w-5 h-5 text-gray-400" />
             <Input

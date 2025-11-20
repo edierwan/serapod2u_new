@@ -10,19 +10,9 @@ export const revalidate = 0
 export default async function LoginPage() {
   const supabase = await createClient()
   
-  // Check if user is already logged in
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  
-  // If there's a token error, ignore it and show login page
-  // This handles the refresh token error gracefully
-  if (authError) {
-    console.log('Auth error on login page (expected if session expired):', authError.message)
-    // Don't redirect, just show login page
-  } else if (user) {
-    // User is authenticated, redirect to dashboard
-    // Note: redirect() throws NEXT_REDIRECT internally - this is expected behavior
-    redirect('/dashboard')
-  }
+  // Note: Don't check auth status here - middleware already handles redirecting
+  // authenticated users to /dashboard. Checking here causes redirect loops.
+  // Just render the login form directly.
 
   // Load branding settings from HQ organization
   let branding = {

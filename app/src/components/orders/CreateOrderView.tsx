@@ -1128,11 +1128,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       console.log(`📝 Generated order number: ${generatedOrderNo} (sequence ${sequenceNumber}, reusing gaps if any)`)
 
       // Fetch seller organization's payment terms
-      const { data: sellerOrgData, error: sellerOrgError } = await supabase
-        .from('organizations')
+      const sellerOrgResponse = await ((supabase
+        .from('organizations') as any)
         .select('*, payment_terms(*)')  // Join with payment_terms table
         .eq('id', sellerOrg.id)
-        .single()
+        .single())
+
+      const sellerOrgData = sellerOrgResponse.data
+      const sellerOrgError = sellerOrgResponse.error
 
       if (sellerOrgError) {
         console.error('Error fetching seller payment terms:', sellerOrgError)
