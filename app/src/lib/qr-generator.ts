@@ -309,16 +309,10 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
     }
   }
 
-  // Then, generate buffer codes - ASSIGN TO CASES proportionally
-  // Each case gets bufferPercent of its capacity as buffer codes
-  // Example: Case with 150 codes → 15 buffer codes (10%)
+  // Then, generate buffer codes - NOT assigned to any case
+  // Buffer codes are spare QR codes for damaged/lost codes, not part of production cases
   let remainingBuffer = bufferQuantity
   const totalQty = totalBaseUnits
-  
-  // Calculate buffer codes per case (proportional to case size)
-  const bufferPerCase = Math.floor(bufferQuantity / totalMasterCodes)
-  let currentBufferCase = 1  // Start assigning buffers to Case 1
-  let buffersInCurrentCase = 0
 
   for (const item of orderItems) {
     // Build variant_key: PROD-{product_code}-{variant_code}-{manufacturer_code}
@@ -331,11 +325,6 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
     const actualItemBuffer = Math.min(itemBufferQty, remainingBuffer)
 
     for (let i = 0; i < actualItemBuffer; i++) {
-      // Move to next case if current case has enough buffers
-      if (buffersInCurrentCase >= bufferPerCase && currentBufferCase < totalMasterCodes) {
-        currentBufferCase++
-        buffersInCurrentCase = 0
-      }
       const secureCode = generateProductQRCode(
         item.product_code,
         item.variant_code,
@@ -355,7 +344,7 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
         variant_code: item.variant_code,
         product_name: item.product_name,
         variant_name: item.variant_name,
-        case_number: currentBufferCase, // ASSIGN buffer to specific case
+        case_number: 0, // Buffer codes not assigned to any case (0 will be converted to null in Excel)
         is_buffer: true,  // Mark as buffer code
         variant_key: variantKey,
         units_per_case: item.units_per_case || unitsPerCase
@@ -363,11 +352,10 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
 
       globalSequence++
       remainingBuffer--
-      buffersInCurrentCase++
     }
   }
 
-  // Distribute any remaining buffer codes evenly across cases
+  // Distribute any remaining buffer codes using first item's details
   if (remainingBuffer > 0 && orderItems.length > 0) {
     const firstItem = orderItems[0]
     const variantKey = manufacturerCode
@@ -375,16 +363,6 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
       : `PROD-${firstItem.product_code}-${firstItem.variant_code}`
 
     for (let i = 0; i < remainingBuffer; i++) {
-      // Cycle through cases for remaining buffers
-      if (buffersInCurrentCase >= bufferPerCase && currentBufferCase < totalMasterCodes) {
-        currentBufferCase++
-        buffersInCurrentCase = 0
-      }
-      // If we've filled all cases, cycle back to Case 1
-      if (currentBufferCase > totalMasterCodes) {
-        currentBufferCase = 1
-      }
-      
       const secureCode = generateProductQRCode(
         firstItem.product_code,
         firstItem.variant_code,
@@ -404,14 +382,13 @@ export function generateQRBatch(params: QRCodeGenerationParams): QRBatchResult {
         variant_code: firstItem.variant_code,
         product_name: firstItem.product_name,
         variant_name: firstItem.variant_name,
-        case_number: currentBufferCase, // ASSIGN to specific case
+        case_number: 0, // Buffer codes not assigned to any case (0 will be converted to null in Excel)
         is_buffer: true,  // Mark as buffer code
         variant_key: variantKey,
         units_per_case: firstItem.units_per_case || unitsPerCase
       })
 
       globalSequence++
-      buffersInCurrentCase++
     }
   }
 
