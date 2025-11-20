@@ -930,30 +930,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         </CardContent>
       </Card>
 
-      {/* Export Button Row - Removed as it's now in card header */}
-      <Card className="hidden">
 
-          <div className="flex gap-2 mt-4">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setSearchQuery('')
-                setMovementTypeFilter('all')
-                setDateFrom('')
-                setDateTo('')
-                setCurrentPage(1)
-              }}
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Clear Filters
-            </Button>
-            <Button variant="outline" onClick={exportToCSV} disabled={movements.length === 0}>
-              <Download className="w-4 h-4 mr-2" />
-              Export CSV
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Movements Table */}
       <Card>
