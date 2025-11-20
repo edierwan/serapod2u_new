@@ -53,8 +53,11 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [searchQuery, setSearchQuery] = useState('')
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [productFilter, setProductFilter] = useState('all')
+  const [valueRangeFilter, setValueRangeFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [locations, setLocations] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   
@@ -72,12 +75,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     if (isReady) {
       fetchInventory()
       fetchLocations()
+      fetchProducts()
     }
   }, [isReady])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, locationFilter, statusFilter])
+  }, [searchQuery, locationFilter, statusFilter, productFilter, valueRangeFilter])
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -104,8 +108,22 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         matchesStatus = item.quantity_available > 0
       }
 
+      const matchesProduct = productFilter === 'all' || item.product_name === productFilter
+
+      let matchesValueRange = true
+      const totalValue = item.total_value ?? 0
+      if (valueRangeFilter === 'under_1000') {
+        matchesValueRange = totalValue < 1000
+      } else if (valueRangeFilter === '1000_5000') {
+        matchesValueRange = totalValue >= 1000 && totalValue < 5000
+      } else if (valueRangeFilter === '5000_10000') {
+        matchesValueRange = totalValue >= 5000 && totalValue < 10000
+      } else if (valueRangeFilter === 'over_10000') {
+        matchesValueRange = totalValue >= 10000
+      }
+
       if (!normalizedSearch) {
-        return matchesLocation && matchesStatus
+        return matchesLocation && matchesStatus && matchesProduct && matchesValueRange
       }
 
       const haystack = [
@@ -121,9 +139,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       const matchesSearch = haystack.some(value => value.includes(normalizedSearch))
 
-      return matchesLocation && matchesStatus && matchesSearch
+      return matchesLocation && matchesStatus && matchesProduct && matchesValueRange && matchesSearch
     })
-  }, [inventory, searchQuery, locationFilter, statusFilter])
+  }, [inventory, searchQuery, locationFilter, statusFilter, productFilter, valueRangeFilter])
 
   const sortedInventory = useMemo(() => {
     if (!sortColumn) {
@@ -570,6 +588,23 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     }
   }
 
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('product_name')
+        .eq('is_active', true)
+        .order('product_name')
+
+      if (error) throw error
+      // Get unique product names
+      const uniqueProducts = Array.from(new Set((data || []).map(p => p.product_name)))
+      setProducts(uniqueProducts.map(name => ({ product_name: name })))
+    } catch (error) {
+      console.error('Error fetching products:', error)
+    }
+  }
+
   const formatCurrency = (value?: number | null) => {
     const numeric = value !== null && value !== undefined && !Number.isNaN(value) ? value : 0
     return numeric.toLocaleString(undefined, {
@@ -681,44 +716,113 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       {/* Filters */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <Input
-                  placeholder="Search by product name or variant..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Input
+                placeholder="Search by product name, variant code, or location..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Filter Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Location</label>
+                <Select value={locationFilter} onValueChange={setLocationFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Locations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Locations</SelectItem>
+                    {locations.map((location) => (
+                      <SelectItem key={location.id} value={location.id}>
+                        {location.org_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Product</label>
+                <Select value={productFilter} onValueChange={setProductFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Products" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Products</SelectItem>
+                    {products.map((product, idx) => (
+                      <SelectItem key={idx} value={product.product_name}>
+                        {product.product_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Stock Status</label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="in_stock">In Stock</SelectItem>
+                    <SelectItem value="low_stock">Low Stock</SelectItem>
+                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Value Range</label>
+                <Select value={valueRangeFilter} onValueChange={setValueRangeFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Values" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Values</SelectItem>
+                    <SelectItem value="under_1000">Under RM 1,000</SelectItem>
+                    <SelectItem value="1000_5000">RM 1,000 - 5,000</SelectItem>
+                    <SelectItem value="5000_10000">RM 5,000 - 10,000</SelectItem>
+                    <SelectItem value="over_10000">Over RM 10,000</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Location" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                {locations.map((location) => (
-                  <SelectItem key={location.id} value={location.id}>
-                    {location.org_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="in_stock">In Stock</SelectItem>
-                <SelectItem value="low_stock">Low Stock</SelectItem>
-                <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Active Filters & Clear Button */}
+            {(searchQuery || locationFilter !== 'all' || statusFilter !== 'all' || productFilter !== 'all' || valueRangeFilter !== 'all') && (
+              <div className="flex items-center justify-between pt-2 border-t">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-gray-600">Active filters:</span>
+                  {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
+                  {locationFilter !== 'all' && <Badge variant="secondary">Location</Badge>}
+                  {productFilter !== 'all' && <Badge variant="secondary">Product</Badge>}
+                  {statusFilter !== 'all' && <Badge variant="secondary">Status</Badge>}
+                  {valueRangeFilter !== 'all' && <Badge variant="secondary">Value Range</Badge>}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setLocationFilter('all')
+                    setProductFilter('all')
+                    setStatusFilter('all')
+                    setValueRangeFilter('all')
+                  }}
+                  className="text-gray-600 hover:text-gray-900"
+                >
+                  Clear All Filters
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -75,11 +75,17 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [movementTypeFilter, setMovementTypeFilter] = useState('all')
+  const [referenceTypeFilter, setReferenceTypeFilter] = useState('all')
+  const [productFilter, setProductFilter] = useState('all')
+  const [locationFilter, setLocationFilter] = useState('all')
+  const [quantityRangeFilter, setQuantityRangeFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<string | null>('created_at')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [products, setProducts] = useState<any[]>([])
+  const [locations, setLocations] = useState<any[]>([])
   
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 20
@@ -122,7 +128,47 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       loadMovements()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, searchQuery, movementTypeFilter, dateFrom, dateTo, currentPage])
+  }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, locationFilter, quantityRangeFilter, dateFrom, dateTo, currentPage])
+
+  useEffect(() => {
+    if (isReady) {
+      fetchProducts()
+      fetchLocations()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady])
+
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('product_name')
+        .eq('is_active', true)
+        .order('product_name')
+
+      if (error) throw error
+      const uniqueProducts = Array.from(new Set((data || []).map(p => p.product_name)))
+      setProducts(uniqueProducts.map(name => ({ product_name: name })))
+    } catch (error) {
+      console.error('Error fetching products:', error)
+    }
+  }
+
+  const fetchLocations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id, org_name, org_code')
+        .in('org_type_code', ['WH', 'HQ'])
+        .eq('is_active', true)
+        .order('org_name')
+
+      if (error) throw error
+      setLocations(data || [])
+    } catch (error) {
+      console.error('Error fetching locations:', error)
+    }
+  }
 
   const loadMovements = async () => {
     try {
@@ -699,79 +745,193 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Filters
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Filters & Search
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToCSV}
+              className="gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Search */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Product, variant, or reference..."
-                  className="pl-10"
-                />
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by product, variant, reference number, or reason..."
+                className="pl-10"
+              />
+            </div>
+
+            {/* Filter Grid Row 1 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Movement Type</label>
+                <Select value={movementTypeFilter} onValueChange={setMovementTypeFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="addition">Addition</SelectItem>
+                    <SelectItem value="adjustment">Adjustment</SelectItem>
+                    <SelectItem value="transfer_out">Transfer Out</SelectItem>
+                    <SelectItem value="transfer_in">Transfer In</SelectItem>
+                    <SelectItem value="allocation">Allocation</SelectItem>
+                    <SelectItem value="deallocation">Deallocation</SelectItem>
+                    <SelectItem value="order_fulfillment">Order Fulfillment</SelectItem>
+                    <SelectItem value="order_cancelled">Order Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Reference Type</label>
+                <Select value={referenceTypeFilter} onValueChange={setReferenceTypeFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All References" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All References</SelectItem>
+                    <SelectItem value="order">Order</SelectItem>
+                    <SelectItem value="transfer">Transfer</SelectItem>
+                    <SelectItem value="adjustment">Adjustment</SelectItem>
+                    <SelectItem value="manual">Manual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Product</label>
+                <Select value={productFilter} onValueChange={setProductFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Products" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Products</SelectItem>
+                    {products.map((product, idx) => (
+                      <SelectItem key={idx} value={product.product_name}>
+                        {product.product_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Location</label>
+                <Select value={locationFilter} onValueChange={setLocationFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Locations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Locations</SelectItem>
+                    {locations.map((location) => (
+                      <SelectItem key={location.id} value={location.id}>
+                        {location.org_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {/* Movement Type */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Movement Type
-              </label>
-              <Select value={movementTypeFilter} onValueChange={setMovementTypeFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="addition">Addition</SelectItem>
-                  <SelectItem value="adjustment">Adjustment</SelectItem>
-                  <SelectItem value="transfer_out">Transfer Out</SelectItem>
-                  <SelectItem value="transfer_in">Transfer In</SelectItem>
-                  <SelectItem value="allocation">Allocation</SelectItem>
-                  <SelectItem value="deallocation">Deallocation</SelectItem>
-                  <SelectItem value="order_fulfillment">Order Fulfillment</SelectItem>
-                  <SelectItem value="order_cancelled">Order Cancelled</SelectItem>
-                  <SelectItem value="manual_in">manual_in</SelectItem>
-                  <SelectItem value="manual_out">manual_out</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Filter Grid Row 2 - Date Range & Quantity */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                  <Calendar className="w-3 h-3 inline mr-1" />
+                  Date From
+                </label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                  <Calendar className="w-3 h-3 inline mr-1" />
+                  Date To
+                </label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Quantity Range</label>
+                <Select value={quantityRangeFilter} onValueChange={setQuantityRangeFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Quantities" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Quantities</SelectItem>
+                    <SelectItem value="small">1 - 50 units</SelectItem>
+                    <SelectItem value="medium">51 - 200 units</SelectItem>
+                    <SelectItem value="large">201 - 500 units</SelectItem>
+                    <SelectItem value="bulk">Over 500 units</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setMovementTypeFilter('all')
+                    setReferenceTypeFilter('all')
+                    setProductFilter('all')
+                    setLocationFilter('all')
+                    setQuantityRangeFilter('all')
+                    setDateFrom('')
+                    setDateTo('')
+                    setCurrentPage(1)
+                  }}
+                  className="w-full"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Clear All Filters
+                </Button>
+              </div>
             </div>
 
-            {/* Date From */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Date From
-              </label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-
-            {/* Date To */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Date To
-              </label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
+            {/* Active Filters Display */}
+            {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || dateFrom || dateTo) && (
+              <div className="flex items-center gap-2 flex-wrap pt-2 border-t">
+                <span className="text-sm text-gray-600 font-medium">Active:</span>
+                {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
+                {movementTypeFilter !== 'all' && <Badge variant="secondary">Type</Badge>}
+                {referenceTypeFilter !== 'all' && <Badge variant="secondary">Reference</Badge>}
+                {productFilter !== 'all' && <Badge variant="secondary">Product</Badge>}
+                {locationFilter !== 'all' && <Badge variant="secondary">Location</Badge>}
+                {quantityRangeFilter !== 'all' && <Badge variant="secondary">Quantity Range</Badge>}
+                {dateFrom && <Badge variant="secondary">From: {dateFrom}</Badge>}
+                {dateTo && <Badge variant="secondary">To: {dateTo}</Badge>}
+              </div>
+            )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Export Button Row - Removed as it's now in card header */}
+      <Card className="hidden">
 
           <div className="flex gap-2 mt-4">
             <Button 
