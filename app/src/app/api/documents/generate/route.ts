@@ -83,12 +83,25 @@ export async function GET(request: NextRequest) {
     if (documentId && buffer) {
       try {
         const { createClient } = await import('@/lib/supabase/server')
+        const { createClient: createServiceClient } = await import('@supabase/supabase-js')
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
 
-        // Upload PDF to storage
+        // Use service role client for storage operations (bypasses RLS)
+        const serviceSupabase = createServiceClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          {
+            auth: {
+              autoRefreshToken: false,
+              persistSession: false
+            }
+          }
+        )
+
+        // Upload PDF to storage using service role
         const pdfFileName = `generated-pdf-${documentId}-${Date.now()}.pdf`
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await serviceSupabase.storage
           .from('order-documents')
           .upload(pdfFileName, buffer, {
             contentType: 'application/pdf',
@@ -96,21 +109,30 @@ export async function GET(request: NextRequest) {
             upsert: false
           })
 
-        if (!uploadError && uploadData) {
-          // Save reference in document_files
-          await supabase.from('document_files').insert({
-            document_id: documentId,
-            file_url: uploadData.path,
-            file_name: filename,
-            file_size: buffer.length,
-            mime_type: 'application/pdf',
-            company_id: null,
-            uploaded_by: user?.id
-          } as any)
-          console.log('📄 PDF cached successfully:', filename)
+        if (uploadError) {
+          console.error('Error uploading generated PDF to storage:', uploadError)
+        } else if (uploadData) {
+          // Save reference in document_files using service role (bypasses RLS)
+          const { error: insertError } = await serviceSupabase
+            .from('document_files')
+            .insert({
+              document_id: documentId,
+              file_url: uploadData.path,
+              file_name: filename,
+              file_size: buffer.length,
+              mime_type: 'application/pdf',
+              company_id: null,
+              uploaded_by: user?.id
+            })
+          
+          if (insertError) {
+            console.error('Error saving PDF cache reference:', insertError)
+          } else {
+            console.log('📄 PDF cached successfully:', filename)
+          }
         }
       } catch (cacheErr) {
-        console.warn('Failed to cache PDF:', cacheErr)
+        console.error('Failed to cache PDF:', cacheErr)
         // Don't fail the request if caching fails
       }
     }
