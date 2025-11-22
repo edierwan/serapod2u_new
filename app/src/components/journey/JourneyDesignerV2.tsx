@@ -227,18 +227,87 @@ export default function JourneyDesignerV2({
         checkShipmentStatus()
     }, [order.id, order.order_no, supabase])
 
+    // Compress image for mobile optimization
+    const compressImage = (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.readAsDataURL(file)
+            reader.onload = (event) => {
+                const img = new window.Image()
+                img.src = event.target?.result as string
+                img.onload = () => {
+                    const canvas = document.createElement('canvas')
+                    const ctx = canvas.getContext('2d')
+                    if (!ctx) {
+                        reject(new Error('Failed to get canvas context'))
+                        return
+                    }
+
+                    // Target size: 400x400px for mobile display
+                    const MAX_WIDTH = 400
+                    const MAX_HEIGHT = 400
+                    let width = img.width
+                    let height = img.height
+
+                    // Calculate aspect ratio
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height = Math.round((height * MAX_WIDTH) / width)
+                            width = MAX_WIDTH
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width = Math.round((width * MAX_HEIGHT) / height)
+                            height = MAX_HEIGHT
+                        }
+                    }
+
+                    canvas.width = width
+                    canvas.height = height
+
+                    // Draw image on canvas with high quality
+                    ctx.imageSmoothingEnabled = true
+                    ctx.imageSmoothingQuality = 'high'
+                    ctx.drawImage(img, 0, 0, width, height)
+
+                    // Convert to blob with compression (JPEG 70% quality for ~5KB)
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                const compressedFile = new File([blob], file.name, {
+                                    type: 'image/jpeg',
+                                    lastModified: Date.now(),
+                                })
+                                resolve(compressedFile)
+                            } else {
+                                reject(new Error('Failed to compress image'))
+                            }
+                        },
+                        'image/jpeg',
+                        0.7
+                    )
+                }
+                img.onerror = () => reject(new Error('Failed to load image'))
+            }
+            reader.onerror = () => reject(new Error('Failed to read file'))
+        })
+    }
+
     const handleImageUpload = async (file: File) => {
         try {
             setUploadingImage(true)
 
-            const fileExt = file.name.split('.').pop()
+            // Compress image before upload
+            const compressedFile = await compressImage(file)
+
+            const fileExt = 'jpg' // Always use jpg after compression
             const fileName = `journey-${order.id}-${Date.now()}.${fileExt}`
             const filePath = `journey-images/${fileName}`
 
-            // Upload to Supabase storage
+            // Upload compressed image to Supabase storage
             const { error: uploadError } = await supabase.storage
                 .from('product-images')
-                .upload(filePath, file, {
+                .upload(filePath, compressedFile, {
                     cacheControl: '3600',
                     upsert: true
                 })
@@ -255,7 +324,7 @@ export default function JourneyDesignerV2({
 
             toast({
                 title: "Image uploaded",
-                description: "Journey image has been uploaded successfully",
+                description: "Journey image has been compressed and uploaded successfully (~5KB)",
             })
         } catch (error: any) {
             console.error('[Journey] Error uploading image:', error)
@@ -800,6 +869,7 @@ export default function JourneyDesignerV2({
                                                     >
                                                         {uploadingImage ? 'Uploading...' : 'Upload Image from Device'}
                                                     </Button>
+                                                    <p className="text-xs text-gray-500">Auto-compresses to ~5KB. Recommended: 400x400px for mobile display</p>
                                                 </div>
 
                                                 {/* Manual URL Input */}

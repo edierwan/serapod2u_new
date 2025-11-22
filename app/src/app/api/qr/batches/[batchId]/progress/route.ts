@@ -218,14 +218,14 @@ export async function GET(
       )
     }
 
-    // Packed unique codes (status = 'packed' only for simplicity)
+    // Packed unique codes (includes all packed statuses)
     // Index used: idx_qr_codes_batch_status_buffer (batch_id, status, is_buffer)
-    // NOTE: Using only 'packed' status instead of multiple statuses for index optimization
+    // NOTE: Must include all statuses beyond 'packed' to count codes that have moved to warehouse/distributor
     const { count: packedUniqueCodes, error: packedUniqueError } = await supabase
       .from('qr_codes')
       .select('*', { count: 'exact', head: true })
       .eq('batch_id', batchId)
-      .eq('status', 'packed')
+      .in('status', ['packed', 'buffer_used', 'ready_to_ship', 'received_warehouse', 'shipped_distributor', 'opened'])
       .eq('is_buffer', false)
 
     if (packedUniqueError) {

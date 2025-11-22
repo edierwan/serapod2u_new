@@ -9,6 +9,69 @@ import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { X, Loader2, Upload, Image as ImageIcon } from 'lucide-react'
 
+// Image compression utility for variant images
+// Variant images are small display images, compress to ~5KB
+const compressImage = (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        
+        // Variant image dimensions - small size for display
+        const MAX_WIDTH = 400
+        const MAX_HEIGHT = 400
+        
+        // Calculate new dimensions while maintaining aspect ratio
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width)
+            width = MAX_WIDTH
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width = Math.round((width * MAX_HEIGHT) / height)
+            height = MAX_HEIGHT
+          }
+        }
+        
+        canvas.width = width
+        canvas.height = height
+        
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+        
+        // Convert to JPEG with compression (quality 0.7 = 70%)
+        // This targets ~5KB file size for variant images
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              // Create a new File object with compressed blob
+              const compressedFile = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              })
+              console.log(`🖼️ Variant image compressed: ${(file.size / 1024).toFixed(2)}KB → ${(compressedFile.size / 1024).toFixed(2)}KB`)
+              resolve(compressedFile)
+            } else {
+              reject(new Error('Canvas to Blob conversion failed'))
+            }
+          },
+          'image/jpeg',
+          0.7 // Compression quality for ~5KB target
+        )
+      }
+      img.onerror = () => reject(new Error('Image loading failed'))
+    }
+    reader.onerror = () => reject(new Error('File reading failed'))
+  })
+}
+
 interface Product {
   id: string
   product_name: string
@@ -176,7 +239,7 @@ export default function VariantDialog({
     }
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       // Validate file type
@@ -194,21 +257,30 @@ export default function VariantDialog({
         return
       }
 
-      // Validate file size (max 5MB)
+      // Validate file size (max 5MB before compression)
       if (file.size > 5 * 1024 * 1024) {
         setErrors(prev => ({ ...prev, image: 'Image size must be less than 5MB' }))
         return
       }
 
-      setImageFile(file)
-      setErrors(prev => ({ ...prev, image: '' }))
+      try {
+        // Always compress variant images to optimize size (target ~5KB)
+        console.log('🖼️ Compressing variant image...')
+        const compressedFile = await compressImage(file)
+        
+        setImageFile(compressedFile)
+        setErrors(prev => ({ ...prev, image: '' }))
 
-      // Create preview
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
+        // Create preview
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setImagePreview(reader.result as string)
+        }
+        reader.readAsDataURL(compressedFile)
+      } catch (error) {
+        console.error('Image compression failed:', error)
+        setErrors(prev => ({ ...prev, image: 'Image compression failed. Please try a different image.' }))
       }
-      reader.readAsDataURL(file)
     }
   }
 
@@ -295,7 +367,7 @@ export default function VariantDialog({
                   className="hidden"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  PNG, JPG, GIF up to 5MB. Recommended: 400x400px
+                  PNG, JPG, GIF up to 5MB. Auto-compresses to ~5KB. Recommended: 400x400px
                 </p>
                 {errors.image && <p className="text-xs text-red-500 mt-1">{errors.image}</p>}
               </div>

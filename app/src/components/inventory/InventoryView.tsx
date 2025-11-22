@@ -18,14 +18,17 @@ import {
   BarChart3,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Settings
 } from 'lucide-react'
+import StockSettingsPanel from './StockSettingsPanel'
 
 interface InventoryItem {
   id: string
   variant_id?: string | null
   variant_code?: string | null
   variant_name?: string | null
+  variant_image_url?: string | null
   product_name?: string | null
   product_code?: string | null
   organization_id?: string | null
@@ -36,6 +39,9 @@ interface InventoryItem {
   quantity_available: number
   reorder_point: number
   reorder_quantity: number
+  max_stock_level?: number | null
+  safety_stock?: number | null
+  lead_time_days?: number | null
   unit_cost: number | null
   total_value: number | null
   manual_balance_qty?: number | null
@@ -62,6 +68,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [variants, setVariants] = useState<any[]>([])
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 15
@@ -229,9 +237,15 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       let source: 'view' | 'fallback' = 'view'
       let data: any[] | null = null
 
-      const { data: viewData, error: viewError } = await supabase
-        .from('vw_inventory_on_hand')
+      let query = supabase
+        .from('vw_inventory_on_hand' as any)
         .select('*')
+      
+      if (locationFilter && locationFilter !== 'all') {
+        query = query.eq('organization_id', locationFilter)
+      }
+
+      const { data: viewData, error: viewError } = await query
 
       if (viewError) {
         const missingView = (() => {
@@ -250,7 +264,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         console.warn('vw_inventory_on_hand unavailable, using product_inventory fallback', viewError)
         source = 'fallback'
 
-        const { data: fallbackData, error: fallbackError } = await supabase
+        let fallbackQuery = supabase
           .from('product_inventory')
           .select(`
             id,
@@ -261,6 +275,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             quantity_available,
             reorder_point,
             reorder_quantity,
+            max_stock_level,
+            safety_stock,
+            lead_time_days,
             average_cost,
             total_value,
             warehouse_location,
@@ -281,9 +298,21 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             )
           `)
           .eq('is_active', true)
+        
+        if (locationFilter && locationFilter !== 'all') {
+          fallbackQuery = fallbackQuery.eq('organization_id', locationFilter)
+        }
+
+        const { data: fallbackData, error: fallbackError } = await fallbackQuery
 
         if (fallbackError) {
-          console.error('Fallback inventory query failed:', fallbackError)
+          console.error('Fallback inventory query failed:', {
+            error: fallbackError,
+            message: fallbackError?.message,
+            details: fallbackError?.details,
+            hint: fallbackError?.hint,
+            code: fallbackError?.code
+          })
           throw fallbackError
         }
 
@@ -301,6 +330,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       }
 
       const variantBaseCostMap = new Map<string, number>()
+      const variantImageMap = new Map<string, string>()
       const collectedVariantIds = Array.from(
         new Set(
           (data || [])
@@ -318,15 +348,20 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       if (collectedVariantIds.length > 0) {
         const { data: variantCostRows, error: variantCostError } = await supabase
           .from('product_variants')
-          .select('id, base_cost')
+          .select('id, base_cost, image_url')
           .in('id', collectedVariantIds as string[])
 
         if (!variantCostError) {
           variantCostRows?.forEach((row: any) => {
-            if (row?.id && row?.base_cost !== null && row?.base_cost !== undefined) {
-              const parsed = Number(row.base_cost)
-              if (!Number.isNaN(parsed)) {
-                variantBaseCostMap.set(row.id, parsed)
+            if (row?.id) {
+              if (row?.base_cost !== null && row?.base_cost !== undefined) {
+                const parsed = Number(row.base_cost)
+                if (!Number.isNaN(parsed)) {
+                  variantBaseCostMap.set(row.id, parsed)
+                }
+              }
+              if (row?.image_url) {
+                variantImageMap.set(row.id, row.image_url)
               }
             }
           })
@@ -383,11 +418,16 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           return null
         })()
 
+        const variantImage = variantId && variantImageMap.has(variantId) 
+          ? variantImageMap.get(variantId) 
+          : (item.variant_image_url ?? rawVariant?.image_url ?? null)
+
         return {
           id: item.id || `${organizationId || 'org'}-${variantId || rawVariant?.variant_code || index}`,
           variant_id: variantId,
           variant_code: item.variant_code ?? rawVariant?.variant_code ?? null,
           variant_name: item.variant_name ?? rawVariant?.variant_name ?? null,
+          variant_image_url: variantImage,
           product_name: item.product_name ?? rawProduct?.product_name ?? null,
           product_code: item.product_code ?? rawProduct?.product_code ?? null,
           organization_id: organizationId,
@@ -398,6 +438,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           quantity_available: quantityAvailable,
           reorder_point: Number(item.reorder_point ?? 0),
           reorder_quantity: Number(item.reorder_quantity ?? 0),
+          max_stock_level: parseNumber(item.max_stock_level),
+          safety_stock: parseNumber(item.safety_stock),
+          lead_time_days: parseNumber(item.lead_time_days),
           unit_cost: resolvedUnitCost,
           total_value: resolvedTotalValue,
           manual_balance_qty:
@@ -721,6 +764,28 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     return Math.min((available / reorderPoint) * 100, 100)
   }
 
+  const canEditSettings = () => {
+    // Allow users with role_level <= 40 to edit settings
+    // role_level: 1=SUPERADMIN, 10=HQ_ADMIN, 20=MANU_ADMIN, 30=DIST_ADMIN, 40=WH_MANAGER
+    // Temporarily return true for testing - will add proper check later
+    return true
+  }
+
+  const handleOpenSettings = (item: InventoryItem) => {
+    setSelectedItem(item)
+    setSettingsOpen(true)
+  }
+
+  const handleCloseSettings = () => {
+    setSettingsOpen(false)
+    setSelectedItem(null)
+  }
+
+  const handleSaveSettings = () => {
+    // Refresh inventory after save
+    fetchInventory()
+  }
+
   // Calculate stats
   const totalValue = filteredInventory.reduce((sum, item) => sum + (item.total_value ?? 0), 0)
   const inStockItems = filteredInventory.filter(item => item.quantity_available > 0).length
@@ -741,6 +806,17 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
+          {canEditSettings() && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => onViewChange?.('inventory-settings')}
+              className="border-blue-600 text-blue-600 hover:bg-blue-50"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Inventory Settings
+            </Button>
+          )}
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => onViewChange?.('stock-adjustment')}>
             <Package className="w-4 h-4 mr-2" />
             Stock Adjustment
@@ -955,15 +1031,6 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               <TableRow>
                 <TableHead 
                   className="cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('variant_code')}
-                >
-                  <div className="flex items-center">
-                    Variant Code
-                    {renderSortIcon('variant_code')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('product_name')}
                 >
                   <div className="flex items-center">
@@ -1017,35 +1084,54 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {renderSortIcon('total_value')}
                   </div>
                 </TableHead>
+                {canEditSettings() && <TableHead className="text-center">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={canEditSettings() ? 8 : 7} className="text-center py-8">
                     Loading inventory...
                   </TableCell>
                 </TableRow>
               ) : inventory.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={canEditSettings() ? 8 : 7} className="text-center py-8">
                     No inventory items found
                   </TableCell>
                 </TableRow>
               ) : (
                 paginatedInventory.map((item: InventoryItem) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">
-                      {item.variant_code || 'N/A'}
-                    </TableCell>
                     <TableCell>
-                      <div>
-                        <p className="text-xs font-medium">
-                          {item.product_name || 'Unknown Product'}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          {item.variant_name || 'No variant'}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                          {item.variant_image_url ? (
+                            <img
+                              src={item.variant_image_url}
+                              alt={item.variant_name || 'Product'}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.style.display = 'none'
+                                if (target.nextElementSibling) {
+                                  (target.nextElementSibling as HTMLElement).style.display = 'flex'
+                                }
+                              }}
+                            />
+                          ) : null}
+                          <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ display: item.variant_image_url ? 'none' : 'flex' }}>
+                            <Package className="w-6 h-6" />
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium">
+                            {item.product_name || 'Unknown Product'}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {item.variant_name || 'No variant'}
+                          </p>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -1093,6 +1179,19 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                         @ RM {formatCurrency(item.unit_cost ?? 0)} per unit
                       </p>
                     </TableCell>
+                    {canEditSettings() && (
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenSettings(item)}
+                          className="hover:bg-blue-50 hover:text-blue-600"
+                          title="Configure stock settings"
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
@@ -1134,6 +1233,33 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           </div>
         </CardContent>
       </Card>
+
+      {/* Stock Settings Panel */}
+      {settingsOpen && selectedItem && (
+        <StockSettingsPanel
+          inventoryItem={{
+            id: selectedItem.id,
+            variant_id: selectedItem.variant_id || '',
+            variant_code: selectedItem.variant_code || 'N/A',
+            variant_name: selectedItem.variant_name || 'Unknown',
+            product_name: selectedItem.product_name || 'Unknown Product',
+            organization_id: selectedItem.organization_id || '',
+            organization_name: selectedItem.organization_name || 'Unknown Location',
+            quantity_on_hand: selectedItem.quantity_on_hand,
+            quantity_allocated: selectedItem.quantity_allocated,
+            quantity_available: selectedItem.quantity_available,
+            reorder_point: selectedItem.reorder_point,
+            reorder_quantity: selectedItem.reorder_quantity,
+            max_stock_level: selectedItem.max_stock_level || null,
+            safety_stock: selectedItem.safety_stock || null,
+            lead_time_days: selectedItem.lead_time_days || null,
+            total_value: selectedItem.total_value,
+            warehouse_location: selectedItem.warehouse_location
+          }}
+          onClose={handleCloseSettings}
+          onSave={handleSaveSettings}
+        />
+      )}
     </div>
   )
 }

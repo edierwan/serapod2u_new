@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Database } from "@/types/database"
 import type { UserProfileWithRelations } from "@/lib/server/get-user-profile"
+import type { ShopPointsLedgerRow, ShopPointsBalanceRow } from "@/types/shop-points"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -55,7 +56,6 @@ import {
 import Link from "next/link"
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
-type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
 type PointsRuleRow = Database["public"]["Tables"]["points_rules"]["Row"]
 
 interface ShopCatalogPageProps {
@@ -81,14 +81,10 @@ function formatRelative(date: Date): string {
   return absDays === 1 ? "Yesterday" : `${absDays} days ago`
 }
 
-function getTransactionDate(txn: PointsTransactionRow): Date {
-  const raw = txn.transaction_date ?? txn.created_at
-  return raw ? new Date(raw) : new Date()
-}
-
 export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [rewards, setRewards] = useState<RedeemItemRow[]>([])
-  const [transactions, setTransactions] = useState<PointsTransactionRow[]>([])
+  const [ledgerTransactions, setLedgerTransactions] = useState<ShopPointsLedgerRow[]>([])
+  const [balance, setBalance] = useState<ShopPointsBalanceRow | null>(null)
   const [activeRule, setActiveRule] = useState<PointsRuleRow | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -97,8 +93,10 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [selectedSort, setSelectedSort] = useState<string>("points-asc")
   const [onlyAvailable, setOnlyAvailable] = useState(true)
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null)
+  const [productSummary, setProductSummary] = useState<{product: string, variant: string, count: number, points: number}[]>([])
 
   const companyId = userProfile.organizations.id
+  const shopOrgId = userProfile.organization_id
 
   useEffect(() => {
     let cancelled = false
@@ -109,23 +107,41 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
       setError(null)
 
       const now = new Date().toISOString()
+      
+      console.log('🏪 Shop Catalog - Loading with Views:', {
+        userId: userProfile.id,
+        email: userProfile.email,
+        phone: userProfile.phone,
+        shopOrgId: shopOrgId,
+        orgName: userProfile.organizations?.org_name,
+        orgType: userProfile.organizations?.org_type_code,
+        companyId: companyId
+      })
 
-            // Get shop's organization ID to query their point collections
-      const shopOrgId = userProfile.organization_id
-
-      const [rewardRes, qrScansRes, ruleRes] = await Promise.all([
+      const [rewardRes, balanceRes, ledgerRes, ruleRes] = await Promise.all([
+        // Rewards catalog
         supabaseClient
           .from("redeem_items")
           .select("*")
           .eq("company_id", companyId)
           .order("points_required", { ascending: true }),
-        // Query consumer_qr_scans where shop collected points
+        
+        // Shop balance from view
         supabaseClient
-          .from("consumer_qr_scans")
+          .from("v_shop_points_balance")
           .select("*")
           .eq("shop_id", shopOrgId)
-          .eq("collected_points", true)
-          .order("points_collected_at", { ascending: false }),
+          .maybeSingle(),
+        
+        // Ledger transactions (we'll enrich with related data client-side)
+        supabaseClient
+          .from("shop_points_ledger")
+          .select("*")
+          .eq("shop_id", shopOrgId)
+          .order("occurred_at", { ascending: false })
+          .limit(500),
+        
+        // Active points rule
         supabaseClient
           .from("points_rules")
           .select("*")
@@ -146,25 +162,57 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         setRewards(rewardRes.data ?? [])
       }
 
-      if (qrScansRes.error) {
-        console.error("Failed to load QR scans", qrScansRes.error)
+      if (balanceRes.error) {
+        console.error("❌ Failed to load balance", balanceRes.error)
       } else {
-        // Convert QR scans to transaction-like format for compatibility
-        const scanTransactions = qrScansRes.data?.map((scan, index) => ({
-          id: scan.id,
-          consumer_phone: userProfile.phone || '',
-          consumer_email: userProfile.email || '',
-          company_id: companyId,
-          transaction_type: 'earn',
-          points_amount: scan.points_amount || 0,
-          balance_after: qrScansRes.data.slice(0, index + 1).reduce((sum, s) => sum + (s.points_amount || 0), 0),
-          transaction_date: scan.points_collected_at || scan.created_at,
-          created_at: scan.created_at,
-          description: `Points collected from QR scan`,
-          qr_code_id: scan.qr_code_id,
-          redeem_item_id: null
-        })) || []
-        setTransactions(scanTransactions)
+        console.log('✅ Balance loaded:', balanceRes.data)
+        setBalance(balanceRes.data)
+      }
+
+      if (ledgerRes.error) {
+        console.error("❌ Failed to load ledger", ledgerRes.error)
+        console.error("🔒 Error details:", JSON.stringify(ledgerRes.error, null, 2))
+      } else {
+        console.log('✅ Ledger loaded:', ledgerRes.data?.length, 'transactions')
+        
+        if (ledgerRes.data && ledgerRes.data.length > 0) {
+          // Data already contains product_name, variant_name, reward_name from the view!
+          setLedgerTransactions(ledgerRes.data as ShopPointsLedgerRow[])
+          
+          // Log first transaction for debugging
+          console.log('📊 First ledger entry:', ledgerRes.data[0])
+          
+          // Calculate product summary from scan transactions
+          const productMap = new Map<string, {product: string, variant: string, count: number, points: number}>()
+          
+          ledgerRes.data.forEach((entry: any) => {
+            if (entry.transaction_type === 'scan' && entry.product_name) {
+              const productName = entry.product_name || 'Unknown Product'
+              const variantName = entry.variant_name || 'Unknown Variant'
+              const key = `${productName}|${variantName}`
+              
+              const existing = productMap.get(key)
+              if (existing) {
+                existing.count += 1
+                existing.points += entry.points_change
+              } else {
+                productMap.set(key, {
+                  product: productName,
+                  variant: variantName,
+                  count: 1,
+                  points: entry.points_change
+                })
+              }
+            }
+          })
+          
+          const summary = Array.from(productMap.values()).sort((a, b) => b.count - a.count)
+          console.log('📊 Product summary:', summary)
+          setProductSummary(summary)
+        } else {
+          setLedgerTransactions([])
+          setProductSummary([])
+        }
       }
 
       if (ruleRes.error) {
@@ -182,12 +230,16 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     return () => {
       cancelled = true
     }
-  }, [companyId])
+  }, [companyId, userProfile.organization_id])
 
   const enrichedRewards = useMemo<EnrichedReward[]>(() => {
     const now = new Date()
     return rewards.map((reward) => enrichReward(reward, now))
   }, [rewards])
+
+  const currentBalance = balance?.current_balance ?? 0
+  const totalScans = balance?.scan_count ?? 0
+  const totalRedemptions = balance?.redemption_count ?? 0
 
   const rewardMap = useMemo(() => {
     const map = new Map<string, EnrichedReward>()
@@ -223,80 +275,34 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     })
   }, [enrichedRewards, onlyAvailable, searchTerm, selectedCategory, selectedSort])
 
-  const latestBalance = transactions[0]?.balance_after ?? 0
-  const latestTransactionDate = transactions[0]?.transaction_date ?? transactions[0]?.created_at ?? null
+  const latestTransactionDate = ledgerTransactions[0]?.occurred_at ?? null
   const latestTransactionLabel = latestTransactionDate ? formatRelative(new Date(latestTransactionDate)) : "just now"
 
   const pointsEarnedThisMonth = useMemo(() => {
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
-    return transactions
-      .filter((txn) => txn.transaction_type === "earn")
+    return ledgerTransactions
+      .filter((txn) => txn.transaction_type === "scan" && txn.points_change > 0)
       .filter((txn) => {
-        const date = getTransactionDate(txn)
+        const date = new Date(txn.occurred_at)
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear
       })
-      .reduce((total, txn) => total + Math.max(txn.points_amount, 0), 0)
-  }, [transactions])
+      .reduce((total, txn) => total + txn.points_change, 0)
+  }, [ledgerTransactions])
 
   const pointsRedeemedThisMonth = useMemo(() => {
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
-    return transactions
+    return ledgerTransactions
       .filter((txn) => txn.transaction_type === "redeem")
       .filter((txn) => {
-        const date = getTransactionDate(txn)
+        const date = new Date(txn.occurred_at)
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear
       })
-      .reduce((total, txn) => total + Math.abs(txn.points_amount), 0)
-  }, [transactions])
-
-  const expiringPointsInfo = useMemo(() => {
-    if (!activeRule?.expires_after_days || activeRule.expires_after_days <= 0) {
-      return { total: 0, earliest: null as Date | null }
-    }
-
-    const now = new Date()
-    const threshold = addDays(now, 30)
-    let total = 0
-    let earliest: Date | null = null
-
-    transactions
-      .filter((txn) => txn.transaction_type === "earn")
-      .forEach((txn) => {
-        const baseDate = getTransactionDate(txn)
-        const expiryDate = addDays(baseDate, activeRule.expires_after_days ?? 0)
-        if (expiryDate <= threshold && expiryDate > now) {
-          total += Math.max(txn.points_amount, 0)
-          if (!earliest || expiryDate < earliest) {
-            earliest = expiryDate
-          }
-        }
-      })
-
-    return { total, earliest }
-  }, [activeRule, transactions])
-
-  const redemptionHistory = useMemo(() => {
-    return transactions
-      .filter((txn) => txn.transaction_type === "redeem")
-      .slice(0, 50)
-      .map((txn) => {
-        const reward = txn.redeem_item_id ? rewardMap.get(txn.redeem_item_id) : undefined
-        const dateValue = txn.transaction_date ?? txn.created_at
-        return {
-          id: txn.id,
-          rewardName: reward?.item_name ?? "Reward redemption",
-          points: Math.abs(txn.points_amount),
-          consumer: txn.consumer_phone,
-          date: dateValue,
-          balanceAfter: txn.balance_after,
-          status: reward?.status ?? "available"
-        }
-      })
-  }, [rewardMap, transactions])
+      .reduce((total, txn) => total + Math.abs(txn.points_change), 0)
+  }, [ledgerTransactions])
 
   const selectedReward = selectedRewardId ? rewardMap.get(selectedRewardId) ?? null : null
 
@@ -315,8 +321,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <p className="text-sm font-medium text-muted-foreground">Consumer Engagement • Shop View</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">My Points & Rewards Catalog</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Explore rewards curated for your shop. Track your point growth, keep an eye on expiring points,
-            and redeem premium items with confidence.
+            View your shop&apos;s point balance earned by scanning QR codes. Redeem rewards from the catalog with your accumulated points.
           </p>
         </div>
         <div className="flex gap-2">
@@ -354,11 +359,13 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
             <CardTitle className="flex items-center gap-2 text-base font-medium">
               <Trophy className="h-5 w-5 text-blue-500" /> Current Balance
             </CardTitle>
-            <CardDescription>Total points ready to spend</CardDescription>
+            <CardDescription>Your shop&apos;s total points ready to redeem</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-blue-600">{formatNumber(latestBalance)}</p>
-            <p className="mt-2 text-xs text-muted-foreground">Updated {latestTransactionLabel}</p>
+            <p className="text-3xl font-semibold text-blue-600">{formatNumber(currentBalance)}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {totalScans} {totalScans === 1 ? 'scan' : 'scans'} • Last {latestTransactionLabel}
+            </p>
           </CardContent>
         </Card>
 
@@ -367,7 +374,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
             <CardTitle className="flex items-center gap-2 text-base font-medium text-emerald-700">
               <TrendingUp className="h-5 w-5" /> Earned This Month
             </CardTitle>
-            <CardDescription className="text-emerald-700/80">Great job keeping consumers engaged</CardDescription>
+            <CardDescription className="text-emerald-700/80">Points you collected this month</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold text-emerald-700">{formatNumber(pointsEarnedThisMonth)}</p>
@@ -375,27 +382,71 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           </CardContent>
         </Card>
 
-        <Card className="border border-amber-200 bg-amber-50/70">
+        <Card className="border border-purple-200 bg-purple-50/70">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-medium text-amber-700">
-              <AlertTriangle className="h-5 w-5" /> Points Expiring Soon
+            <CardTitle className="flex items-center gap-2 text-base font-medium text-purple-700">
+              <Trophy className="h-5 w-5" /> Total Scans
             </CardTitle>
-            <CardDescription className="text-amber-700/80">
-              {activeRule?.expires_after_days
-                ? `Points expire ${activeRule.expires_after_days} days after earning`
-                : "No expiry policy found for your org"}
+            <CardDescription className="text-purple-700/80">
+              QR codes scanned by your shop
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-amber-700">{formatNumber(expiringPointsInfo.total)}</p>
-            <p className="mt-2 text-xs text-amber-800/70">
-              {expiringPointsInfo.earliest
-                ? `Earliest expiry ${formatRelative(expiringPointsInfo.earliest)} (${formatDateLabel(expiringPointsInfo.earliest.toISOString())})`
-                : "No points expiring in the next 30 days"}
+            <p className="text-3xl font-semibold text-purple-700">{formatNumber(totalScans)}</p>
+            <p className="mt-2 text-xs text-purple-800/70">
+              {activeRule?.points_per_scan 
+                ? `${formatNumber(activeRule.points_per_scan)} points per scan`
+                : "Keep scanning to earn more points"}
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Product Summary Section */}
+      {productSummary.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Gift className="h-5 w-5" /> Products Scanned
+            </CardTitle>
+            <CardDescription>
+              Summary of products you scanned to collect points
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-hidden rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">Product</th>
+                    <th className="px-4 py-3">Variant</th>
+                    <th className="px-4 py-3 text-center">Scans</th>
+                    <th className="px-4 py-3 text-right">Points Earned</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productSummary.map((item, idx) => (
+                    <tr key={idx} className="border-t border-slate-100">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-800">{item.product}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{item.variant}</td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                          {item.count} {item.count === 1 ? 'scan' : 'scans'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                        +{formatNumber(item.points)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="catalog" className="space-y-6" suppressHydrationWarning>
         <TabsList className="w-full justify-start">
@@ -575,13 +626,13 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
                     <div className="mt-auto flex items-center justify-between gap-3">
                       <div className="text-sm font-medium text-muted-foreground">
-                        {latestBalance >= reward.points_required ? (
+                        {currentBalance >= reward.points_required ? (
                           <span className="flex items-center gap-1 text-emerald-600">
-                            <TrendingUp className="h-4 w-4" /> Eligible to redeem
+                            <TrendingUp className="h-4 w-4" /> Can redeem
                           </span>
                         ) : (
                           <span className="flex items-center gap-1 text-amber-600">
-                            <TrendingDown className="h-4 w-4" /> Need {formatNumber(reward.points_required - latestBalance)} pts
+                            <TrendingDown className="h-4 w-4" /> Need {formatNumber(reward.points_required - currentBalance)} pts
                           </span>
                         )}
                       </div>
@@ -600,43 +651,79 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <Clock className="h-4 w-4" /> Recent redemptions
+                <Clock className="h-4 w-4" /> My Point History
               </CardTitle>
               <CardDescription>
-                A live view of your last {redemptionHistory.length} redemption activities.
+                Your shop&apos;s point collection history. Showing last {ledgerTransactions.length} {ledgerTransactions.length === 1 ? 'transaction' : 'transactions'}.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {redemptionHistory.length === 0 ? (
+              {ledgerTransactions.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
                   <Gift className="h-10 w-10" />
-                  <p className="text-sm">No redemptions recorded yet. Redeem a reward to see it here.</p>
+                  <p className="text-sm">No points collected yet. Scan QR codes to earn points and they will appear here.</p>
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-slate-200">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3">Reward</th>
-                        <th className="px-4 py-3">Points used</th>
-                        <th className="px-4 py-3">Consumer</th>
+                        <th className="px-4 py-3">Product / Description</th>
+                        <th className="px-4 py-3">Points</th>
                         <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3">Balance after</th>
+                        <th className="px-4 py-3">Type</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {redemptionHistory.map((entry) => (
-                        <tr key={entry.id} className="border-t border-slate-100">
+                      {ledgerTransactions.slice(0, 50).map((txn) => {
+                        return (
+                        <tr key={txn.id} className="border-t border-slate-100">
                           <td className="px-4 py-3">
-                            <div className="font-medium text-slate-800">{entry.rewardName}</div>
-                            <div className="text-xs text-muted-foreground capitalize">{entry.status}</div>
+                            {txn.product_name ? (
+                              <>
+                                <div className="font-medium text-slate-800">{txn.product_name}</div>
+                                <div className="text-xs text-muted-foreground">{txn.variant_name || 'Standard'}</div>
+                              </>
+                            ) : txn.reward_name ? (
+                              <>
+                                <div className="font-medium text-slate-800">Redeemed: {txn.reward_name}</div>
+                                <div className="text-xs text-muted-foreground">Reward redemption</div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="font-medium text-slate-800">{txn.description || 'Point transaction'}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {txn.adjustment_reason || 'Manual adjustment'}
+                                </div>
+                              </>
+                            )}
                           </td>
-                          <td className="px-4 py-3 font-semibold text-amber-600">{formatNumber(entry.points)}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{entry.consumer}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateLabel(entry.date)}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{formatNumber(entry.balanceAfter)}</td>
+                          <td className="px-4 py-3 font-semibold">
+                            <span className={txn.points_change < 0 ? 'text-red-600' : 'text-emerald-600'}>
+                              {txn.points_change > 0 ? '+' : ''}{formatNumber(txn.points_change)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {formatDateLabel(txn.occurred_at)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {txn.transaction_type === 'scan' ? (
+                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                                QR Scan
+                              </Badge>
+                            ) : txn.transaction_type === 'redeem' ? (
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                Redemption
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                {txn.transaction_type === 'adjust' ? 'Adjustment' : 'Manual'}
+                              </Badge>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -734,9 +821,16 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
                 <div className="flex items-center justify-end gap-3">
                   <Button variant="outline" onClick={() => setSelectedRewardId(null)}>Close</Button>
-                  <Button disabled={latestBalance < selectedReward.points_required} className="gap-2">
+                  <Button 
+                    disabled={!selectedReward.isAvailable || currentBalance < selectedReward.points_required} 
+                    className="gap-2"
+                  >
                     <Gift className="h-4 w-4" />
-                    {latestBalance >= selectedReward.points_required ? "Proceed to redeem" : "Need more points"}
+                    {!selectedReward.isAvailable 
+                      ? "Not available" 
+                      : currentBalance >= selectedReward.points_required 
+                        ? "Redeem now" 
+                        : "Need more points"}
                   </Button>
                 </div>
               </div>

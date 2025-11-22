@@ -14,35 +14,140 @@ interface PageProps {
 
 async function getJourneyData(code: string) {
   try {
-    // Call our public API endpoint
-    // Always use localhost:3000 for server-side rendering in development
-    const baseUrl = process.env.NODE_ENV === 'production'
-      ? (process.env.NEXT_PUBLIC_APP_URL || 'https://www.serapod2u.com')
-      : 'http://localhost:3000'
-    
-    const apiUrl = `${baseUrl}/api/verify/${code}`
-    
-    console.log('🔍 getJourneyData - Fetching from:', apiUrl)
-    
-    const res = await fetch(apiUrl, {
-      cache: 'no-store', // Always get fresh data
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
+    // Import the API logic directly to avoid network calls during SSR
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
 
-    if (!res.ok) {
-      console.log('❌ Fetch not OK:', res.status, res.statusText)
-      return { success: false, error: 'Failed to verify code' }
+    console.log('🔍 getJourneyData - Verifying code:', code)
+
+    // First, get the QR code
+    const { data: qrCode, error: qrError } = await supabase
+      .from('qr_codes')
+      .select(`
+        id,
+        code,
+        order_id,
+        product_id,
+        variant_id,
+        points_value,
+        has_lucky_draw,
+        has_redeem,
+        status,
+        company_id
+      `)
+      .eq('code', code)
+      .single()
+
+    if (qrError) {
+      console.error('❌ QR Code query error:', qrError)
+      return { success: false, error: 'Invalid QR code' }
     }
 
-    const result = await res.json()
-    console.log('✅ API returned:', result.success ? 'SUCCESS' : 'FAILED')
-    return result
+    if (!qrCode) {
+      console.log('❌ QR Code not found:', code)
+      return { success: false, error: 'Invalid QR code' }
+    }
+
+    console.log('✅ QR Code found:', qrCode.id)
+
+    // Get journey configuration for this company
+    // Try to get active default config, fallback to any active config
+    const { data: journeyConfig, error: journeyError } = await supabase
+      .from('journey_configurations')
+      .select('*')
+      .eq('org_id', qrCode.company_id)
+      .eq('is_active', true)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (journeyError) {
+      console.error('❌ Journey config query error:', journeyError)
+      console.log('🔍 QR Code company_id:', qrCode.company_id)
+    }
+
+    // Get product variant info
+    const { data: variant, error: variantError } = await supabase
+      .from('product_variants')
+      .select(`
+        id,
+        variant_name,
+        image_url,
+        products(
+          id,
+          product_name,
+          brands(brand_name)
+        )
+      `)
+      .eq('id', qrCode.variant_id)
+      .single()
+
+    if (variantError) {
+      console.error('❌ Variant query error:', variantError)
+    }
+
+    // Get order info
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('order_no')
+      .eq('id', qrCode.order_id)
+      .single()
+
+    if (orderError) {
+      console.error('❌ Order query error:', orderError)
+    }
+    
+    // Extract product and brand info
+    const product = variant?.products
+    const brand = Array.isArray(product?.brands) ? product.brands[0] : product?.brands
+    
+    // Check if journey config exists
+    if (!journeyConfig) {
+      console.log('❌ No journey configuration found for QR code:', qrCode.id)
+      return { 
+        success: false, 
+        error: 'No journey configuration found for this QR code' 
+      }
+    }
+    
+    // Return the journey data in expected format
+    return {
+      success: true,
+      data: {
+        is_valid: true,
+        status: qrCode.status,
+        journey_config: {
+          welcome_title: journeyConfig.welcome_title,
+          welcome_message: journeyConfig.welcome_message,
+          thank_you_message: journeyConfig.thank_you_message,
+          primary_color: journeyConfig.primary_color,
+          button_color: journeyConfig.button_color,
+          points_enabled: journeyConfig.points_enabled,
+          lucky_draw_enabled: journeyConfig.lucky_draw_enabled,
+          redemption_enabled: journeyConfig.redemption_enabled,
+          show_product_image: journeyConfig.show_product_image,
+          product_image_source: journeyConfig.product_image_source,
+          custom_image_url: journeyConfig.custom_image_url,
+          genuine_badge_style: journeyConfig.genuine_badge_style,
+          redemption_requires_login: journeyConfig.redemption_requires_login || false,
+          variant_image_url: variant?.image_url || null
+        },
+        product_info: {
+          product_name: product?.product_name,
+          variant_name: variant?.variant_name,
+          brand_name: brand?.brand_name
+        },
+        order_info: {
+          order_no: order?.order_no
+        },
+        message: 'QR code verified successfully'
+      }
+    }
 
   } catch (error) {
     console.error('❌ Error fetching journey data:', error)
-    return { success: false, error: 'Network error' }
+    return { success: false, error: 'Database error' }
   }
 }
 

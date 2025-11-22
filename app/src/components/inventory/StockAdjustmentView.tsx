@@ -16,7 +16,8 @@ import {
   AlertTriangle,
   TrendingUp,
   TrendingDown,
-  Info
+  Info,
+  Package
 } from 'lucide-react'
 
 interface Product {
@@ -33,6 +34,7 @@ interface Variant {
   id: string
   variant_code: string
   variant_name: string
+  image_url: string | null
   suggested_retail_price: number | null
 }
 
@@ -52,7 +54,7 @@ interface AdjustmentReason {
   reason_code: string
   reason_name: string
   reason_description: string | null
-  requires_approval: boolean
+  requires_approval: boolean | null
 }
 
 interface WarehouseLocation {
@@ -167,7 +169,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     try {
       const { data, error } = await supabase
         .from('product_variants')
-        .select('id, variant_code, variant_name, suggested_retail_price')
+        .select('id, variant_code, variant_name, image_url, suggested_retail_price')
         .eq('product_id', productId)
         .eq('is_active', true)
         .order('variant_name')
@@ -498,6 +500,45 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 </div>
               </CardContent>
             </Card>
+
+            {/* Selected Variant Display */}
+            {selectedVariant && variants.length > 0 && (() => {
+              const variant = variants.find(v => v.id === selectedVariant)
+              return variant ? (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                        {variant.image_url ? (
+                          <img
+                            src={variant.image_url}
+                            alt={variant.variant_name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                              const sibling = e.currentTarget.nextElementSibling as HTMLElement
+                              if (sibling) sibling.style.display = 'flex'
+                            }}
+                          />
+                        ) : null}
+                        <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ display: variant.image_url ? 'none' : 'flex' }}>
+                          <Package className="w-8 h-8" />
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-lg font-semibold text-gray-900">{variant.variant_name}</p>
+                        <p className="text-sm text-gray-600">{variant.variant_code}</p>
+                        {variant.suggested_retail_price && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            SRP: <span className="font-medium">RM {variant.suggested_retail_price.toFixed(2)}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null
+            })()}
 
             {/* Current Inventory Card */}
             {currentInventory && (

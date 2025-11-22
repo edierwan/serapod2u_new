@@ -304,8 +304,12 @@ export async function GET(request: NextRequest) {
         }
 
         const casesShippedByOrder = new Map<string, number>()
+        const unitsShippedByOrder = new Map<string, number>()
+        
         masterInfoByOrder.forEach((masters, orderId) => {
-          let shippedCount = 0
+          let shippedCasesCount = 0
+          let shippedUnitsCount = 0
+          
           masters.forEach((master) => {
             const caseUnits = master.units > 0 ? master.units : 0
             const masterStatus = master.status || ''
@@ -315,40 +319,15 @@ export async function GET(request: NextRequest) {
             const shippedByUniques = caseUnits > 0 && shippedUniqueCount >= caseUnits
 
             if (masterShipped || shippedByUniques) {
-              shippedCount += 1
+              shippedCasesCount += 1
+              // Count the actual unique QR codes shipped in this master case
+              shippedUnitsCount += shippedUniqueCount
             }
           })
-          casesShippedByOrder.set(orderId, shippedCount)
+          
+          casesShippedByOrder.set(orderId, shippedCasesCount)
+          unitsShippedByOrder.set(orderId, shippedUnitsCount)
         })
-
-        // Units shipped via movement history
-        let unitsShippedByOrder = new Map<string, number>()
-        if (orderIds.length > 0) {
-          let movementQuery = supabase
-            .from('v_stock_movements_display')
-            .select('reference_id, quantity_change')
-            .eq('movement_type', 'order_fulfillment')
-            .eq('reference_type', 'order')
-            .in('reference_id', orderIds)
-
-          if (warehouseOrgId) {
-            movementQuery = movementQuery.eq('from_organization_id', warehouseOrgId)
-          }
-
-          const { data: movementRows, error: movementError } = await movementQuery
-
-          if (!movementError && movementRows) {
-            unitsShippedByOrder = movementRows.reduce((map: Map<string, number>, row: any) => {
-              const refId = row.reference_id
-              if (!refId) return map
-              const change = typeof row.quantity_change === 'number' ? row.quantity_change : 0
-              if (change < 0) {
-                map.set(refId, (map.get(refId) || 0) + -change)
-              }
-              return map
-            }, new Map<string, number>())
-          }
-        }
 
         // Update history map values
         orderTotals.forEach((totals, orderId) => {

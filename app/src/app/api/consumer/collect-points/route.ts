@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getBaseCode } from '@/lib/security/qr-hash'
+import { resolveQrCodeRecord, checkPointsCollected, calculateShopTotalPoints } from '@/lib/utils/qr-resolver'
 
 /**
  * POST /api/consumer/collect-points
@@ -55,10 +55,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Extract base code (remove hash suffix if present)
-    const baseCode = getBaseCode(qr_code)
     console.log('🔐 Collect Points - Scanned code:', qr_code)
-    console.log('🔐 Collect Points - Base code:', baseCode)
 
     // 1. Authenticate shop user using Supabase Auth
     console.log('🔐 Authenticating shop user:', shop_id)
@@ -127,41 +124,11 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Shop user verified:', shopUser.email, '| Organization:', organization.org_name)
 
-    // 2. Find the QR code and verify it's valid
-    // Try exact match first (for codes stored with hash), then try base code (for legacy codes)
-    let qrCodeData: any = null
-    let qrError: any = null
-
-    // First attempt: exact match with full code (including hash if present)
-    const { data: exactMatch, error: exactError } = await supabaseAdmin
-      .from('qr_codes')
-      .select('id, order_id, status, code')
-      .eq('code', qr_code)
-      .maybeSingle()
-
-    if (exactMatch) {
-      console.log('✅ Found exact match with full code')
-      qrCodeData = exactMatch
-    } else {
-      console.log('⚠️ Exact match not found, trying base code:', baseCode)
-      // Second attempt: try with base code (for legacy codes without hash suffix)
-      const { data: baseMatch, error: baseError } = await supabaseAdmin
-        .from('qr_codes')
-        .select('id, order_id, status, code')
-        .eq('code', baseCode)
-        .maybeSingle()
-
-      if (baseMatch) {
-        console.log('✅ Found match with base code')
-        qrCodeData = baseMatch
-      } else {
-        qrError = baseError || exactError
-      }
-    }
+    // 2. Resolve QR code record (handles both new codes with hash and legacy codes)
+    const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)
 
     if (!qrCodeData) {
-      console.error('QR code not found:', qrError)
-      console.error('Tried codes:', { full: qr_code, base: baseCode })
+      console.error('❌ QR code not found in database')
       return NextResponse.json(
         { 
           success: false, 
@@ -173,6 +140,35 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ QR Code found:', qrCodeData.code)
+
+    // CRITICAL: Check if points already collected BEFORE any other validation
+    // This ensures idempotency - once collected, always return already_collected
+    const existingCollection = await checkPointsCollected(supabaseAdmin, qrCodeData.id)
+
+    if (existingCollection) {
+      console.log('⚠️ Points already collected for this QR code')
+      console.log('   Collected at:', existingCollection.points_collected_at)
+      console.log('   Shop:', existingCollection.shop_id)
+      console.log('   Points:', existingCollection.points_amount)
+      
+      // Calculate total balance for response
+      const totalBalance = existingCollection.shop_id 
+        ? await calculateShopTotalPoints(supabaseAdmin, existingCollection.shop_id)
+        : existingCollection.points_amount || 0
+      
+      return NextResponse.json(
+        {
+          success: false,
+          already_collected: true,
+          error: 'Points for this QR code have already been collected.',
+          points_earned: existingCollection.points_amount || 0,
+          total_balance: totalBalance
+        },
+        { status: 409 }
+      )
+    }
+
+    console.log('✅ No existing collection found, proceeding with validation')
 
     // Only allow valid statuses
     const validStatuses = ['received_warehouse', 'warehouse_packed', 'shipped_distributor', 'activated', 'verified']
@@ -249,45 +245,68 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Organization relationship validated (Shop collecting from HQ)')
 
-    // 4. Check if points already collected for this QR code
-    const { data: existingCollection, error: checkError } = await supabaseAdmin
-      .from('consumer_qr_scans')
-      .select('id, points_amount, shop_id, points_collected_at')
-      .eq('qr_code_id', qrCodeData.id)
-      .eq('collected_points', true)
-      .maybeSingle()
-
-    if (existingCollection) {
-      console.log('⚠️ Points already collected:', {
-        qr_code: qrCodeData.code,
-        collected_at: existingCollection.points_collected_at,
-        shop_id: existingCollection.shop_id,
-        points: existingCollection.points_amount
-      })
-      
-      return NextResponse.json({
-        success: true,
-        already_collected: true,
-        points_earned: existingCollection.points_amount || 0,
-        message: 'Points already collected for this QR code'
-      })
-    }
-
-    console.log('✅ No existing collection found, proceeding to award points')
-
-    // 5. Get points configuration from organization's point rules
-    const { data: pointRule, error: ruleError } = await supabaseAdmin
-      .from('point_rules')
-      .select('points_per_scan, rule_name')
-      .eq('company_id', orderData.company_id)
+    // 4. Get points configuration from organization's point rules
+    // Try multiple sources: Order's company, Shop's parent org, or Shop's org
+    console.log('🔍 Looking for point rule for org_id:', orderData.company_id)
+    
+    let pointRule = null
+    let ruleError = null
+    
+    // First, try to get rule from order's company (HQ organization)
+    const { data: rule1, error: error1 } = await supabaseAdmin
+      .from('points_rules')
+      .select('points_per_scan, rule_name, id, org_id, is_active')
+      .eq('org_id', orderData.company_id)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
+    
+    if (rule1) {
+      pointRule = rule1
+      console.log('✅ Found point rule from order company:', orderData.company_id)
+    } else if (error1) {
+      console.error('⚠️ Error fetching point rule from order company:', error1)
+      ruleError = error1
+    }
+    
+    // Fallback: Try shop's parent organization (if shop is under HQ)
+    if (!pointRule && organization.parent_org_id) {
+      console.log('🔍 Trying shop parent org:', organization.parent_org_id)
+      const { data: rule2, error: error2 } = await supabaseAdmin
+        .from('points_rules')
+        .select('points_per_scan, rule_name, id, org_id, is_active')
+        .eq('org_id', organization.parent_org_id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      if (rule2) {
+        pointRule = rule2
+        console.log('✅ Found point rule from shop parent org:', organization.parent_org_id)
+      } else if (error2) {
+        console.error('⚠️ Error fetching point rule from shop parent:', error2)
+      }
+    }
 
-    const pointsToAward = pointRule?.points_per_scan || 50 // Default to 50 if no rule
+    if (!pointRule) {
+      console.warn('⚠️ No active point rule found for org_id:', orderData.company_id, 'or parent:', organization.parent_org_id)
+      console.warn('⚠️ Using default: 100 points')
+    }
 
-    // 6. Create consumer scan record with points
+    const pointsToAward = pointRule?.points_per_scan || 100 // Default to 100 if no rule
+    
+    console.log('💰 Points configuration:', {
+      rule_id: pointRule?.id,
+      rule_name: pointRule?.rule_name,
+      org_id: pointRule?.org_id,
+      is_active: pointRule?.is_active,
+      points_per_scan: pointRule?.points_per_scan,
+      points_to_award: pointsToAward
+    })
+
+    // 5. Create consumer scan record with points
     const { data: scanRecord, error: scanError } = await supabaseAdmin
       .from('consumer_qr_scans')
       .insert({
@@ -295,32 +314,36 @@ export async function POST(request: NextRequest) {
         shop_id: shopUser.organization_id, // FK to organizations table (shop org)
         collected_points: true,
         points_amount: pointsToAward,
-        points_collected_at: new Date().toISOString()
+        points_collected_at: new Date().toISOString(),
+        is_manual_adjustment: false,
+        adjustment_type: 'system_collection'
       })
       .select()
       .single()
 
     if (scanError) {
-      console.error('Error recording point collection:', scanError)
+      console.error('❌ Error recording point collection:', scanError)
       
       // Check if it's a duplicate key violation (unique constraint)
       if (scanError.code === '23505') {
         console.log('⚠️ Duplicate collection attempt detected by database constraint')
         
-        // Fetch the existing collection to return proper response
-        const { data: existing } = await supabaseAdmin
-          .from('consumer_qr_scans')
-          .select('points_amount')
-          .eq('qr_code_id', qrCodeData.id)
-          .eq('collected_points', true)
-          .single()
+        // Re-check the collection status to return proper response
+        const existing = await checkPointsCollected(supabaseAdmin, qrCodeData.id)
+        const totalBalance = existing?.shop_id 
+          ? await calculateShopTotalPoints(supabaseAdmin, existing.shop_id)
+          : existing?.points_amount || 0
         
-        return NextResponse.json({
-          success: true,
-          already_collected: true,
-          points_earned: existing?.points_amount || 0,
-          message: 'Points already collected for this QR code'
-        })
+        return NextResponse.json(
+          {
+            success: false,
+            already_collected: true,
+            points_earned: existing?.points_amount || 0,
+            total_balance: totalBalance,
+            error: 'Points for this QR code have already been collected.'
+          },
+          { status: 409 }
+        )
       }
       
       return NextResponse.json(
@@ -329,16 +352,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 7. Calculate total points collected by this shop organization
-    const { data: allScans } = await supabaseAdmin
-      .from('consumer_qr_scans')
-      .select('points_amount')
-      .eq('shop_id', shopUser.organization_id)
-      .eq('collected_points', true)
+    console.log('✅ Points awarded successfully:', pointsToAward)
 
-    const totalBalance = allScans?.reduce((sum, scan) => {
-      return sum + (scan.points_amount || 0)
-    }, 0) || pointsToAward
+    // 6. Calculate total points collected by this shop organization
+    const totalBalance = await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
 
     return NextResponse.json({
       success: true,

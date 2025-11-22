@@ -53,8 +53,10 @@ import {
   TrendingUp,
   Users,
   Save,
-  Trophy
+  Trophy,
+  Settings
 } from "lucide-react"
+import { PointsConfigurationSettings } from './PointsConfigurationSettings'
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
@@ -67,6 +69,8 @@ interface ShopUser {
   organization_id: string
   current_balance: number
   total_collected: number
+  total_collected_system: number
+  total_collected_manual: number
   total_redeemed: number
   last_transaction_date: string | null
   transaction_count: number
@@ -127,7 +131,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
-  const [activeTab, setActiveTab] = useState<"rewards" | "users">("rewards")
+  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "settings">("rewards")
   
   // Points adjustment modal
   const [showAdjustPointsModal, setShowAdjustPointsModal] = useState(false)
@@ -303,7 +307,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       
       const { data: qrScans, error: scansError } = await supabaseClient
         .from("consumer_qr_scans")
-        .select("*")
+        .select(`
+          *,
+          adjusted_by_user:adjusted_by(email, full_name)
+        `)
         .in("shop_id", shopOrgIds)
         .eq("collected_points", true)
         .order("points_collected_at", { ascending: false })
@@ -388,6 +395,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             organization_id: shopUser.organization_id || '',
             current_balance: 0,
             total_collected: 0,
+            total_collected_system: 0,
+            total_collected_manual: 0,
             total_redeemed: 0,
             last_transaction_date: null,
             transaction_count: 0
@@ -407,6 +416,13 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         const points = scan.points_amount || 0
         user.total_collected += points
         user.current_balance += points
+        
+        // Track manual vs system collections
+        if (scan.is_manual_adjustment) {
+          user.total_collected_manual += points
+        } else {
+          user.total_collected_system += points
+        }
       })
 
       // Process manual points transactions (adjustments)
@@ -501,7 +517,30 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     }
 
     try {
-      const { error } = await supabaseClient
+      // Create manual adjustment record in consumer_qr_scans for audit trail
+      const adjustmentType = pointsAdjustment.type === 'add' ? 'manual_add' : 'manual_subtract'
+      const { error: scanError } = await supabaseClient
+        .from('consumer_qr_scans')
+        .insert({
+          qr_code_id: null, // No QR code for manual adjustments
+          shop_id: selectedUser.organization_id,
+          collected_points: true,
+          points_amount: Math.abs(finalAmount),
+          points_collected_at: new Date().toISOString(),
+          is_manual_adjustment: true,
+          adjusted_by: userProfile.id,
+          adjustment_reason: pointsAdjustment.description || `Admin ${pointsAdjustment.type} - manual adjustment`,
+          adjustment_type: adjustmentType
+        })
+
+      if (scanError) {
+        console.error('Error creating adjustment record:', scanError)
+        alert('Failed to adjust points: ' + scanError.message)
+        return
+      }
+
+      // Also create in points_transactions for backward compatibility
+      const { error: txnError } = await supabaseClient
         .from('points_transactions')
         .insert({
           company_id: companyId,
@@ -510,14 +549,13 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           transaction_type: 'adjust',
           points_amount: finalAmount,
           balance_after: newBalance,
-          description: pointsAdjustment.description || 'Admin adjustment - transfer from old system',
+          description: pointsAdjustment.description || 'Admin adjustment - manual modification',
           transaction_date: new Date().toISOString()
         })
 
-      if (error) {
-        console.error('Error adjusting points:', error)
-        alert('Failed to adjust points: ' + error.message)
-        return
+      if (txnError) {
+        console.warn('Warning: Failed to create transaction record:', txnError)
+        // Don't fail the whole operation
       }
 
       // Reload users
@@ -715,13 +753,16 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users")} className="space-y-6" suppressHydrationWarning>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "settings")} className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="rewards" className="gap-2">
             <Package className="h-4 w-4" /> Manage Rewards
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" /> Shop Points Monitor
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2">
+            <Settings className="h-4 w-4" /> Point Settings
           </TabsTrigger>
         </TabsList>
 
@@ -1088,7 +1129,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                       <tr>
                         <th className="px-4 py-3">Shop User</th>
                         <th className="px-4 py-3">Current Balance</th>
-                        <th className="px-4 py-3">Total Collected</th>
+                        <th className="px-4 py-3">Collected (System)</th>
+                        <th className="px-4 py-3">Collected (Manual)</th>
                         <th className="px-4 py-3">Total Redeemed</th>
                         <th className="px-4 py-3">Transactions</th>
                         <th className="px-4 py-3">Last Activity</th>
@@ -1115,8 +1157,19 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-emerald-600">
-                            +{formatNumber(user.total_collected)}
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-1 text-emerald-600">
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span>+{formatNumber(user.total_collected_system)}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">via QR scans</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-1 text-blue-600">
+                              <Edit className="h-3 w-3" />
+                              <span>+{formatNumber(user.total_collected_manual)}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">by admin</div>
                           </td>
                           <td className="px-4 py-4 text-amber-600">
                             -{formatNumber(user.total_redeemed)}
@@ -1150,6 +1203,11 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* POINT SETTINGS TAB */}
+        <TabsContent value="settings" className="space-y-4">
+          <PointsConfigurationSettings userProfile={userProfile} />
         </TabsContent>
       </Tabs>
 

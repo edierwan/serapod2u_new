@@ -68,6 +68,13 @@ export default function JourneyCardWithStats({
     useEffect(() => {
         if (journey.is_active && journey.order_info?.order_id) {
             fetchStats()
+            
+            // Auto-refresh stats every 30 seconds
+            const interval = setInterval(() => {
+                fetchStats()
+            }, 30000)
+            
+            return () => clearInterval(interval)
         }
     }, [journey.is_active, journey.order_info?.order_id])
 
@@ -238,26 +245,44 @@ export default function JourneyCardWithStats({
                             <p className="text-xs text-gray-500 text-center py-2">No data available</p>
                         )}
 
-                        {/* Download Excel Button */}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleDownloadExcel}
-                            disabled={downloadingExcel || !stats || stats.total_valid_links === 0}
-                            className="w-full mt-3 h-8 text-xs bg-white hover:bg-blue-50 border-blue-300"
-                        >
-                            {downloadingExcel ? (
-                                <>
-                                    <Loader2 className="w-3 h-3 mr-2 animate-spin" />
-                                    Downloading...
-                                </>
-                            ) : (
-                                <>
-                                    <Download className="w-3 h-3 mr-2" />
-                                    Download QR Excel ({stats?.total_valid_links || 0} codes)
-                                </>
-                            )}
-                        </Button>
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 mt-3">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    fetchStats()
+                                }}
+                                disabled={loadingStats}
+                                className="h-8 text-xs bg-white hover:bg-blue-50 border-blue-300"
+                            >
+                                {loadingStats ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                    <Clock className="w-3 h-3" />
+                                )}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDownloadExcel}
+                                disabled={downloadingExcel || !stats || stats.total_valid_links === 0}
+                                className="flex-1 h-8 text-xs bg-white hover:bg-blue-50 border-blue-300"
+                            >
+                                {downloadingExcel ? (
+                                    <>
+                                        <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                                        Downloading...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download className="w-3 h-3 mr-2" />
+                                        Download QR Excel ({stats?.total_valid_links || 0} codes)
+                                    </>
+                                )}
+                            </Button>
+                        </div>
                     </div>
                 )}
 

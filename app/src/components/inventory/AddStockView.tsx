@@ -16,7 +16,8 @@ import {
   Save,
   ArrowLeft,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  ImageIcon
 } from 'lucide-react'
 
 interface Product {
@@ -39,6 +40,7 @@ interface Variant {
   variant_name: string
   suggested_retail_price: number | null
   base_cost: number | null
+  image_url: string | null
 }
 
 interface Manufacturer {
@@ -157,7 +159,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     try {
       const { data, error } = await supabase
         .from('product_variants')
-        .select('id, variant_code, variant_name, suggested_retail_price, base_cost')
+        .select('id, variant_code, variant_name, suggested_retail_price, base_cost, image_url')
         .eq('product_id', productId)
         .eq('is_active', true)
         .order('variant_name')
@@ -438,31 +440,52 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 {/* Selected Product Summary */}
                 {selectedVariantData && selectedProductData && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-3">
                       <CheckCircle className="w-5 h-5 text-green-600" />
                       <h4 className="font-semibold text-green-900">Selected Item</h4>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-gray-600">Product:</span>
-                        <p className="font-medium">{selectedProductData.product_name}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Variant:</span>
-                        <p className="font-medium">{selectedVariantData.variant_name}</p>
-                      </div>
-                      {selectedVariantData.base_cost && (
-                        <div>
-                          <span className="text-gray-600">Base Cost:</span>
-                          <p className="font-medium">RM {selectedVariantData.base_cost.toFixed(2)}</p>
+                    <div className="flex gap-4">
+                      {/* Variant Image */}
+                      <div className="flex-shrink-0">
+                        <div className="w-20 h-20 rounded-lg border-2 border-green-300 overflow-hidden bg-white">
+                          {selectedVariantData.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={selectedVariantData.image_url}
+                              alt={selectedVariantData.variant_name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400">
+                              <ImageIcon className="w-8 h-8" />
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {selectedVariantData.suggested_retail_price && (
+                      </div>
+                      
+                      {/* Variant Details */}
+                      <div className="flex-1 grid grid-cols-2 gap-2 text-sm">
                         <div>
-                          <span className="text-gray-600">Retail Price:</span>
-                          <p className="font-medium">RM {selectedVariantData.suggested_retail_price.toFixed(2)}</p>
+                          <span className="text-gray-600">Product:</span>
+                          <p className="font-medium">{selectedProductData.product_name}</p>
                         </div>
-                      )}
+                        <div>
+                          <span className="text-gray-600">Variant:</span>
+                          <p className="font-medium">{selectedVariantData.variant_name}</p>
+                        </div>
+                        {selectedVariantData.base_cost && (
+                          <div>
+                            <span className="text-gray-600">Base Cost:</span>
+                            <p className="font-medium">RM {selectedVariantData.base_cost.toFixed(2)}</p>
+                          </div>
+                        )}
+                        {selectedVariantData.suggested_retail_price && (
+                          <div>
+                            <span className="text-gray-600">Retail Price:</span>
+                            <p className="font-medium">RM {selectedVariantData.suggested_retail_price.toFixed(2)}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

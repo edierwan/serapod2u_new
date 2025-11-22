@@ -22,6 +22,7 @@ interface JourneyConfig {
     product_image_source?: 'variant' | 'custom' | 'genuine_badge'
     custom_image_url?: string
     genuine_badge_style?: string
+    variant_image_url?: string | null
 }
 
 type PageType = 'welcome' | 'collect-points' | 'lucky-draw' | 'redeem-gift' | 'thank-you'
@@ -336,6 +337,16 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                         <Image 
                                             src={config.custom_image_url} 
                                             alt="Product" 
+                                            width={96}
+                                            height={96}
+                                            className="object-contain rounded-lg bg-white p-2 max-w-[96px] max-h-[96px]"
+                                        />
+                                    </div>
+                                ) : config.product_image_source === 'variant' && config.variant_image_url ? (
+                                    <div className="inline-block mb-2">
+                                        <Image 
+                                            src={config.variant_image_url} 
+                                            alt="Product Variant" 
                                             width={96}
                                             height={96}
                                             className="object-contain rounded-lg bg-white p-2"
