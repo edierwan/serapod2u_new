@@ -178,43 +178,57 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   useEffect(() => {
     if (mode !== "edit" || !rewardId) return
 
-    setLoading(true)
-
     const loadReward = async () => {
-      const { data, error } = await supabase
-        .from("redeem_items")
-        .select("*")
-        .eq("id", rewardId)
-        .single()
+      try {
+        setLoading(true)
+        
+        const { data, error } = await supabase
+          .from("redeem_items")
+          .select("*")
+          .eq("id", rewardId)
+          .single()
 
-      if (error || !data) {
-        console.error("Failed to load reward", error)
+        if (error || !data) {
+          console.error("Failed to load reward", error)
+          toast({
+            title: "Unable to load reward",
+            description: error?.message ?? "Please return to the catalog and try again.",
+            variant: "destructive"
+          })
+          return
+        }
+
+        setForm({
+          itemName: data.item_name,
+          itemCode: data.item_code,
+          description: data.item_description ?? "",
+          points: data.points_required.toString(),
+          stock: data.stock_quantity != null ? data.stock_quantity.toString() : "",
+          maxPerConsumer: data.max_redemptions_per_consumer != null ? data.max_redemptions_per_consumer.toString() : "",
+          terms: data.terms_and_conditions ?? "",
+          validFrom: data.valid_from ? formatDateForInput(data.valid_from) : "",
+          validUntil: data.valid_until ? formatDateForInput(data.valid_until) : "",
+          imageUrl: data.item_image_url ?? "",
+          isActive: data.is_active ?? true
+        })
+        setCategory(deriveCategory(data))
+        setRequiresVerification(Boolean(data.max_redemptions_per_consumer && data.max_redemptions_per_consumer <= 1))
+        setCodeManuallyEdited(true)
+        
+        // Set image preview if URL exists
+        if (data.item_image_url) {
+          setImagePreview(data.item_image_url)
+        }
+      } catch (error: any) {
+        console.error("Error loading reward:", error)
         toast({
-          title: "Unable to load reward",
-          description: error?.message ?? "Please return to the catalog and try again.",
+          title: "Error",
+          description: "Failed to load reward details",
           variant: "destructive"
         })
+      } finally {
         setLoading(false)
-        return
       }
-
-      setForm({
-        itemName: data.item_name,
-        itemCode: data.item_code,
-        description: data.item_description ?? "",
-        points: data.points_required.toString(),
-        stock: data.stock_quantity != null ? data.stock_quantity.toString() : "",
-        maxPerConsumer: data.max_redemptions_per_consumer != null ? data.max_redemptions_per_consumer.toString() : "",
-        terms: data.terms_and_conditions ?? "",
-        validFrom: data.valid_from ? formatDateForInput(data.valid_from) : "",
-        validUntil: data.valid_until ? formatDateForInput(data.valid_until) : "",
-        imageUrl: data.item_image_url ?? "",
-        isActive: data.is_active ?? true
-      })
-      setCategory(deriveCategory(data))
-      setRequiresVerification(Boolean(data.max_redemptions_per_consumer && data.max_redemptions_per_consumer <= 1))
-      setCodeManuallyEdited(true)
-      setLoading(false)
     }
 
     loadReward()
