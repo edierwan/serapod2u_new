@@ -92,6 +92,64 @@ const formatCurrency = (amount: number): string => {
   return amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
+// Helper function to detect product family from variant data
+const getProductFamily = (variant: ProductVariant): string | null => {
+  // Check product name first - this covers the main families
+  const productName = variant.product_name || ''
+  
+  // Cellera families
+  if (productName.toLowerCase().includes('cellera hero')) {
+    return 'Cellera Hero'
+  }
+  if (productName.toLowerCase().includes('cellera zero')) {
+    return 'Cellera Zero'
+  }
+  
+  // Ellbow Cat Treat
+  if (productName.toLowerCase().includes('ellbow cat treat') || 
+      productName.toLowerCase().includes('ellbow')) {
+    return 'Ellbow Cat Treat'
+  }
+  
+  // Serapod Device families (check full product name for these)
+  if (productName.toLowerCase().includes('serapod device s.box') || 
+      productName.toLowerCase().includes('serapod device s box')) {
+    return 'Serapod Device S.Box'
+  }
+  if (productName.toLowerCase().includes('serapod device s.line') || 
+      productName.toLowerCase().includes('serapod device s line')) {
+    return 'Serapod Device S.Line'
+  }
+  
+  // Check subgroup in attributes (if available) - fallback for S.Box/S.Line
+  const subgroupName = variant.attributes?.subgroup_name || ''
+  if (subgroupName.toLowerCase().includes('s.box') || subgroupName.toLowerCase().includes('s. box')) {
+    return 'Serapod Device S.Box'
+  }
+  if (subgroupName.toLowerCase().includes('s.line') || subgroupName.toLowerCase().includes('s. line')) {
+    return 'Serapod Device S.Line'
+  }
+  
+  return null
+}
+
+// Helper function to get default case size for a product family
+const getDefaultCaseSize = (family: string): number => {
+  switch (family) {
+    case 'Cellera Hero':
+    case 'Cellera Zero':
+      return 100
+    case 'Ellbow Cat Treat':
+      return 20
+    case 'Serapod Device S.Box':
+      return 50
+    case 'Serapod Device S.Line':
+      return 200
+    default:
+      return 100 // Default fallback
+  }
+}
+
 export default function CreateOrderView({ userProfile, onViewChange }: CreateOrderViewProps) {
   const supabase = createClient()
   const { toast } = useToast()
@@ -122,12 +180,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   const [useCustomUnitsPerCase, setUseCustomUnitsPerCase] = useState(false)
   const [useIndividualCases, setUseIndividualCases] = useState(false)  // Toggle for individual case sizes
   const [qrBuffer, setQrBuffer] = useState(10.00)
-  const [masterQrDuplicates, setMasterQrDuplicates] = useState(0)  // Number of duplicate Master QR per case (0-10)
+  const [masterQrDuplicates, setMasterQrDuplicates] = useState(5)  // Number of duplicate Master QR per case (0-10) - default 5
   const [enableRFID, setEnableRFID] = useState(false)
   const [hasPoints, setHasPoints] = useState(true)
   const [enableLuckyDraw, setEnableLuckyDraw] = useState(true)
   const [enableRedeem, setEnableRedeem] = useState(true)
   const [notes, setNotes] = useState('')
+  
+  // Manufacturer lock - order can only contain products from one manufacturer
+  const [lockedManufacturerId, setLockedManufacturerId] = useState<string | null>(null)
   
   // Products and Variants
   const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([])
@@ -378,11 +439,12 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     }
   }
 
-  const loadAvailableProducts = async (sellerOrgId: string) => {
+  const loadAvailableProducts = async (sellerOrgId: string, manufacturerLock?: string | null) => {
     try {
-      console.log('🔍 Loading product variants - orderType:', orderType, 'sellerOrgId:', sellerOrgId)
+      const effectiveLock = manufacturerLock !== undefined ? manufacturerLock : lockedManufacturerId
+      console.log('🔍 Loading product variants - orderType:', orderType, 'sellerOrgId:', sellerOrgId, 'lockedManufacturerId:', lockedManufacturerId, 'effectiveLock:', effectiveLock)
       
-      // Load product variants with product details
+      // Load product variants with product details including subgroups for auto-logic
       let query = supabase
         .from('product_variants')
         .select(`
@@ -401,20 +463,31 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             product_code,
             product_name,
             manufacturer_id,
-            is_active
+            is_active,
+            subgroup_id,
+            product_subgroups (
+              subgroup_name
+            )
           )
         `)
         .eq('is_active', true)
         .eq('products.is_active', true)
       
-      // Filter by manufacturer ONLY for H2M orders (HQ buying from specific manufacturer)
-      // For S2D orders, shops should see ALL products regardless of manufacturer
-      if (orderType === 'H2M' && sellerOrgId) {
-        console.log('🔍 Filtering by manufacturer:', sellerOrgId)
+      // Filter by locked manufacturer if order already has products
+      if (effectiveLock) {
+        console.log('🔒 Order locked to manufacturer:', effectiveLock)
+        query = query.eq('products.manufacturer_id', effectiveLock)
+      }
+      // Filter by manufacturer ONLY for H2M orders when seller is pre-selected AND not explicitly unlocked
+      // When manufacturerLock is explicitly null (reset), skip H2M filter to show all products
+      else if (orderType === 'H2M' && sellerOrgId && manufacturerLock === undefined) {
+        console.log('🔍 Filtering by manufacturer (H2M pre-selected):', sellerOrgId)
         query = query.eq('products.manufacturer_id', sellerOrgId)
       } else if (orderType === 'S2D') {
         console.log('🔍 S2D order: Loading all active products for shop')
         // No manufacturer filter for S2D - shops can order any product
+      } else {
+        console.log('🔓 No manufacturer filter applied - showing all products')
       }
       
       query = query.order('variant_name')
@@ -437,6 +510,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       
       const formattedVariants = data?.map((v: any) => {
         const product = Array.isArray(v.products) ? v.products[0] : v.products
+        const subgroup = Array.isArray(product?.product_subgroups) ? product.product_subgroups[0] : product?.product_subgroups
         
         return {
           id: v.id,
@@ -444,7 +518,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           product_name: product?.product_name || '',
           product_code: product?.product_code || '',
           variant_name: v.variant_name,
-          attributes: v.attributes || {},
+          attributes: {
+            ...(v.attributes || {}),
+            subgroup_name: subgroup?.subgroup_name || '' // Add subgroup name to attributes for family detection
+          },
           barcode: v.barcode,
           manufacturer_sku: v.manufacturer_sku,
           base_cost: v.base_cost || 0,
@@ -518,53 +595,145 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       return
     }
 
-    // For H2M orders: Auto-detect and validate manufacturer
-    if (orderType === 'H2M') {
-      if (!variant.manufacturer_id) {
-        toast({
-          title: 'Invalid Product',
-          description: 'This product has no manufacturer assigned',
-          variant: 'destructive'
-        })
-        return
-      }
+    // Validate manufacturer - all products in an order must be from the same manufacturer
+    if (!variant.manufacturer_id) {
+      toast({
+        title: 'Invalid Product',
+        description: 'This product has no manufacturer assigned',
+        variant: 'destructive'
+      })
+      return
+    }
 
-      // Check if this is the first product or if manufacturer matches
-      if (orderItems.length > 0) {
-        const firstVariant = availableVariants.find(v => v.id === orderItems[0].variant_id)
-        if (firstVariant && firstVariant.manufacturer_id !== variant.manufacturer_id) {
-          toast({
-            title: 'Mixed Manufacturers',
-            description: 'All products in an order must be from the same manufacturer',
-            variant: 'destructive'
-          })
-          return
+    // Check manufacturer lock
+    if (lockedManufacturerId && variant.manufacturer_id !== lockedManufacturerId) {
+      // Get manufacturer name for better error message
+      const { data: lockedManufacturer } = await supabase
+        .from('organizations')
+        .select('org_name')
+        .eq('id', lockedManufacturerId)
+        .single()
+      
+      toast({
+        title: 'Mixed Manufacturers Not Allowed',
+        description: `Each order can only contain products from one manufacturer. This order is currently for ${lockedManufacturer?.org_name || 'another manufacturer'}.`,
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // For H2M orders: Auto-set seller if not already set
+    if (orderType === 'H2M' && !sellerOrg && variant.manufacturer_id) {
+      try {
+        const { data: manufacturer, error } = await supabase
+          .from('organizations')
+          .select('id, org_name, org_code, org_type_code')
+          .eq('id', variant.manufacturer_id)
+          .single()
+
+        if (error) throw error
+        
+        if (manufacturer) {
+          setSellerOrg(manufacturer)
+          setSelectedSellerOrgId(manufacturer.id)
+          // Silently set manufacturer - no notification needed
         }
-      }
-
-      // Auto-set seller if not already set
-      if (!sellerOrg && variant.manufacturer_id) {
-        try {
-          const { data: manufacturer, error } = await supabase
-            .from('organizations')
-            .select('id, org_name, org_code, org_type_code')
-            .eq('id', variant.manufacturer_id)
-            .single()
-
-          if (error) throw error
-          
-          if (manufacturer) {
-            setSellerOrg(manufacturer)
-            setSelectedSellerOrgId(manufacturer.id)
-            // Silently set manufacturer - no notification needed
-          }
-        } catch (error) {
-          console.error('Error fetching manufacturer:', error)
-        }
+      } catch (error) {
+        console.error('Error fetching manufacturer:', error)
       }
     }
 
-    // Add product variant with default quantity based on unitsPerCase
+    // Lock manufacturer on first product
+    if (!lockedManufacturerId) {
+      console.log('🔒 Locking order to manufacturer:', variant.manufacturer_id)
+      setLockedManufacturerId(variant.manufacturer_id)
+      // Reload products to filter by locked manufacturer (pass manufacturer_id directly)
+      await loadAvailableProducts(sellerOrg?.id || '', variant.manufacturer_id)
+      
+      // Show notification about manufacturer lock
+      const { data: manufacturer } = await supabase
+        .from('organizations')
+        .select('org_name')
+        .eq('id', variant.manufacturer_id)
+        .single()
+      
+      toast({
+        title: 'Manufacturer Locked',
+        description: `This order is now locked to ${manufacturer?.org_name || 'this manufacturer'}. Only products from this manufacturer can be added.`
+      })
+    }
+
+    // Auto-logic for case size configuration
+    const currentFamily = getProductFamily(variant)
+    
+    // Determine if we should apply auto-logic
+    let shouldAutoSwitch = false
+    let autoMessage = ''
+    
+    if (orderItems.length === 0) {
+      // First product - set case size based on family
+      if (currentFamily) {
+        const defaultSize = getDefaultCaseSize(currentFamily)
+        setUnitsPerCase(defaultSize)
+        setUseIndividualCases(false)
+        autoMessage = `Case size automatically set to ${defaultSize} units for ${currentFamily}`
+      }
+    } else {
+      // Check if all existing products are from the same family
+      const existingFamilies = new Set(
+        orderItems
+          .map(item => {
+            const itemVariant = availableVariants.find(v => v.id === item.variant_id)
+            return itemVariant ? getProductFamily(itemVariant) : null
+          })
+          .filter(Boolean)
+      )
+      
+      // Add current family to the set
+      if (currentFamily) {
+        existingFamilies.add(currentFamily)
+      }
+      
+      // If we now have mixed families, switch to individual mode
+      if (existingFamilies.size > 1 && !useIndividualCases) {
+        shouldAutoSwitch = true
+        setUseIndividualCases(true)
+        
+        // Update all existing items with their family-based defaults
+        const updatedItems = orderItems.map(item => {
+          const itemVariant = availableVariants.find(v => v.id === item.variant_id)
+          if (itemVariant) {
+            const itemFamily = getProductFamily(itemVariant)
+            const itemDefaultSize = itemFamily ? getDefaultCaseSize(itemFamily) : unitsPerCase
+            return { ...item, units_per_case: item.units_per_case || itemDefaultSize }
+          }
+          return { ...item, units_per_case: item.units_per_case || unitsPerCase }
+        })
+        setOrderItems(updatedItems)
+        
+        autoMessage = 'Switched to Individual case sizes (mixed product families detected)'
+      } else if (existingFamilies.size === 1 && !useIndividualCases) {
+        // All same family - ensure case size matches
+        const family = Array.from(existingFamilies)[0] as string
+        const defaultSize = getDefaultCaseSize(family)
+        if (unitsPerCase !== defaultSize) {
+          setUnitsPerCase(defaultSize)
+          autoMessage = `Case size adjusted to ${defaultSize} units for ${family}`
+        }
+      }
+    }
+    
+    // Determine case size for new item
+    let itemCaseSize = unitsPerCase
+    let itemQty = unitsPerCase
+    
+    if (shouldAutoSwitch || useIndividualCases) {
+      // In individual mode, use family-specific default
+      itemCaseSize = currentFamily ? getDefaultCaseSize(currentFamily) : unitsPerCase
+      itemQty = itemCaseSize
+    }
+
+    // Add product variant
     const newItem: OrderItem = {
       id: `temp-${Date.now()}`,
       order_id: '',
@@ -574,23 +743,42 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       variant_name: variant.variant_name,
       attributes: variant.attributes,
       manufacturer_sku: variant.manufacturer_sku,
-      qty: unitsPerCase,
+      qty: itemQty,
       unit_price: variant.base_cost,
-      line_total: unitsPerCase * variant.base_cost,
-      units_per_case: useIndividualCases ? unitsPerCase : undefined  // Set individual case size if mode enabled
+      line_total: itemQty * variant.base_cost,
+      units_per_case: (shouldAutoSwitch || useIndividualCases) ? itemCaseSize : undefined
     }
 
     setOrderItems([...orderItems, newItem])
     setSelectedVariantId('')
     
+    // Show notification with auto-logic message if applicable
     toast({
       title: 'Product Added',
-      description: `${variant.product_name} - ${variant.variant_name} has been added to the order`,
+      description: autoMessage 
+        ? `${variant.product_name} - ${variant.variant_name} added. ${autoMessage}`
+        : `${variant.product_name} - ${variant.variant_name} has been added to the order`,
     })
   }
 
-  const handleRemoveProduct = (variantId: string) => {
-    setOrderItems(orderItems.filter(item => item.variant_id !== variantId))
+  const handleRemoveProduct = async (variantId: string) => {
+    const updatedItems = orderItems.filter(item => item.variant_id !== variantId)
+    setOrderItems(updatedItems)
+    
+    // Reset manufacturer lock when all products are removed
+    if (updatedItems.length === 0) {
+      console.log('🔓 Unlocking manufacturer - all products removed')
+      setLockedManufacturerId(null)
+      // Reload products without manufacturer filter (pass null explicitly)
+      await loadAvailableProducts(sellerOrg?.id || '', null)
+      
+      toast({
+        title: 'Manufacturer Unlocked',
+        description: 'All products removed. You can now select from any manufacturer.'
+      })
+      return // Exit early to avoid the generic "Product Removed" toast
+    }
+    
     toast({
       title: 'Product Removed',
       description: 'Product has been removed from the order',
@@ -652,16 +840,20 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
   const handleUnitsPerCaseChange = (newUnitsPerCase: number) => {
     setUnitsPerCase(newUnitsPerCase)
-    // Update all existing order items to have at least the new minimum quantity
+    // Auto-set quantity to match units per case (minimum requirement)
     if (orderItems.length > 0) {
       setOrderItems(orderItems.map(item => {
-        const newQty = Math.max(item.qty, newUnitsPerCase)
         return {
           ...item,
-          qty: newQty,
-          line_total: newQty * item.unit_price
+          qty: newUnitsPerCase,
+          line_total: newUnitsPerCase * item.unit_price
         }
       }))
+      
+      toast({
+        title: 'Quantity Auto-Updated',
+        description: `All quantities set to ${newUnitsPerCase} units (minimum for ${newUnitsPerCase} units/case)`,
+      })
     }
   }
 
@@ -783,7 +975,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       // Set order configuration
       setUnitsPerCase(orderData.units_per_case || 100)
       setQrBuffer(orderData.qr_buffer_percent || 10)
-      setMasterQrDuplicates(orderDataAny.extra_qr_master ?? 0) // Default to 0 if not set
+      setMasterQrDuplicates(orderDataAny.extra_qr_master ?? 5) // Default to 5 if not set
       setEnableRFID(orderDataAny.rfid_enabled || orderData.has_rfid || false)
       setHasPoints(orderData.has_points !== false)
       setEnableLuckyDraw(orderDataAny.enable_lucky_draw !== false || orderData.has_lucky_draw !== false)
@@ -811,6 +1003,22 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       }))
 
       setOrderItems(items)
+      
+      // Set manufacturer lock if order has items
+      if (items.length > 0) {
+        const firstVariant = await supabase
+          .from('product_variants')
+          .select('products!inner(manufacturer_id)')
+          .eq('id', items[0].variant_id)
+          .single()
+        
+        if (firstVariant.data) {
+          const manufacturerId = (firstVariant.data.products as any)?.manufacturer_id
+          if (manufacturerId) {
+            setLockedManufacturerId(manufacturerId)
+          }
+        }
+      }
 
       // Load available products for the seller
       if (orderData.seller_org_id) {
@@ -915,6 +1123,22 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       }))
 
       setOrderItems(items)
+      
+      // Set manufacturer lock if order has items
+      if (items.length > 0) {
+        const firstVariant = await supabase
+          .from('product_variants')
+          .select('products!inner(manufacturer_id)')
+          .eq('id', items[0].variant_id)
+          .single()
+        
+        if (firstVariant.data) {
+          const manufacturerId = (firstVariant.data.products as any)?.manufacturer_id
+          if (manufacturerId) {
+            setLockedManufacturerId(manufacturerId)
+          }
+        }
+      }
 
       // Load available products for the seller
       if (orderData.seller_org_id) {
@@ -1448,6 +1672,27 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
+              {/* Auto-Logic Info Banner */}
+              {orderItems.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-blue-900">
+                        Smart Case Size Configuration
+                      </p>
+                      <p className="text-xs text-blue-700 mt-1">
+                        {useIndividualCases 
+                          ? 'Individual mode: Each product has its own case size based on product family (Cellera Hero/Zero: 100, Ellbow Cat Treat: 20, S.Box: 50, S.Line: 200)'
+                          : `Global mode: All products use ${unitsPerCase} units per case`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {/* Case Size Configuration Mode Toggle */}
               <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                 <label className="block text-sm font-medium text-gray-900 mb-3">
@@ -1588,7 +1833,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   max="10"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  How many duplicate Master QR stickers to print per case (0-10). 0 = only 1 sticker per case, 10 = 11 stickers per case.
+                  How many duplicate Master QR stickers to print per case (0-10). Default is 5. Example: 0 = only 1 sticker per case, 5 = 6 stickers per case, 10 = 11 stickers per case.
                 </p>
               </div>
               
@@ -1757,15 +2002,28 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {orderItems.map((item) => (
+                    {orderItems.map((item) => {
+                      const itemVariant = availableVariants.find(v => v.id === item.variant_id)
+                      const productFamily = itemVariant ? getProductFamily(itemVariant) : null
+                      const familyDefaultSize = productFamily ? getDefaultCaseSize(productFamily) : null
+                      
+                      return (
                       <div key={item.variant_id} className="border border-gray-200 rounded-lg p-4 bg-white">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
-                            <h4 className="font-medium text-gray-900">{item.product_name}</h4>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-gray-900">{item.product_name}</h4>
+                              {productFamily && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                  {productFamily}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-gray-600 mt-1">{item.variant_name} • {item.attributes?.strength || item.attributes?.nicotine || ''}</p>
                             <p className="text-xs text-gray-500 mt-1">
                               RM {formatCurrency(item.unit_price)} per unit
                               {item.manufacturer_sku && ` • SKU: ${item.manufacturer_sku}`}
+                              {familyDefaultSize && ` • Default: ${familyDefaultSize} units/case`}
                             </p>
                           </div>
                           <Button
@@ -1788,6 +2046,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                                 onChange={(e) => handleUpdateIndividualUnitsPerCase(item.variant_id, parseInt(e.target.value))}
                                 className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                               >
+                                <option value="20">20</option>
                                 <option value="50">50</option>
                                 <option value="100">100</option>
                                 <option value="200">200</option>
@@ -1873,7 +2132,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           </div>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </CardContent>

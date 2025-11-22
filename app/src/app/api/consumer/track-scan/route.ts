@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { validateQRCodeSecurity, getBaseCode } from '@/lib/security/qr-hash'
+import { validateQRCodeSecurity } from '@/lib/security/qr-hash'
+import { resolveQrCodeRecord } from '@/lib/utils/qr-resolver'
 
 /**
  * Track consumer QR code scan
@@ -39,9 +40,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Use base code (without hash) for database lookup
-    const baseCode = securityCheck.baseCode
-    console.log('🔐 Security check passed. Using base code:', baseCode)
+    console.log('🔐 Security check passed for QR code:', qr_code)
     // ===== END SECURITY CHECK =====
 
     // Use service role for server-side operations
@@ -56,17 +55,13 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    // Get QR code ID - use base code
-    const { data: qrCodeData, error: qrError } = await supabaseAdmin
-      .from('qr_codes')
-      .select('id')
-      .eq('code', baseCode) // Use base code for lookup
-      .maybeSingle()
+    // Resolve QR code record (handles both new codes with hash and legacy codes)
+    const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)
 
-    if (qrError || !qrCodeData) {
+    if (!qrCodeData) {
       // QR code doesn't exist in database yet (preview/test code)
       // Return success without tracking to avoid blocking user experience
-      console.log('⚠️ QR code not found in database (preview mode):', baseCode)
+      console.log('⚠️ QR code not found in database (preview mode):', qr_code)
       return NextResponse.json({
         success: true,
         preview: true,

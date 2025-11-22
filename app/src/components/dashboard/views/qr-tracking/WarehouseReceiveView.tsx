@@ -1563,44 +1563,9 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
           <CardContent className="space-y-4">
             {!selectedOrderId && eligibleOrders.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Select an order above to start scanning master case QR codes.
+                Select an order above to start batch receiving master case QR codes.
               </div>
             )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Master case QR code
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={masterCodeInput}
-                  onChange={(e) => setMasterCodeInput(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleReceiveMaster(masterCodeInput)
-                    }
-                  }}
-                  placeholder={selectedOrderId ? 'Scan or paste a master case QR...' : 'Select an order to begin'}
-                  className="flex-1 px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={receiving || !selectedOrderId}
-                />
-                <Button
-                  onClick={() => handleReceiveMaster(masterCodeInput)}
-                  disabled={receiving || !masterCodeInput.trim() || !selectedOrderId}
-                  size="lg"
-                >
-                  {receiving ? (
-                    <RefreshCw className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <CheckCircle className="h-5 w-5" />
-                  )}
-                </Button>
-              </div>
-              <p className="text-sm text-gray-500 mt-2">
-                Master codes must belong to the selected order. All units inside the case will be marked as received instantly.
-              </p>
-            </div>
 
             <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">

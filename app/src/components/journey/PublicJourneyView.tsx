@@ -28,6 +28,7 @@ interface JourneyConfig {
   custom_image_url?: string
   genuine_badge_style?: string
   redemption_requires_login?: boolean
+  variant_image_url?: string | null
 }
 
 interface VerificationData {

@@ -1,6 +1,6 @@
 "use client"
 
-import Image from "next/image"
+import NextImage from "next/image"
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -45,6 +45,67 @@ import {
 } from "lucide-react"
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
+
+// Image compression utility for reward images
+// Similar to avatar compression but optimized for reward display
+const compressImage = (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = document.createElement('img')
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        
+        // Reward image dimensions - larger than avatars but still optimized
+        const MAX_WIDTH = 800
+        const MAX_HEIGHT = 800
+        
+        // Calculate new dimensions while maintaining aspect ratio
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width)
+            width = MAX_WIDTH
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width = Math.round((width * MAX_HEIGHT) / height)
+            height = MAX_HEIGHT
+          }
+        }
+        
+        canvas.width = width
+        canvas.height = height
+        
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+        
+        // Convert to JPEG with good compression (quality 0.8 = 80%)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              })
+              console.log(`🖼️ Reward image compressed: ${(file.size / 1024).toFixed(2)}KB → ${(compressedFile.size / 1024).toFixed(2)}KB`)
+              resolve(compressedFile)
+            } else {
+              reject(new Error('Canvas to Blob conversion failed'))
+            }
+          },
+          'image/jpeg',
+          0.8
+        )
+      }
+      img.onerror = () => reject(new Error('Image loading failed'))
+    }
+    reader.onerror = () => reject(new Error('File reading failed'))
+  })
+}
 
 type RewardFormState = {
   itemName: string
@@ -148,7 +209,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
         validFrom: data.valid_from ? formatDateForInput(data.valid_from) : "",
         validUntil: data.valid_until ? formatDateForInput(data.valid_until) : "",
         imageUrl: data.item_image_url ?? "",
-        isActive: data.is_active
+        isActive: data.is_active ?? true
       })
       setCategory(deriveCategory(data))
       setRequiresVerification(Boolean(data.max_redemptions_per_consumer && data.max_redemptions_per_consumer <= 1))
@@ -172,7 +233,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -186,7 +247,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       return
     }
 
-    // Validate file size (5MB max)
+    // Validate file size (5MB max before compression)
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "File too large",
@@ -196,19 +257,39 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       return
     }
 
-    setImageFile(file)
+    try {
+      // Compress the image
+      const compressedFile = await compressImage(file)
+      setImageFile(compressedFile)
 
-    // Create preview
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string)
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const previewUrl = reader.result as string
+        setImagePreview(previewUrl)
+        // Update form.imageUrl for live preview
+        updateForm("imageUrl", previewUrl)
+      }
+      reader.readAsDataURL(compressedFile)
+
+      toast({
+        title: "Image ready",
+        description: `Compressed from ${(file.size / 1024).toFixed(0)}KB to ${(compressedFile.size / 1024).toFixed(0)}KB`,
+      })
+    } catch (error) {
+      console.error('Image compression failed:', error)
+      toast({
+        title: "Compression failed",
+        description: "Could not process image. Please try a different file.",
+        variant: "destructive"
+      })
     }
-    reader.readAsDataURL(file)
   }
 
   const handleRemoveImage = () => {
     setImageFile(null)
     setImagePreview(null)
+    updateForm("imageUrl", "")
     if (imageInputRef.current) {
       imageInputRef.current.value = ''
     }
@@ -263,7 +344,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       item_code: form.itemCode || "PREVIEW-REWARD",
       item_name: form.itemName || "Reward name",
       item_description: form.description || null,
-      item_image_url: form.imageUrl || null,
+      item_image_url: imagePreview || form.imageUrl || null,
       points_required: Number.isFinite(parsedPoints) ? parsedPoints : 0,
       stock_quantity: parsedStock ?? null,
       max_redemptions_per_consumer: requiresVerification
@@ -566,11 +647,12 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                     <div className="space-y-2">
                       {(imagePreview || form.imageUrl) && (
                         <div className="relative h-32 w-full overflow-hidden rounded-lg border border-muted-foreground/20 bg-muted">
-                          <Image 
+                          <NextImage 
                             src={imagePreview || form.imageUrl} 
                             alt="Reward preview" 
                             fill 
                             className="object-cover"
+                            unoptimized={(imagePreview || form.imageUrl).startsWith('data:')}
                           />
                         </div>
                       )}
@@ -701,9 +783,16 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="overflow-hidden rounded-xl border border-muted-foreground/20">
-                <div className="relative h-40 w-full bg-muted">
+                <div className="relative h-40 sm:h-48 w-full bg-muted">
                   {previewReward.item_image_url ? (
-                    <Image src={previewReward.item_image_url} alt={previewReward.item_name} fill className="object-cover" />
+                    <NextImage 
+                      src={previewReward.item_image_url} 
+                      alt={previewReward.item_name} 
+                      fill 
+                      className="object-cover" 
+                      style={{ objectPosition: 'center' }}
+                      unoptimized={previewReward.item_image_url.startsWith('data:')}
+                    />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/20">
                       <Gift className="h-10 w-10 text-muted-foreground" />

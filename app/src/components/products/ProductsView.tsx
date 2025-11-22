@@ -65,8 +65,12 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
   const [currentPage, setCurrentPage] = useState(1)
   const [categories, setCategories] = useState<any[]>([])
   const [brands, setBrands] = useState<any[]>([])
+  const [manufacturers, setManufacturers] = useState<any[]>([])
+  const [manufacturerFilter, setManufacturerFilter] = useState('all')
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [sortColumn, setSortColumn] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -76,12 +80,24 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
     if (isReady) {
       fetchProducts()
       fetchCategories()
+      fetchManufacturers()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady])
+
+  useEffect(() => {
+    if (isReady) {
       fetchBrands()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, categoryFilter])
 
+  useEffect(() => {
+    if (isReady) {
+      fetchProducts()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, searchQuery, categoryFilter, brandFilter, statusFilter, currentPage])
+  }, [searchQuery, categoryFilter, brandFilter, manufacturerFilter, statusFilter, currentPage, sortColumn, sortDirection])
 
   const fetchProducts = async () => {
     if (!isReady) return
@@ -137,8 +153,39 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
         query = query.eq('brand_id', brandFilter)
       }
 
+      if (manufacturerFilter !== 'all') {
+        query = query.eq('manufacturer_id', manufacturerFilter)
+      }
+
       if (statusFilter !== 'all') {
         query = query.eq('is_active', statusFilter === 'active')
+      }
+
+      // Apply sorting
+      if (sortColumn) {
+        const ascending = sortDirection === 'asc'
+        switch (sortColumn) {
+          case 'product_name':
+            query = query.order('product_name', { ascending })
+            break
+          case 'brand':
+            query = query.order('brand_id', { ascending })
+            break
+          case 'category':
+            query = query.order('category_id', { ascending })
+            break
+          case 'manufacturer':
+            query = query.order('manufacturer_id', { ascending })
+            break
+          case 'is_vape':
+            query = query.order('is_vape', { ascending })
+            break
+          case 'status':
+            query = query.order('is_active', { ascending })
+            break
+          default:
+            query = query.order('created_at', { ascending: false })
+        }
       }
 
       // Pagination
@@ -183,16 +230,58 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
 
   const fetchBrands = async () => {
     try {
-      const { data, error } = await supabase
-        .from('brands')
-        .select('id, brand_name')
-        .eq('is_active', true)
-        .order('brand_name')
+      if (categoryFilter === 'all') {
+        // Fetch all brands
+        const { data, error } = await supabase
+          .from('brands')
+          .select('id, brand_name')
+          .eq('is_active', true)
+          .order('brand_name')
 
-      if (error) throw error
-      setBrands(data || [])
+        if (error) throw error
+        setBrands(data || [])
+      } else {
+        // Fetch brands that have products in the selected category
+        const { data, error } = await supabase
+          .from('products')
+          .select('brand_id, brands(id, brand_name)')
+          .eq('category_id', categoryFilter)
+          .eq('is_active', true)
+          .not('brand_id', 'is', null)
+
+        if (error) throw error
+        
+        // Extract unique brands
+        const uniqueBrands = new Map()
+        data?.forEach((item: any) => {
+          const brand = Array.isArray(item.brands) ? item.brands[0] : item.brands
+          if (brand && brand.id) {
+            uniqueBrands.set(brand.id, brand)
+          }
+        })
+        
+        setBrands(Array.from(uniqueBrands.values()).sort((a, b) => 
+          a.brand_name.localeCompare(b.brand_name)
+        ))
+      }
     } catch (error) {
       console.error('Error fetching brands:', error)
+    }
+  }
+
+  const fetchManufacturers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id, org_name, org_code')
+        .in('org_type_code', ['MANU', 'MFG'])
+        .eq('is_active', true)
+        .order('org_name')
+
+      if (error) throw error
+      setManufacturers(data || [])
+    } catch (error) {
+      console.error('Error fetching manufacturers:', error)
     }
   }
 
@@ -359,7 +448,10 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
               </div>
             </div>
             
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <Select value={categoryFilter} onValueChange={(value) => {
+              setCategoryFilter(value)
+              setBrandFilter('all') // Reset brand filter when category changes
+            }}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
@@ -382,6 +474,20 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 {brands.map((brand) => (
                   <SelectItem key={brand.id} value={brand.id}>
                     {brand.brand_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={manufacturerFilter} onValueChange={setManufacturerFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Manufacturer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Manufacturers</SelectItem>
+                {manufacturers.map((manufacturer) => (
+                  <SelectItem key={manufacturer.id} value={manufacturer.id}>
+                    {manufacturer.org_name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -567,12 +673,120 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Product Name</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Manufacturer</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sortColumn === 'product_name') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortColumn('product_name')
+                        setSortDirection('asc')
+                      }
+                    }}
+                    className="flex items-center gap-1 hover:text-blue-600"
+                  >
+                    Product Name
+                    {sortColumn === 'product_name' && (
+                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sortColumn === 'brand') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortColumn('brand')
+                        setSortDirection('asc')
+                      }
+                    }}
+                    className="flex items-center gap-1 hover:text-blue-600"
+                  >
+                    Brand
+                    {sortColumn === 'brand' && (
+                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sortColumn === 'category') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortColumn('category')
+                        setSortDirection('asc')
+                      }
+                    }}
+                    className="flex items-center gap-1 hover:text-blue-600"
+                  >
+                    Category
+                    {sortColumn === 'category' && (
+                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sortColumn === 'manufacturer') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortColumn('manufacturer')
+                        setSortDirection('asc')
+                      }
+                    }}
+                    className="flex items-center gap-1 hover:text-blue-600"
+                  >
+                    Manufacturer
+                    {sortColumn === 'manufacturer' && (
+                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sortColumn === 'is_vape') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortColumn('is_vape')
+                        setSortDirection('asc')
+                      }
+                    }}
+                    className="flex items-center gap-1 hover:text-blue-600"
+                  >
+                    Type
+                    {sortColumn === 'is_vape' && (
+                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sortColumn === 'status') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortColumn('status')
+                        setSortDirection('asc')
+                      }
+                    }}
+                    className="flex items-center gap-1 hover:text-blue-600"
+                  >
+                    Status
+                    {sortColumn === 'status' && (
+                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>

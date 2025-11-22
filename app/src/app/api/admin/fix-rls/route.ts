@@ -18,33 +18,44 @@ export async function POST() {
       }
     )
 
-    // Drop old policy
+    // Drop old restrictive policy
     const dropPolicy = `
-      DROP POLICY IF EXISTS orders_select ON orders;
+      DROP POLICY IF EXISTS "Users can view their own scans" ON consumer_qr_scans;
     `
 
-    // Create new policy with warehouse_org_id
+    // Create new policy that allows shops to view their own scans
     const createPolicy = `
-      CREATE POLICY orders_select ON orders 
-        FOR SELECT 
-        TO authenticated 
+      CREATE POLICY "Users and shops can view relevant scans"
+        ON consumer_qr_scans
+        FOR SELECT
+        TO authenticated
         USING (
-          (buyer_org_id = public.current_user_org_id()) 
-          OR (seller_org_id = public.current_user_org_id())
-          OR (warehouse_org_id = public.current_user_org_id())
-          OR (
-            (public.get_org_type(public.current_user_org_id()) = 'HQ'::text) 
-            AND public.is_power_user() 
-            AND (company_id = public.get_company_id(public.current_user_org_id()))
+          consumer_id = auth.uid()
+          OR
+          EXISTS (
+            SELECT 1 FROM users u
+            WHERE u.id = auth.uid()
+            AND u.organization_id = consumer_qr_scans.shop_id
+          )
+          OR
+          EXISTS (
+            SELECT 1 FROM users u
+            WHERE u.id = auth.uid()
+            AND u.role_code IN ('SA', 'HQ', 'POWER_USER')
           )
         );
     `
 
+    console.log('🔧 Dropping old policy...')
     const result1 = await supabase.rpc('exec_raw_sql', { query: dropPolicy })
+    console.log('✅ Drop result:', result1)
+    
+    console.log('🔧 Creating new policy...')
     const result2 = await supabase.rpc('exec_raw_sql', { query: createPolicy })
+    console.log('✅ Create result:', result2)
 
     return NextResponse.json({
-      message: 'RLS policy fix applied',
+      message: 'Shop RLS policy fix applied - shops can now view their own point balance',
       dropResult: result1,
       createResult: result2
     })

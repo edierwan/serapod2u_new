@@ -1856,56 +1856,12 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             <Alert className="border-amber-200 bg-amber-50 text-amber-900">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                Please select a distributor above to begin scanning for shipment.
+                Please select a distributor above to begin batch scanning for shipment.
               </AlertDescription>
             </Alert>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Scan/Enter QR Code
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={qrInput}
-                onChange={(e) => setQrInput(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    handleScanCode()
-                  }
-                }}
-                placeholder="Scan or type QR code..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={scanning || !selectedDistributor}
-              />
-              <Button
-                onClick={handleScanCode}
-                disabled={scanning || !qrInput.trim() || !selectedDistributor}
-              >
-                {scanning ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Scan className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          <div>
-            <Button
-              variant="outline"
-              onClick={() => setShowBatchInput(!showBatchInput)}
-              className="w-full"
-              disabled={!selectedDistributor}
-            >
-              <ClipboardPaste className="h-4 w-4 mr-2" />
-              {showBatchInput ? 'Hide' : 'Show'} Batch Paste
-            </Button>
-          </div>
-
-          {showBatchInput && (
-            <div className="border border-blue-200 rounded-lg p-4 bg-blue-50 space-y-3">
+          <div className="border border-blue-200 rounded-lg p-4 bg-blue-50 space-y-3">
               <label className="block text-sm font-medium text-gray-700">
                 Paste Multiple QR Codes (one per line)
               </label>
@@ -1944,7 +1900,6 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 )}
               </div>
             </div>
-          )}
 
           <div>
             <div className="flex items-center justify-between mb-2">

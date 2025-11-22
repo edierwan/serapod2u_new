@@ -54,83 +54,64 @@ export async function GET(request: NextRequest) {
     }
 
     const batchIds = batches.map(b => b.id)
+    
+    console.log(`🔍 Looking for QR codes in batches:`, batchIds)
 
-    // Get all QR codes that are tied to master codes (actually used, not buffer codes)
-    // Valid Links = QR codes that were scanned during manufacturing and tied to master codes
-    const { data: qrCodes, error: qrError } = await supabase
+    // Get ALL QR codes for this order by order_id (most reliable method)
+    // Valid Links = All QR codes generated for this order
+    const { data: allQrCodes, error: qrError } = await supabase
       .from('qr_codes')
-      .select('id')
-      .in('batch_id', batchIds)
-      .not('master_code_id', 'is', null) // Only count QR codes tied to master codes
+      .select('id, code, master_code_id, order_id')
+      .eq('order_id', orderId)
 
     if (qrError) {
-      console.error('Error fetching QR codes:', qrError)
+      console.error('❌ Error fetching QR codes:', qrError)
     }
 
-    const qrCodeIds = qrCodes?.map(qr => qr.id) || []
-    const totalValidLinks = qrCodes?.length || 0 // Count of QR codes tied to master codes
+    console.log(`📦 Found ${allQrCodes?.length || 0} QR codes for order`)
+    
+    const qrCodeIds = allQrCodes?.map(qr => qr.id) || []
+    const totalValidLinks = allQrCodes?.length || 0
+    
+    console.log(`✅ Total valid links: ${totalValidLinks}, QR code IDs count: ${qrCodeIds.length}`)
 
-    // Initialize counters
-    let uniqueConsumerScans = 0
-    let luckyDrawCount = 0
-    let redemptionCount = 0
-    let pointsCollected = 0
+    // Use database function to efficiently get all stats
+    // This avoids the "Bad Request" error from large IN clauses with 1000+ QR codes
+    const { data: statsData, error: statsError } = await supabase
+      .rpc('get_consumer_scan_stats', { p_order_id: orderId })
+      .single()
 
-    if (qrCodeIds.length > 0) {
-      // Get CONSUMER scans count (not manufacturer scans)
-      // This counts unique QR codes that consumers have scanned
-      const { data: consumerScans, error: consumerError } = await supabase
-        .from('consumer_qr_scans')
-        .select('qr_code_id')
-        .in('qr_code_id', qrCodeIds)
-
-      if (consumerError) {
-        console.error('Error counting consumer scans:', consumerError)
-      } else if (consumerScans) {
-        // Count unique QR codes scanned by consumers
-        uniqueConsumerScans = new Set(consumerScans.map(s => s.qr_code_id)).size
-      }
-
-      // Get lucky draw entries
-      const { count: luckyCount, error: luckyError } = await supabase
-        .from('lucky_draw_entries')
-        .select('*', { count: 'exact', head: true })
-        .in('qr_code_id', qrCodeIds)
-
-      if (!luckyError) {
-        luckyDrawCount = luckyCount || 0
-      }
-
-      // Get redemptions
-      const { count: redeemCount, error: redeemError } = await supabase
-        .from('consumer_redemption_transactions')
-        .select('*', { count: 'exact', head: true })
-        .in('qr_code_id', qrCodeIds)
-
-      if (!redeemError) {
-        redemptionCount = redeemCount || 0
-      }
-
-      // Get points collected
-      const { data: pointsData, error: pointsError } = await supabase
-        .from('consumer_points_transactions')
-        .select('points_amount')
-        .in('qr_code_id', qrCodeIds)
-        .eq('transaction_type', 'earn')
-
-      if (!pointsError && pointsData) {
-        pointsCollected = pointsData.reduce((sum, t) => sum + (Number(t.points_amount) || 0), 0)
-      }
+    if (statsError) {
+      console.error('❌ Error fetching consumer scan stats:', statsError)
+      // Return zeros if function fails
+      return NextResponse.json({
+        success: true,
+        data: {
+          total_valid_links: totalValidLinks,
+          links_scanned: 0,
+          lucky_draw_entries: 0,
+          redemptions: 0,
+          points_collected: 0
+        }
+      })
     }
+
+    console.log(`📊 Stats for order ${orderId}:`, {
+      total_qr_codes: statsData?.total_qr_codes || 0,
+      unique_consumer_scans: statsData?.unique_consumer_scans || 0,
+      points_collected_count: statsData?.points_collected_count || 0,
+      lucky_draw_entries: statsData?.lucky_draw_entries || 0,
+      redemptions: statsData?.redemptions || 0
+    })
 
     return NextResponse.json({
       success: true,
       data: {
-        total_valid_links: totalValidLinks,
-        links_scanned: uniqueConsumerScans,
-        lucky_draw_entries: luckyDrawCount,
-        redemptions: redemptionCount,
-        points_collected: pointsCollected
+        total_valid_links: Number(statsData?.total_qr_codes || 0),
+        links_scanned: Number(statsData?.unique_consumer_scans || 0),
+        lucky_draw_entries: Number(statsData?.lucky_draw_entries || 0),
+        redemptions: Number(statsData?.redemptions || 0),
+        points_collected: Number(statsData?.points_collected_count || 0)
       }
     })
 

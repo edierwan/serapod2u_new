@@ -19,7 +19,8 @@ import {
   Calendar,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Package
 } from 'lucide-react'
 
 interface StockMovement {
@@ -48,6 +49,7 @@ interface StockMovement {
   product_variants?: {
     variant_code: string
     variant_name: string
+    image_url?: string | null
     base_cost?: number | null
     products?: {
       product_name: string
@@ -292,6 +294,17 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         query = query.eq('movement_type', movementTypeFilter)
       }
 
+      if (referenceTypeFilter !== 'all') {
+        query = query.eq('reference_type', referenceTypeFilter)
+      }
+
+      if (locationFilter !== 'all') {
+        query = query.eq('to_organization_id', locationFilter)
+      }
+
+      // Note: Product and variant filters are applied client-side after transformation
+      // because the view column names might not match exactly with filter values
+
       if (dateFrom) {
         query = query.gte('created_at', `${dateFrom}T00:00:00`)
       }
@@ -342,6 +355,12 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         }
         if (movementTypeFilter !== 'all') {
           query = query.eq('movement_type', movementTypeFilter)
+        }
+        if (locationFilter !== 'all') {
+          query = query.eq('to_organization_id', locationFilter)
+        }
+        if (referenceTypeFilter !== 'all') {
+          query = query.eq('reference_type', referenceTypeFilter)
         }
         if (dateFrom) {
           query = query.gte('created_at', `${dateFrom}T00:00:00`)
@@ -396,7 +415,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       if (variantIds.length > 0) {
         const { data: variants } = await supabase
           .from('product_variants')
-          .select('id, variant_code, variant_name, base_cost, products(product_name)')
+          .select('id, variant_code, variant_name, image_url, base_cost, products(product_name)')
           .in('id', variantIds)
 
         variants?.forEach((v: any) => {
@@ -487,6 +506,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             return {
               variant_code: viewVariantCode ?? variant?.variant_code ?? '',
               variant_name: viewVariantName ?? variant?.variant_name ?? '',
+              image_url: variant?.image_url ?? null,
               base_cost: variantBaseCost,
               products: resolvedVariantProducts
             }
@@ -496,6 +516,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             return {
               variant_code: variant.variant_code,
               variant_name: variant.variant_name,
+              image_url: variant.image_url ?? null,
               base_cost: variantBaseCost,
               products: resolvedVariantProducts
             }
@@ -595,7 +616,42 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         }
       })
       
-      setMovements(transformedData)
+      // Apply client-side filtering for product and variant (needed when using stock_movements fallback table)
+      let filteredData = transformedData
+      
+      if (productFilter !== 'all') {
+        filteredData = filteredData.filter(item => {
+          const productName = item.product_variants?.products?.product_name
+          return productName === productFilter
+        })
+      }
+      
+      if (variantFilter !== 'all') {
+        filteredData = filteredData.filter(item => {
+          const variantCode = item.product_variants?.variant_code
+          return variantCode === variantFilter
+        })
+      }
+      
+      if (quantityRangeFilter !== 'all') {
+        filteredData = filteredData.filter(item => {
+          const absQty = Math.abs(item.quantity_change)
+          switch (quantityRangeFilter) {
+            case 'small':
+              return absQty >= 1 && absQty <= 50
+            case 'medium':
+              return absQty >= 51 && absQty <= 200
+            case 'large':
+              return absQty >= 201 && absQty <= 500
+            case 'bulk':
+              return absQty > 500
+            default:
+              return true
+          }
+        })
+      }
+      
+      setMovements(filteredData)
     } catch (error: any) {
       console.error('Failed to load movements:', error)
     } finally {
@@ -1076,17 +1132,8 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                     onClick={() => handleSort('product_name')}
                   >
                     <div className="flex items-center">
-                      Product
+                      Product Name
                       {renderSortIcon('product_name')}
-                    </div>
-                  </TableHead>
-                  <TableHead 
-                    className="cursor-pointer hover:bg-gray-100 select-none"
-                    onClick={() => handleSort('variant_code')}
-                  >
-                    <div className="flex items-center">
-                      Variant
-                      {renderSortIcon('variant_code')}
                     </div>
                   </TableHead>
                   <TableHead 
@@ -1157,13 +1204,13 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       Loading movements...
                     </TableCell>
                   </TableRow>
                 ) : movements.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       No movements found
                     </TableCell>
                   </TableRow>
@@ -1176,18 +1223,39 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       <TableCell>
                         {getMovementTypeBadge(movement.movement_type)}
                       </TableCell>
-                      <TableCell className="text-xs font-medium">
-                        {movement.product_variants?.products?.product_name || 'N/A'}
-                      </TableCell>
                       <TableCell>
-                        <p className="text-xs text-gray-600">
-                          {(() => {
-                            const variantName = movement.product_variants?.variant_name || ''
-                            // Extract text between [ and ] if it exists, otherwise show full name
-                            const match = variantName.match(/\[(.*?)\]/)
-                            return match ? `[ ${match[1]} ]` : variantName
-                          })()}
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <div className="relative w-10 h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-100">
+                            {movement.product_variants?.image_url ? (
+                              <img
+                                src={movement.product_variants.image_url}
+                                alt={movement.product_variants.variant_name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                  const sibling = e.currentTarget.nextElementSibling as HTMLElement
+                                  if (sibling) sibling.style.display = 'flex'
+                                }}
+                              />
+                            ) : null}
+                            <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ display: movement.product_variants?.image_url ? 'none' : 'flex' }}>
+                              <Package className="w-5 h-5" />
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-gray-900">
+                              {movement.product_variants?.products?.product_name || 'N/A'}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {(() => {
+                                const variantName = movement.product_variants?.variant_name || ''
+                                // Extract text between [ and ] if it exists, otherwise show full name
+                                const match = variantName.match(/\[(.*?)\]/)
+                                return match ? `[ ${match[1]} ]` : variantName
+                              })()}
+                            </p>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs">
                         {movement.organizations?.org_name || 'N/A'}

@@ -13,6 +13,7 @@ import CreateOrderView from '@/components/orders/CreateOrderView'
 import ViewOrderDetailsView from '@/components/orders/ViewOrderDetailsView'
 import TrackOrderView from '@/components/dashboard/views/orders/TrackOrderView'
 import InventoryView from '@/components/inventory/InventoryView'
+import InventorySettingsView from '@/components/inventory/InventorySettingsView'
 import AddStockView from '@/components/inventory/AddStockView'
 import StockAdjustmentView from '@/components/inventory/StockAdjustmentView'
 import StockTransferView from '@/components/inventory/StockTransferView'
@@ -157,6 +158,8 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
       case 'inventory':
       case 'inventory-list':
         return <InventoryView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'inventory-settings':
+        return <InventorySettingsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'add-stock':
         return <AddStockView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'stock-adjustment':
