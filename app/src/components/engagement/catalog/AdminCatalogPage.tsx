@@ -271,8 +271,6 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       }
 
       // Get shop users from these organizations
-      // Don't filter by role_code - just get users from shop organizations
-      // Use !fk_users_organization to specify the correct foreign key relationship
       const { data: shopUsersData, error: usersError } = await supabaseClient
         .from("users")
         .select(`
@@ -292,202 +290,67 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
       if (usersError) {
         console.error("❌ Failed to load shop users", usersError)
-        console.error("Error details:", JSON.stringify(usersError, null, 2))
         setUsersLoading(false)
         return
       }
 
       console.log("✅ Loaded shop users:", shopUsersData?.length || 0)
-      shopUsersData?.forEach(user => {
-        console.log(`  👤 User: ${user.email} (Role: ${user.role_code}, Org: ${user.organizations?.org_name})`)
-      })
 
-      // Get ALL point collections from consumer_qr_scans for shop organizations
-      console.log("🔍 Searching for scans in shop orgs:", shopOrgIds)
-      
-      const { data: qrScans, error: scansError } = await supabaseClient
-        .from("consumer_qr_scans")
-        .select(`
-          *,
-          adjusted_by_user:adjusted_by(email, full_name)
-        `)
-        .in("shop_id", shopOrgIds)
-        .eq("collected_points", true)
-        .order("points_collected_at", { ascending: false })
-
-      if (scansError) {
-        console.error("Failed to load QR scans", scansError)
-        console.error("Error details:", JSON.stringify(scansError, null, 2))
-      }
-
-      console.log("✅ Loaded QR scans:", qrScans?.length || 0)
-      
-      // Log sample scan for debugging
-      if (qrScans && qrScans.length > 0) {
-        console.log("📋 Sample QR scan:", qrScans[0])
-      }
-
-      // Get all points transactions (manual adjustments)
-      const { data: pointsTransactions, error: transactionsError } = await supabaseClient
-        .from("points_transactions")
+      // Query v_shop_points_balance view for accurate real-time balances
+      const { data: shopBalances, error: balanceError } = await (supabaseClient as any)
+        .from("v_shop_points_balance")
         .select("*")
-        .eq("company_id", companyId)
-        .order("transaction_date", { ascending: false })
+        .in("shop_id", shopOrgIds)
 
-      if (transactionsError) {
-        console.error("Error loading points transactions:", transactionsError)
+      if (balanceError) {
+        console.error("❌ Failed to load shop balances from view", balanceError)
       }
-      console.log("✅ Loaded points transactions:", pointsTransactions?.length || 0)
+
+      console.log("✅ Loaded shop balances:", shopBalances?.length || 0)
 
       // Create organization ID to user mapping
       const orgIdToUserMap = new Map<string, any>()
-      // Create phone/email to user mapping for transactions
-      const phoneEmailToUserMap = new Map<string, any>()
       
       shopUsersData?.forEach((user) => {
         if (user.organization_id) {
           orgIdToUserMap.set(user.organization_id, user)
-          console.log("🏢 Mapped org:", user.organization_id, "for shop:", user.organizations?.org_name)
-        }
-        // Map by phone and email for transactions lookup
-        if (user.phone) {
-          phoneEmailToUserMap.set(user.phone, user)
-        }
-        if (user.email) {
-          phoneEmailToUserMap.set(user.email, user)
         }
       })
 
-      console.log("🏢 Total organizations mapped:", orgIdToUserMap.size)
-      console.log("📱 Total phone/email mappings:", phoneEmailToUserMap.size)
-
-      // Aggregate by user
-      const userMap = new Map<string, ShopUser>()
+      // Build user list from balances
+      const users: ShopUser[] = []
       
-      // Process QR scans (where points are actually stored)
-      qrScans?.forEach((scan) => {
-        const shopOrgId = scan.shop_id // This is the organization_id
-        
-        if (!shopOrgId) {
-          console.log("⚠️ Scan without shop_id:", scan.id)
-          return
-        }
-        
-        // Find shop user by organization ID
-        const shopUser = orgIdToUserMap.get(shopOrgId)
+      shopBalances?.forEach((balance: any) => {
+        const shopUser = orgIdToUserMap.get(balance.shop_id)
         
         if (!shopUser) {
-          console.log("⚠️ Shop org not found:", shopOrgId)
+          console.log("⚠️ Shop org not found for balance:", balance.shop_id)
           return
         }
         
-        // Use user ID as the key
-        const userKey = shopUser.id
-        console.log("✅ Matched scan to shop:", shopUser.organizations?.org_name, "Points:", scan.points_amount)
-        
-        if (!userMap.has(userKey)) {
-          const org = shopUser.organizations as any
-          userMap.set(userKey, {
-            user_id: shopUser.id,
-            shop_name: org?.org_name || 'Unknown Shop',
-            shop_phone: shopUser.phone || '',
-            shop_email: shopUser.email || null,
-            organization_id: shopUser.organization_id || '',
-            current_balance: 0,
-            total_collected: 0,
-            total_collected_system: 0,
-            total_collected_manual: 0,
-            total_redeemed: 0,
-            last_transaction_date: null,
-            transaction_count: 0
-          })
-        }
-
-        const user = userMap.get(userKey)!
-        user.transaction_count += 1
-        
-        // Update last transaction date
-        const scanDate = scan.points_collected_at || scan.created_at
-        if (scanDate && (!user.last_transaction_date || scanDate > user.last_transaction_date)) {
-          user.last_transaction_date = scanDate
-        }
-
-        // Add points collected
-        const points = scan.points_amount || 0
-        user.total_collected += points
-        user.current_balance += points
-        
-        // Track manual vs system collections
-        if (scan.is_manual_adjustment) {
-          user.total_collected_manual += points
-        } else {
-          user.total_collected_system += points
-        }
+        const org = shopUser.organizations as any
+        users.push({
+          user_id: shopUser.id,
+          shop_name: org?.org_name || 'Unknown Shop',
+          shop_phone: shopUser.phone || '',
+          shop_email: shopUser.email || null,
+          organization_id: shopUser.organization_id || '',
+          current_balance: balance.current_balance || 0,
+          total_collected: balance.total_earned_scans + balance.total_manual_adjustments || 0,
+          total_collected_system: balance.total_earned_scans || 0,
+          total_collected_manual: balance.total_manual_adjustments || 0,
+          total_redeemed: balance.total_redeemed || 0,
+          last_transaction_date: balance.last_transaction_at,
+          transaction_count: balance.transaction_count || 0
+        })
       })
 
-      // Process manual points transactions (adjustments)
-      pointsTransactions?.forEach((txn) => {
-        // Find shop user by phone or email
-        let shopUser = null
-        if (txn.consumer_phone) {
-          shopUser = phoneEmailToUserMap.get(txn.consumer_phone)
-        }
-        if (!shopUser && txn.consumer_email) {
-          shopUser = phoneEmailToUserMap.get(txn.consumer_email)
-        }
-        
-        if (!shopUser) {
-          console.log("⚠️ Transaction user not found:", txn.consumer_phone, txn.consumer_email)
-          return
-        }
-        
-        const userKey = shopUser.id
-        console.log("✅ Matched transaction to shop:", shopUser.organizations?.org_name, "Points:", txn.points_amount)
-        
-        // Initialize user if not exists
-        if (!userMap.has(userKey)) {
-          const org = shopUser.organizations as any
-          userMap.set(userKey, {
-            user_id: shopUser.id,
-            shop_name: org?.org_name || 'Unknown Shop',
-            shop_phone: shopUser.phone || '',
-            shop_email: shopUser.email || null,
-            organization_id: shopUser.organization_id || '',
-            current_balance: 0,
-            total_collected: 0,
-            total_redeemed: 0,
-            last_transaction_date: null,
-            transaction_count: 0
-          })
-        }
-
-        const user = userMap.get(userKey)!
-        user.transaction_count += 1
-        
-        // Update last transaction date
-        const txnDate = txn.transaction_date
-        if (txnDate && (!user.last_transaction_date || txnDate > user.last_transaction_date)) {
-          user.last_transaction_date = txnDate
-        }
-
-        // Add/subtract points based on transaction amount
-        const points = txn.points_amount || 0
-        if (points > 0) {
-          user.total_collected += points
-        } else {
-          user.total_redeemed += Math.abs(points)
-        }
-        user.current_balance += points
-      })
-
-      // Convert to array and sort by total collected (highest first)
-      const users = Array.from(userMap.values()).sort((a, b) => {
-        return b.total_collected - a.total_collected
-      })
+      // Sort by current balance (highest first)
+      users.sort((a, b) => b.current_balance - a.current_balance)
 
       console.log("🎯 Final shop users with points:", users.length)
       users.forEach(u => {
-        console.log(`  - ${u.shop_name}: ${u.total_collected} collected, ${u.current_balance} balance`)
+        console.log(`  - ${u.shop_name}: ${u.total_collected} collected, ${u.current_balance} balance, ${u.total_redeemed} redeemed`)
       })
 
       setShopUsers(users)

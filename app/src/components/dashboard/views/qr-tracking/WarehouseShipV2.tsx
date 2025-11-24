@@ -90,6 +90,7 @@ interface ScannedProduct {
   code: string
   product_name: string
   variant_name: string
+  image_url?: string | null
   sequence_number: number
   status: 'success' | 'duplicate' | 'error'
   error_message?: string
@@ -215,7 +216,13 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         .gt('manual_balance_qty', 0)
         .order('manual_balance_qty', { ascending: false })
 
-      if (stockError) throw stockError
+      if (stockError) {
+        console.error('Stock query error:', stockError)
+        // Set empty arrays to stop loading state
+        setVariantsWithStock([])
+        setVariants([])
+        throw stockError
+      }
       
       // Transform data to include balance info
       const variantsData = (stockData || []).map(item => {
@@ -230,6 +237,9 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       setVariants(variantsData)
     } catch (error: any) {
       console.error('Error loading variants:', error)
+      // Ensure arrays are set to empty on error
+      setVariantsWithStock([])
+      setVariants([])
       toast({
         title: 'Error',
         description: 'Failed to load product variants with stock',
@@ -487,9 +497,81 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     const allCodes = [...masterCodes, ...uniqueCodes]
     if (allCodes.length > 0) {
       await loadExistingScannedCodes(allCodes)
+      await calculateDetailedStats(masterCodes, uniqueCodes)
     } else {
       // No codes in session - clear the scanned codes list
       setScannedCodes([])
+      setDetailedStats({ masterQrCount: 0, masterTotalUnits: 0, uniqueQrCount: 0, uniqueQrOverlap: 0, uniqueQrValid: 0, finalTotal: 0 })
+    }
+  }
+
+  const calculateDetailedStats = async (masterCodes: string[], uniqueCodes: string[]) => {
+    try {
+      console.log('📈 Calculating detailed statistics...')
+      
+      let masterTotalUnits = 0
+      const masterCodeIds = new Set<string>()
+      
+      // Step 1: Get all master QR codes and their unit counts
+      if (masterCodes.length > 0) {
+        const { data: masterData, error: masterError } = await supabase
+          .from('qr_master_codes')
+          .select('id, master_code, actual_unit_count')
+          .in('master_code', masterCodes)
+        
+        if (masterError) {
+          console.error('Error loading master codes:', masterError)
+        } else if (masterData) {
+          masterData.forEach(master => {
+            masterCodeIds.add(master.id)
+            masterTotalUnits += master.actual_unit_count || 0
+          })
+        }
+      }
+      
+      // Step 2: Check which unique codes belong to the scanned masters
+      let uniqueQrOverlap = 0
+      
+      if (uniqueCodes.length > 0 && masterCodeIds.size > 0) {
+        const { data: uniqueData, error: uniqueError } = await supabase
+          .from('qr_codes')
+          .select('code, master_code_id')
+          .in('code', uniqueCodes)
+        
+        if (uniqueError) {
+          console.error('Error loading unique codes:', uniqueError)
+        } else if (uniqueData) {
+          uniqueData.forEach(qr => {
+            if (qr.master_code_id && masterCodeIds.has(qr.master_code_id)) {
+              uniqueQrOverlap++
+            }
+          })
+        }
+      }
+      
+      // Step 3: Calculate final statistics
+      const uniqueQrValid = uniqueCodes.length - uniqueQrOverlap
+      const finalTotal = masterTotalUnits + uniqueQrValid
+      
+      setDetailedStats({
+        masterQrCount: masterCodes.length,
+        masterTotalUnits,
+        uniqueQrCount: uniqueCodes.length,
+        uniqueQrOverlap,
+        uniqueQrValid,
+        finalTotal
+      })
+      
+      console.log('✅ Detailed stats:', {
+        masterQrCount: masterCodes.length,
+        masterTotalUnits,
+        uniqueQrCount: uniqueCodes.length,
+        uniqueQrOverlap,
+        uniqueQrValid,
+        finalTotal
+      })
+    } catch (error) {
+      console.error('❌ Error calculating detailed stats:', error)
     }
   }
 
@@ -498,7 +580,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       console.log('📦 Loading existing scanned codes from session:', codes.length)
       console.log('📝 Sample codes:', codes.slice(0, 3))
       
-      // Query QR codes to get product information
+      // Query QR codes to get product information with images
       const { data: qrCodes, error } = await supabase
         .from('qr_codes')
         .select(`
@@ -507,6 +589,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           master_code_id,
           product_variants (
             variant_name,
+            image_url,
             products (
               product_name
             )
@@ -544,6 +627,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           code: qr.code,
           product_name: product?.product_name || 'Unknown',
           variant_name: variant?.variant_name || 'Unknown',
+          image_url: variant?.image_url || null,
           sequence_number: index + 1,
           status: 'success' as const,
           code_type: 'unique'
@@ -600,9 +684,20 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     try {
       console.log('🔍 Loading warehouse scan history')
       
-      const response = await fetch('/api/warehouse/scan-history')
+      const response = await fetch('/api/warehouse/scan-history', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
       
       if (!response.ok) {
+        if (response.status === 401) {
+          console.warn('⚠️ Authentication required for scan history')
+          setOverallHistory([])
+          setDistributorHistory([])
+          return
+        }
         throw new Error(`Failed to load scan history: ${response.status}`)
       }
 
@@ -642,6 +737,15 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       console.error('❌ Error loading scan history:', error)
       setOverallHistory([])
       setDistributorHistory([])
+      
+      // Only show error toast if it's not an auth issue
+      if (!error.message?.includes('401')) {
+        toast({
+          title: 'Warning',
+          description: 'Could not load scan history. Please refresh the page.',
+          variant: 'default'
+        })
+      }
     }
   }
 
@@ -1734,6 +1838,54 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Detailed Statistics */}
+            {(detailedStats.masterQrCount > 0 || detailedStats.uniqueQrCount > 0) && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-bold text-gray-800">Intelligent Scan Summary (No Double Counting)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-gray-600">Master QR Codes</div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-bold text-green-700">{detailedStats.masterQrCount}</span>
+                      <span className="text-sm text-gray-600">cases</span>
+                    </div>
+                    <div className="text-xs text-green-700 font-medium">
+                      = {detailedStats.masterTotalUnits} units total
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-gray-600">Unique QR Codes</div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-bold text-blue-700">{detailedStats.uniqueQrCount}</span>
+                      <span className="text-sm text-gray-600">scanned</span>
+                    </div>
+                    {detailedStats.uniqueQrOverlap > 0 && (
+                      <div className="text-xs text-amber-600 font-medium">
+                        ⚠ {detailedStats.uniqueQrOverlap} overlap with master (excluded)
+                      </div>
+                    )}
+                    <div className="text-xs text-blue-700 font-medium">
+                      ✓ {detailedStats.uniqueQrValid} valid unique codes
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 bg-white rounded-lg p-3 border-2 border-indigo-300">
+                    <div className="text-xs font-medium text-gray-600">FINAL TOTAL TO DELIVER</div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-bold text-indigo-700">{detailedStats.finalTotal + manualQty}</span>
+                      <span className="text-sm text-gray-600">units</span>
+                    </div>
+                    <div className="text-xs text-gray-500 space-y-0.5">
+                      <div>{detailedStats.masterTotalUnits} from masters</div>
+                      <div>{detailedStats.uniqueQrValid} from unique codes</div>
+                      {manualQty > 0 && <div>{manualQty} manual stock</div>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Main counts */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="bg-white border border-green-200 rounded-lg p-4">
@@ -1797,17 +1949,38 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
               </div>
             </div>
 
-            {/* Variant breakdown */}
+            {/* Variant breakdown with images */}
             {variantCount > 0 && (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Product Variant Breakdown</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {Object.entries(scanSummary.variants).map(([variant, count]) => (
-                    <div key={variant} className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200">
-                      <span className="text-sm text-gray-700 truncate">{variant}</span>
-                      <Badge variant="secondary" className="ml-2">{count}</Badge>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {Object.entries(scanSummary.variants).map(([variant, count]) => {
+                    // Find variant in scannedCodes to get image
+                    const variantData = scannedCodes.find(code => 
+                      `${code.product_name} - ${code.variant_name}` === variant
+                    )
+                    
+                    return (
+                      <div key={variant} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                        <div className="flex-shrink-0 w-12 h-12 bg-white rounded-md overflow-hidden border border-gray-200 flex items-center justify-center">
+                          {variantData?.image_url ? (
+                            <img 
+                              src={variantData.image_url} 
+                              alt={variant}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Box className="h-6 w-6 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-gray-700 font-medium truncate">{variant}</div>
+                          <div className="text-xs text-gray-500">Product variant</div>
+                        </div>
+                        <Badge variant="secondary" className="flex-shrink-0">{count}</Badge>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -1891,11 +2064,81 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 </Button>
               </div>
               <div className="text-xs text-gray-600">
-                {batchInput.trim().length > 0 ? (
-                  <span>
-                    Detected <strong>{batchInput.split('\n').filter(line => line.trim().length > 0).length}</strong> QR codes
-                  </span>
-                ) : (
+                {batchInput.trim().length > 0 ? (() => {
+                  const allCodes = batchInput.split('\n').filter(line => line.trim().length > 0)
+                  
+                  // Categorize codes
+                  const uniqueCodesSet = new Set<string>()
+                  let masterCount = 0
+                  let uniqueProductCount = 0
+                  const duplicates: string[] = []
+                  
+                  allCodes.forEach(line => {
+                    const code = line.trim()
+                    
+                    // Extract clean code from URL if present
+                    let cleanCode = code
+                    if (code.includes('/track/master/')) {
+                      cleanCode = code.split('/track/master/')[1] || code
+                    } else if (code.includes('/track/product/')) {
+                      cleanCode = code.split('/track/product/')[1] || code
+                    }
+                    
+                    // Check if already seen (duplicate)
+                    if (uniqueCodesSet.has(cleanCode)) {
+                      duplicates.push(code)
+                      return
+                    }
+                    
+                    uniqueCodesSet.add(cleanCode)
+                    
+                    // Categorize by type
+                    if (cleanCode.startsWith('MASTER-')) {
+                      masterCount++
+                    } else if (cleanCode.startsWith('PROD-')) {
+                      uniqueProductCount++
+                    } else {
+                      // Unknown format, count as unique product
+                      uniqueProductCount++
+                    }
+                  })
+                  
+                  const totalUnique = uniqueCodesSet.size
+                  
+                  return (
+                    <div className="space-y-2">
+                      <div>
+                        Detected <strong>{allCodes.length}</strong> QR code{allCodes.length !== 1 ? 's' : ''} total
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex gap-4">
+                          <span className="text-green-600">
+                            ✓ <strong>{totalUnique}</strong> unique code{totalUnique !== 1 ? 's' : ''} (will be scanned)
+                          </span>
+                          {duplicates.length > 0 && (
+                            <span className="text-amber-600">
+                              ⚠ <strong>{duplicates.length}</strong> duplicate{duplicates.length !== 1 ? 's' : ''} (will be skipped)
+                            </span>
+                          )}
+                        </div>
+                        {totalUnique > 0 && (
+                          <div className="flex gap-4 pl-4 text-xs text-gray-500">
+                            {masterCount > 0 && (
+                              <span>
+                                📦 <strong>{masterCount}</strong> master case{masterCount !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {uniqueProductCount > 0 && (
+                              <span>
+                                🏷️ <strong>{uniqueProductCount}</strong> unique product{uniqueProductCount !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })() : (
                   <span>Paste QR codes above to preview how many will be processed.</span>
                 )}
               </div>
