@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/components/ui/use-toast"
 import {
   Select,
   SelectContent,
@@ -82,6 +83,7 @@ function formatRelative(date: Date): string {
 }
 
 export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
+  const { toast } = useToast()
   const [rewards, setRewards] = useState<RedeemItemRow[]>([])
   const [ledgerTransactions, setLedgerTransactions] = useState<ShopPointsLedgerRow[]>([])
   const [balance, setBalance] = useState<ShopPointsBalanceRow | null>(null)
@@ -91,11 +93,11 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<RewardCategory | "all">("all")
   const [selectedSort, setSelectedSort] = useState<string>("points-asc")
-  const [onlyAvailable, setOnlyAvailable] = useState(true)
+  const [onlyAvailable, setOnlyAvailable] = useState(false)
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null)
   const [productSummary, setProductSummary] = useState<{product: string, variant: string, count: number, points: number}[]>([])
+  const [redeeming, setRedeeming] = useState(false)
 
-  const companyId = userProfile.organizations.id
   const shopOrgId = userProfile.organization_id
 
   useEffect(() => {
@@ -108,50 +110,80 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
       const now = new Date().toISOString()
       
-      console.log('🏪 Shop Catalog - Loading with Views:', {
-        userId: userProfile.id,
-        email: userProfile.email,
-        phone: userProfile.phone,
-        shopOrgId: shopOrgId,
-        orgName: userProfile.organizations?.org_name,
-        orgType: userProfile.organizations?.org_type_code,
-        companyId: companyId
-      })
+      // First, get the shop's parent company ID
+      const { data: shopOrg, error: shopOrgError } = await supabaseClient
+        .from('organizations')
+        .select('id, org_name, org_type_code, parent_org_id')
+        .eq('id', shopOrgId)
+        .single()
 
-      const [rewardRes, balanceRes, ledgerRes, ruleRes] = await Promise.all([
-        // Rewards catalog
-        supabaseClient
+      if (shopOrgError || !shopOrg) {
+        console.error('Failed to load shop organization:', shopOrgError)
+        setError('Unable to load your organization details.')
+        setLoading(false)
+        return
+      }
+
+      // Use parent_org_id as company_id, or fall back to shop's own id if no parent
+      const companyId = shopOrg.parent_org_id || shopOrg.id
+      
+      // Load rewards - try multiple strategies to find matching rewards
+      // Strategy 1: Query with the calculated company_id
+      let rewardRes = await supabaseClient
+        .from("redeem_items")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("points_required", { ascending: true })
+
+      // If no rewards found and we used parent_org_id, also try shop's own ID
+      if ((!rewardRes.data || rewardRes.data.length === 0) && shopOrg.parent_org_id) {
+        const fallbackRes = await supabaseClient
           .from("redeem_items")
           .select("*")
-          .eq("company_id", companyId)
-          .order("points_required", { ascending: true }),
+          .eq("company_id", shopOrg.id)
+          .order("points_required", { ascending: true })
         
-        // Shop balance from view
-        supabaseClient
-          .from("v_shop_points_balance")
+        if (fallbackRes.data && fallbackRes.data.length > 0) {
+          rewardRes = fallbackRes
+        }
+      }
+
+      // If still no rewards, query ALL rewards (fallback for misconfigured company_id)
+      if (!rewardRes.data || rewardRes.data.length === 0) {
+        const allRewardsRes = await supabaseClient
+          .from("redeem_items")
           .select("*")
-          .eq("shop_id", shopOrgId)
-          .maybeSingle(),
         
-        // Ledger transactions (we'll enrich with related data client-side)
-        supabaseClient
-          .from("shop_points_ledger")
-          .select("*")
-          .eq("shop_id", shopOrgId)
-          .order("occurred_at", { ascending: false })
-          .limit(500),
-        
-        // Active points rule
-        supabaseClient
-          .from("points_rules")
-          .select("*")
-          .eq("org_id", companyId)
-          .eq("is_active", true)
-          .lte("effective_from", now)
-          .order("effective_from", { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      ])
+        if (allRewardsRes.data && allRewardsRes.data.length > 0) {
+          rewardRes = allRewardsRes
+        }
+      }
+      
+      // Shop balance from view (using any to bypass type checking for views)
+      const balanceRes = await (supabaseClient as any)
+        .from("v_shop_points_balance")
+        .select("*")
+        .eq("shop_id", shopOrgId)
+        .maybeSingle()
+      
+      // Ledger transactions from view (using any to bypass type checking)
+      const ledgerRes = await (supabaseClient as any)
+        .from("shop_points_ledger")
+        .select("*")
+        .eq("shop_id", shopOrgId)
+        .order("occurred_at", { ascending: false })
+        .limit(500)
+      
+      // Active points rule
+      const ruleRes = await supabaseClient
+        .from("points_rules")
+        .select("*")
+        .eq("org_id", companyId)
+        .eq("is_active", true)
+        .lte("effective_from", now)
+        .order("effective_from", { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
       if (cancelled) return
 
@@ -163,24 +195,47 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
       }
 
       if (balanceRes.error) {
-        console.error("❌ Failed to load balance", balanceRes.error)
+        console.error("Failed to load balance", balanceRes.error)
       } else {
-        console.log('✅ Balance loaded:', balanceRes.data)
-        setBalance(balanceRes.data)
+        setBalance(balanceRes.data as ShopPointsBalanceRow | null)
       }
 
       if (ledgerRes.error) {
-        console.error("❌ Failed to load ledger", ledgerRes.error)
-        console.error("🔒 Error details:", JSON.stringify(ledgerRes.error, null, 2))
+        console.error("Failed to load ledger", ledgerRes.error)
       } else {
-        console.log('✅ Ledger loaded:', ledgerRes.data?.length, 'transactions')
         
         if (ledgerRes.data && ledgerRes.data.length > 0) {
-          // Data already contains product_name, variant_name, reward_name from the view!
-          setLedgerTransactions(ledgerRes.data as ShopPointsLedgerRow[])
+          // Enrich ledger data with images
+          const enrichedLedger = await Promise.all(ledgerRes.data.map(async (entry: any) => {
+            let imageUrl = null
+            
+            // Fetch variant image for QR scans
+            if (entry.variant_id) {
+              const { data: variantData } = await supabaseClient
+                .from('product_variants')
+                .select('image_url')
+                .eq('id', entry.variant_id)
+                .single()
+              imageUrl = variantData?.image_url
+            }
+            
+            // Fetch reward image for redemptions
+            if (entry.redeem_item_id) {
+              const { data: rewardData } = await supabaseClient
+                .from('redeem_items')
+                .select('item_image_url')
+                .eq('id', entry.redeem_item_id)
+                .single()
+              imageUrl = rewardData?.item_image_url
+            }
+            
+            return { ...entry, imageUrl }
+          }))
+          
+          setLedgerTransactions(enrichedLedger as any)
           
           // Log first transaction for debugging
-          console.log('📊 First ledger entry:', ledgerRes.data[0])
+          console.log('📊 First ledger entry:', enrichedLedger[0])
           
           // Calculate product summary from scan transactions
           const productMap = new Map<string, {product: string, variant: string, count: number, points: number}>()
@@ -230,7 +285,135 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     return () => {
       cancelled = true
     }
-  }, [companyId, userProfile.organization_id])
+  }, [shopOrgId, userProfile.organization_id])
+
+  const handleRedeemReward = async (reward: EnrichedReward) => {
+    if (!reward.isAvailable || currentBalance < reward.points_required || redeeming) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Confirm Redemption\n\n` +
+      `Reward: ${reward.item_name}\n` +
+      `Points Required: ${reward.points_required}\n` +
+      `Current Balance: ${currentBalance}\n` +
+      `Balance After: ${currentBalance - reward.points_required}\n\n` +
+      `Are you sure you want to redeem this reward?`
+    )
+
+    if (!confirmed) return
+
+    setRedeeming(true)
+
+    try {
+      const supabase = createClient()
+      
+      // Get shop organization details to find company_id and contact info
+      const { data: shopOrg } = await supabase
+        .from('organizations')
+        .select('id, parent_org_id, contact_phone, contact_email')
+        .eq('id', shopOrgId)
+        .single()
+
+      const companyId = shopOrg?.parent_org_id || shopOrg?.id || shopOrgId
+      
+      // Use shop org contact info or user profile info
+      const consumerPhone = shopOrg?.contact_phone || userProfile.phone || 'SHOP-' + shopOrgId.slice(0, 8)
+      const consumerEmail = shopOrg?.contact_email || userProfile.email || null
+
+      console.log('Redemption data:', {
+        company_id: companyId,
+        consumer_phone: consumerPhone,
+        consumer_email: consumerEmail,
+        points_amount: -reward.points_required,
+        balance_after: currentBalance - reward.points_required
+      })
+
+      // Record redemption in points_transactions table (feeds into shop_points_ledger view)
+      const { data: txnData, error: txnError } = await supabase
+        .from('points_transactions')
+        .insert({
+          company_id: companyId,
+          consumer_phone: consumerPhone,
+          consumer_email: consumerEmail,
+          transaction_type: 'redeem',
+          points_amount: -reward.points_required,
+          balance_after: currentBalance - reward.points_required,
+          redeem_item_id: reward.id,
+          description: `Redeemed: ${reward.item_name}`,
+          transaction_date: new Date().toISOString()
+        })
+        .select()
+
+      console.log('Transaction result:', { data: txnData, error: txnError })
+
+      if (txnError) {
+        console.error('Redemption error details:', JSON.stringify(txnError, null, 2))
+        toast({
+          title: "Redemption Failed",
+          description: txnError.message || txnError.hint || "Unable to process redemption. Please try again.",
+          variant: "destructive"
+        })
+        return
+      }
+
+      // Update stock quantity if applicable
+      if (typeof reward.stock_quantity === 'number' && reward.stock_quantity > 0) {
+        const { error: stockError } = await supabase
+          .from('redeem_items')
+          .update({ stock_quantity: reward.stock_quantity - 1 })
+          .eq('id', reward.id)
+
+        if (stockError) {
+          console.warn('Failed to update stock:', stockError)
+        }
+      }
+
+      // Reload data to refresh balance and ledger
+      const [balanceRes, ledgerRes, rewardRes] = await Promise.all([
+        (supabase as any)
+          .from('v_shop_points_balance')
+          .select('*')
+          .eq('shop_id', shopOrgId)
+          .maybeSingle(),
+        (supabase as any)
+          .from('shop_points_ledger')
+          .select('*')
+          .eq('shop_id', shopOrgId)
+          .order('occurred_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('redeem_items')
+          .select('*')
+      ])
+
+      if (!balanceRes.error) {
+        setBalance(balanceRes.data as ShopPointsBalanceRow | null)
+      }
+      if (!ledgerRes.error) {
+        setLedgerTransactions(ledgerRes.data as ShopPointsLedgerRow[])
+      }
+      if (!rewardRes.error && rewardRes.data) {
+        setRewards(rewardRes.data)
+      }
+
+      toast({
+        title: "Redemption Successful! 🎉",
+        description: `You've redeemed ${reward.item_name} for ${reward.points_required} points. Your new balance is ${currentBalance - reward.points_required} points.`,
+      })
+
+      setSelectedRewardId(null)
+    } catch (error: any) {
+      console.error('Redemption error:', error)
+      toast({
+        title: "Redemption Failed",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setRedeeming(false)
+    }
+  }
 
   const enrichedRewards = useMemo<EnrichedReward[]>(() => {
     const now = new Date()
@@ -453,7 +636,10 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <TabsTrigger value="catalog" className="gap-2">
             <Gift className="h-4 w-4" /> Rewards Catalog
           </TabsTrigger>
-          <TabsTrigger value="history" className="gap-2">
+          <TabsTrigger value="points-history" className="gap-2">
+            <Clock className="h-4 w-4" /> Points History
+          </TabsTrigger>
+          <TabsTrigger value="redemption-history" className="gap-2">
             <History className="h-4 w-4" /> Redemption History
           </TabsTrigger>
         </TabsList>
@@ -647,14 +833,14 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           )}
         </TabsContent>
 
-        <TabsContent value="history">
+        <TabsContent value="points-history">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <Clock className="h-4 w-4" /> My Point History
+                <Clock className="h-4 w-4" /> Points History
               </CardTitle>
               <CardDescription>
-                Your shop&apos;s point collection history. Showing last {ledgerTransactions.length} {ledgerTransactions.length === 1 ? 'transaction' : 'transactions'}.
+                Complete history of all point transactions. Showing last {ledgerTransactions.length} {ledgerTransactions.length === 1 ? 'transaction' : 'transactions'}.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -670,38 +856,84 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                       <tr>
                         <th className="px-4 py-3">Product / Description</th>
                         <th className="px-4 py-3">Points</th>
+                        <th className="px-4 py-3">Running Balance</th>
                         <th className="px-4 py-3">Date</th>
                         <th className="px-4 py-3">Type</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {ledgerTransactions.slice(0, 50).map((txn) => {
+                      {ledgerTransactions.slice(0, 50).map((txn, index) => {
+                        // Calculate running balance: Start from current balance and work backwards
+                        // Since transactions are newest first, subtract future transactions from current balance
+                        const runningBalance = currentBalance - ledgerTransactions
+                          .slice(0, index)
+                          .reduce((sum, t) => sum + t.points_change, 0)
                         return (
                         <tr key={txn.id} className="border-t border-slate-100">
                           <td className="px-4 py-3">
-                            {txn.product_name ? (
-                              <>
-                                <div className="font-medium text-slate-800">{txn.product_name}</div>
-                                <div className="text-xs text-muted-foreground">{txn.variant_name || 'Standard'}</div>
-                              </>
-                            ) : txn.reward_name ? (
-                              <>
-                                <div className="font-medium text-slate-800">Redeemed: {txn.reward_name}</div>
-                                <div className="text-xs text-muted-foreground">Reward redemption</div>
-                              </>
-                            ) : (
-                              <>
-                                <div className="font-medium text-slate-800">{txn.description || 'Point transaction'}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {txn.adjustment_reason || 'Manual adjustment'}
-                                </div>
-                              </>
-                            )}
+                            <div className="flex items-center gap-3">
+                              {txn.product_name ? (
+                                <>
+                                  <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
+                                    {(txn as any).imageUrl ? (
+                                      <Image
+                                        src={(txn as any).imageUrl}
+                                        alt={txn.product_name}
+                                        width={48}
+                                        height={48}
+                                        className="object-cover w-full h-full"
+                                      />
+                                    ) : (
+                                      <Gift className="h-6 w-6 text-slate-400" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-slate-800">{txn.product_name}</div>
+                                    <div className="text-xs text-muted-foreground">{txn.variant_name || 'Standard'}</div>
+                                  </div>
+                                </>
+                              ) : txn.reward_name ? (
+                                <>
+                                  <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
+                                    {(txn as any).imageUrl ? (
+                                      <Image
+                                        src={(txn as any).imageUrl}
+                                        alt={txn.reward_name}
+                                        width={48}
+                                        height={48}
+                                        className="object-cover w-full h-full"
+                                      />
+                                    ) : (
+                                      <Gift className="h-6 w-6 text-slate-400" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-slate-800">Redeemed: {txn.reward_name}</div>
+                                    <div className="text-xs text-muted-foreground">Reward redemption</div>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
+                                    <Settings className="h-6 w-6 text-slate-400" />
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-slate-800">{txn.description || 'Point transaction'}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {txn.adjustment_reason || 'Manual adjustment'}
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 font-semibold">
                             <span className={txn.points_change < 0 ? 'text-red-600' : 'text-emerald-600'}>
                               {txn.points_change > 0 ? '+' : ''}{formatNumber(txn.points_change)}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 font-semibold">
+                            <span className="text-blue-600">{formatNumber(runningBalance)}</span>
                           </td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">
                             {formatDateLabel(txn.occurred_at)}
@@ -731,23 +963,104 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Redemption History Tab - Shows only redemptions */}
+        <TabsContent value="redemption-history">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Gift className="h-4 w-4" /> Redemption History
+              </CardTitle>
+              <CardDescription>
+                History of reward redemptions only. Showing {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length} {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length === 1 ? 'redemption' : 'redemptions'}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+                  <Gift className="h-10 w-10" />
+                  <p className="text-sm">No redemptions yet. Visit the catalog to redeem rewards.</p>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Reward</th>
+                        <th className="px-4 py-3">Points Used</th>
+                        <th className="px-4 py-3">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ledgerTransactions.filter(t => t.transaction_type === 'redeem').slice(0, 50).map((txn) => {
+                        return (
+                        <tr key={txn.id} className="border-t border-slate-100">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
+                                {(txn as any).imageUrl ? (
+                                  <Image
+                                    src={(txn as any).imageUrl}
+                                    alt={txn.reward_name || 'Reward'}
+                                    width={48}
+                                    height={48}
+                                    className="object-cover w-full h-full"
+                                  />
+                                ) : (
+                                  <Gift className="h-6 w-6 text-slate-400" />
+                                )}
+                              </div>
+                              <div>
+                                {txn.reward_name ? (
+                                  <>
+                                    <div className="font-medium text-slate-800">{txn.reward_name}</div>
+                                    <div className="text-xs text-muted-foreground">Reward redemption</div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="font-medium text-slate-800">{txn.description || 'Reward'}</div>
+                                    <div className="text-xs text-muted-foreground">Redemption</div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 font-semibold">
+                            <span className="text-red-600">
+                              {formatNumber(Math.abs(txn.points_change))}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {formatDateLabel(txn.occurred_at)}
+                          </td>
+                        </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <Dialog open={Boolean(selectedReward)} onOpenChange={(open) => !open && setSelectedRewardId(null)}>
-        <DialogContent className="max-w-3xl overflow-hidden p-0">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
           {selectedReward && (
-            <div className="grid gap-0 md:grid-cols-[2fr_3fr]">
-              <div className="relative h-64 w-full bg-muted md:h-full">
+            <div className="grid gap-0 md:grid-cols-[1fr_1.5fr]">
+              <div className="relative h-80 w-full bg-muted md:h-auto md:min-h-[500px]">
                 {selectedReward.item_image_url ? (
                   <Image
                     src={selectedReward.item_image_url}
                     alt={selectedReward.item_name}
                     fill
-                    className="object-cover"
+                    className="object-contain p-4"
+                    priority
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
-                    <Gift className="h-12 w-12 text-slate-400" />
+                    <Gift className="h-16 w-16 text-slate-400" />
                   </div>
                 )}
                 <div className="absolute left-4 top-4 flex flex-wrap gap-2">
@@ -820,17 +1133,29 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 </div>
 
                 <div className="flex items-center justify-end gap-3">
-                  <Button variant="outline" onClick={() => setSelectedRewardId(null)}>Close</Button>
+                  <Button variant="outline" onClick={() => setSelectedRewardId(null)} disabled={redeeming}>
+                    Close
+                  </Button>
                   <Button 
-                    disabled={!selectedReward.isAvailable || currentBalance < selectedReward.points_required} 
+                    disabled={!selectedReward.isAvailable || currentBalance < selectedReward.points_required || redeeming} 
                     className="gap-2"
+                    onClick={() => handleRedeemReward(selectedReward)}
                   >
-                    <Gift className="h-4 w-4" />
-                    {!selectedReward.isAvailable 
-                      ? "Not available" 
-                      : currentBalance >= selectedReward.points_required 
-                        ? "Redeem now" 
-                        : "Need more points"}
+                    {redeeming ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Gift className="h-4 w-4" />
+                        {!selectedReward.isAvailable 
+                          ? "Not available" 
+                          : currentBalance >= selectedReward.points_required 
+                            ? "Redeem now" 
+                            : "Need more points"}
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
