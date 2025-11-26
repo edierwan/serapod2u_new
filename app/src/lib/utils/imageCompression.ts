@@ -2,6 +2,8 @@
  * Image Compression Utility
  * Compresses images for product images, avatars, and other media
  * Returns compressed file size info for user feedback
+ * 
+ * Note: This module uses browser APIs and should only be imported in client components
  */
 
 export interface CompressionResult {
@@ -24,10 +26,10 @@ export interface CompressionOptions {
  * @param options - Compression options
  * @returns Promise<CompressionResult> - Compressed file with size info
  */
-export const compressImage = (
+export function compressImage(
   file: File,
   options: CompressionOptions = {}
-): Promise<CompressionResult> => {
+): Promise<CompressionResult> {
   const {
     maxWidth = 800,
     maxHeight = 800,
@@ -117,7 +119,7 @@ export const compressImage = (
 /**
  * Compress avatar image (small size for user avatars)
  */
-export const compressAvatar = (file: File): Promise<CompressionResult> => {
+export function compressAvatar(file: File): Promise<CompressionResult> {
   return compressImage(file, {
     maxWidth: 200,
     maxHeight: 200,
@@ -129,7 +131,7 @@ export const compressAvatar = (file: File): Promise<CompressionResult> => {
 /**
  * Compress product image (medium size for product catalog)
  */
-export const compressProductImage = (file: File): Promise<CompressionResult> => {
+export function compressProductImage(file: File): Promise<CompressionResult> {
   return compressImage(file, {
     maxWidth: 800,
     maxHeight: 800,
@@ -141,7 +143,7 @@ export const compressProductImage = (file: File): Promise<CompressionResult> => 
 /**
  * Compress variant image (small-medium size for product variants)
  */
-export const compressVariantImage = (file: File): Promise<CompressionResult> => {
+export function compressVariantImage(file: File): Promise<CompressionResult> {
   return compressImage(file, {
     maxWidth: 400,
     maxHeight: 400,
@@ -153,7 +155,7 @@ export const compressVariantImage = (file: File): Promise<CompressionResult> => 
 /**
  * Format file size for display
  */
-export const formatFileSize = (bytes: number): string => {
+export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
