@@ -17,6 +17,10 @@ export default function LoginForm() {
   const [error, setError] = useState('')
   const router = useRouter()
 
+  // Get environment from environment variable
+  const environment = process.env.NEXT_PUBLIC_APP_ENV
+  const showEnvironmentBadge = environment === 'staging' || environment === 'development'
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -167,7 +171,16 @@ export default function LoginForm() {
   }
 
   return (
-    <Card className="shadow-xl">
+    <Card className="shadow-xl relative">
+      {showEnvironmentBadge && (
+        <div className={`absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-xs font-semibold uppercase shadow-md ${
+          environment === 'development' 
+            ? 'bg-amber-500 text-white' 
+            : 'bg-orange-500 text-white'
+        }`}>
+          Environment: {environment === 'development' ? 'Development' : 'Staging'}
+        </div>
+      )}
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl text-center">Sign in</CardTitle>
         <CardDescription className="text-center">
