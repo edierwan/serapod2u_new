@@ -595,6 +595,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           code,
           status,
           master_code_id,
+          variant_id,
           product_variants (
             variant_name,
             image_url,
@@ -649,7 +650,20 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         console.log('📦 Loading master codes missing from qr_codes query:', missingCodes)
         const { data: masterRecords, error: masterError } = await supabase
           .from('qr_master_codes')
-          .select('master_code, status')
+          .select(`
+            master_code, 
+            status,
+            qr_batches!inner (
+              product_variant_id,
+              products!inner (
+                product_name
+              ),
+              product_variants!inner (
+                variant_name,
+                image_url
+              )
+            )
+          `)
           .in('master_code', missingCodes)
 
         if (masterError) {
@@ -658,10 +672,21 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           masterRecords
             ?.filter(master => master.status === 'warehouse_packed')
             .forEach(master => {
+              const batch = Array.isArray((master as any).qr_batches) 
+                ? (master as any).qr_batches[0] 
+                : (master as any).qr_batches
+              const product = batch?.products 
+                ? (Array.isArray(batch.products) ? batch.products[0] : batch.products)
+                : null
+              const variant = batch?.product_variants
+                ? (Array.isArray(batch.product_variants) ? batch.product_variants[0] : batch.product_variants)
+                : null
+              
               scannedProducts.push({
                 code: master.master_code,
-                product_name: master.master_code,
-                variant_name: 'Master Case',
+                product_name: product?.product_name || master.master_code,
+                variant_name: variant?.variant_name || 'Master Case',
+                image_url: variant?.image_url || null,
                 sequence_number: scannedProducts.length + 1,
                 status: 'success',
                 code_type: 'master'
@@ -683,8 +708,93 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       }
 
       setScannedCodes(scannedProducts)
+      
+      // After loading scanned codes, also load unique QR codes for master cases to get variant details
+      const masterCodes = scannedProducts.filter(p => p.code_type === 'master').map(p => p.code)
+      console.log('🎯 Master codes to load variants for:', masterCodes)
+      if (masterCodes.length > 0) {
+        await loadVariantDetailsFromMasterCodes(masterCodes)
+      }
     } catch (error: any) {
       console.error('❌ Error loading existing scanned codes:', error)
+    }
+  }
+
+  const loadVariantDetailsFromMasterCodes = async (masterCodes: string[]) => {
+    try {
+      console.log('🔍 Loading variant details from master codes:', masterCodes.length, masterCodes)
+      
+      // First, get the master_code_ids from master_codes
+      const { data: masterRecords, error: masterError } = await supabase
+        .from('qr_master_codes')
+        .select('id, master_code, actual_unit_count')
+        .in('master_code', masterCodes)
+      
+      if (masterError || !masterRecords || masterRecords.length === 0) {
+        console.warn('⚠️ No master code records found:', masterError)
+        return
+      }
+      
+      console.log('📦 Found master records:', masterRecords)
+      const masterCodeIds = masterRecords.map(m => m.id)
+      
+      // Now query unique QR codes that belong to these master codes
+      const { data: uniqueQrCodes, error: uniqueError } = await supabase
+        .from('qr_codes')
+        .select(`
+          code,
+          status,
+          variant_id,
+          product_variants (
+            variant_name,
+            image_url,
+            products (
+              product_name
+            )
+          )
+        `)
+        .in('master_code_id', masterCodeIds)
+        .eq('status', 'warehouse_packed')
+      
+      if (uniqueError) {
+        console.error('❌ Error loading unique QR codes:', uniqueError)
+        return
+      }
+      
+      console.log('✅ Loaded', uniqueQrCodes?.length || 0, 'unique QR codes from master cases')
+      if (uniqueQrCodes && uniqueQrCodes.length > 0) {
+        console.log('📝 Sample unique QR:', uniqueQrCodes[0])
+      }
+      
+      // Add these unique codes to scannedCodes for proper variant aggregation
+      if (uniqueQrCodes && uniqueQrCodes.length > 0) {
+        const uniqueProducts: ScannedProduct[] = uniqueQrCodes.map((qr, index) => {
+          const variant = Array.isArray(qr.product_variants) ? qr.product_variants[0] : qr.product_variants
+          const product = variant?.products ? (Array.isArray(variant.products) ? variant.products[0] : variant.products) : null
+          
+          return {
+            code: qr.code,
+            product_name: product?.product_name || 'Unknown',
+            variant_name: variant?.variant_name || 'Unknown',
+            image_url: variant?.image_url || null,
+            sequence_number: index + 1,
+            status: 'success' as const,
+            code_type: 'unique'
+          }
+        })
+        
+        console.log('🎨 Adding', uniqueProducts.length, 'unique products to scannedCodes')
+        console.log('📷 Images available:', uniqueProducts.filter(p => p.image_url).length)
+        console.log('📝 Variants:', Array.from(new Set(uniqueProducts.map(p => p.variant_name))))
+        
+        setScannedCodes(prev => {
+          const updated = [...prev, ...uniqueProducts]
+          console.log('✅ Updated scannedCodes length:', updated.length)
+          return updated
+        })
+      }
+    } catch (error: any) {
+      console.error('❌ Error loading variant details:', error)
     }
   }
 
@@ -991,6 +1101,12 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
                 if (result.session_update.scanned_quantities) {
                   const quantities = result.session_update.scanned_quantities
+                  console.log('📥 Received scanned_quantities update:', {
+                    total_units: quantities.total_units,
+                    total_cases: quantities.total_cases,
+                    variant_count: Object.keys(quantities.per_variant || {}).length,
+                    per_variant: quantities.per_variant
+                  })
                   setSessionQuantities({
                     total_units: quantities.total_units || 0,
                     total_cases: quantities.total_cases || 0,
@@ -1259,6 +1375,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       setSessionId(null)
       setShipmentProgress(null)
       setSessionQuantities({ total_units: 0, total_cases: 0, per_variant: {} })
+      setDetailedStats({ masterQrCount: 0, masterTotalUnits: 0, uniqueQrCount: 0, uniqueQrOverlap: 0, uniqueQrValid: 0, finalTotal: 0 })
+      setVariantBreakdown([])
 
       // Reload manual stock balance if variant selected
       if (selectedVariant) {
@@ -1554,24 +1672,82 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     errorCount: 0,
     variants: {} as Record<string, number>
   })
-
-  // Count master cases from shipmentProgress (which uses masterCodes.length from session)
-  // This ensures we show "1 master case" when 1 master QR code is scanned, not "50" (the units inside)
-  // Don't use sessionQuantities.total_cases as it might have been calculated incorrectly in old code
-  const masterCasesCount = shipmentProgress?.master_cases_scanned || scanSummary.masterCases || 0
   
-  // Use session quantities for loose items (individual units)
-  const looseItemsCount = shipmentProgress?.unique_codes_scanned || sessionQuantities.total_units || scanSummary.uniqueCodes
-  
-  // Count variants from session quantities (more accurate for masters) or scan summary
-  let variantCount = 0
-  if (sessionQuantities.per_variant && Object.keys(sessionQuantities.per_variant).length > 0) {
-    variantCount = Object.keys(sessionQuantities.per_variant).length
-  } else {
-    variantCount = Object.keys(scanSummary.variants).length
-  }
-  
+  // Use sessionQuantities as single source of truth for all counts
+  const masterCasesCount = shipmentProgress?.master_cases_scanned || 0
+  const looseItemsCount = sessionQuantities.total_units || 0
+  const variantCount = Object.keys(sessionQuantities.per_variant || {}).length
   const totalScanned = looseItemsCount + manualQty
+  
+  // Debug: Log sessionQuantities whenever it changes
+  console.log('📊 Current Ship Progress (sessionQuantities):', {
+    total_units: sessionQuantities.total_units,
+    total_cases: sessionQuantities.total_cases,
+    variant_count: variantCount,
+    per_variant: sessionQuantities.per_variant
+  })
+  
+  // Build variant breakdown from sessionQuantities.per_variant with enriched data
+  const [variantBreakdown, setVariantBreakdown] = useState<Array<{
+    variantId: string
+    variantName: string
+    productName: string
+    imageUrl: string | null
+    units: number
+    cases: number
+  }>>([])
+  
+  // Fetch variant details when sessionQuantities.per_variant changes
+  useEffect(() => {
+    const fetchVariantDetails = async () => {
+      const variantIds = Object.keys(sessionQuantities.per_variant || {})
+      if (variantIds.length === 0) {
+        setVariantBreakdown([])
+        return
+      }
+      
+      try {
+        const { data, error } = await supabase
+          .from('product_variants')
+          .select(`
+            id,
+            variant_name,
+            image_url,
+            products (
+              product_name
+            )
+          `)
+          .in('id', variantIds)
+        
+        if (error) {
+          console.error('Error fetching variant details:', error)
+          return
+        }
+        
+        const enrichedVariants = (data || []).map(variant => {
+          const product = Array.isArray(variant.products) ? variant.products[0] : variant.products
+          const variantData = sessionQuantities.per_variant[variant.id] || { units: 0, cases: 0 }
+          
+          return {
+            variantId: variant.id,
+            variantName: variant.variant_name || 'Unknown',
+            productName: product?.product_name || 'Unknown',
+            imageUrl: variant.image_url || null,
+            units: variantData.units || 0,
+            cases: variantData.cases || 0
+          }
+        })
+        
+        setVariantBreakdown(enrichedVariants)
+      } catch (error) {
+        console.error('Error in fetchVariantDetails:', error)
+      }
+    }
+    
+    fetchVariantDetails()
+  // Use JSON.stringify to properly detect object content changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(sessionQuantities.per_variant), supabase])
 
   return (
     <>
@@ -1881,12 +2057,11 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   <div className="space-y-2 bg-white rounded-lg p-3 border-2 border-indigo-300">
                     <div className="text-xs font-medium text-gray-600">FINAL TOTAL TO DELIVER</div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-4xl font-bold text-indigo-700">{detailedStats.finalTotal + manualQty}</span>
+                      <span className="text-4xl font-bold text-indigo-700">{totalScanned}</span>
                       <span className="text-sm text-gray-600">units</span>
                     </div>
                     <div className="text-xs text-gray-500 space-y-0.5">
-                      <div>{detailedStats.masterTotalUnits} from masters</div>
-                      <div>{detailedStats.uniqueQrValid} from unique codes</div>
+                      <div>{sessionQuantities.total_units} scanned units</div>
                       {manualQty > 0 && <div>{manualQty} manual stock</div>}
                     </div>
                   </div>
@@ -1962,33 +2137,31 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Product Variant Breakdown</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {Object.entries(scanSummary.variants).map(([variant, count]) => {
-                    // Find variant in scannedCodes to get image
-                    const variantData = scannedCodes.find(code => 
-                      `${code.product_name} - ${code.variant_name}` === variant
-                    )
-                    
-                    return (
-                      <div key={variant} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                        <div className="flex-shrink-0 w-12 h-12 bg-white rounded-md overflow-hidden border border-gray-200 flex items-center justify-center">
-                          {variantData?.image_url ? (
-                            <img 
-                              src={variantData.image_url} 
-                              alt={variant}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Box className="h-6 w-6 text-gray-400" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-gray-700 font-medium truncate">{variant}</div>
-                          <div className="text-xs text-gray-500">Product variant</div>
-                        </div>
-                        <Badge variant="secondary" className="flex-shrink-0">{count}</Badge>
+                  {variantBreakdown.map((variant) => (
+                    <div key={variant.variantId} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                      <div className="flex-shrink-0 w-12 h-12 bg-white rounded-md overflow-hidden border border-gray-200 flex items-center justify-center">
+                        {variant.imageUrl ? (
+                          <img 
+                            src={variant.imageUrl} 
+                            alt={variant.variantName}
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <Box className="h-6 w-6 text-gray-400" />
+                        )}
                       </div>
-                    )
-                  })}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-700 font-medium truncate">{variant.variantName}</div>
+                        <div className="text-xs text-gray-500">{variant.productName}</div>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <Badge variant="secondary" className="flex-shrink-0">{variant.units}</Badge>
+                        {variant.cases > 0 && (
+                          <span className="text-xs text-gray-500 mt-1">{variant.cases} cases</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

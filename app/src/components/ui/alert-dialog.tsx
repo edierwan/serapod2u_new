@@ -88,6 +88,20 @@ const AlertDialogDescription = React.forwardRef<
 ))
 AlertDialogDescription.displayName = "AlertDialogDescription"
 
+interface AlertDialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
+
+const AlertDialogFooter = React.forwardRef<
+  HTMLDivElement,
+  AlertDialogFooterProps
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={`mt-4 flex justify-end gap-2 ${className}`}
+    {...props}
+  />
+))
+AlertDialogFooter.displayName = "AlertDialogFooter"
+
 interface AlertDialogActionProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   onOpenChange?: (open: boolean) => void
 }
@@ -134,6 +148,7 @@ export {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogDescription,
+  AlertDialogFooter,
   AlertDialogAction,
   AlertDialogCancel,
 }

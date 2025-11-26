@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { 
   BarChart3,
   Search,
@@ -767,21 +768,32 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   }
 
   const getMovementTypeBadge = (type: string) => {
-    const configs: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-      'addition': { label: 'Addition', variant: 'default' as const },
-      'adjustment': { label: 'Adjustment', variant: 'secondary' as const },
-      'transfer_out': { label: 'Transfer Out', variant: 'outline' as const },
-      'transfer_in': { label: 'Transfer In', variant: 'default' as const },
-      'allocation': { label: 'Allocated', variant: 'secondary' as const },
-      'deallocation': { label: 'Deallocated', variant: 'outline' as const },
-      'order_fulfillment': { label: 'Shipment', variant: 'destructive' as const },
-      'order_cancelled': { label: 'Cancelled', variant: 'outline' as const },
-      'manual_in': { label: 'manual_in', variant: 'default' as const },
-      'manual_out': { label: 'manual_out', variant: 'destructive' as const }
+    const configs: Record<string, { label: string; title: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+      'addition': { label: 'Add', title: 'Addition', variant: 'default' as const },
+      'adjustment': { label: 'Adj', title: 'Adjustment', variant: 'secondary' as const },
+      'transfer_out': { label: 'Xfer↑', title: 'Transfer Out', variant: 'outline' as const },
+      'transfer_in': { label: 'Xfer↓', title: 'Transfer In', variant: 'default' as const },
+      'allocation': { label: 'Alloc', title: 'Allocated', variant: 'secondary' as const },
+      'deallocation': { label: 'Dealloc', title: 'Deallocated', variant: 'outline' as const },
+      'order_fulfillment': { label: 'Ship', title: 'Shipment', variant: 'destructive' as const },
+      'order_cancelled': { label: 'Cxl', title: 'Cancelled', variant: 'outline' as const },
+      'manual_in': { label: 'M-In', title: 'Manual In', variant: 'default' as const },
+      'manual_out': { label: 'M-Out', title: 'Manual Out', variant: 'destructive' as const }
     }
 
-    const config = configs[type] || { label: type, variant: 'outline' as const }
-    return <Badge variant={config.variant}>{config.label}</Badge>
+    const config = configs[type] || { label: type, title: type, variant: 'outline' as const }
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant={config.variant} className="text-[10px] px-1.5 py-0 font-medium cursor-default">{config.label}</Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{config.title}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
   }
 
   const formatDate = (dateString: string) => {

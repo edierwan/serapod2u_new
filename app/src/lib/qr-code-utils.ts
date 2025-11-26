@@ -4,6 +4,38 @@
  */
 
 /**
+ * Extracts the canonical master code string from any scanner input.
+ * Handles full tracking URLs, query params, and stray fragments so that
+ * downstream database lookups always use the MASTER-… identifier only.
+ */
+export function extractMasterCode(input: string | null | undefined): string {
+  if (!input || typeof input !== 'string') return ''
+  let token = input.trim()
+  if (!token) return ''
+
+  const TRACK_MASTER_SEGMENT = '/track/master/'
+
+  if (token.includes(TRACK_MASTER_SEGMENT)) {
+    const parts = token.split(TRACK_MASTER_SEGMENT)
+    token = parts[parts.length - 1] || ''
+  } else if (token.includes('/track/')) {
+    // Fall back to removing any /track/ prefix even if path differs
+    const parts = token.split('/track/')
+    token = parts[parts.length - 1] || ''
+  }
+
+  // Remove additional path segments after the code if present
+  if (token.includes('/')) {
+    token = token.split('/')[0]
+  }
+
+  // Strip query strings or fragments (?foo, #hash)
+  token = token.split(/[?#]/)[0]?.trim() || ''
+
+  return token
+}
+
+/**
  * Parses a QR code string to extract order information
  * 
  * QR Code Format: PROD-{product_code}-{variant_code}-{order_no}-{sequence}

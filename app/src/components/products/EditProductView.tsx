@@ -10,7 +10,19 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
-import { ArrowLeft, Package, Save, X } from 'lucide-react'
+import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Upload } from 'lucide-react'
+import Image from 'next/image'
+import { compressProductImage } from '@/lib/utils/imageCompression'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface EditProductViewProps {
   userProfile: any
@@ -22,6 +34,10 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   const [saving, setSaving] = useState(false)
   const [brands, setBrands] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
+  const [productImages, setProductImages] = useState<any[]>([])
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -39,11 +55,10 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   useEffect(() => {
     if (isReady) {
       fetchProductDetails()
+      fetchProductImages()
       fetchBrands()
       fetchCategories()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
@@ -136,6 +151,175 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     }
   }
 
+  const fetchProductImages = async () => {
+    const productId = sessionStorage.getItem('selectedProductId')
+    if (!productId || !isReady) return
+
+    try {
+      const { data, error } = await supabase
+        .from('product_images')
+        .select('*')
+        .eq('product_id', productId)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+      setProductImages(data || [])
+    } catch (error) {
+      console.error('Error fetching product images:', error)
+    }
+  }
+
+  const handleImageUpload = async (file: File) => {
+    const productId = sessionStorage.getItem('selectedProductId')
+    if (!productId) return
+
+    try {
+      setUploadingImage(true)
+
+      // Compress image
+      const compressionResult = await compressProductImage(file)
+      
+      toast({
+        title: 'Image Compressed',
+        description: `${compressionResult.originalSize} → ${compressionResult.compressedSize} (${compressionResult.compressionRatio} smaller)`,
+      })
+
+      // Upload to Supabase Storage
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${productId}-${Date.now()}.${fileExt}`
+      const filePath = `products/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, compressionResult.compressedFile, {
+          contentType: file.type,
+          upsert: false
+        })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath)
+
+      // Check if this is the first image (make it primary)
+      const isPrimary = productImages.length === 0
+
+      // Insert into database
+      const { data: newImage, error: dbError } = await supabase
+        .from('product_images')
+        .insert({
+          product_id: productId,
+          image_url: publicUrl,
+          is_primary: isPrimary,
+          created_by: userProfile?.id
+        })
+        .select()
+        .single()
+
+      if (dbError) throw dbError
+
+      // Update local state
+      setProductImages(prev => [...prev, newImage])
+
+      toast({
+        title: 'Success',
+        description: 'Product image uploaded successfully',
+      })
+    } catch (error: any) {
+      console.error('Error uploading image:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to upload image',
+        variant: 'destructive'
+      })
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  const handleDeleteImage = async (imageId: string, imageUrl: string) => {
+    const productId = sessionStorage.getItem('selectedProductId')
+    if (!productId) return
+
+    try {
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('product_images')
+        .delete()
+        .eq('id', imageId)
+
+      if (dbError) throw dbError
+
+      // Delete from storage
+      const urlParts = imageUrl.split('/')
+      const fileName = urlParts[urlParts.length - 1]
+      const filePath = `products/${fileName}`
+
+      await supabase.storage
+        .from('product-images')
+        .remove([filePath])
+
+      // Update local state
+      setProductImages(prev => prev.filter(img => img.id !== imageId))
+
+      toast({
+        title: 'Success',
+        description: 'Image deleted successfully',
+      })
+
+      setDeletingImageId(null)
+    } catch (error: any) {
+      console.error('Error deleting image:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete image',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const handleSetPrimaryImage = async (imageId: string) => {
+    const productId = sessionStorage.getItem('selectedProductId')
+    if (!productId) return
+
+    try {
+      // Remove primary from all images
+      await supabase
+        .from('product_images')
+        .update({ is_primary: false })
+        .eq('product_id', productId)
+
+      // Set new primary
+      await supabase
+        .from('product_images')
+        .update({ is_primary: true })
+        .eq('id', imageId)
+
+      // Update local state
+      setProductImages(prev => 
+        prev.map(img => ({
+          ...img,
+          is_primary: img.id === imageId
+        }))
+      )
+
+      toast({
+        title: 'Success',
+        description: 'Primary image updated',
+      })
+    } catch (error: any) {
+      console.error('Error setting primary image:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update primary image',
+        variant: 'destructive'
+      })
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -223,6 +407,111 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
           </div>
         </div>
       </div>
+
+      {/* Product Images */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ImageIcon className="w-5 h-5" />
+            Product Images
+          </CardTitle>
+          <CardDescription>Manage product images (click image to set as primary, images maintain aspect ratio)</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Upload Section */}
+          <div className="space-y-2">
+            <Label>Upload New Image</Label>
+            <div className="flex items-center gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={uploadingImage}
+                onClick={() => {
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.accept = 'image/*'
+                  input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0]
+                    if (file) {
+                      await handleImageUpload(file)
+                    }
+                  }
+                  input.click()
+                }}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {uploadingImage ? 'Uploading...' : 'Choose Image'}
+              </Button>
+              <p className="text-sm text-gray-500">
+                Images will be compressed automatically. Supported formats: JPG, PNG, WebP
+              </p>
+            </div>
+          </div>
+
+          {/* Image Grid */}
+          {productImages.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {productImages.map((image) => (
+                <div
+                  key={image.id}
+                  className="relative group aspect-square border-2 rounded-lg overflow-hidden cursor-pointer hover:border-blue-500 transition-all"
+                  style={{ borderColor: image.is_primary ? '#3b82f6' : '#e5e7eb' }}
+                  onClick={() => {
+                    if (!image.is_primary) {
+                      handleSetPrimaryImage(image.id)
+                    }
+                  }}
+                >
+                  <Image
+                    src={image.image_url}
+                    alt="Product image"
+                    fill
+                    className="object-contain bg-gray-50"
+                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                  />
+                  
+                  {/* Primary Badge */}
+                  {image.is_primary && (
+                    <div className="absolute top-2 left-2 bg-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1">
+                      <Star className="w-3 h-3 fill-current" />
+                      Primary
+                    </div>
+                  )}
+
+                  {/* Delete Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDeletingImageId(image.id)
+                    }}
+                    className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+
+                  {/* Preview on Click Overlay */}
+                  <div
+                    className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition-all flex items-center justify-center"
+                  >
+                    {!image.is_primary && (
+                      <span className="opacity-0 group-hover:opacity-100 text-sm font-medium text-gray-700 bg-white px-3 py-1 rounded-md shadow-sm">
+                        Click to set as primary
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
+              <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-2">No images uploaded yet</p>
+              <p className="text-sm text-gray-500">Upload your first product image above</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Form */}
       <form onSubmit={handleSubmit}>
@@ -359,6 +648,32 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
           </Button>
         </div>
       </form>
+
+      {/* Delete Image Confirmation Dialog */}
+      <AlertDialog open={deletingImageId !== null} onOpenChange={() => setDeletingImageId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Image</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this image? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const image = productImages.find(img => img.id === deletingImageId)
+                if (image) {
+                  handleDeleteImage(image.id, image.image_url)
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

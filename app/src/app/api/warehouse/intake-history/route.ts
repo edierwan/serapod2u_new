@@ -266,7 +266,8 @@ export async function GET(request: NextRequest) {
           const batch = batches[0]
           if (!batch) return
 
-          const resolvedOrderId = row.shipment_order_id || batch.order_id
+          // Use the same order ID resolution as the first pass for consistency
+          const resolvedOrderId = batch.order_id
           if (!resolvedOrderId) return
 
           const units = row.actual_unit_count ?? row.expected_unit_count ?? 0
@@ -306,6 +307,10 @@ export async function GET(request: NextRequest) {
         const casesShippedByOrder = new Map<string, number>()
         const unitsShippedByOrder = new Map<string, number>()
         
+        console.log('🔍 [Intake History] Calculating shipped counts...')
+        console.log('🔍 [Intake History] Total master IDs:', masterIds.length)
+        console.log('🔍 [Intake History] Shipped unique by master entries:', shippedUniqueByMaster.size)
+        
         masterInfoByOrder.forEach((masters, orderId) => {
           let shippedCasesCount = 0
           let shippedUnitsCount = 0
@@ -315,15 +320,30 @@ export async function GET(request: NextRequest) {
             const masterStatus = master.status || ''
             const shippedUniqueCount = shippedUniqueByMaster.get(master.id) || 0
 
+            // A master case is shipped if:
+            // 1. Its status is shipped_distributor or opened
+            // 2. OR all its unique codes have been shipped (shippedUniqueCount >= caseUnits)
             const masterShipped = masterStatus === 'shipped_distributor' || masterStatus === 'opened'
             const shippedByUniques = caseUnits > 0 && shippedUniqueCount >= caseUnits
 
+            console.log(`🔍 [Intake History] Master ${master.id.slice(0, 8)}: status=${masterStatus}, units=${caseUnits}, shippedUniques=${shippedUniqueCount}, isShipped=${masterShipped || shippedByUniques}`)
+
             if (masterShipped || shippedByUniques) {
               shippedCasesCount += 1
-              // Count the actual unique QR codes shipped in this master case
-              shippedUnitsCount += shippedUniqueCount
+              // When the master is shipped, count the actual units (either from unique count or master count)
+              // If master is shipped via status, use caseUnits (all units in master)
+              // If shipped via individual uniques, use the shippedUniqueCount
+              if (masterShipped) {
+                // Master was shipped as a whole - count all units
+                shippedUnitsCount += caseUnits
+              } else {
+                // Shipped via individual unique codes
+                shippedUnitsCount += shippedUniqueCount
+              }
             }
           })
+          
+          console.log(`🔍 [Intake History] Order ${orderId.slice(0, 8)}: casesShipped=${shippedCasesCount}, unitsShipped=${shippedUnitsCount}`)
           
           casesShippedByOrder.set(orderId, shippedCasesCount)
           unitsShippedByOrder.set(orderId, shippedUnitsCount)

@@ -7,6 +7,7 @@ interface ScannedCodeDetail {
   productName: string | null
   variantName: string | null
   variantId: string | null
+  imageUrl?: string | null
   quantity: number
   scannedAt: string
 }
@@ -60,8 +61,13 @@ export async function GET(request: NextRequest) {
           actual_unit_count,
           expected_unit_count,
           qr_batches!inner (
+            product_variant_id,
             products!inner (
               product_name
+            ),
+            product_variants!inner (
+              variant_name,
+              image_url
             )
           )
         `)
@@ -72,13 +78,15 @@ export async function GET(request: NextRequest) {
           ? master.qr_batches[0]
           : master.qr_batches
         const product = batch ? (Array.isArray((batch as any).products) ? (batch as any).products[0] : (batch as any).products) : null
+        const variant = batch ? (Array.isArray((batch as any).product_variants) ? (batch as any).product_variants[0] : (batch as any).product_variants) : null
 
         details.push({
           code: master.master_code,
           codeType: 'master',
           productName: product?.product_name || null,
-          variantName: `Case ${master.case_number || '?'}`,
-          variantId: null,
+          variantName: variant?.variant_name || `Case ${master.case_number || '?'}`,
+          variantId: batch?.product_variant_id || null,
+          imageUrl: variant?.image_url || null,
           quantity: master.actual_unit_count || master.expected_unit_count || 0,
           scannedAt: session.created_at || new Date().toISOString()
         })
@@ -94,6 +102,7 @@ export async function GET(request: NextRequest) {
           product_variant_id,
           product_variants!inner (
             variant_name,
+            image_url,
             products!inner (
               product_name
             )
@@ -113,6 +122,7 @@ export async function GET(request: NextRequest) {
           productName: productObj?.product_name || null,
           variantName: variantObj?.variant_name || null,
           variantId: unique.product_variant_id || null,
+          imageUrl: variantObj?.image_url || null,
           quantity: 1,
           scannedAt: session.created_at || new Date().toISOString()
         })

@@ -31,6 +31,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
   const [uploadingImage, setUploadingImage] = useState(false)
   const [showImageUpload, setShowImageUpload] = useState(false)
   const [deletingVariant, setDeletingVariant] = useState<string | null>(null)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -187,21 +189,25 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         .from('product-images')
         .getPublicUrl(filePath)
 
-      // Update or create product_images record
+      // Get current images count to set sort_order
+      const currentImagesCount = product.product_images?.length || 0
+      const isFirstImage = currentImagesCount === 0
+
+      // Insert new product_images record
       const { error: dbError } = await supabase
         .from('product_images')
-        .upsert({
+        .insert({
           product_id: product.id,
           image_url: publicUrl,
-          is_primary: true,
-          sort_order: 0
+          is_primary: isFirstImage,
+          sort_order: currentImagesCount
         })
 
       if (dbError) throw dbError
 
       toast({
         title: 'Success',
-        description: 'Product image updated successfully',
+        description: 'Product image added successfully',
       })
 
       setShowImageUpload(false)
@@ -215,6 +221,109 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       })
     } finally {
       setUploadingImage(false)
+    }
+  }
+
+  const handleDeleteImage = async (imageId: string, imageUrl: string) => {
+    if (!window.confirm('Are you sure you want to delete this image?')) {
+      return
+    }
+
+    setDeletingImageId(imageId)
+    try {
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('product_images')
+        .delete()
+        .eq('id', imageId)
+
+      if (dbError) throw dbError
+
+      // Try to delete from storage (optional, may fail if path doesn't match)
+      try {
+        const pathMatch = imageUrl.match(/products\/(.+)$/)
+        if (pathMatch) {
+          await supabase.storage
+            .from('product-images')
+            .remove([`products/${pathMatch[1]}`])
+        }
+      } catch (storageError) {
+        console.warn('Could not delete from storage:', storageError)
+      }
+
+      // Update local state instead of refetching
+      setProduct(prev => {
+        if (!prev) return prev
+        const updatedImages = prev.product_images.filter((img: any) => img.id !== imageId)
+        
+        // If we deleted the primary image and there are other images, make the first one primary
+        if (updatedImages.length > 0) {
+          const hasPrimary = updatedImages.some((img: any) => img.is_primary)
+          if (!hasPrimary) {
+            updatedImages[0].is_primary = true
+          }
+        }
+        
+        return {
+          ...prev,
+          product_images: updatedImages
+        }
+      })
+
+      // Clear selected image if it was the deleted one
+      if (selectedImageUrl === imageUrl) {
+        setSelectedImageUrl(null)
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Image deleted successfully',
+      })
+    } catch (error: any) {
+      console.error('Error deleting image:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete image',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeletingImageId(null)
+    }
+  }
+
+  const handleSetPrimaryImage = async (imageId: string) => {
+    try {
+      // Set all images to non-primary
+      const { error: resetError } = await supabase
+        .from('product_images')
+        .update({ is_primary: false })
+        .eq('product_id', product.id)
+
+      if (resetError) throw resetError
+
+      // Set selected image as primary
+      const { error: setPrimaryError } = await supabase
+        .from('product_images')
+        .update({ is_primary: true })
+        .eq('id', imageId)
+
+      if (setPrimaryError) throw setPrimaryError
+
+      // Update local state without full page refresh
+      setProduct((prev: any) => ({
+        ...prev,
+        product_images: prev.product_images.map((img: any) => ({
+          ...img,
+          is_primary: img.id === imageId
+        }))
+      }))
+    } catch (error: any) {
+      console.error('Error setting primary image:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to set primary image',
+        variant: 'destructive'
+      })
     }
   }
 
@@ -273,7 +382,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         return
       }
 
-      // Check inventory
+      // Check inventory (optional - table may not exist)
+      console.log('📦 Checking inventory...')
       const { data: inventory, error: inventoryCheckError } = await supabase
         .from('inventory')
         .select('id')
@@ -281,11 +391,10 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         .limit(1)
 
       if (inventoryCheckError) {
-        console.error('❌ Inventory check error:', inventoryCheckError)
-        throw new Error(`Failed to check inventory: ${inventoryCheckError.message || 'Unknown error'}`)
-      }
-
-      if (inventory && inventory.length > 0) {
+        // Log the error but don't fail if inventory table doesn't exist or has permission issues
+        console.warn('⚠️ Inventory check skipped:', inventoryCheckError)
+        console.log('ℹ️ Continuing with deletion (inventory table may not exist)')
+      } else if (inventory && inventory.length > 0) {
         console.warn('⚠️ Variant has inventory records')
         toast({
           title: 'Cannot Delete',
@@ -294,6 +403,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         })
         setDeletingVariant(null)
         return
+      } else {
+        console.log('✅ No inventory records found')
       }
 
       console.log('✅ No dependencies found, proceeding with deletion')
@@ -318,6 +429,13 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       fetchProductDetails()
     } catch (error: any) {
       console.error('❌ Error deleting variant:', error)
+      console.error('❌ Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        error_description: error?.error_description
+      })
       const errorMessage = error?.message || error?.error_description || error?.hint || 'Failed to delete variant. Please try again.'
       toast({
         title: 'Error',
@@ -436,31 +554,58 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
               />
             ) : (
               <>
-                {primaryImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img 
-                    src={primaryImage} 
-                    alt={product.product_name}
-                    className="w-full h-64 object-cover rounded-lg"
-                  />
-                ) : (
-                  <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <Package className="w-16 h-16 text-gray-400" />
-                  </div>
-                )}
-                {product.product_images && product.product_images.length > 1 && (
-                  <div className="mt-4 grid grid-cols-4 gap-2">
-                    {product.product_images.map((img: any) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img 
-                        key={img.id}
-                        src={img.image_url}
-                        alt="Product"
-                        className={`w-full h-16 object-cover rounded cursor-pointer border-2 ${
-                          img.is_primary ? 'border-blue-500' : 'border-transparent'
-                        }`}
-                      />
-                    ))}
+                <div className="relative w-full h-64 bg-gray-100 rounded-lg overflow-hidden">
+                  {(selectedImageUrl || primaryImage) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img 
+                      src={selectedImageUrl || primaryImage} 
+                      alt={product.product_name}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Package className="w-16 h-16 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                {product.product_images && product.product_images.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-xs text-gray-600 mb-2">
+                      {product.product_images.length} image{product.product_images.length > 1 ? 's' : ''}
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {product.product_images.map((img: any) => (
+                        <div key={img.id} className="relative group">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img 
+                            src={img.image_url}
+                            alt="Product"
+                            onClick={() => {
+                              setSelectedImageUrl(img.image_url)
+                              handleSetPrimaryImage(img.id)
+                            }}
+                            className={`w-full h-16 object-contain rounded cursor-pointer border-2 transition-all bg-gray-50 ${
+                              (selectedImageUrl === img.image_url || (!selectedImageUrl && img.is_primary)) 
+                                ? 'border-blue-500 ring-2 ring-blue-300' 
+                                : 'border-gray-200 hover:border-blue-400'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            className="absolute top-0.5 right-0.5 h-6 w-6 flex items-center justify-center rounded bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed z-10"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              handleDeleteImage(img.id, img.image_url)
+                            }}
+                            disabled={deletingImageId === img.id || product.product_images.length === 1}
+                            title={product.product_images.length === 1 ? "Cannot delete the last image" : "Delete image"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -558,7 +703,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                           <img
                             src={variant.image_url}
                             alt={variant.variant_name}
-                            className="h-32 w-full object-cover md:h-full"
+                            className="h-32 w-full object-contain md:h-full"
                           />
                         ) : (
                           <div className="flex h-32 w-full items-center justify-center text-gray-400 md:h-24">

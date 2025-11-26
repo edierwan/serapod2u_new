@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { loadSession, processShipmentScan } from '../scan-for-shipment/route'
 
-// Performance optimization: Process codes in concurrent batches
-const CONCURRENT_BATCH_SIZE = 10 // Process 10 codes at a time
+// IMPORTANT: Process codes sequentially to avoid race conditions with session state
+// Each scan updates scanned_quantities which must be accumulated properly
 const PROGRESS_UPDATE_INTERVAL = 5 // Send progress update every 5 codes
 
 export async function POST(request: NextRequest) {
@@ -51,51 +51,20 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Process codes in concurrent batches for better performance
-          for (let batchStart = 0; batchStart < codes.length; batchStart += CONCURRENT_BATCH_SIZE) {
-            const batchEnd = Math.min(batchStart + CONCURRENT_BATCH_SIZE, codes.length)
-            const batchCodes = codes.slice(batchStart, batchEnd)
+          // CRITICAL: Process codes SEQUENTIALLY to avoid race conditions
+          // Each scan updates session.scanned_quantities cumulatively
+          // Concurrent processing would cause each scan to read stale state
+          for (let index = 0; index < codes.length; index++) {
+            const code = codes[index]
+            
+            try {
+              const { result, status } = await processShipmentScan({
+                supabase,
+                session,
+                code,
+                requestingUserId
+              })
 
-            // Process current batch concurrently
-            const batchPromises = batchCodes.map(async (code, batchIndex) => {
-              const globalIndex = batchStart + batchIndex
-              
-              try {
-                const { result, status } = await processShipmentScan({
-                  supabase,
-                  session,
-                  code,
-                  requestingUserId
-                })
-
-                return {
-                  index: globalIndex,
-                  code,
-                  result,
-                  status
-                }
-              } catch (error: any) {
-                console.error(`❌ Error processing code at index ${globalIndex}:`, error)
-                return {
-                  index: globalIndex,
-                  code,
-                  result: {
-                    code,
-                    normalized_code: code,
-                    code_type: 'master' as const,
-                    outcome: 'error' as const,
-                    message: error?.message || 'Processing failed'
-                  },
-                  status: 500
-                }
-              }
-            })
-
-            // Wait for current batch to complete
-            const batchResults = await Promise.all(batchPromises)
-
-            // Process results and send progress updates
-            for (const { index, code, result, status } of batchResults) {
               if (result.outcome === 'shipped') {
                 successCount++
               } else if (result.outcome === 'duplicate') {
@@ -104,10 +73,10 @@ export async function POST(request: NextRequest) {
                 errorCount++
               }
 
-              // Send progress update (every N codes or last code in batch)
+              // Send progress update (every N codes or last code)
               const shouldSendUpdate = 
                 (index + 1) % PROGRESS_UPDATE_INTERVAL === 0 || 
-                index === batchResults[batchResults.length - 1].index
+                index === codes.length - 1
 
               if (shouldSendUpdate) {
                 const payload = {
@@ -118,6 +87,27 @@ export async function POST(request: NextRequest) {
                   result
                 }
 
+                controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'))
+              }
+            } catch (error: any) {
+              console.error(`❌ Error processing code at index ${index}:`, error)
+              errorCount++
+              
+              // Send error progress update
+              if ((index + 1) % PROGRESS_UPDATE_INTERVAL === 0 || index === codes.length - 1) {
+                const payload = {
+                  type: 'progress' as const,
+                  index: index + 1,
+                  total,
+                  status: 500,
+                  result: {
+                    code,
+                    normalized_code: code,
+                    code_type: 'master' as const,
+                    outcome: 'error' as const,
+                    message: error?.message || 'Processing failed'
+                  }
+                }
                 controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'))
               }
             }

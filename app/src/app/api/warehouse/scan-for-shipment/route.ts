@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { parseQRCode } from '@/lib/qr-code-utils'
+import { parseQRCode, extractMasterCode } from '@/lib/qr-code-utils'
 
 export type CodeType = 'master' | 'unique'
 
@@ -148,12 +148,21 @@ export const loadSession = async (supabase: Awaited<ReturnType<typeof createClie
     throw notFound
   }
 
+  const rawMasterCodes = Array.isArray(data.master_codes_scanned) ? data.master_codes_scanned : []
+  const canonicalMasterCodes = Array.from(
+    new Set(
+      rawMasterCodes
+        .map((code) => (typeof code === 'string' ? extractMasterCode(code) : ''))
+        .filter((code): code is string => Boolean(code && code.length > 0))
+    )
+  )
+
   const session: ValidationSession = {
     id: data.id,
     warehouse_org_id: data.warehouse_org_id,
     distributor_org_id: data.distributor_org_id,
     validation_status: data.validation_status,
-    master_codes_scanned: Array.isArray(data.master_codes_scanned) ? data.master_codes_scanned : [],
+    master_codes_scanned: canonicalMasterCodes,
     unique_codes_scanned: Array.isArray(data.unique_codes_scanned) ? data.unique_codes_scanned : [],
     scanned_quantities: (data.scanned_quantities as ScannedQuantities) || null,
     discrepancy_details: (data.discrepancy_details as DiscrepancyDetails) || null
@@ -284,6 +293,18 @@ const buildScannedQuantities = (
     updated.per_variant[adjustment.variant_id].cases += adjustment.cases_removed
   }
 
+  // Debug logging for scanned_quantities
+  console.log('📊 buildScannedQuantities result:', {
+    total_units: updated.total_units,
+    total_cases: updated.total_cases,
+    variant_count: Object.keys(updated.per_variant).length,
+    per_variant_sample: Object.entries(updated.per_variant).slice(0, 2).map(([id, data]) => ({
+      variant_id: id.slice(0, 8) + '...',
+      units: data.units,
+      cases: data.cases
+    }))
+  })
+
   return updated
 }
 
@@ -367,6 +388,8 @@ const handleMasterShipment = async (
   normalizedCode: string,
   requestingUserId: string
 ): Promise<ShipmentScanResult> => {
+  const masterCodeToken = extractMasterCode(normalizedCode) || normalizedCode
+
   // Performance: Add limit(1) to force index usage and single() for faster lookup
   const { data: masterRecord, error: masterError } = await supabase
     .from('qr_master_codes')
@@ -394,7 +417,7 @@ const handleMasterShipment = async (
        )
       `
     )
-    .eq('master_code', normalizedCode)
+    .eq('master_code', masterCodeToken)
     .limit(1)
     .maybeSingle()
 
@@ -402,7 +425,7 @@ const handleMasterShipment = async (
     console.error('❌ Failed to load master code for shipment scan:', masterError)
     return {
       code,
-      normalized_code: normalizedCode,
+      normalized_code: masterCodeToken,
       code_type: 'master',
       outcome: 'error',
       message: 'Failed to load master code metadata'
@@ -412,7 +435,7 @@ const handleMasterShipment = async (
   if (!masterRecord) {
     return {
       code,
-      normalized_code: normalizedCode,
+      normalized_code: masterCodeToken,
       code_type: 'master',
       outcome: 'not_found',
       message: 'This master case was not found in the system. Please verify the QR code.'
@@ -422,7 +445,7 @@ const handleMasterShipment = async (
   if (masterRecord.warehouse_org_id && masterRecord.warehouse_org_id !== session.warehouse_org_id) {
     return {
       code,
-      normalized_code: normalizedCode,
+      normalized_code: masterCodeToken,
       code_type: 'master',
       outcome: 'wrong_warehouse',
       message: 'This master case belongs to a different warehouse. Please check the code.'
@@ -433,7 +456,7 @@ const handleMasterShipment = async (
   if (masterRecord.status === 'shipped_distributor') {
     return {
       code,
-      normalized_code: normalizedCode,
+      normalized_code: masterCodeToken,
       code_type: 'master',
       outcome: 'already_shipped',
       message: 'This master case has already been shipped to a distributor.'
@@ -456,7 +479,7 @@ const handleMasterShipment = async (
     
     return {
       code,
-      normalized_code: normalizedCode,
+      normalized_code: masterCodeToken,
       code_type: 'master',
       outcome: 'invalid_status',
       message: friendlyMessage
@@ -472,7 +495,7 @@ const handleMasterShipment = async (
     console.error('❌ Failed to load child codes for master shipment:', uniqueError)
     return {
       code,
-      normalized_code: normalizedCode,
+      normalized_code: masterCodeToken,
       code_type: 'master',
       outcome: 'error',
       message: 'Failed to load child codes for master case'
@@ -597,7 +620,7 @@ const handleMasterShipment = async (
     console.error('❌ Failed to update master case for shipping:', masterUpdateError)
     return {
       code,
-      normalized_code: normalizedCode,
+      normalized_code: masterCodeToken,
       code_type: 'master',
       outcome: 'error',
       message: 'Failed to update master case status for shipping'
@@ -659,15 +682,15 @@ const handleMasterShipment = async (
     }))
 
   const nextQuantities = buildScannedQuantities(session, adjustments)
-  const nextDiscrepancy = buildDiscrepancyDetails(session, adjustments, normalizedCode, warnings)
-  const nextMasterList = session.master_codes_scanned || []
+  const nextDiscrepancy = buildDiscrepancyDetails(session, adjustments, masterCodeToken, warnings)
+  const nextMasterList = [...(session.master_codes_scanned || [])]
   const nextStatus = discrepancies.length ? 'discrepancy' : session.validation_status
 
-  if (!nextMasterList.includes(normalizedCode)) {
-    nextMasterList.push(normalizedCode)
-    console.log(`✅ Added master code to session: ${normalizedCode}. Total masters: ${nextMasterList.length}`)
+  if (!nextMasterList.includes(masterCodeToken)) {
+    nextMasterList.push(masterCodeToken)
+    console.log(`✅ Added master code to session: ${masterCodeToken}. Total masters: ${nextMasterList.length}`)
   } else {
-    console.log(`⚠️ Master code already in session: ${normalizedCode}`)
+    console.log(`⚠️ Master code already in session: ${masterCodeToken}`)
   }
 
   // Get product info from first variant
@@ -676,7 +699,7 @@ const handleMasterShipment = async (
 
   return {
     code,
-    normalized_code: normalizedCode,
+    normalized_code: masterCodeToken,
     code_type: 'master',
     outcome: 'shipped',
     message: `Master case ${masterRecord.case_number || ''} shipped to distributor`,
@@ -695,7 +718,7 @@ const handleMasterShipment = async (
     warnings,
     discrepancies,
     session_update: {
-      master_codes_scanned: nextMasterList,
+      master_codes_scanned: Array.from(new Set(nextMasterList)),
       unique_codes_scanned: session.unique_codes_scanned || [],
       scanned_quantities: nextQuantities,
       discrepancy_details: nextDiscrepancy,
@@ -1048,17 +1071,21 @@ export const processShipmentScan = async ({
     unique: session.unique_codes_scanned || []
   }
 
-  if (codeType === 'master' && scannedLists.master.includes(normalizedCode)) {
+  const normalizedMasterCode =
+    codeType === 'master' ? (extractMasterCode(normalizedCode) || normalizedCode) : null
+  const normalizedCodeForProcessing = codeType === 'master' ? (normalizedMasterCode as string) : normalizedCode
+
+  if (codeType === 'master' && scannedLists.master.includes(normalizedCodeForProcessing)) {
     const { data: existingMaster } = await supabase
       .from('qr_master_codes')
       .select('id, status')
-      .eq('master_code', normalizedCode)
+      .eq('master_code', normalizedCodeForProcessing)
       .maybeSingle()
 
     if (existingMaster && (existingMaster.status === 'warehouse_packed' || existingMaster.status === 'shipped_distributor')) {
       const duplicateResult: ShipmentScanResult = {
         code,
-        normalized_code: normalizedCode,
+        normalized_code: normalizedCodeForProcessing,
         code_type: 'master',
         outcome: 'duplicate',
         message: 'Master code already scanned in this session'
@@ -1097,7 +1124,13 @@ export const processShipmentScan = async ({
   let result: ShipmentScanResult
 
   if (codeType === 'master') {
-    result = await handleMasterShipment(supabase, session, code, normalizedCode, requestingUserId)
+    result = await handleMasterShipment(
+      supabase,
+      session,
+      code,
+      normalizedCodeForProcessing,
+      requestingUserId
+    )
   } else {
     result = await handleUniqueShipment(supabase, session, code, normalizedCode, requestingUserId)
   }
