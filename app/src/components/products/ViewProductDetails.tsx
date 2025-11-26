@@ -225,6 +225,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
 
     setDeletingVariant(variantId)
     try {
+      console.log('🗑️ Checking dependencies for variant:', variantId, variantName)
+      
       // Check for dependencies in orders
       const { data: orderItems, error: orderCheckError } = await supabase
         .from('order_items')
@@ -232,14 +234,19 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         .eq('variant_id', variantId)
         .limit(1)
 
-      if (orderCheckError) throw orderCheckError
+      if (orderCheckError) {
+        console.error('❌ Order check error:', orderCheckError)
+        throw new Error(`Failed to check orders: ${orderCheckError.message || 'Unknown error'}`)
+      }
 
       if (orderItems && orderItems.length > 0) {
+        console.warn('⚠️ Variant is used in orders')
         toast({
           title: 'Cannot Delete',
           description: 'This variant is used in existing orders and cannot be deleted.',
           variant: 'destructive'
         })
+        setDeletingVariant(null)
         return
       }
 
@@ -250,14 +257,19 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         .eq('variant_id', variantId)
         .limit(1)
 
-      if (qrCheckError) throw qrCheckError
+      if (qrCheckError) {
+        console.error('❌ QR code check error:', qrCheckError)
+        throw new Error(`Failed to check QR codes: ${qrCheckError.message || 'Unknown error'}`)
+      }
 
       if (qrCodes && qrCodes.length > 0) {
+        console.warn('⚠️ Variant has QR codes')
         toast({
           title: 'Cannot Delete',
           description: 'This variant has QR codes generated and cannot be deleted.',
           variant: 'destructive'
         })
+        setDeletingVariant(null)
         return
       }
 
@@ -268,25 +280,36 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         .eq('variant_id', variantId)
         .limit(1)
 
-      if (inventoryCheckError) throw inventoryCheckError
+      if (inventoryCheckError) {
+        console.error('❌ Inventory check error:', inventoryCheckError)
+        throw new Error(`Failed to check inventory: ${inventoryCheckError.message || 'Unknown error'}`)
+      }
 
       if (inventory && inventory.length > 0) {
+        console.warn('⚠️ Variant has inventory records')
         toast({
           title: 'Cannot Delete',
           description: 'This variant has inventory records and cannot be deleted.',
           variant: 'destructive'
         })
+        setDeletingVariant(null)
         return
       }
 
+      console.log('✅ No dependencies found, proceeding with deletion')
+      
       // Delete variant
       const { error: deleteError } = await supabase
         .from('product_variants')
         .delete()
         .eq('id', variantId)
 
-      if (deleteError) throw deleteError
+      if (deleteError) {
+        console.error('❌ Delete error:', deleteError)
+        throw new Error(`Failed to delete variant: ${deleteError.message || 'Unknown error'}`)
+      }
 
+      console.log('✅ Variant deleted successfully')
       toast({
         title: 'Success',
         description: `Variant "${variantName}" has been deleted`,
@@ -294,10 +317,11 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
 
       fetchProductDetails()
     } catch (error: any) {
-      console.error('Error deleting variant:', error)
+      console.error('❌ Error deleting variant:', error)
+      const errorMessage = error?.message || error?.error_description || error?.hint || 'Failed to delete variant. Please try again.'
       toast({
         title: 'Error',
-        description: error.message || 'Failed to delete variant',
+        description: errorMessage,
         variant: 'destructive'
       })
     } finally {
