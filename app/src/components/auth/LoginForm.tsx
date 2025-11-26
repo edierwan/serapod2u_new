@@ -20,6 +20,9 @@ export default function LoginForm() {
   // Get environment from environment variable
   const environment = process.env.NEXT_PUBLIC_APP_ENV
   const showEnvironmentBadge = environment === 'staging' || environment === 'development'
+  
+  // Debug: Log environment value (remove after testing)
+  console.log('Current environment:', environment, 'Show badge:', showEnvironmentBadge)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
