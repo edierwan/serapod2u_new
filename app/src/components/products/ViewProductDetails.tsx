@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
+import ImageUpload from '@/components/ui/image-upload'
 import { 
   ArrowLeft,
   Package,
@@ -14,7 +15,8 @@ import {
   Image as ImageIcon,
   Tag,
   Info,
-  AlertCircle
+  AlertCircle,
+  Upload
 } from 'lucide-react'
 
 interface ViewProductDetailsProps {
@@ -26,6 +28,9 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [showImageUpload, setShowImageUpload] = useState(false)
+  const [deletingVariant, setDeletingVariant] = useState<string | null>(null)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -161,6 +166,145 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
     }
   }
 
+  const handleImageUpload = async (file: File) => {
+    if (!product) return
+    
+    setUploadingImage(true)
+    try {
+      // Upload to Supabase storage
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${product.product_code}-${Date.now()}.${fileExt}`
+      const filePath = `products/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath)
+
+      // Update or create product_images record
+      const { error: dbError } = await supabase
+        .from('product_images')
+        .upsert({
+          product_id: product.id,
+          image_url: publicUrl,
+          is_primary: true,
+          sort_order: 0
+        })
+
+      if (dbError) throw dbError
+
+      toast({
+        title: 'Success',
+        description: 'Product image updated successfully',
+      })
+
+      setShowImageUpload(false)
+      fetchProductDetails()
+    } catch (error: any) {
+      console.error('Error uploading image:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to upload image',
+        variant: 'destructive'
+      })
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  const handleDeleteVariant = async (variantId: string, variantName: string) => {
+    if (!window.confirm(`Are you sure you want to delete variant "${variantName}"?`)) {
+      return
+    }
+
+    setDeletingVariant(variantId)
+    try {
+      // Check for dependencies in orders
+      const { data: orderItems, error: orderCheckError } = await supabase
+        .from('order_items')
+        .select('id')
+        .eq('variant_id', variantId)
+        .limit(1)
+
+      if (orderCheckError) throw orderCheckError
+
+      if (orderItems && orderItems.length > 0) {
+        toast({
+          title: 'Cannot Delete',
+          description: 'This variant is used in existing orders and cannot be deleted.',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // Check for dependencies in QR codes
+      const { data: qrCodes, error: qrCheckError } = await supabase
+        .from('qr_codes')
+        .select('id')
+        .eq('variant_id', variantId)
+        .limit(1)
+
+      if (qrCheckError) throw qrCheckError
+
+      if (qrCodes && qrCodes.length > 0) {
+        toast({
+          title: 'Cannot Delete',
+          description: 'This variant has QR codes generated and cannot be deleted.',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // Check inventory
+      const { data: inventory, error: inventoryCheckError } = await supabase
+        .from('inventory')
+        .select('id')
+        .eq('variant_id', variantId)
+        .limit(1)
+
+      if (inventoryCheckError) throw inventoryCheckError
+
+      if (inventory && inventory.length > 0) {
+        toast({
+          title: 'Cannot Delete',
+          description: 'This variant has inventory records and cannot be deleted.',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // Delete variant
+      const { error: deleteError } = await supabase
+        .from('product_variants')
+        .delete()
+        .eq('id', variantId)
+
+      if (deleteError) throw deleteError
+
+      toast({
+        title: 'Success',
+        description: `Variant "${variantName}" has been deleted`,
+      })
+
+      fetchProductDetails()
+    } catch (error: any) {
+      console.error('Error deleting variant:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete variant',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeletingVariant(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -242,38 +386,60 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         {/* Product Image */}
         <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ImageIcon className="w-5 h-5" />
-              Product Image
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-5 h-5" />
+                Product Image
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowImageUpload(!showImageUpload)}
+                disabled={uploadingImage}
+              >
+                <Upload className="w-4 h-4 mr-1" />
+                {showImageUpload ? 'Cancel' : 'Change'}
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {primaryImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img 
-                src={primaryImage} 
-                alt={product.product_name}
-                className="w-full h-64 object-cover rounded-lg"
+            {showImageUpload ? (
+              <ImageUpload
+                currentImageUrl={primaryImage}
+                onImageSelect={handleImageUpload}
+                onImageRemove={() => setShowImageUpload(false)}
+                label="Upload New Product Image"
               />
             ) : (
-              <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-                <Package className="w-16 h-16 text-gray-400" />
-              </div>
-            )}
-            {product.product_images && product.product_images.length > 1 && (
-              <div className="mt-4 grid grid-cols-4 gap-2">
-                {product.product_images.map((img: any) => (
+              <>
+                {primaryImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img 
-                    key={img.id}
-                    src={img.image_url}
-                    alt="Product"
-                    className={`w-full h-16 object-cover rounded cursor-pointer border-2 ${
-                      img.is_primary ? 'border-blue-500' : 'border-transparent'
-                    }`}
+                    src={primaryImage} 
+                    alt={product.product_name}
+                    className="w-full h-64 object-cover rounded-lg"
                   />
-                ))}
-              </div>
+                ) : (
+                  <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <Package className="w-16 h-16 text-gray-400" />
+                  </div>
+                )}
+                {product.product_images && product.product_images.length > 1 && (
+                  <div className="mt-4 grid grid-cols-4 gap-2">
+                    {product.product_images.map((img: any) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img 
+                        key={img.id}
+                        src={img.image_url}
+                        alt="Product"
+                        className={`w-full h-16 object-cover rounded cursor-pointer border-2 ${
+                          img.is_primary ? 'border-blue-500' : 'border-transparent'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -379,15 +545,26 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                       <div className="flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="font-medium text-gray-900">{variant.variant_name}</h4>
-                          <Badge
-                            variant="outline"
-                            className={variant.is_active
-                              ? 'bg-green-50 text-green-700 border-green-200'
-                              : 'bg-gray-50 text-gray-700 border-gray-200'
-                            }
-                          >
-                            {variant.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={variant.is_active
+                                ? 'bg-green-50 text-green-700 border-green-200'
+                                : 'bg-gray-50 text-gray-700 border-gray-200'
+                              }
+                            >
+                              {variant.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteVariant(variant.id, variant.variant_name)}
+                              disabled={deletingVariant === variant.id}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                         <div className="mt-2 space-y-1.5 text-sm">
                           <p className="text-gray-600">Code: <span className="text-gray-900">{variant.variant_code}</span></p>

@@ -131,6 +131,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   const [manualQty, setManualQty] = useState<number>(0)
   const [loadingManualStock, setLoadingManualStock] = useState(false)
   const [loadingVariants, setLoadingVariants] = useState(false)
+  const [detailedStats, setDetailedStats] = useState({
+    masterQrCount: 0,
+    masterTotalUnits: 0,
+    uniqueQrCount: 0,
+    uniqueQrOverlap: 0,
+    uniqueQrValid: 0,
+    finalTotal: 0
+  })
   
   const { toast } = useToast()
   const supabase = createClient()
