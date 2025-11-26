@@ -17,12 +17,14 @@ export default function LoginForm() {
   const [error, setError] = useState('')
   const router = useRouter()
 
-  // Show environment badge only on staging
-  // Vercel sets NEXT_PUBLIC_VERCEL_ENV to 'preview' for staging deployments
-  // or we can check if hostname includes 'dev.' subdomain
+  // Detect environment for badge display
+  const isDevelopment = process.env.NODE_ENV === 'development' || 
+                        (typeof window !== 'undefined' && window.location.hostname === 'localhost')
   const isStaging = process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview' || 
                     (typeof window !== 'undefined' && window.location.hostname.includes('dev.'))
-  const showEnvironmentBadge = isStaging
+  
+  const showEnvironmentBadge = isDevelopment || isStaging
+  const badgeText = isDevelopment ? 'Environment: Development' : 'Environment: Staging'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -177,7 +179,7 @@ export default function LoginForm() {
     <Card className="shadow-xl relative">
       {showEnvironmentBadge && (
         <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-xs font-semibold uppercase shadow-md bg-amber-500 text-white">
-          Environment: Staging
+          {badgeText}
         </div>
       )}
       <CardHeader className="space-y-1">

@@ -3,6 +3,13 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "outputDirectory": ".next",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "staging": true,
+      "develop": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/qr-reverse-worker",
