@@ -317,17 +317,43 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
         }
 
         const newQuantityOnHand = Math.max(0, (inventoryRow.quantity_on_hand ?? 0) - delta)
+        const newQuantityAvailable = inventoryRow.quantity_available !== null
+          ? Math.max(0, (inventoryRow.quantity_available ?? 0) - delta)
+          : null
+        const newUnitsOnHand = inventoryRow.units_on_hand !== null
+          ? Math.max(0, (inventoryRow.units_on_hand ?? 0) - delta)
+          : null
+
+        const shouldDeleteInventoryRow =
+          newQuantityOnHand <= 0 &&
+          (newQuantityAvailable ?? 0) <= 0 &&
+          (newUnitsOnHand ?? 0) <= 0
+
+        if (shouldDeleteInventoryRow) {
+          const { error: inventoryDeleteError } = await supabase
+            .from('product_inventory')
+            .delete()
+            .eq('id', inventoryRow.id)
+
+          if (inventoryDeleteError) {
+            console.error(`❌ Failed to delete inventory row for variant ${variantId} org ${orgId}`, inventoryDeleteError)
+          } else {
+            console.log(`🧹 Removed inventory row for variant ${variantId} org ${orgId} (quantity returned to 0) `)
+          }
+          continue
+        }
+
         const updatePayload: Record<string, number | string | null> = {
           quantity_on_hand: newQuantityOnHand,
           updated_at: new Date().toISOString()
         }
 
-        if (inventoryRow.quantity_available !== null) {
-          updatePayload.quantity_available = Math.max(0, (inventoryRow.quantity_available ?? 0) - delta)
+        if (newQuantityAvailable !== null) {
+          updatePayload.quantity_available = newQuantityAvailable
         }
 
-        if (inventoryRow.units_on_hand !== null) {
-          updatePayload.units_on_hand = Math.max(0, (inventoryRow.units_on_hand ?? 0) - delta)
+        if (newUnitsOnHand !== null) {
+          updatePayload.units_on_hand = newUnitsOnHand
         }
 
         if (inventoryRow.total_value !== null && inventoryRow.average_cost !== null) {
