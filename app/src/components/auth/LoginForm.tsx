@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
+import { getEnvironmentLabel } from '@/utils/environment'
 
 export default function LoginForm() {
   const [email, setEmail] = useState('super@dev.com')
@@ -17,14 +18,8 @@ export default function LoginForm() {
   const [error, setError] = useState('')
   const router = useRouter()
 
-  // Detect environment for badge display
-  const isDevelopment = process.env.NODE_ENV === 'development' || 
-                        (typeof window !== 'undefined' && window.location.hostname === 'localhost')
-  const isStaging = process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview' || 
-                    (typeof window !== 'undefined' && window.location.hostname.includes('dev.'))
-  
-  const showEnvironmentBadge = isDevelopment || isStaging
-  const badgeText = isDevelopment ? 'Environment: Development' : 'Environment: Staging'
+  // Get environment badge based on Vercel environment variables
+  const { badge, show } = getEnvironmentLabel()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -177,9 +172,9 @@ export default function LoginForm() {
 
   return (
     <Card className="shadow-xl relative">
-      {showEnvironmentBadge && (
+      {show && (
         <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-xs font-semibold uppercase shadow-md bg-amber-500 text-white">
-          {badgeText}
+          {badge}
         </div>
       )}
       <CardHeader className="space-y-1">
