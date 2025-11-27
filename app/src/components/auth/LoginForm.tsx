@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
-import { getEnvironmentLabel } from '@/utils/environment'
 
 export default function LoginForm() {
   const [email, setEmail] = useState('super@dev.com')
@@ -17,9 +16,6 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
-
-  // Get environment badge based on Vercel environment variables
-  const { badge, show } = getEnvironmentLabel()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -171,12 +167,7 @@ export default function LoginForm() {
   }
 
   return (
-    <Card className="shadow-xl relative">
-      {show && (
-        <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-xs font-semibold uppercase shadow-md bg-amber-500 text-white">
-          {badge}
-        </div>
-      )}
+    <Card className="shadow-xl">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl text-center">Sign in</CardTitle>
         <CardDescription className="text-center">
