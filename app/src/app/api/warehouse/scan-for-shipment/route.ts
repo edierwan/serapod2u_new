@@ -486,10 +486,14 @@ const handleMasterShipment = async (
     }
   }
 
+  // Query child codes still linked to this master case
+  // Note: Loose items scanned individually will have their master_code_id cleared (unlinked)
+  // Status filter: only count codes that are available at warehouse (not already shipped)
   const { data: uniqueCodes, error: uniqueError } = await supabase
     .from('qr_codes')
     .select('id, code, variant_id, status')
     .eq('master_code_id', masterRecord.id)
+    .in('status', ['received_warehouse', 'warehouse_packed'])
 
   if (uniqueError) {
     console.error('❌ Failed to load child codes for master shipment:', uniqueError)
@@ -501,6 +505,8 @@ const handleMasterShipment = async (
       message: 'Failed to load child codes for master case'
     }
   }
+
+  console.log(`📦 Master ${masterCodeToken}: Found ${(uniqueCodes || []).length} child codes still linked to this master`)
 
   const variantCounts = new Map<string, number>()
   ;(uniqueCodes || []).forEach(row => {
@@ -627,6 +633,7 @@ const handleMasterShipment = async (
     }
   }
 
+  // Only update child codes that are still at warehouse (not already shipped as loose items)
   const { error: codesUpdateError } = await supabase
     .from('qr_codes')
     .update({
@@ -637,6 +644,7 @@ const handleMasterShipment = async (
       updated_at: scannedAt
     })
     .eq('master_code_id', masterRecord.id)
+    .in('status', ['received_warehouse', 'warehouse_packed'])
 
   if (codesUpdateError) {
     console.warn('⚠️ Failed to update child codes during shipping:', codesUpdateError)
@@ -849,15 +857,25 @@ const handleUniqueShipment = async (
 
   const scannedAt = new Date().toISOString()
 
+  // CRITICAL FIX: When shipping a loose item that has master_code_id, clear it
+  // This prevents it from being counted when the master case is later scanned
+  const updates: Record<string, any> = {
+    status: 'warehouse_packed',
+    current_location_org_id: session.distributor_org_id,
+    last_scanned_at: scannedAt,
+    last_scanned_by: requestingUserId,
+    updated_at: scannedAt
+  }
+
+  // If this loose item was part of a master case, unlink it now
+  if (qrCode.master_code_id) {
+    updates.master_code_id = null
+    console.log(`🔓 Unlinking loose item ${normalizedCode} from master case ${qrCode.master_code_id}`)
+  }
+
   const { error: updateError } = await supabase
     .from('qr_codes')
-    .update({
-      status: 'warehouse_packed',
-      current_location_org_id: session.distributor_org_id,
-      last_scanned_at: scannedAt,
-      last_scanned_by: requestingUserId,
-      updated_at: scannedAt
-    })
+    .update(updates)
     .eq('id', qrCode.id)
 
   if (updateError) {
