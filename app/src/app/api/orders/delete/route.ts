@@ -1,10 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { cascadeDeleteOrder } from '@/lib/utils/deletionValidation'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const adminSupabase = createAdminClient()
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get order details before deletion
-    const { data: order } = await supabase
+    const { data: order } = await adminSupabase
       .from('orders')
       .select('order_no')
       .eq('id', orderId)
@@ -49,18 +51,18 @@ export async function POST(request: NextRequest) {
     console.log(`🗑️ Super Admin ${user.email} deleting order ${order.order_no} (${orderId})`)
 
     // Delete Excel files from storage
-    const { data: excelFiles } = await supabase.storage
+    const { data: excelFiles } = await adminSupabase.storage
       .from('order-excel')
       .list(`${orderId}/`)
 
     if (excelFiles && excelFiles.length > 0) {
       const filePaths = excelFiles.map(file => `${orderId}/${file.name}`)
-      await supabase.storage.from('order-excel').remove(filePaths)
+      await adminSupabase.storage.from('order-excel').remove(filePaths)
       console.log(`🗑️ Deleted ${excelFiles.length} Excel files from storage`)
     }
 
     // Cascade delete all database records
-    await cascadeDeleteOrder(supabase, orderId, forceDelete)
+    await cascadeDeleteOrder(adminSupabase as any, orderId, forceDelete)
 
     return NextResponse.json({ 
       success: true, 
