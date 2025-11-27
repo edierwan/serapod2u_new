@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Scan, Users, TrendingUp, Calendar, MapPin } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Scan, Users, TrendingUp, Calendar, MapPin, Filter } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -21,6 +22,8 @@ interface ConsumerActivationsViewProps {
 
 export default function ConsumerActivationsView({ userProfile, onViewChange }: ConsumerActivationsViewProps) {
   const [activations, setActivations] = useState<any[]>([])
+  const [orders, setOrders] = useState<any[]>([])
+  const [selectedOrderId, setSelectedOrderId] = useState<string>('all')
   const [stats, setStats] = useState({
     total_scans: 0,
     unique_consumers: 0,
@@ -32,17 +35,31 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const supabase = createClient()
 
   useEffect(() => {
+    loadOrders()
     loadActivations()
     loadStats()
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrderId])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const loadOrders = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_number, created_at')
+        .eq('company_id', userProfile.organizations.id)
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      setOrders(data || [])
+    } catch (error) {
+      console.error('Error loading orders:', error)
+    }
+  }
 
   const loadActivations = async () => {
     try {
       // Query qr_codes directly as it now holds consumer data
-      const { data, error } = await supabase
+      let query = supabase
         .from('qr_codes')
         .select(`
           id,
@@ -62,6 +79,12 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
         .order('updated_at', { ascending: false })
         .limit(100)
+
+      if (selectedOrderId && selectedOrderId !== 'all') {
+        query = query.eq('order_id', selectedOrderId)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       
@@ -88,39 +111,55 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
 
   const loadStats = async () => {
     try {
+      // Base query builder
+      const getBaseQuery = () => {
+        let q = supabase
+          .from('qr_codes')
+          .select('*', { count: 'exact', head: true })
+          .eq('company_id', userProfile.organizations.id)
+          .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
+        
+        if (selectedOrderId && selectedOrderId !== 'all') {
+          q = q.eq('order_id', selectedOrderId)
+        }
+        return q
+      }
+
       // Total scans (activations)
-      const { count: totalScans } = await supabase
-        .from('qr_codes')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', userProfile.organizations.id)
-        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
+      const { count: totalScans } = await getBaseQuery()
 
       // Unique consumers
-      const { data: uniqueConsumers } = await supabase
+      let uniqueQuery = supabase
         .from('qr_codes')
         .select('consumer_phone')
         .eq('company_id', userProfile.organizations.id)
         .not('consumer_phone', 'is', null)
+      
+      if (selectedOrderId && selectedOrderId !== 'all') {
+        uniqueQuery = uniqueQuery.eq('order_id', selectedOrderId)
+      }
 
+      const { data: uniqueConsumers } = await uniqueQuery
       const uniqueCount = new Set(uniqueConsumers?.map((c: any) => c.consumer_phone)).size
 
       // Total points
-      const { data: pointsData } = await supabase
+      let pointsQuery = supabase
         .from('qr_codes')
         .select('points_value')
         .eq('company_id', userProfile.organizations.id)
         .eq('is_points_collected', true)
 
+      if (selectedOrderId && selectedOrderId !== 'all') {
+        pointsQuery = pointsQuery.eq('order_id', selectedOrderId)
+      }
+
+      const { data: pointsData } = await pointsQuery
       const totalPoints = pointsData?.reduce((sum: number, qr: any) => sum + (qr.points_value || 0), 0) || 0
 
       // Today's scans
       const today = new Date().toISOString().split('T')[0]
-      const { count: todayScans } = await supabase
-        .from('qr_codes')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', userProfile.organizations.id)
-        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
-        .gte('updated_at', `${today}T00:00:00`)
+      let todayQuery = getBaseQuery().gte('updated_at', `${today}T00:00:00`)
+      const { count: todayScans } = await todayQuery
 
       setStats({
         total_scans: totalScans || 0,
@@ -136,8 +175,31 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Consumer Activations</h1>
-        <p className="text-gray-600 mt-1">Track consumer QR code scans and engagement</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Consumer Activations</h1>
+            <p className="text-gray-600 mt-1">Track consumer QR code scans and engagement</p>
+          </div>
+          
+          <div className="w-full sm:w-64">
+            <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+              <SelectTrigger>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-500" />
+                  <SelectValue placeholder="Filter by Order" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Orders</SelectItem>
+                {orders.map((order) => (
+                  <SelectItem key={order.id} value={order.id}>
+                    {order.order_number}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
 
       {/* Statistics */}
