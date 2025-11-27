@@ -79,7 +79,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           products ( product_name ),
           product_variants ( variant_name, image_url ),
           redeem_items ( item_name, item_image_url ),
-          consumer_qr_scans ( location_lat, location_lng )
+          consumer_qr_scans ( 
+            location_lat, 
+            location_lng,
+            shop_id,
+            points_amount,
+            scanned_at,
+            organizations ( org_name )
+          )
         `)
         .eq('company_id', userProfile.organizations.id)
         .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
@@ -105,11 +112,24 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       if (error) throw error
       
       const transformedData = data?.map((qr: any) => {
-        // Get location from the most recent scan if available
-        const lastScan = qr.consumer_qr_scans?.[0]
+        // Get location and shop from the most recent scan if available
+        const scans = qr.consumer_qr_scans?.sort((a: any, b: any) => 
+          new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime()
+        ) || []
+        
+        const lastScan = scans[0]
+        
         const location = lastScan?.location_lat && lastScan?.location_lng 
           ? `${lastScan.location_lat.toFixed(4)}, ${lastScan.location_lng.toFixed(4)}`
           : null
+
+        const shopName = lastScan?.organizations?.org_name || (lastScan?.shop_id ? 'Shop ID: ' + lastScan.shop_id.substring(0, 8) : '-')
+
+        // Points logic: try qr_codes first, then scan record
+        let points = 0
+        if (qr.is_points_collected) {
+            points = qr.points_value || lastScan?.points_amount || 0
+        }
 
         return {
           id: qr.id,
@@ -117,10 +137,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           consumer_phone: qr.consumer_phone,
           consumer_email: qr.consumer_email,
           activated_at: qr.redeemed_at || qr.updated_at,
-          points_awarded: qr.is_points_collected ? (qr.points_value || 0) : 0,
+          points_awarded: points,
           lucky_draw_entered: qr.is_lucky_draw_entered,
           gift_redeemed: qr.is_redeemed,
           activation_location: location,
+          shop_name: shopName,
           product_name: qr.products?.product_name || 'Unknown Product',
           variant_name: qr.product_variants?.variant_name,
           variant_image: qr.product_variants?.image_url,
@@ -310,12 +331,12 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Seq</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date & Time</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Consumer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sequence</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Shop</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lucky Draw</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gift</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
                 </tr>
@@ -323,20 +344,6 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
               <tbody className="divide-y divide-gray-200">
                 {activations.map((activation) => (
                   <tr key={activation.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{new Date(activation.activated_at).toLocaleDateString()}</span>
-                        <span className="text-xs text-gray-500">{new Date(activation.activated_at).toLocaleTimeString()}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {activation.consumer_name || 'Anonymous'}
-                        </p>
-                        <p className="text-xs text-gray-500">{activation.consumer_phone}</p>
-                      </div>
-                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {activation.variant_image && (
@@ -356,19 +363,27 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {activation.sequence_number || '-'}
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      <div className="flex flex-col">
+                        <span className="font-medium">{new Date(activation.activated_at).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-500">{new Date(activation.activated_at).toLocaleTimeString()}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {activation.consumer_name || 'Anonymous'}
+                        </p>
+                        <p className="text-xs text-gray-500">{activation.consumer_phone}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {activation.shop_name}
+                    </td>
                     <td className="px-4 py-3">
                       {activation.points_awarded > 0 ? (
                         <Badge variant="default" className="bg-green-100 text-green-800">
                           +{activation.points_awarded}
-                        </Badge>
-                      ) : (
-                        <span className="text-sm text-gray-500">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {activation.lucky_draw_entered ? (
-                        <Badge variant="default" className="bg-purple-100 text-purple-800">
-                          Entered
                         </Badge>
                       ) : (
                         <span className="text-sm text-gray-500">-</span>
