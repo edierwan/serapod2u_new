@@ -351,7 +351,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             }}
                                         />
                                     </div>
-                                ) : config.product_image_source === 'variant' && config.variant_image_url && !variantImageError ? (
+                                ) : config.product_image_source === 'variant' && config.variant_image_url ? (
                                     <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden">
                                         <Image
                                             src={config.variant_image_url}
@@ -362,10 +362,6 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             unoptimized
                                             priority
                                             loading="eager"
-                                            onError={() => {
-                                                console.error('Variant image failed to load:', config.variant_image_url)
-                                                setVariantImageError(true)
-                                            }}
                                         />
                                     </div>
                                 ) : (
