@@ -782,12 +782,18 @@ const handleUniqueShipment = async (
   }
 
   if (qrCode.current_location_org_id && qrCode.current_location_org_id !== session.warehouse_org_id) {
+    console.warn('⚠️ Warehouse mismatch detected:', {
+      code: normalizedCode,
+      qr_current_location: qrCode.current_location_org_id,
+      session_warehouse: session.warehouse_org_id,
+      qr_status: qrCode.status
+    })
     return {
       code,
       normalized_code: normalizedCode,
       code_type: 'unique',
       outcome: 'wrong_warehouse',
-      message: 'This product code is currently assigned to a different warehouse location.'
+      message: `This product code is currently assigned to a different warehouse location. Expected: ${session.warehouse_org_id.substring(0, 8)}..., but code is at: ${qrCode.current_location_org_id.substring(0, 8)}...`
     }
   }
 
@@ -1093,20 +1099,28 @@ export const processShipmentScan = async ({
     codeType === 'master' ? (extractMasterCode(normalizedCode) || normalizedCode) : null
   const normalizedCodeForProcessing = codeType === 'master' ? (normalizedMasterCode as string) : normalizedCode
 
-  if (codeType === 'master' && scannedLists.master.includes(normalizedCodeForProcessing)) {
+  // Duplicate detection for master codes
+  // Allow rescanning if status is received_warehouse or warehouse_packed (before confirm)
+  // Only block if already shipped_distributor (after confirm)
+  if (codeType === 'master') {
     const { data: existingMaster } = await supabase
       .from('qr_master_codes')
       .select('id, status')
       .eq('master_code', normalizedCodeForProcessing)
       .maybeSingle()
 
-    if (existingMaster && (existingMaster.status === 'warehouse_packed' || existingMaster.status === 'shipped_distributor')) {
+    // Allow scanning if:
+    // - Status is received_warehouse (first time)
+    // - Status is warehouse_packed (can rescan before confirm)
+    // Block only if:
+    // - Status is shipped_distributor (already confirmed and shipped)
+    if (existingMaster && existingMaster.status === 'shipped_distributor') {
       const duplicateResult: ShipmentScanResult = {
         code,
         normalized_code: normalizedCodeForProcessing,
         code_type: 'master',
-        outcome: 'duplicate',
-        message: 'Master code already scanned in this session'
+        outcome: 'already_shipped',
+        message: 'Master code has already been shipped'
       }
 
       return {
@@ -1114,22 +1128,33 @@ export const processShipmentScan = async ({
         status: mapOutcomeToStatus(duplicateResult.outcome)
       }
     }
+    
+    // If in session list and warehouse_packed, treat as rescan (not duplicate)
+    // This allows users to scan multiple times before confirming shipment
   }
 
-  if (codeType === 'unique' && scannedLists.unique.includes(normalizedCode)) {
+  // Duplicate detection for unique codes
+  // Allow rescanning if status is received_warehouse or warehouse_packed (before confirm)
+  // Only block if already shipped_distributor (after confirm)
+  if (codeType === 'unique') {
     const { data: existingUnique } = await supabase
       .from('qr_codes')
       .select('id, status')
       .eq('code', normalizedCode)
       .maybeSingle()
 
-    if (existingUnique && (existingUnique.status === 'warehouse_packed' || existingUnique.status === 'shipped_distributor')) {
+    // Allow scanning if:
+    // - Status is received_warehouse (first time)
+    // - Status is warehouse_packed (can rescan before confirm)
+    // Block only if:
+    // - Status is shipped_distributor (already confirmed and shipped)
+    if (existingUnique && existingUnique.status === 'shipped_distributor') {
       const duplicateResult: ShipmentScanResult = {
         code,
         normalized_code: normalizedCode,
         code_type: 'unique',
-        outcome: 'duplicate',
-        message: 'Unique code already scanned in this session'
+        outcome: 'already_shipped',
+        message: 'Unique code has already been shipped'
       }
 
       return {
@@ -1137,6 +1162,9 @@ export const processShipmentScan = async ({
         status: mapOutcomeToStatus(duplicateResult.outcome)
       }
     }
+    
+    // If in session list and warehouse_packed, treat as rescan (not duplicate)
+    // This allows users to scan multiple times before confirming shipment
   }
 
   let result: ShipmentScanResult

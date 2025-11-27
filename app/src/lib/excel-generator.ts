@@ -88,23 +88,16 @@ export async function generateQRExcel(data: QRExcelData): Promise<string> {
 
     console.log(`📄 Generating single Excel file with ${data.individualCodes.length} codes`)
 
-    const writeStream = createWriteStream(excelFilePath)
-    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-      stream: writeStream,
-      useStyles: false,
-      useSharedStrings: false
-    })
-
-    // Build all sheets in order
-    await buildSummarySheet(workbook, data)
-    await buildMasterSheet(workbook, data)
-    await buildIndividualSheet(workbook, data, data.individualCodes)
-    await buildProductBreakdownSheet(workbook, data, productGroups)
-    // Packing List sheet removed - not needed
-    // await buildPackingSheet(workbook, data, caseProductCounts)
-
-    await workbook.commit()
-    await finished(writeStream)
+    // Use non-streaming workbook for better compatibility
+    const workbook = new ExcelJS.Workbook()
+    
+    // Build all sheets in order - these functions work with both stream and non-stream
+    buildSummarySheet(workbook as any, data)
+    buildMasterSheet(workbook as any, data)
+    buildIndividualSheet(workbook as any, data, data.individualCodes)
+    buildProductBreakdownSheet(workbook as any, data, productGroups)
+    
+    await workbook.xlsx.writeFile(excelFilePath)
 
     const stats = await import('fs/promises').then(fs => fs.stat(excelFilePath))
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2)
@@ -197,10 +190,10 @@ export async function streamFileAsResponse(
   return response
 }
 
-async function buildSummarySheet(
-  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+function buildSummarySheet(
+  workbook: ExcelJS.Workbook | ExcelJS.stream.xlsx.WorkbookWriter,
   data: QRExcelData
-): Promise<void> {
+): void {
   const sheet = workbook.addWorksheet('Summary')
   sheet.columns = [
     { header: '', key: 'col1', width: 35 },
@@ -238,18 +231,16 @@ async function buildSummarySheet(
   ]
 
   for (const [col1, col2] of rows) {
-    const row = sheet.addRow([col1 ?? '', col2 ?? ''])
-    row.commit()
+    sheet.addRow([col1 ?? '', col2 ?? ''])
   }
 
-  await sheet.commit()
   console.log('✅ Summary sheet created')
 }
 
-async function buildMasterSheet(
-  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+function buildMasterSheet(
+  workbook: ExcelJS.Workbook | ExcelJS.stream.xlsx.WorkbookWriter,
   data: QRExcelData
-): Promise<void> {
+): void {
   const sheet = workbook.addWorksheet('Master QR Codes')
   sheet.columns = [
     { header: '#', key: 'index', width: 6 },
@@ -321,11 +312,9 @@ async function buildMasterSheet(
         expectedUnits: master.expected_unit_count,
         variantLabel  // Show which variant(s) are in this case
       })
-      row.commit()
     }
   })
 
-  await sheet.commit()
   const totalRows = data.masterCodes.length * copiesPerMaster
   console.log(`✅ Master QR Codes sheet created (${data.masterCodes.length} unique codes × ${copiesPerMaster} copies (1 + ${duplicateCount} duplicates) = ${totalRows} rows)`)
 }
@@ -338,8 +327,8 @@ async function buildMasterSheet(
  * - Production codes: Use per-variant local sequence to calculate case number
  * - Buffer codes: Show BUFFER-N and Buffer Group for identification
  */
-async function buildIndividualSheet(
-  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+function buildIndividualSheet(
+  workbook: ExcelJS.Workbook | ExcelJS.stream.xlsx.WorkbookWriter,
   data: QRExcelData,
   codesSlice: GeneratedQRCode[]
 ): Promise<void> {
@@ -436,19 +425,17 @@ async function buildIndividualSheet(
     }
 
     const row = sheet.addRow(rowData)
-    row.commit()
 
     if ((i + 1) % 5_000 === 0) {
       console.log(`  ⏳ Processed ${i + 1}/${codesSlice.length} codes in this file...`)
     }
   }
 
-  await sheet.commit()
   console.log(`✅ ${sheetName} created (${codesSlice.length} codes)`)
 }
 
-async function buildProductBreakdownSheet(
-  workbook: ExcelJS.stream.xlsx.WorkbookWriter,
+function buildProductBreakdownSheet(
+  workbook: ExcelJS.Workbook | ExcelJS.stream.xlsx.WorkbookWriter,
   data: QRExcelData,
   productGroups: Map<string, ProductGroupAggregate>
 ): Promise<void> {
@@ -491,10 +478,8 @@ async function buildProductBreakdownSheet(
       caseRange: `${firstCase} - ${lastCase}`,  // Now shows production cases only
       casesBox: group.firstCode.units_per_case || 100
     })
-    row.commit()
   })
 
-  await sheet.commit()
   console.log('✅ Product Breakdown sheet created')
 }
 
@@ -531,10 +516,8 @@ async function buildPackingSheet(
       packedBy: '',
       packedDate: ''
     })
-    row.commit()
   })
 
-  await sheet.commit()
   console.log('✅ Packing List sheet created')
 }
 

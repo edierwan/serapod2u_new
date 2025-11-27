@@ -489,6 +489,7 @@ const receiveSingleMaster = async (
       .update({
         status: 'received_warehouse',
         current_location_org_id: resolvedWarehouseOrgId,
+        master_code_id: masterRecord.id, // ✅ Link unique codes to master (essential for buffer tracking)
         last_scanned_at: receivedAt,
         last_scanned_by: requestingUserId,
         updated_at: receivedAt

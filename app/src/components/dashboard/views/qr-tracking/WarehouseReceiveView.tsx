@@ -1149,6 +1149,10 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
       return null
     }
 
+    console.log('[WarehouseReceive] Fetching movement overview for order:', orderId)
+
+    // Query master codes for the selected order that belong to this warehouse
+    // Include all statuses to show complete history (received_warehouse, shipped_distributor, etc.)
     const { data, error } = await supabase
       .from('qr_master_codes')
       .select(`
@@ -1164,7 +1168,13 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
       .eq('warehouse_org_id', userProfile.organization_id)
 
     if (error) {
+      console.error('[WarehouseReceive] Error fetching movement overview:', error)
       throw error
+    }
+
+    console.log('[WarehouseReceive] Query returned', data?.length || 0, 'master codes for order', orderId)
+    if (data && data.length > 0) {
+      console.log('[WarehouseReceive] Master code statuses:', data.map(d => ({ id: d.id, status: d.status, warehouse_org_id: d.warehouse_org_id })))
     }
 
     const stageCounts = createEmptyStageCounts()
@@ -1172,12 +1182,24 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
     let completionScore = 0
 
     ;(data || []).forEach((record: any) => {
-      // Map 'generated' status to 'packed' for the movement tracker
+      // Map statuses to movement tracker stages
       let status: StageKey = 'pending'
+      const originalStatus = record.status
+      
       if (record.status === 'generated' || record.status === 'packed') {
+        // Manufacturing stages
         status = 'packed'
+      } else if (record.status === 'warehouse_packed') {
+        // Warehouse has packed for shipment but not yet confirmed shipped
+        // Show as "Received @ Warehouse" since it's in warehouse possession
+        status = 'received_warehouse'
       } else if (record.status && STAGE_ORDER.includes(record.status)) {
+        // Standard statuses (received_warehouse, shipped_distributor, opened, etc.)
         status = record.status as StageKey
+      }
+      
+      if (originalStatus !== status) {
+        console.log(`[WarehouseReceive] Mapped status '${originalStatus}' → '${status}'`)
       }
       
       stageCounts[status] += 1
@@ -1185,10 +1207,13 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
       completionScore += STAGE_WEIGHTS[status]
     })
 
+    console.log('[WarehouseReceive] Stage counts for order', orderId, ':', stageCounts)
+
     if ((data || []).length === 0) {
       console.warn('[WarehouseReceive] No master codes found for overview', {
         orderId,
-        warehouseOrgId: userProfile.organization_id
+        userWarehouseOrgId: userProfile.organization_id,
+        note: 'Order may not have any master codes linked via qr_batches'
       })
       return null
     }

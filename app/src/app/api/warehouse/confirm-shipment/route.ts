@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { extractMasterCode } from '@/lib/qr-code-utils'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const supabaseAdmin = createAdminClient()
     const { session_id, user_id } = await request.json()
 
     if (!session_id || !user_id) {
@@ -104,13 +106,17 @@ export async function POST(request: NextRequest) {
       const totalCases = (session.scanned_quantities as any)?.total_cases || 0
       if (totalCases > 0) {
         console.log('⚠️ [CONFIRM] Session has scanned cases but no master_codes_scanned array. Attempting to infer from DB...')
+        console.log('⚠️ [CONFIRM] Looking for', totalCases, 'cases in warehouse', session.warehouse_org_id)
         
         // Query for masters that were scanned for this session (warehouse_packed status)
+        // Use a recent time window to avoid picking up old sessions
+        const recentTimeThreshold = new Date(Date.now() - 60 * 60 * 1000).toISOString() // Last hour
         const { data: inferredMasters, error: inferError } = await supabase
           .from('qr_master_codes')
-          .select('master_code')
+          .select('master_code, status, updated_at')
           .eq('warehouse_org_id', session.warehouse_org_id)
           .eq('status', 'warehouse_packed')
+          .gte('updated_at', recentTimeThreshold)
           .order('updated_at', { ascending: false })
           .limit(totalCases)
         
@@ -123,10 +129,15 @@ export async function POST(request: NextRequest) {
             )
           )
           console.log('✅ [CONFIRM] Inferred', masterCodesScanned.length, 'master codes from database:', masterCodesScanned)
+          console.log('✅ [CONFIRM] Inferred masters:', inferredMasters.map(m => ({ code: m.master_code, status: m.status, updated_at: m.updated_at })))
         } else {
-          console.log('❌ [CONFIRM] Could not infer master codes:', inferError)
+          console.log('❌ [CONFIRM] Could not infer master codes. Error:', inferError, 'Found:', inferredMasters?.length || 0)
         }
+      } else {
+        console.log('⚠️ [CONFIRM] No master codes in session and no cases in scanned_quantities')
       }
+    } else if (masterCodesScanned.length === 0) {
+      console.log('⚠️ [CONFIRM] No master codes to process (session.master_codes_scanned is empty or null)')
     }
 
   let resolvedFromOrg: string | null = session.warehouse_org_id ?? null
@@ -148,23 +159,19 @@ export async function POST(request: NextRequest) {
     // IMPORTANT: We temporarily disable trigger by updating without transitioning through shipped_distributor
     // Then call WMS function manually with ALL codes to create ONE consolidated movement
     if (uniqueCodesScanned.length > 0) {
-      // First, get the QR code IDs and metadata
+      // First, get the QR code IDs with batch information
       const { data: qrCodesData, error: fetchError } = await supabase
         .from('qr_codes')
         .select(`
           id, 
           code, 
           master_code_id,
-          qr_master_codes (
-            warehouse_org_id,
-            shipped_to_distributor_id,
-            shipment_order_id,
-            batch_id,
-            qr_batches (
-              order_id,
-              orders (
-                buyer_org_id
-              )
+          batch_id,
+          current_location_org_id,
+          qr_batches (
+            order_id,
+            orders (
+              buyer_org_id
             )
           )
         `)
@@ -187,24 +194,66 @@ export async function POST(request: NextRequest) {
       }
 
       qrCodeIds = qrCodesData.map(qr => qr.id)
-      
-      // Get organization and order context from first QR
-      const firstQR = qrCodesData[0]
-      const masterData = firstQR.qr_master_codes 
-        ? (Array.isArray(firstQR.qr_master_codes) ? firstQR.qr_master_codes[0] : firstQR.qr_master_codes)
-        : null
-      const batchData = masterData?.qr_batches
-        ? (Array.isArray(masterData.qr_batches) ? masterData.qr_batches[0] : masterData.qr_batches)
-        : null
-      const orderData: any = batchData?.orders
-        ? (Array.isArray(batchData.orders) ? batchData.orders[0] : batchData.orders)
-        : null
+      console.log('🔍 Found', qrCodeIds.length, 'QR codes to ship')
 
-      const resolvedFrom = resolvedFromOrg || masterData?.warehouse_org_id || null
-      const resolvedTo = resolvedToOrg || masterData?.shipped_to_distributor_id || null
-      const fromOrg = resolvedFrom
-      const toOrg = resolvedTo
-      const orderId = masterData?.shipment_order_id || batchData?.order_id
+      // Get order_id directly from QR codes' batch relationship
+      const firstQR = qrCodesData[0]
+      let orderId: string | null = null
+      let batchId: string | null = null
+
+      // Try to get order_id from the batch join
+      if (firstQR.qr_batches) {
+        const batch = Array.isArray(firstQR.qr_batches) ? firstQR.qr_batches[0] : firstQR.qr_batches
+        orderId = batch?.order_id || null
+        console.log('📦 Order ID from batch join:', orderId)
+      }
+
+      // Fallback: If join didn't work, query batch directly using batch_id
+      if (!orderId && firstQR.batch_id) {
+        batchId = firstQR.batch_id
+        console.log('🔍 Querying batch directly with ID:', batchId)
+        const { data: batchData, error: batchError } = await supabase
+          .from('qr_batches')
+          .select('order_id')
+          .eq('id', batchId)
+          .single()
+        
+        if (!batchError && batchData?.order_id) {
+          orderId = batchData.order_id
+          console.log('✅ Found order_id from direct batch query:', orderId)
+        }
+      }
+
+      // Get warehouse and distributor info from session or QR codes
+      const fromOrg = resolvedFromOrg || firstQR.current_location_org_id || session.warehouse_org_id || null
+      const toOrg = resolvedToOrg || session.distributor_org_id || null
+
+      // If QR codes have master codes, try to get additional info from them
+      const masterCodeIds = Array.from(new Set(
+        qrCodesData
+          .map(qr => qr.master_code_id)
+          .filter((id): id is string => Boolean(id))
+      ))
+
+      if (masterCodeIds.length > 0) {
+        console.log('🔍 Found', masterCodeIds.length, 'master codes, querying for additional context')
+        const { data: masterData } = await supabase
+          .from('qr_master_codes')
+          .select('warehouse_org_id, shipped_to_distributor_id, shipment_order_id')
+          .in('id', masterCodeIds)
+          .limit(1)
+          .single()
+        
+        if (masterData) {
+          // Use master code data as fallback for missing values
+          if (!orderId && masterData.shipment_order_id) {
+            orderId = masterData.shipment_order_id
+            console.log('✅ Found order_id from master code:', orderId)
+          }
+        }
+      }
+
+      console.log('🔍 Final WMS context:', { fromOrg, toOrg, orderId, qrCodeCount: qrCodeIds.length })
 
       if (!fromOrg) {
         return NextResponse.json(
@@ -227,6 +276,21 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      if (!orderId) {
+        console.error('❌ No order_id found. QR code context:', {
+          first_qr_batch_id: firstQR.batch_id,
+          first_qr_code: firstQR.code,
+          total_qr_codes: qrCodeIds.length,
+          master_codes_count: masterCodeIds.length
+        })
+        return NextResponse.json(
+          { error: 'Cannot determine order. QR codes must be linked to a batch with an order_id.' },
+          { status: 400 }
+        )
+      }
+
+      console.log('✅ Order ID resolved:', orderId)
+
       resolvedFromOrg = fromOrg
       resolvedToOrg = toOrg
 
@@ -236,7 +300,8 @@ export async function POST(request: NextRequest) {
       // 3. Update QR status → trigger sees skip flag and doesn't create duplicate movements
       
       console.log('📦 Step 1: Creating consolidated movement via WMS function')
-      const { data: wmsResult, error: wmsError } = await supabase.rpc('wms_ship_unique_auto', {
+      // Use admin client for WMS RPC call to bypass RLS and ensure function access
+      const { data: wmsResult, error: wmsError } = await supabaseAdmin.rpc('wms_ship_unique_auto', {
         p_qr_code_ids: qrCodeIds,
         p_from_org_id: fromOrg,
         p_to_org_id: toOrg,
@@ -364,7 +429,9 @@ export async function POST(request: NextRequest) {
     // IMPORTANT: Check if child codes were already scanned individually
     // If so, inventory was already deducted - skip WMS and just update master status
     if (masterCodesScanned.length > 0) {
-      console.log('🔎 MASTER BLOCK - Processing', masterCodesScanned.length, 'master codes:', masterCodesScanned)
+      console.log('🔎 [CONFIRM] MASTER BLOCK - Processing', masterCodesScanned.length, 'master codes:', masterCodesScanned)
+      console.log('🔎 [CONFIRM] Session master_codes_scanned (raw):', session.master_codes_scanned)
+      console.log('🔎 [CONFIRM] Session master_codes_scanned (normalized):', masterCodesScanned)
       
       // First try without status filter to see what we have
       const { data: allMasterData, error: allMasterError } = await supabase
@@ -373,18 +440,28 @@ export async function POST(request: NextRequest) {
         .in('master_code', masterCodesScanned)
       
       if (allMasterError) {
-        console.error('❌ Error querying all master codes:', allMasterError)
+        console.error('❌ [CONFIRM] Error querying all master codes:', allMasterError)
       }
       
-      console.log('🔎 MASTER FETCH RESULT:', {
+      console.log('🔎 [CONFIRM] MASTER FETCH RESULT:', {
         requested: masterCodesScanned,
-        found: allMasterData?.map(m => ({ code: m.master_code, status: m.status })) ?? [],
+        found: allMasterData?.map(m => ({ code: m.master_code, status: m.status, id: m.id })) ?? [],
         count: allMasterData?.length || 0
       })
       
       if (!allMasterData || allMasterData.length === 0) {
         console.error('❌ [CONFIRM] No master codes found in database! Session codes:', masterCodesScanned)
         console.error('❌ [CONFIRM] This means either the codes were not scanned, or the master_code field does not match')
+        console.error('❌ [CONFIRM] Trying case-insensitive search to debug...')
+        
+        // Debug: Try to find similar codes (case-insensitive)
+        const { data: debugData } = await supabase
+          .from('qr_master_codes')
+          .select('master_code, status')
+          .ilike('master_code', `%${masterCodesScanned[0]?.substring(0, 10) || ''}%`)
+          .limit(5)
+        
+        console.error('❌ [CONFIRM] Similar codes in DB:', debugData)
         console.error('❌ [CONFIRM] Skipping master update block - nothing to update')
         // Continue to session update - don't fail the entire shipment
       } else {
@@ -486,6 +563,13 @@ export async function POST(request: NextRequest) {
 
         console.log(`🔄 [CONFIRM] Attempting to update ${masterIds.length} master codes to shipped_distributor:`, masterIds)
         console.log('🔄 [CONFIRM] Master codes to update:', masterData.map(m => ({ master_code: m.master_code, current_status: m.status, id: m.id })))
+        console.log('🔄 [CONFIRM] Update payload:', {
+          status: 'shipped_distributor',
+          shipped_at: shippedAt,
+          shipped_by: user_id,
+          shipped_to_distributor_id: resolvedToOrg,
+          updated_at: shippedAt
+        })
         
         // Set session variable to skip trigger (prevent duplicate inventory movements)
         const { error: skipMasterError } = await supabase.rpc('set_skip_ship_trigger', {
@@ -494,9 +578,13 @@ export async function POST(request: NextRequest) {
 
         if (skipMasterError) {
           console.log('⚠️ [CONFIRM] Warning: Could not set session variable for master update:', skipMasterError.message)
+          console.log('⚠️ [CONFIRM] Skip error details:', JSON.stringify(skipMasterError, null, 2))
+        } else {
+          console.log('✅ [CONFIRM] Successfully set skip_ship_trigger session variable')
         }
 
         // Update master codes - NO status filter to ensure ALL scanned masters are updated
+        console.log('📝 [CONFIRM] Executing master update query...')
         const { data: updatedMasters, error: masterError } = await supabase
           .from('qr_master_codes')
           .update({
@@ -510,16 +598,28 @@ export async function POST(request: NextRequest) {
           .select('id, master_code, status')
 
         console.log('🔄 [CONFIRM] Master update result - error:', masterError, 'updated count:', updatedMasters?.length)
+        console.log('🔄 [CONFIRM] Updated masters:', updatedMasters?.map(m => ({ id: m.id, code: m.master_code, new_status: m.status })))
 
         if (!masterError && (!updatedMasters || updatedMasters.length === 0)) {
           console.error('⚠️⚠️⚠️ [CONFIRM] CRITICAL: Master update returned 0 rows!')
-          console.error('IDs attempted:', masterIds)
-          console.error('This indicates a database constraint or RLS policy is blocking the update')
+          console.error('❌ [CONFIRM] IDs attempted:', masterIds)
+          console.error('❌ [CONFIRM] Master codes attempted:', masterCodesScanned)
+          console.error('❌ [CONFIRM] This indicates a database constraint or RLS policy is blocking the update')
+          console.error('❌ [CONFIRM] Or the IDs don\'t exist / were already updated')
+          
+          // Try to re-query to see current state
+          const { data: currentState } = await supabase
+            .from('qr_master_codes')
+            .select('id, master_code, status, shipped_at')
+            .in('id', masterIds)
+          console.error('❌ [CONFIRM] Current state of masters:', currentState)
         }
 
         if (masterError) {
           console.error('❌ [CONFIRM] Error updating master codes:', masterError)
-          console.error('Error details:', JSON.stringify(masterError, null, 2))
+          console.error('❌ [CONFIRM] Error details:', JSON.stringify(masterError, null, 2))
+          console.error('❌ [CONFIRM] Error code:', masterError.code)
+          console.error('❌ [CONFIRM] Error message:', masterError.message)
         } else {
           const updatedMasterCount = updatedMasters?.length || 0
           masterCasesShipped += updatedMasterCount
