@@ -9,7 +9,7 @@ import { getBaseCode } from '@/lib/security/qr-hash'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { qr_code, gift_id, consumer_phone } = body
+    const { qr_code, gift_id, consumer_phone, consumer_name, consumer_email } = body
 
     if (!qr_code || !gift_id) {
       return NextResponse.json(
@@ -34,7 +34,9 @@ export async function POST(request: NextRequest) {
     const { data: result, error: rpcError } = await supabase.rpc('consumer_claim_gift', {
       p_raw_qr_code: qr_code,
       p_gift_id: gift_id,
-      p_consumer_phone: consumer_phone || null
+      p_consumer_name: consumer_name || null,
+      p_consumer_phone: consumer_phone || null,
+      p_consumer_email: consumer_email || null
     })
 
     if (rpcError) {

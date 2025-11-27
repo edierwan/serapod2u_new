@@ -41,64 +41,42 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
 
   const loadActivations = async () => {
     try {
-      // Query lucky_draw_entries which has consumer data
+      // Query qr_codes directly as it now holds consumer data
       const { data, error } = await supabase
-        .from('lucky_draw_entries')
+        .from('qr_codes')
         .select(`
           id,
+          consumer_name,
           consumer_phone,
           consumer_email,
-          consumer_name,
-          entry_date,
-          is_winner,
-          qr_code_id
+          updated_at,
+          redeemed_at,
+          is_redeemed,
+          is_lucky_draw_entered,
+          is_points_collected,
+          points_value,
+          product_id,
+          products ( product_name )
         `)
         .eq('company_id', userProfile.organizations.id)
-        .order('entry_date', { ascending: false })
+        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
+        .order('updated_at', { ascending: false })
         .limit(100)
 
       if (error) throw error
       
-      // For each entry, fetch the QR code and product info
-      const transformedData = await Promise.all(data?.map(async (entry) => {
-        let productName = 'Unknown Product'
-        let pointsAwarded = 0
-        
-        if (entry.qr_code_id) {
-          const { data: qrData } = await supabase
-            .from('qr_codes')
-            .select('code, variant_id, product_id, points_value')
-            .eq('id', entry.qr_code_id)
-            .single()
-          
-          if (qrData) {
-            pointsAwarded = qrData.points_value || 0
-            
-            // Get product info
-            if (qrData.product_id) {
-              const { data: productData } = await supabase
-                .from('products')
-                .select('product_name')
-                .eq('id', qrData.product_id)
-                .single()
-              
-              productName = productData?.product_name || 'Unknown Product'
-            }
-          }
-        }
-        
-        return {
-          id: entry.id,
-          consumer_name: entry.consumer_name || 'Anonymous',
-          consumer_phone: entry.consumer_phone,
-          consumer_email: entry.consumer_email,
-          activated_at: entry.entry_date,
-          points_awarded: pointsAwarded,
-          lucky_draw_entry_id: entry.id,
-          activation_location: null,
-          product_name: productName
-        }
-      }) || [])
+      const transformedData = data?.map((qr: any) => ({
+        id: qr.id,
+        consumer_name: qr.consumer_name || 'Anonymous',
+        consumer_phone: qr.consumer_phone,
+        consumer_email: qr.consumer_email,
+        activated_at: qr.redeemed_at || qr.updated_at,
+        points_awarded: qr.is_points_collected ? (qr.points_value || 0) : 0,
+        lucky_draw_entered: qr.is_lucky_draw_entered,
+        gift_redeemed: qr.is_redeemed,
+        activation_location: null,
+        product_name: qr.products?.product_name || 'Unknown Product'
+      })) || []
       
       setActivations(transformedData)
     } catch (error: any) {
@@ -110,47 +88,39 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
 
   const loadStats = async () => {
     try {
-      // Total entries (lucky draw participations)
+      // Total scans (activations)
       const { count: totalScans } = await supabase
-        .from('lucky_draw_entries')
+        .from('qr_codes')
         .select('*', { count: 'exact', head: true })
         .eq('company_id', userProfile.organizations.id)
+        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
 
       // Unique consumers
       const { data: uniqueConsumers } = await supabase
-        .from('lucky_draw_entries')
+        .from('qr_codes')
         .select('consumer_phone')
         .eq('company_id', userProfile.organizations.id)
+        .not('consumer_phone', 'is', null)
 
       const uniqueCount = new Set(uniqueConsumers?.map((c: any) => c.consumer_phone)).size
 
-      // Total points - get from QR codes associated with entries
-      const { data: entries } = await supabase
-        .from('lucky_draw_entries')
-        .select('qr_code_id')
+      // Total points
+      const { data: pointsData } = await supabase
+        .from('qr_codes')
+        .select('points_value')
         .eq('company_id', userProfile.organizations.id)
-        .not('qr_code_id', 'is', null)
+        .eq('is_points_collected', true)
 
-      let totalPoints = 0
-      if (entries && entries.length > 0) {
-        const qrCodeIds = entries.map(e => e.qr_code_id).filter((id): id is string => id !== null)
-        if (qrCodeIds.length > 0) {
-          const { data: qrCodes } = await supabase
-            .from('qr_codes')
-            .select('points_value')
-            .in('id', qrCodeIds)
-          
-          totalPoints = qrCodes?.reduce((sum: number, qr: any) => sum + (qr.points_value || 0), 0) || 0
-        }
-      }
+      const totalPoints = pointsData?.reduce((sum: number, qr: any) => sum + (qr.points_value || 0), 0) || 0
 
-      // Today's entries
+      // Today's scans
       const today = new Date().toISOString().split('T')[0]
       const { count: todayScans } = await supabase
-        .from('lucky_draw_entries')
+        .from('qr_codes')
         .select('*', { count: 'exact', head: true })
         .eq('company_id', userProfile.organizations.id)
-        .gte('entry_date', `${today}T00:00:00`)
+        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
+        .gte('updated_at', `${today}T00:00:00`)
 
       setStats({
         total_scans: totalScans || 0,
@@ -236,6 +206,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lucky Draw</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gift</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
                 </tr>
               </thead>
@@ -266,9 +237,18 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {activation.lucky_draw_entry_id ? (
+                      {activation.lucky_draw_entered ? (
                         <Badge variant="default" className="bg-purple-100 text-purple-800">
                           Entered
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-gray-500">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {activation.gift_redeemed ? (
+                        <Badge variant="default" className="bg-blue-100 text-blue-800">
+                          Redeemed
                         </Badge>
                       ) : (
                         <span className="text-sm text-gray-500">-</span>

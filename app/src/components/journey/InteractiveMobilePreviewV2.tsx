@@ -253,6 +253,11 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 return
             }
 
+            if (!customerName || !customerPhone) {
+                alert('Please enter your Name and Phone Number')
+                return
+            }
+
             setClaimingGift(true)
             try {
                 const selectedGift = redeemGifts.find(g => g.id === selectedGiftId)
@@ -270,7 +275,9 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     body: JSON.stringify({
                         qr_code: qrCode,
                         gift_id: selectedGift.id,
-                        consumer_phone: customerPhone || null
+                        consumer_name: customerName,
+                        consumer_phone: customerPhone,
+                        consumer_email: customerEmail || undefined
                     })
                 })
 
@@ -891,9 +898,42 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                         )
                                     })}
 
+                                    {/* Consumer Details Form */}
+                                    <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                                        <h4 className="font-semibold text-sm text-gray-700">Your Details</h4>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Name *</Label>
+                                            <Input
+                                                value={customerName}
+                                                onChange={(e) => setCustomerName(e.target.value)}
+                                                placeholder="Enter your name"
+                                                className="text-sm h-9"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Phone Number *</Label>
+                                            <Input
+                                                value={customerPhone}
+                                                onChange={(e) => setCustomerPhone(e.target.value)}
+                                                placeholder="Enter phone number"
+                                                className="text-sm h-9"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Email (Optional)</Label>
+                                            <Input
+                                                type="email"
+                                                value={customerEmail}
+                                                onChange={(e) => setCustomerEmail(e.target.value)}
+                                                placeholder="Enter email address"
+                                                className="text-sm h-9"
+                                            />
+                                        </div>
+                                    </div>
+
                                     <button
                                         onClick={handleGiftRedeem}
-                                        disabled={claimingGift || !selectedGiftId || redeemGifts.every(gift => gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity)}
+                                        disabled={claimingGift || !selectedGiftId || !customerName || !customerPhone || redeemGifts.every(gift => gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity)}
                                         className="w-full py-3 px-4 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                         style={{ backgroundColor: config.button_color }}
                                     >
