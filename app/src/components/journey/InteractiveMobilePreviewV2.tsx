@@ -43,6 +43,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     const [claimingGift, setClaimingGift] = useState(false)
     const [redemptionCode, setRedemptionCode] = useState('')
     const [claimedGiftDetails, setClaimedGiftDetails] = useState<any>(null)
+    const [selectedGiftId, setSelectedGiftId] = useState<string | null>(null)
 
     // Form states
     const [userId, setUserId] = useState('')
@@ -237,9 +238,19 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     async function handleGiftRedeem() {
         // If qrCode is provided and gifts are available, call real API
         if (qrCode && redeemGifts.length > 0) {
+            if (!selectedGiftId) {
+                alert('Please select a gift to claim')
+                return
+            }
+
             setClaimingGift(true)
             try {
-                const firstGift = redeemGifts[0] // Claim the first available gift
+                const selectedGift = redeemGifts.find(g => g.id === selectedGiftId)
+                if (!selectedGift) {
+                    alert('Selected gift not found')
+                    setClaimingGift(false)
+                    return
+                }
                 
                 const response = await fetch('/api/consumer/claim-gift', {
                     method: 'POST',
@@ -248,7 +259,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     },
                     body: JSON.stringify({
                         qr_code: qrCode,
-                        gift_id: firstGift.id,
+                        gift_id: selectedGift.id,
                         consumer_phone: customerPhone || null
                     })
                 })
@@ -353,15 +364,10 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     </div>
                                 ) : config.product_image_source === 'variant' && config.variant_image_url ? (
                                     <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden">
-                                        <Image
+                                        <img
                                             src={config.variant_image_url}
                                             alt="Product Variant"
-                                            width={96}
-                                            height={96}
                                             className="max-w-full max-h-full object-contain"
-                                            unoptimized
-                                            priority
-                                            loading="eager"
                                         />
                                     </div>
                                 ) : (
@@ -822,9 +828,23 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     {redeemGifts.map((gift) => {
                                         const remaining = gift.total_quantity > 0 ? gift.total_quantity - gift.claimed_quantity : null
                                         const isFullyClaimed = remaining !== null && remaining <= 0
+                                        const isSelected = selectedGiftId === gift.id
                                         
                                         return (
-                                            <div key={gift.id} className={`bg-white border-2 rounded-lg p-4 ${isFullyClaimed ? 'border-gray-300 opacity-60' : 'border-gray-200'}`}>
+                                            <div 
+                                                key={gift.id} 
+                                                onClick={() => !isFullyClaimed && setSelectedGiftId(gift.id)}
+                                                className={`bg-white border-2 rounded-lg p-4 relative transition-all cursor-pointer
+                                                    ${isFullyClaimed ? 'border-gray-300 opacity-60 cursor-not-allowed' : 
+                                                      isSelected ? 'ring-2 ring-opacity-50' : 
+                                                      'border-gray-200 hover:border-gray-300'}`}
+                                                style={isSelected && !isFullyClaimed ? { borderColor: config.primary_color, '--tw-ring-color': config.primary_color } as React.CSSProperties : {}}
+                                            >
+                                                {isSelected && (
+                                                    <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1 z-10">
+                                                        <CheckCircle2 className="w-4 h-4" />
+                                                    </div>
+                                                )}
                                                 {gift.gift_image_url ? (
                                                     <div className="w-full h-48 rounded-lg overflow-hidden mb-3 bg-gray-50 flex items-center justify-center">
                                                         <Image
@@ -863,11 +883,11 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
                                     <button
                                         onClick={handleGiftRedeem}
-                                        disabled={claimingGift || redeemGifts.every(gift => gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity)}
+                                        disabled={claimingGift || !selectedGiftId || redeemGifts.every(gift => gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity)}
                                         className="w-full py-3 px-4 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                         style={{ backgroundColor: config.button_color }}
                                     >
-                                        {claimingGift ? 'Claiming...' : 'Claim Gift Now'}
+                                        {claimingGift ? 'Claiming...' : 'Claim Selected Gift'}
                                     </button>
 
                                     <p className="text-xs text-gray-500 text-center">
