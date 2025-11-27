@@ -189,7 +189,7 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     console.log(`✅ Deleted ${docCount || 0} documents`)
 
     // 5. Delete stock movements related to this order
-    // First, get the order number for reference_no matching
+    // Get order number for reference_no matching
     const { data: orderData } = await supabase
       .from('orders')
       .select('order_no')
@@ -197,34 +197,38 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
       .single()
     
     const orderNo = orderData?.order_no
+    console.log(`🗑️ Deleting stock movements for order_id: ${orderId}, order_no: ${orderNo}`)
     
-    console.log(`🗑️ Looking for stock movements with order_id: ${orderId} or order_no: ${orderNo}`)
-    
-    // Query all movements that match this order (before deletion for logging)
-    const { data: movementsToDelete, error: queryError } = await supabase
-      .from('stock_movements')
-      .select('id, reference_type, reference_id, reference_no, reason, notes')
-      .eq('reference_type', 'order')
-      .or(`reference_id.eq.${orderId},reference_no.eq.${orderNo}`)
-    
-    if (queryError) {
-      console.error('❌ Error querying stock movements:', queryError)
-    } else {
-      console.log(`📋 Found ${movementsToDelete?.length || 0} stock movements to delete:`, movementsToDelete)
-    }
-    
-    // Delete all movements for this order using OR condition
-    const { error: movementsError, count: movementsCount } = await supabase
+    // First attempt: Delete by reference_id (UUID)
+    const { error: movementsError1, count: movementsCount1 } = await supabase
       .from('stock_movements')
       .delete()
-      .eq('reference_type', 'order')
-      .or(`reference_id.eq.${orderId},reference_no.eq.${orderNo}`)
-
-    if (movementsError) {
-      console.error('❌ Error deleting stock movements:', movementsError)
-      throw movementsError
+      .eq('reference_id', orderId)
+    
+    if (movementsError1) {
+      console.error('❌ Error deleting stock movements by reference_id:', movementsError1)
+    } else {
+      console.log(`✅ Deleted ${movementsCount1 || 0} stock movements by reference_id`)
     }
-    console.log(`✅ Deleted ${movementsCount || 0} stock movements`)
+    
+    // Second attempt: Delete by reference_no (order number)
+    let movementsCount2 = 0
+    if (orderNo) {
+      const { error: movementsError2, count: count2 } = await supabase
+        .from('stock_movements')
+        .delete()
+        .eq('reference_no', orderNo)
+      
+      if (movementsError2) {
+        console.error('❌ Error deleting stock movements by reference_no:', movementsError2)
+      } else {
+        movementsCount2 = count2 || 0
+        console.log(`✅ Deleted ${movementsCount2} stock movements by reference_no`)
+      }
+    }
+    
+    const totalMovements = (movementsCount1 || 0) + movementsCount2
+    console.log(`✅ Total stock movements deleted: ${totalMovements}`)
 
     // 6. Delete order items
     const { error: itemsError, count: itemsCount } = await supabase
