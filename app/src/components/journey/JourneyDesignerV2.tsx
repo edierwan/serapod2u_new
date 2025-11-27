@@ -710,8 +710,17 @@ export default function JourneyDesignerV2({
                                             <h3 className={`font-semibold ${order.has_lucky_draw ? 'text-purple-900' : 'text-gray-700'}`}>Lucky Draw</h3>
                                             <Switch
                                                 checked={config.lucky_draw_enabled && order.has_lucky_draw}
-                                                disabled={!order.has_lucky_draw}
-                                                onCheckedChange={(checked) => setConfig({ ...config, lucky_draw_enabled: checked })}
+                                                onCheckedChange={(checked) => {
+                                                    if (checked && !order.has_lucky_draw) {
+                                                        toast({
+                                                            title: "Cannot enable Lucky Draw",
+                                                            description: "Please create a lucky draw campaign for this order first.",
+                                                            variant: "destructive",
+                                                        })
+                                                        return
+                                                    }
+                                                    setConfig({ ...config, lucky_draw_enabled: checked })
+                                                }}
                                             />
                                         </div>
                                         <p className={`text-sm mt-1 ${order.has_lucky_draw ? 'text-purple-700' : 'text-gray-500'}`}>
@@ -746,41 +755,59 @@ export default function JourneyDesignerV2({
                             </div>
 
                             {/* Redemption */}
-                            {order.has_redeem && (
-                                <div className="flex items-start justify-between p-4 bg-green-50 rounded-lg border border-green-200">
-                                    <div className="flex items-start gap-3 flex-1">
-                                        <div className="p-2 bg-green-100 rounded-lg">
-                                            <Gift className="w-5 h-5 text-green-600" />
+                            <div className={`flex items-start justify-between p-4 rounded-lg border ${order.has_redeem ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="flex items-start gap-3 flex-1">
+                                    <div className={`p-2 rounded-lg ${order.has_redeem ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                        <Gift className={`w-5 h-5 ${order.has_redeem ? 'text-green-600' : 'text-gray-400'}`} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className={`font-semibold ${order.has_redeem ? 'text-green-900' : 'text-gray-700'}`}>Free Gift Redemption</h3>
+                                            <Switch
+                                                checked={config.redemption_enabled && order.has_redeem}
+                                                onCheckedChange={(checked) => {
+                                                    if (checked && !order.has_redeem) {
+                                                        toast({
+                                                            title: "Cannot enable Redemption",
+                                                            description: "Please configure redemption settings for this order first.",
+                                                            variant: "destructive",
+                                                        })
+                                                        return
+                                                    }
+                                                    setConfig({ ...config, redemption_enabled: checked })
+                                                }}
+                                            />
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="font-semibold text-green-900">Free Gift Redemption</h3>
-                                                <Switch
-                                                    checked={config.redemption_enabled}
-                                                    onCheckedChange={(checked) => setConfig({ ...config, redemption_enabled: checked })}
-                                                />
+                                        <p className={`text-sm mt-1 ${order.has_redeem ? 'text-green-700' : 'text-gray-500'}`}>
+                                            Consumers claim free gifts at shops by scanning QR codes
+                                        </p>
+
+                                        {!order.has_redeem && (
+                                            <div className="mt-3 text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                                                <p className="font-medium">No Redemption Configuration Found</p>
+                                                <p className="mt-1">
+                                                    Please <a href={`/dashboard/consumer-engagement/redeem?order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">configure redemption settings</a> for this order first.
+                                                </p>
                                             </div>
-                                            <p className="text-sm text-green-700 mt-1">
-                                                Consumers claim free gifts at shops by scanning QR codes
-                                            </p>
-                                            {config.redemption_enabled && (
-                                                <div className="mt-3 flex items-center gap-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        id="require_customer_otp_for_redemption"
-                                                        checked={config.require_customer_otp_for_redemption}
-                                                        onChange={(e) => setConfig({ ...config, require_customer_otp_for_redemption: e.target.checked })}
-                                                        className="rounded"
-                                                    />
-                                                    <Label htmlFor="require_customer_otp_for_redemption" className="text-sm font-normal cursor-pointer">
-                                                        Require customer OTP verification
-                                                    </Label>
-                                                </div>
-                                            )}
-                                        </div>
+                                        )}
+
+                                        {order.has_redeem && config.redemption_enabled && (
+                                            <div className="mt-3 flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id="require_customer_otp_for_redemption"
+                                                    checked={config.require_customer_otp_for_redemption}
+                                                    onChange={(e) => setConfig({ ...config, require_customer_otp_for_redemption: e.target.checked })}
+                                                    className="rounded"
+                                                />
+                                                <Label htmlFor="require_customer_otp_for_redemption" className="text-sm font-normal cursor-pointer">
+                                                    Require customer OTP verification
+                                                </Label>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                            )}
+                            </div>
                         </CardContent>
                     </Card>
 
