@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Scan, Users, TrendingUp, Calendar, MapPin, Filter } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface UserProfile {
   id: string
@@ -24,6 +25,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [activations, setActivations] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string>('all')
+  const [selectedActivityType, setSelectedActivityType] = useState<string>('all')
   const [stats, setStats] = useState({
     total_scans: 0,
     unique_consumers: 0,
@@ -39,7 +41,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
     loadActivations()
     loadStats()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOrderId])
+  }, [selectedOrderId, selectedActivityType])
 
   const loadOrders = async () => {
     try {
@@ -73,7 +75,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           is_points_collected,
           points_value,
           product_id,
-          products ( product_name )
+          sequence_number,
+          products ( product_name ),
+          product_variants ( variant_name, image_url ),
+          redeem_items ( item_name, item_image_url ),
+          consumer_qr_scans ( location_lat, location_lng )
         `)
         .eq('company_id', userProfile.organizations.id)
         .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
@@ -84,22 +90,45 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         query = query.eq('order_id', selectedOrderId)
       }
 
+      if (selectedActivityType && selectedActivityType !== 'all') {
+        if (selectedActivityType === 'lucky_draw') {
+          query = query.eq('is_lucky_draw_entered', true)
+        } else if (selectedActivityType === 'points') {
+          query = query.eq('is_points_collected', true)
+        } else if (selectedActivityType === 'gift') {
+          query = query.eq('is_redeemed', true)
+        }
+      }
+
       const { data, error } = await query
 
       if (error) throw error
       
-      const transformedData = data?.map((qr: any) => ({
-        id: qr.id,
-        consumer_name: qr.consumer_name || 'Anonymous',
-        consumer_phone: qr.consumer_phone,
-        consumer_email: qr.consumer_email,
-        activated_at: qr.redeemed_at || qr.updated_at,
-        points_awarded: qr.is_points_collected ? (qr.points_value || 0) : 0,
-        lucky_draw_entered: qr.is_lucky_draw_entered,
-        gift_redeemed: qr.is_redeemed,
-        activation_location: null,
-        product_name: qr.products?.product_name || 'Unknown Product'
-      })) || []
+      const transformedData = data?.map((qr: any) => {
+        // Get location from the most recent scan if available
+        const lastScan = qr.consumer_qr_scans?.[0]
+        const location = lastScan?.location_lat && lastScan?.location_lng 
+          ? `${lastScan.location_lat.toFixed(4)}, ${lastScan.location_lng.toFixed(4)}`
+          : null
+
+        return {
+          id: qr.id,
+          consumer_name: qr.consumer_name || 'Anonymous',
+          consumer_phone: qr.consumer_phone,
+          consumer_email: qr.consumer_email,
+          activated_at: qr.redeemed_at || qr.updated_at,
+          points_awarded: qr.is_points_collected ? (qr.points_value || 0) : 0,
+          lucky_draw_entered: qr.is_lucky_draw_entered,
+          gift_redeemed: qr.is_redeemed,
+          activation_location: location,
+          product_name: qr.products?.product_name || 'Unknown Product',
+          variant_name: qr.product_variants?.variant_name,
+          variant_image: qr.product_variants?.image_url,
+          sequence_number: qr.sequence_number,
+          gift_name: qr.redeem_items?.item_name,
+          gift_image: qr.redeem_items?.item_image_url
+        }
+      }) || []
       
       setActivations(transformedData)
     } catch (error: any) {
@@ -181,23 +210,41 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <p className="text-gray-600 mt-1">Track consumer QR code scans and engagement</p>
           </div>
           
-          <div className="w-full sm:w-64">
-            <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
-              <SelectTrigger>
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-gray-500" />
-                  <SelectValue placeholder="Filter by Order" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Orders</SelectItem>
-                {orders.map((order) => (
-                  <SelectItem key={order.id} value={order.id}>
-                    {order.order_number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="w-full sm:w-48">
+              <Select value={selectedActivityType} onValueChange={setSelectedActivityType}>
+                <SelectTrigger>
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-gray-500" />
+                    <SelectValue placeholder="Activity Type" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Activities</SelectItem>
+                  <SelectItem value="lucky_draw">Lucky Draw</SelectItem>
+                  <SelectItem value="points">Points Collected</SelectItem>
+                  <SelectItem value="gift">Gift Redeemed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full sm:w-64">
+              <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+                <SelectTrigger>
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-gray-500" />
+                    <SelectValue placeholder="Filter by Order" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Orders</SelectItem>
+                  {orders.map((order) => (
+                    <SelectItem key={order.id} value={order.id}>
+                      {order.order_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
@@ -266,6 +313,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date & Time</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Consumer</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sequence</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lucky Draw</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gift</th>
@@ -276,7 +324,10 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                 {activations.map((activation) => (
                   <tr key={activation.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {new Date(activation.activated_at).toLocaleString()}
+                      <div className="flex flex-col">
+                        <span className="font-medium">{new Date(activation.activated_at).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-500">{new Date(activation.activated_at).toLocaleTimeString()}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div>
@@ -286,8 +337,24 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                         <p className="text-xs text-gray-500">{activation.consumer_phone}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {activation.product_name || 'N/A'}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {activation.variant_image && (
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={activation.variant_image} alt={activation.variant_name} />
+                            <AvatarFallback>{activation.variant_name?.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{activation.product_name}</p>
+                          {activation.variant_name && (
+                            <p className="text-xs text-gray-500">{activation.variant_name}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {activation.sequence_number || '-'}
                     </td>
                     <td className="px-4 py-3">
                       {activation.points_awarded > 0 ? (
@@ -309,9 +376,17 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                     </td>
                     <td className="px-4 py-3">
                       {activation.gift_redeemed ? (
-                        <Badge variant="default" className="bg-blue-100 text-blue-800">
-                          Redeemed
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {activation.gift_image && (
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={activation.gift_image} alt={activation.gift_name} />
+                              <AvatarFallback>G</AvatarFallback>
+                            </Avatar>
+                          )}
+                          <Badge variant="default" className="bg-blue-100 text-blue-800">
+                            {activation.gift_name || 'Redeemed'}
+                          </Badge>
+                        </div>
                       ) : (
                         <span className="text-sm text-gray-500">-</span>
                       )}
@@ -319,7 +394,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {activation.activation_location ? (
                         <div className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
+                          <MapPin className="h-3 w-3 text-gray-400" />
                           <span className="text-xs">{activation.activation_location}</span>
                         </div>
                       ) : (
