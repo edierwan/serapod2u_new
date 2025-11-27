@@ -35,6 +35,26 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'bamybvzufxijghzqdytu.supabase.co',
       },
+      {
+        protocol: 'https',
+        hostname: 'serapod2u.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.serapod2u.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'dev.serapod2u.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.dev.serapod2u.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+      },
     ],
   },
 

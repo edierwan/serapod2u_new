@@ -53,6 +53,8 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     const [totalPoints, setTotalPoints] = useState(0)
     const [cumulativePoints, setCumulativePoints] = useState(0)
     const [isCollectingPoints, setIsCollectingPoints] = useState(false)
+    const [variantImageError, setVariantImageError] = useState(false)
+    const [customImageError, setCustomImageError] = useState(false)
 
     // Check if points were already collected for this QR code on component mount
     useEffect(() => {
@@ -332,24 +334,38 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             </svg>
                                         </div>
                                     </div>
-                                ) : config.product_image_source === 'custom' && config.custom_image_url ? (
-                                    <div className="inline-block mb-2">
-                                        <Image 
-                                            src={config.custom_image_url} 
-                                            alt="Product" 
+                                ) : config.product_image_source === 'custom' && config.custom_image_url && !customImageError ? (
+                                    <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden">
+                                        <Image
+                                            src={config.custom_image_url}
+                                            alt="Product"
                                             width={96}
                                             height={96}
-                                            className="object-contain rounded-lg bg-white p-2 max-w-[96px] max-h-[96px]"
+                                            className="max-w-full max-h-full object-contain"
+                                            unoptimized
+                                            priority
+                                            loading="eager"
+                                            onError={() => {
+                                                console.error('Custom image failed to load:', config.custom_image_url)
+                                                setCustomImageError(true)
+                                            }}
                                         />
                                     </div>
-                                ) : config.product_image_source === 'variant' && config.variant_image_url ? (
-                                    <div className="inline-block mb-2">
-                                        <Image 
-                                            src={config.variant_image_url} 
-                                            alt="Product Variant" 
+                                ) : config.product_image_source === 'variant' && config.variant_image_url && !variantImageError ? (
+                                    <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden">
+                                        <Image
+                                            src={config.variant_image_url}
+                                            alt="Product Variant"
                                             width={96}
                                             height={96}
-                                            className="object-contain rounded-lg bg-white p-2"
+                                            className="max-w-full max-h-full object-contain"
+                                            unoptimized
+                                            priority
+                                            loading="eager"
+                                            onError={() => {
+                                                console.error('Variant image failed to load:', config.variant_image_url)
+                                                setVariantImageError(true)
+                                            }}
                                         />
                                     </div>
                                 ) : (
