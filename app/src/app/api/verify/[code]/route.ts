@@ -240,7 +240,7 @@ async function handleProductCodeVerification(
         is_active,
         order_id,
         product:products!qr_codes_product_id_fkey ( product_name ),
-        variant:product_variants!qr_codes_variant_id_fkey ( variant_name ),
+        variant:product_variants!qr_codes_variant_id_fkey ( variant_name, image_url ),
         order:orders!qr_codes_order_id_fkey (
           id,
           order_no,
@@ -273,7 +273,7 @@ async function handleProductCodeVerification(
             is_active,
             order_id,
             product:products!qr_codes_product_id_fkey ( product_name ),
-            variant:product_variants!qr_codes_variant_id_fkey ( variant_name ),
+            variant:product_variants!qr_codes_variant_id_fkey ( variant_name, image_url ),
             order:orders!qr_codes_order_id_fkey (
               id,
               order_no,
@@ -410,7 +410,10 @@ async function handleProductCodeVerification(
       is_valid: true,
       is_blocked: false,
       status,
-      journey_config: journeyConfig,
+      journey_config: {
+        ...journeyConfig,
+        variant_image_url: qrCode.variant?.image_url ?? null
+      },
       product_info: {
         product_name: qrCode.product?.product_name ?? undefined,
         variant_name: qrCode.variant?.variant_name ?? undefined
