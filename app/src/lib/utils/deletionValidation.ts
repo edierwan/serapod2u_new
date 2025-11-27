@@ -1,6 +1,14 @@
 // Deletion validation utilities
 import { SupabaseClient } from '@supabase/supabase-js'
 
+type StockMovementSnapshot = {
+  id: string
+  variant_id: string | null
+  quantity_change: number | null
+  to_organization_id: string | null
+  from_organization_id: string | null
+}
+
 /**
  * Check if an order can be deleted
  * Returns canDelete = false if any QR codes have been scanned/activated
@@ -198,7 +206,40 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     
     const orderNo = orderData?.order_no
     console.log(`🗑️ Deleting stock movements for order_id: ${orderId}, order_no: ${orderNo}`)
-    
+
+    // Capture movement snapshots before deletion so we can roll back inventory balances
+    const movementSnapshotMap = new Map<string, StockMovementSnapshot>()
+
+    const { data: movementsById, error: snapshotError1 } = await supabase
+      .from('stock_movements')
+      .select('id, variant_id, quantity_change, to_organization_id, from_organization_id')
+      .eq('reference_id', orderId)
+
+    if (snapshotError1) {
+      console.error('❌ Error fetching stock movements by reference_id:', snapshotError1)
+    } else {
+      movementsById?.forEach(row => {
+        if (row?.id) movementSnapshotMap.set(row.id, row as StockMovementSnapshot)
+      })
+    }
+
+    if (orderNo) {
+      const { data: movementsByNo, error: snapshotError2 } = await supabase
+        .from('stock_movements')
+        .select('id, variant_id, quantity_change, to_organization_id, from_organization_id')
+        .eq('reference_no', orderNo)
+
+      if (snapshotError2) {
+        console.error('❌ Error fetching stock movements by reference_no:', snapshotError2)
+      } else {
+        movementsByNo?.forEach(row => {
+          if (row?.id && !movementSnapshotMap.has(row.id)) {
+            movementSnapshotMap.set(row.id, row as StockMovementSnapshot)
+          }
+        })
+      }
+    }
+
     // First attempt: Delete by reference_id (UUID)
     const { error: movementsError1, count: movementsCount1 } = await supabase
       .from('stock_movements')
@@ -229,6 +270,84 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     
     const totalMovements = (movementsCount1 || 0) + movementsCount2
     console.log(`✅ Total stock movements deleted: ${totalMovements}`)
+
+    // Apply inverse adjustments to product_inventory
+    const inventoryAdjustments = new Map<string, { variantId: string; orgId: string; delta: number }>()
+
+    movementSnapshotMap.forEach(snapshot => {
+      if (!snapshot?.variant_id || typeof snapshot.quantity_change !== 'number') {
+        return
+      }
+      const targetOrg = snapshot.quantity_change >= 0
+        ? snapshot.to_organization_id
+        : snapshot.from_organization_id
+
+      if (!targetOrg) {
+        return
+      }
+
+      const key = `${snapshot.variant_id}:${targetOrg}`
+      const existing = inventoryAdjustments.get(key)
+      const newDelta = (existing?.delta ?? 0) + snapshot.quantity_change
+      inventoryAdjustments.set(key, {
+        variantId: snapshot.variant_id,
+        orgId: targetOrg,
+        delta: newDelta
+      })
+    })
+
+    for (const adjustment of inventoryAdjustments.values()) {
+      const { variantId, orgId, delta } = adjustment
+      try {
+        const { data: inventoryRow, error: inventoryFetchError } = await supabase
+          .from('product_inventory')
+          .select('id, quantity_on_hand, quantity_available, units_on_hand, total_value, average_cost')
+          .eq('variant_id', variantId)
+          .eq('organization_id', orgId)
+          .maybeSingle()
+
+        if (inventoryFetchError) {
+          console.error(`❌ Failed to fetch inventory row for variant ${variantId} org ${orgId}`, inventoryFetchError)
+          continue
+        }
+
+        if (!inventoryRow) {
+          console.warn(`⚠️ No inventory row found for variant ${variantId} org ${orgId} during delete rollback`)
+          continue
+        }
+
+        const newQuantityOnHand = Math.max(0, (inventoryRow.quantity_on_hand ?? 0) - delta)
+        const updatePayload: Record<string, number | string | null> = {
+          quantity_on_hand: newQuantityOnHand,
+          updated_at: new Date().toISOString()
+        }
+
+        if (inventoryRow.quantity_available !== null) {
+          updatePayload.quantity_available = Math.max(0, (inventoryRow.quantity_available ?? 0) - delta)
+        }
+
+        if (inventoryRow.units_on_hand !== null) {
+          updatePayload.units_on_hand = Math.max(0, (inventoryRow.units_on_hand ?? 0) - delta)
+        }
+
+        if (inventoryRow.total_value !== null && inventoryRow.average_cost !== null) {
+          updatePayload.total_value = Math.max(0, newQuantityOnHand * (inventoryRow.average_cost ?? 0))
+        }
+
+        const { error: inventoryUpdateError } = await supabase
+          .from('product_inventory')
+          .update(updatePayload)
+          .eq('id', inventoryRow.id)
+
+        if (inventoryUpdateError) {
+          console.error(`❌ Failed to update inventory for variant ${variantId} org ${orgId}`, inventoryUpdateError)
+        } else {
+          console.log(`🔄 Adjusted inventory for variant ${variantId} org ${orgId} by delta ${delta}`)
+        }
+      } catch (inventoryError) {
+        console.error(`❌ Exception adjusting inventory for variant ${variantId} org ${orgId}`, inventoryError)
+      }
+    }
 
     // 6. Delete order items
     const { error: itemsError, count: itemsCount } = await supabase
