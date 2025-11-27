@@ -4,11 +4,7 @@
   "framework": "nextjs",
   "outputDirectory": ".next",
   "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "staging": true,
-      "develop": false
-    }
+    "deploymentEnabled": true
   },
   "crons": [
     {
