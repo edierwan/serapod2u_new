@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { validateOrderDeletion, cascadeDeleteOrder } from '@/lib/utils/deletionValidation'
 import { formatNumber } from '@/lib/utils/formatters'
 import { 
   FileText, 
@@ -201,16 +200,25 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       console.log('✅ User confirmed deletion')
 
-      // Step 4: Delete Excel files from storage
-      console.log('🗑️ Deleting Excel files from storage...')
-      if (excelFiles && excelFiles.length > 0) {
-        const filePaths = excelFiles.map(file => `${orderId}/${file.name}`)
-        await supabase.storage.from('order-excel').remove(filePaths)
+      // Call server-side API to delete order
+      console.log('🗑️ Calling server API to delete order...')
+      const response = await fetch('/api/orders/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          orderId,
+          forceDelete: true
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete order')
       }
 
-      // Step 5: Cascade delete all database records (always force delete = hard delete everything)
-      console.log('🗑️ Cascade deleting order and related database records...')
-      await cascadeDeleteOrder(supabase, orderId, true)
+      const result = await response.json()
 
       toast({
         title: '✅ Order Deleted Successfully',
