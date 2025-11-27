@@ -60,9 +60,34 @@ export async function POST(request: NextRequest) {
     // 1. Authenticate shop user using Supabase Auth
     console.log('🔐 Authenticating shop user:', shop_id)
     
+    let emailToAuth = shop_id
+
+    // Check if shop_id is a phone number (simple check: doesn't contain @)
+    if (!shop_id.includes('@')) {
+      console.log('📱 Detected phone number login, looking up email...')
+      
+      // Lookup user by phone number using admin client
+      const { data: userByPhone, error: phoneError } = await supabaseAdmin
+        .from('users')
+        .select('email')
+        .eq('phone', shop_id)
+        .single()
+      
+      if (phoneError || !userByPhone) {
+        console.error('Phone lookup failed:', phoneError)
+        return NextResponse.json(
+          { success: false, error: 'Invalid shop ID or password' }, // Generic error for security
+          { status: 401 }
+        )
+      }
+      
+      emailToAuth = userByPhone.email
+      console.log('📱 Found email for phone login:', emailToAuth)
+    }
+
     // Try to sign in with Supabase Auth
     const { data: authData, error: signInError } = await supabaseAuth.auth.signInWithPassword({
-      email: shop_id, // shop_id should be email
+      email: emailToAuth,
       password: password
     })
 
