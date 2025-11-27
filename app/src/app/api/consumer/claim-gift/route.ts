@@ -69,6 +69,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if this QR code has already been used to redeem a gift
+    const { data: existingRedemption } = await supabase
+      .from('consumer_qr_scans')
+      .select('id')
+      .eq('qr_code_id', qrCodeData.id)
+      .eq('redeemed_gift', true)
+      .maybeSingle()
+
+    if (existingRedemption) {
+      return NextResponse.json(
+        { success: false, error: 'This QR code has already been used to redeem a gift' },
+        { status: 400 }
+      )
+    }
+
     // Check if consumer has already claimed this gift (if limit_per_consumer is set)
     if (consumer_phone && gift.limit_per_consumer) {
       const { count, error: checkError } = await supabase

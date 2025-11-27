@@ -47,35 +47,41 @@ export async function GET(request: NextRequest) {
     // Step 2: Check if points already collected for this QR code
     const collectionData = await checkPointsCollected(supabase, qrCodeData.id)
 
-    if (!collectionData) {
+    // Step 3: Check if gift already redeemed
+    const { data: giftRedemption } = await supabase
+      .from('consumer_qr_scans')
+      .select('id')
+      .eq('qr_code_id', qrCodeData.id)
+      .eq('redeemed_gift', true)
+      .maybeSingle()
+
+    // Step 4: Check if lucky draw entered
+    const { data: luckyDrawEntry } = await supabase
+      .from('lucky_draw_entries')
+      .select('id')
+      .eq('qr_code_id', qrCodeData.id)
+      .maybeSingle()
+
+    let totalBalance = 0
+    if (collectionData) {
+      console.log('✅ Found collection record:', collectionData)
+      const shopId = collectionData.shop_id
+      if (shopId) {
+        totalBalance = await calculateShopTotalPoints(supabase, shopId)
+      } else {
+        totalBalance = collectionData.points_amount || 0
+      }
+    } else {
       console.log('✅ No collection records found - points not collected yet')
-      // No collection records found
-      return NextResponse.json({
-        success: true,
-        already_collected: false
-      })
     }
-
-    console.log('✅ Found collection record:', collectionData)
-
-    // Step 3: Points already collected - calculate total balance for this shop
-    const shopId = collectionData.shop_id
-    if (!shopId) {
-      return NextResponse.json({
-        success: true,
-        already_collected: true,
-        points_earned: collectionData.points_amount || 0,
-        total_balance: collectionData.points_amount || 0
-      })
-    }
-
-    const totalBalance = await calculateShopTotalPoints(supabase, shopId)
 
     return NextResponse.json({
       success: true,
-      already_collected: true,
-      points_earned: collectionData.points_amount || 0,
-      total_balance: totalBalance
+      already_collected: !!collectionData,
+      points_earned: collectionData?.points_amount || 0,
+      total_balance: totalBalance,
+      gift_redeemed: !!giftRedemption,
+      lucky_draw_entered: !!luckyDrawEntry
     })
 
   } catch (error) {

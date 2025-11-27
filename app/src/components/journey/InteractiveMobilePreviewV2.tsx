@@ -73,13 +73,23 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
                 console.log('📊 Collection status result:', result)
 
-                if (result.success && result.already_collected) {
-                    console.log('✅ Points already collected! Setting state...')
-                    setPointsCollected(true)
-                    setTotalPoints(result.points_earned || 0)
-                    setCumulativePoints(result.total_balance || 0)
-                } else {
-                    console.log('❌ Points not collected yet')
+                if (result.success) {
+                    if (result.already_collected) {
+                        console.log('✅ Points already collected! Setting state...')
+                        setPointsCollected(true)
+                        setTotalPoints(result.points_earned || 0)
+                        setCumulativePoints(result.total_balance || 0)
+                    }
+                    
+                    if (result.gift_redeemed) {
+                        console.log('✅ Gift already redeemed!')
+                        setGiftRedeemed(true)
+                    }
+
+                    if (result.lucky_draw_entered) {
+                        console.log('✅ Lucky draw already entered!')
+                        setLuckyDrawEntered(true)
+                    }
                 }
             } catch (error) {
                 console.error('Error checking collection status:', error)
