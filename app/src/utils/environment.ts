@@ -1,18 +1,13 @@
 export function getEnvironmentLabel() {
-  const vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV
-  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  // Only show badge on localhost (development mode)
+  // This prevents hydration issues on staging/production
+  const nodeEnv = process.env.NODE_ENV
 
-  if (vercelEnv === 'development' || host === 'localhost') {
+  // Only show in local development
+  if (nodeEnv === 'development') {
     return { badge: 'ENVIRONMENT: DEVELOPMENT', show: true }
   }
 
-  if (vercelEnv === 'preview') {
-    return { badge: 'ENVIRONMENT: STAGING', show: true }
-  }
-
-  if (vercelEnv === 'production') {
-    return { badge: 'ENVIRONMENT: PRODUCTION', show: true }
-  }
-
+  // Hide badge for all deployed environments (staging, production)
   return { badge: '', show: false }
 }
