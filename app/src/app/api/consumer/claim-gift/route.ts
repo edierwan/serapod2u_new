@@ -30,149 +30,36 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    const baseCode = getBaseCode(qr_code)
+    // Call the secure RPC function
+    const { data: result, error: rpcError } = await supabase.rpc('consumer_claim_gift', {
+      p_raw_qr_code: qr_code,
+      p_gift_id: gift_id,
+      p_consumer_phone: consumer_phone || null
+    })
 
-    // Find QR code
-    const { data: qrCodeData } = await supabase
-      .from('qr_codes')
-      .select('id, code, order_id')
-      .or(`code.eq.${qr_code},code.eq.${baseCode}`)
-      .maybeSingle()
-
-    if (!qrCodeData) {
+    if (rpcError) {
+      console.error('RPC Error:', rpcError)
       return NextResponse.json(
-        { success: false, error: 'QR code not found' },
-        { status: 404 }
-      )
-    }
-
-    // Check if gift exists and is available
-    const { data: gift, error: giftError } = await supabase
-      .from('redeem_gifts')
-      .select('*')
-      .eq('id', gift_id)
-      .eq('is_active', true)
-      .single()
-
-    if (giftError || !gift) {
-      return NextResponse.json(
-        { success: false, error: 'Gift not found or inactive' },
-        { status: 404 }
-      )
-    }
-
-    // Check if gift has quantity limit and if it's exceeded
-    if (gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity) {
-      return NextResponse.json(
-        { success: false, error: 'This gift has been fully claimed' },
-        { status: 400 }
-      )
-    }
-
-    // Check if this QR code has already been used to redeem a gift
-    const { data: existingRedemption } = await supabase
-      .from('consumer_qr_scans')
-      .select('id')
-      .eq('qr_code_id', qrCodeData.id)
-      .eq('redeemed_gift', true)
-      .limit(1)
-      .maybeSingle()
-
-    if (existingRedemption) {
-      return NextResponse.json(
-        { success: false, error: 'This QR code has already been used to redeem a gift' },
-        { status: 400 }
-      )
-    }
-
-    // Check if consumer has already claimed this gift (if limit_per_consumer is set)
-    if (consumer_phone && gift.limit_per_consumer) {
-      const { count, error: checkError } = await supabase
-        .from('consumer_qr_scans')
-        .select('id', { count: 'exact', head: true })
-        .eq('qr_code_id', qrCodeData.id)
-        .eq('consumer_phone', consumer_phone)
-        .eq('redeemed_gift', true)
-
-      if (checkError) {
-        console.error('Error checking consumer claims:', checkError)
-      } else if (count && count >= gift.limit_per_consumer) {
-        return NextResponse.json(
-          { success: false, error: 'You have already claimed this gift' },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Increment claimed_quantity
-    const { error: updateError } = await supabase
-      .from('redeem_gifts')
-      .update({ 
-        claimed_quantity: gift.claimed_quantity + 1,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', gift_id)
-
-    if (updateError) {
-      console.error('Error updating gift quantity:', updateError)
-      return NextResponse.json(
-        { success: false, error: 'Failed to claim gift' },
+        { success: false, error: 'Database error: ' + rpcError.message },
         { status: 500 }
       )
     }
 
-    // Update or create consumer_qr_scans record
-    // We must ensure a record exists with redeemed_gift=true to prevent duplicate claims
-    // even if consumer_phone is not provided
-    
-    // Check if scan record exists (try to match by phone if provided, or just insert new)
-    let scanId = null
-    
-    if (consumer_phone) {
-      const { data: existingScan } = await supabase
-        .from('consumer_qr_scans')
-        .select('id')
-        .eq('qr_code_id', qrCodeData.id)
-        .eq('consumer_phone', consumer_phone)
-        .maybeSingle()
-        
-      if (existingScan) {
-        scanId = existingScan.id
+    // Handle RPC result
+    if (!result.success) {
+      // Map specific error codes to HTTP status
+      if (result.code === 'QR_NOT_FOUND' || result.code === 'GIFT_NOT_FOUND') {
+        return NextResponse.json(result, { status: 404 })
       }
+      if (result.code === 'INVALID_STATUS' || result.code === 'ALREADY_REDEEMED' || result.code === 'GIFT_FULLY_CLAIMED') {
+        return NextResponse.json(result, { status: 400 })
+      }
+      // Default error
+      return NextResponse.json(result, { status: 400 })
     }
 
-    if (scanId) {
-      // Update existing record
-      await supabase
-        .from('consumer_qr_scans')
-        .update({ 
-          redeemed_gift: true,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', scanId)
-    } else {
-      // Create new record
-      await supabase
-        .from('consumer_qr_scans')
-        .insert({
-          qr_code_id: qrCodeData.id,
-          consumer_phone: consumer_phone || null,
-          redeemed_gift: true,
-          scanned_at: new Date().toISOString()
-        })
-    }
-
-    // Generate redemption code
-    const redemptionCode = `GFT-${Date.now().toString(36).toUpperCase().substr(-6)}`
-
-    return NextResponse.json({
-      success: true,
-      redemption_code: redemptionCode,
-      gift_name: gift.gift_name,
-      gift_description: gift.gift_description,
-      gift_image_url: gift.gift_image_url,
-      remaining: gift.total_quantity > 0 ? gift.total_quantity - gift.claimed_quantity - 1 : null
-    })
+    // Success
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('Error in claim-gift API:', error)

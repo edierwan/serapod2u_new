@@ -306,50 +306,47 @@ export async function POST(request: NextRequest) {
       points_to_award: pointsToAward
     })
 
-    // 5. Create consumer scan record with points
-    const { data: scanRecord, error: scanError } = await supabaseAdmin
-      .from('consumer_qr_scans')
-      .insert({
-        qr_code_id: qrCodeData.id,
-        shop_id: shopUser.organization_id, // FK to organizations table (shop org)
-        collected_points: true,
-        points_amount: pointsToAward,
-        points_collected_at: new Date().toISOString(),
-        is_manual_adjustment: false,
-        adjustment_type: 'system_collection'
-      })
-      .select()
-      .single()
+    // 5. Call RPC to collect points securely
+    const { data: result, error: rpcError } = await supabaseAdmin.rpc('consumer_collect_points', {
+      p_raw_qr_code: qr_code,
+      p_shop_id: authData.user.id, // Pass user ID, RPC will look up org
+      p_points_amount: pointsToAward
+    })
 
-    if (scanError) {
-      console.error('❌ Error recording point collection:', scanError)
-      
-      // Check if it's a duplicate key violation (unique constraint)
-      if (scanError.code === '23505') {
-        console.log('⚠️ Duplicate collection attempt detected by database constraint')
-        
-        // Re-check the collection status to return proper response
-        const existing = await checkPointsCollected(supabaseAdmin, qrCodeData.id)
-        const totalBalance = existing?.shop_id 
-          ? await calculateShopTotalPoints(supabaseAdmin, existing.shop_id)
-          : existing?.points_amount || 0
+    if (rpcError) {
+      console.error('RPC Error:', rpcError)
+      return NextResponse.json(
+        { success: false, error: 'Database error: ' + rpcError.message },
+        { status: 500 }
+      )
+    }
+
+    // Handle RPC result
+    if (!result.success) {
+      if (result.already_collected) {
+        // Calculate total balance for response
+        const totalBalance = await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
         
         return NextResponse.json(
           {
             success: false,
             already_collected: true,
-            points_earned: existing?.points_amount || 0,
-            total_balance: totalBalance,
-            error: 'Points for this QR code have already been collected.'
+            error: 'Points for this QR code have already been collected.',
+            points_earned: result.points_earned || 0,
+            total_balance: totalBalance
           },
           { status: 409 }
         )
       }
       
-      return NextResponse.json(
-        { success: false, error: 'Failed to record point collection: ' + scanError.message },
-        { status: 500 }
-      )
+      if (result.code === 'QR_NOT_FOUND') {
+        return NextResponse.json(result, { status: 404 })
+      }
+      if (result.code === 'INVALID_STATUS') {
+        return NextResponse.json(result, { status: 400 })
+      }
+      
+      return NextResponse.json(result, { status: 400 })
     }
 
     console.log('✅ Points awarded successfully:', pointsToAward)
