@@ -72,7 +72,8 @@ async function getJourneyData(code: string) {
         products(
           id,
           product_name,
-          brands(brand_name)
+          brands(brand_name),
+          product_images(image_url, is_primary)
         )
       `)
       .eq('id', qrCode.variant_id)
@@ -94,6 +95,13 @@ async function getJourneyData(code: string) {
 
     const product = variant?.products
     const brand = Array.isArray(product?.brands) ? product.brands[0] : product?.brands
+
+    // Get product image fallback
+    let fallbackImage = null
+    if (product?.product_images && Array.isArray(product.product_images) && product.product_images.length > 0) {
+      const primary = product.product_images.find((img: any) => img.is_primary)
+      fallbackImage = primary ? primary.image_url : product.product_images[0].image_url
+    }
 
     if (!journeyConfig) {
       console.log('❌ No journey configuration found for QR code:', qrCode.id)
@@ -122,7 +130,7 @@ async function getJourneyData(code: string) {
           custom_image_url: journeyConfig.custom_image_url,
           genuine_badge_style: journeyConfig.genuine_badge_style,
           redemption_requires_login: journeyConfig.redemption_requires_login || false,
-          variant_image_url: variant?.image_url || null
+          variant_image_url: variant?.image_url || fallbackImage || null
         },
         product_info: {
           product_name: product?.product_name,

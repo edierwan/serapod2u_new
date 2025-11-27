@@ -121,35 +121,44 @@ export async function POST(request: NextRequest) {
     }
 
     // Update or create consumer_qr_scans record
+    // We must ensure a record exists with redeemed_gift=true to prevent duplicate claims
+    // even if consumer_phone is not provided
+    
+    // Check if scan record exists (try to match by phone if provided, or just insert new)
+    let scanId = null
+    
     if (consumer_phone) {
-      // Check if scan record exists
       const { data: existingScan } = await supabase
         .from('consumer_qr_scans')
         .select('id')
         .eq('qr_code_id', qrCodeData.id)
         .eq('consumer_phone', consumer_phone)
         .maybeSingle()
-
+        
       if (existingScan) {
-        // Update existing record
-        await supabase
-          .from('consumer_qr_scans')
-          .update({ 
-            redeemed_gift: true,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingScan.id)
-      } else {
-        // Create new record
-        await supabase
-          .from('consumer_qr_scans')
-          .insert({
-            qr_code_id: qrCodeData.id,
-            consumer_phone: consumer_phone,
-            redeemed_gift: true,
-            scanned_at: new Date().toISOString()
-          })
+        scanId = existingScan.id
       }
+    }
+
+    if (scanId) {
+      // Update existing record
+      await supabase
+        .from('consumer_qr_scans')
+        .update({ 
+          redeemed_gift: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', scanId)
+    } else {
+      // Create new record
+      await supabase
+        .from('consumer_qr_scans')
+        .insert({
+          qr_code_id: qrCodeData.id,
+          consumer_phone: consumer_phone || null,
+          redeemed_gift: true,
+          scanned_at: new Date().toISOString()
+        })
     }
 
     // Generate redemption code
