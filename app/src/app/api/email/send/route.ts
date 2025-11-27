@@ -181,24 +181,10 @@ async function sendViaGmail(
 ) {
   try {
     const nodemailer = require('nodemailer')
-    const { google } = require('googleapis')
     
     console.log('📧 Gmail send:', { recipients, subject })
-    
-    // Create OAuth2 client
-    const oauth2Client = new google.auth.OAuth2(
-      config.config_public.oauth_client_id,
-      config.config_public.oauth_client_secret,
-      'https://developers.google.com/oauthplayground' // Redirect URI used for token generation
-    )
-    
-    // Set refresh token
-    oauth2Client.setCredentials({
-      refresh_token: config.config_public.oauth_refresh_token
-    })
-    
-    // Get access token
-    const accessToken = await oauth2Client.getAccessToken()
+
+    const { token: accessToken } = await fetchGmailAccessToken(config)
     
     // Create transporter with OAuth2
     const transporter = nodemailer.createTransport({
@@ -209,7 +195,7 @@ async function sendViaGmail(
         clientId: config.config_public.oauth_client_id,
         clientSecret: config.config_public.oauth_client_secret,
         refreshToken: config.config_public.oauth_refresh_token,
-        accessToken: accessToken.token
+        accessToken
       }
     })
     
@@ -235,6 +221,49 @@ async function sendViaGmail(
       success: false,
       error: error.message
     }
+  }
+}
+
+type GmailAccessToken = {
+  token: string
+  expiresIn?: number
+}
+
+async function fetchGmailAccessToken(config: any): Promise<GmailAccessToken> {
+  const params = new URLSearchParams({
+    client_id: config.config_public.oauth_client_id,
+    client_secret: config.config_public.oauth_client_secret,
+    refresh_token: config.config_public.oauth_refresh_token,
+    grant_type: 'refresh_token'
+  })
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: params.toString()
+  })
+
+  const rawBody = await response.text()
+  if (!response.ok) {
+    throw new Error(`Google OAuth token request failed (${response.status}): ${rawBody}`)
+  }
+
+  let parsedBody: any
+  try {
+    parsedBody = JSON.parse(rawBody)
+  } catch (error) {
+    throw new Error(`Unable to parse Google OAuth response: ${rawBody}`)
+  }
+
+  if (!parsedBody?.access_token) {
+    throw new Error('Google OAuth response missing access_token field')
+  }
+
+  return {
+    token: parsedBody.access_token,
+    expiresIn: parsedBody.expires_in
   }
 }
 
