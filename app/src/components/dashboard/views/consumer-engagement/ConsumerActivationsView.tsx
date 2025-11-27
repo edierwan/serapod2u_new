@@ -79,6 +79,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           products ( product_name ),
           product_variants ( variant_name, image_url ),
           redeem_items ( item_name, item_image_url ),
+          redeem_gifts ( gift_name, gift_image_url ),
           consumer_qr_scans ( 
             location_lat, 
             location_lng,
@@ -131,6 +132,10 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             points = qr.points_value || lastScan?.points_amount || 0
         }
 
+        // Gift logic: try redeem_gifts (free gift) first, then redeem_items (points catalog)
+        const giftName = qr.redeem_gifts?.gift_name || qr.redeem_items?.item_name;
+        const giftImage = qr.redeem_gifts?.gift_image_url || qr.redeem_items?.item_image_url;
+
         return {
           id: qr.id,
           consumer_name: qr.consumer_name || 'Anonymous',
@@ -146,8 +151,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           variant_name: qr.product_variants?.variant_name,
           variant_image: qr.product_variants?.image_url,
           sequence_number: qr.sequence_number,
-          gift_name: qr.redeem_items?.item_name,
-          gift_image: qr.redeem_items?.item_image_url
+          gift_name: giftName,
+          gift_image: giftImage
         }
       }) || []
       
