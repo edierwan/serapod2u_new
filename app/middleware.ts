@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/auth', '/verify', '/track', '/api/verify']
+  const PUBLIC_PATHS = ['/auth', '/verify', '/track', '/api/verify', '/api/consumer']
   
   // Check if current path is public
   const isPublicPath = PUBLIC_PATHS.some((path) => 
