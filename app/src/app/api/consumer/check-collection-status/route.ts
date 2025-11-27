@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
       .select('id')
       .eq('qr_code_id', qrCodeData.id)
       .eq('redeemed_gift', true)
+      .limit(1)
       .maybeSingle()
 
     // Step 4: Check if lucky draw entered
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
       .from('lucky_draw_entries')
       .select('id')
       .eq('qr_code_id', qrCodeData.id)
+      .limit(1)
       .maybeSingle()
 
     let totalBalance = 0

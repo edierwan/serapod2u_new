@@ -103,6 +103,12 @@ async function getJourneyData(code: string) {
       fallbackImage = primary ? primary.image_url : product.product_images[0].image_url
     }
 
+    console.log('🖼️ Image Debug:', {
+      variant_image: variant?.image_url,
+      fallback_image: fallbackImage,
+      product_images_count: product?.product_images?.length
+    })
+
     if (!journeyConfig) {
       console.log('❌ No journey configuration found for QR code:', qrCode.id)
       return {

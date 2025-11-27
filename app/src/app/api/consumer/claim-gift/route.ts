@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       .select('id')
       .eq('qr_code_id', qrCodeData.id)
       .eq('redeemed_gift', true)
+      .limit(1)
       .maybeSingle()
 
     if (existingRedemption) {

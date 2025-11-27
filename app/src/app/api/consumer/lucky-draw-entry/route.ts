@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
       .select('id, entry_number, consumer_name')
       .eq('campaign_id', selectedCampaign.id)
       .eq('qr_code_id', qrCodeData.id)
+      .limit(1)
       .maybeSingle()
 
     if (existingEntry) {
