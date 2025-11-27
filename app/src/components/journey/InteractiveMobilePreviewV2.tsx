@@ -742,6 +742,9 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             width={192}
                                             height={192}
                                             className="w-full h-full object-contain"
+                                            unoptimized
+                                            priority
+                                            loading="eager"
                                         />
                                     </div>
                                 ) : (
@@ -834,6 +837,9 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                                             width={400}
                                                             height={192}
                                                             className="w-full h-full object-contain"
+                                                            unoptimized
+                                                            priority
+                                                            loading="eager"
                                                         />
                                                     </div>
                                                 ) : (
