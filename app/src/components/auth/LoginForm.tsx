@@ -140,14 +140,17 @@ export default function LoginForm() {
         headers: {
           'Content-Type': 'application/json'
         }
-      }).then(ipResponse => {
+      }).then(async ipResponse => {
         if (ipResponse.ok) {
-          return ipResponse.json().then(ipData => {
+          try {
+            const ipData = await ipResponse.json()
             const friendlyIp = ipData.displayIp || ipData.ip || 'Unknown'
             console.log('🌐 IP captured:', friendlyIp)
-          })
+          } catch (parseError) {
+            console.error('🌐 Failed to parse IP response:', parseError)
+          }
         } else {
-          console.error('🌐 Failed to capture IP')
+          console.error('🌐 Failed to capture IP:', ipResponse.status)
         }
       }).catch(ipError => {
         console.error('🌐 Exception capturing IP:', ipError)

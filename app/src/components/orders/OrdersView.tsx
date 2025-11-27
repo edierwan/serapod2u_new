@@ -161,6 +161,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         .eq('order_id', orderId)
         .neq('status', 'pending')
       
+      // Step 2b: Get count of stock movements (inventory history)
+      const { count: stockMovementsCount } = await supabase
+        .from('stock_movements')
+        .select('id', { count: 'exact', head: true })
+        .eq('reference_type', 'order')
+        .eq('reference_id', orderId)
+      
       const scannedCount = scannedQR?.length || 0
       const docsList = documents?.map(d => `${d.doc_type}: ${d.doc_no}`).join('\n  ') || 'None'
 
@@ -175,6 +182,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         `• ${docsCount} document(s):\n  ${docsList}\n` +
         `• ${batchesCount} QR batch(es)\n` +
         `• ${codesCount} QR code(s)${scannedCount > 0 ? ` (${scannedCount} scanned)` : ''}\n` +
+        `• ${stockMovementsCount || 0} inventory movement record(s)\n` +
         `• ${excelCount} Excel file(s)\n\n` +
         `⚠️ This action CANNOT be undone!\n\n` +
         `Are you sure you want to delete this order?`

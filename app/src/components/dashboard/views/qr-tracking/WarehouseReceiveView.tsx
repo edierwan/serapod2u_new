@@ -740,7 +740,19 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
   const loadPendingBatches = async () => {
     try {
       const response = await fetch(`/api/warehouse/pending-receives?warehouse_org_id=${userProfile.organization_id}`)
-      if (!response.ok) throw new Error('Failed to load pending batches')
+      if (!response.ok) {
+        console.error('Failed to load pending batches:', response.status, response.statusText)
+        // Try to get error details from response
+        let errorMessage = 'Failed to load pending batches'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          // Response is not JSON, use status text
+          errorMessage = `${response.status}: ${response.statusText}`
+        }
+        throw new Error(errorMessage)
+      }
       let data = await response.json()
 
       console.info('[WarehouseReceive] Pending receives API payload', {
@@ -915,6 +927,11 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
       }
     } catch (error: any) {
       console.error('Error loading pending batches:', error)
+      toast({
+        title: 'Error',
+        description: `Failed to load pending batches: ${error.message}`,
+        variant: 'destructive'
+      })
     }
   }
 

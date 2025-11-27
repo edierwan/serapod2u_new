@@ -8,8 +8,13 @@ export async function GET(request: NextRequest) {
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (authError) {
+      console.error('❌ Auth error in pending-receives:', authError)
+      return NextResponse.json({ error: 'Authentication failed', details: authError.message }, { status: 401 })
+    }
+    
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - no user session' }, { status: 401 })
     }
 
     // Check if user is Super Admin (role_level = 1)
@@ -170,9 +175,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(transformedBatches)
   } catch (error: any) {
     console.error('❌ Pending receives error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to load pending receives' },
-      { status: 500 }
-    )
+    
+    // Ensure we always return valid JSON
+    const errorMessage = error?.message || String(error) || 'Failed to load pending receives'
+    const errorDetails = {
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+      stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    }
+    
+    return NextResponse.json(errorDetails, { status: 500 })
   }
 }
