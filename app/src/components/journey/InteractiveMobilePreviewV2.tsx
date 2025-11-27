@@ -23,6 +23,8 @@ interface JourneyConfig {
     custom_image_url?: string
     genuine_badge_style?: string
     variant_image_url?: string | null
+    lucky_draw_image_url?: string | null
+    lucky_draw_campaign_name?: string | null
 }
 
 type PageType = 'welcome' | 'collect-points' | 'lucky-draw' | 'redeem-gift' | 'thank-you'
@@ -379,7 +381,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             }}
                                         />
                                     </div>
-                                ) : config.product_image_source === 'variant' && config.variant_image_url ? (
+                                ) : (config.product_image_source === 'variant' || !config.product_image_source) && config.variant_image_url ? (
                                     <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden">
                                         <img
                                             src={config.variant_image_url}
@@ -686,8 +688,22 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 </div>
                 <div className="px-4 py-6 space-y-4">
                     <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
-                        <Star className="w-12 h-12 text-purple-600 mx-auto mb-2" />
-                        <p className="text-sm text-purple-800">Enter your details to participate</p>
+                        {config.lucky_draw_image_url ? (
+                            <div className="w-full h-48 mb-4 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+                                <img 
+                                    src={config.lucky_draw_image_url} 
+                                    alt={config.lucky_draw_campaign_name || "Lucky Draw Prize"} 
+                                    className="max-w-full max-h-full object-contain"
+                                />
+                            </div>
+                        ) : (
+                            <Star className="w-12 h-12 text-purple-600 mx-auto mb-2" />
+                        )}
+                        <p className="text-sm text-purple-800">
+                            {config.lucky_draw_campaign_name 
+                                ? `Enter for a chance to win in ${config.lucky_draw_campaign_name}!` 
+                                : "Enter your details to participate"}
+                        </p>
                     </div>
 
                     <div className="space-y-4">

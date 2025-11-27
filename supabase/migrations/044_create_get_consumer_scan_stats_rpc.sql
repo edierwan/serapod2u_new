@@ -1,6 +1,9 @@
 -- Migration: 044_create_get_consumer_scan_stats_rpc.sql
 -- Description: Create RPC function to get consumer scan statistics for an order
 
+-- Drop the function first to avoid return type conflict errors
+DROP FUNCTION IF EXISTS get_consumer_scan_stats(uuid);
+
 CREATE OR REPLACE FUNCTION get_consumer_scan_stats(p_order_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql

@@ -96,6 +96,32 @@ async function getJourneyData(code: string) {
     const product = variant?.products
     const brand = Array.isArray(product?.brands) ? product.brands[0] : product?.brands
 
+    // Get active lucky draw campaign for this order
+    let luckyDrawCampaign = null
+    if (qrCode.order_id) {
+      const { data: links } = await supabase
+        .from('lucky_draw_order_links')
+        .select('campaign_id')
+        .eq('order_id', qrCode.order_id)
+        .limit(1)
+        .maybeSingle()
+
+      if (links?.campaign_id) {
+        const { data: campaign } = await supabase
+          .from('lucky_draw_campaigns')
+          .select('campaign_name, campaign_image_url, status, start_date, end_date')
+          .eq('id', links.campaign_id)
+          .eq('status', 'active')
+          .lte('start_date', new Date().toISOString())
+          .gte('end_date', new Date().toISOString())
+          .maybeSingle()
+        
+        if (campaign) {
+          luckyDrawCampaign = campaign
+        }
+      }
+    }
+
     // Get product image fallback
     let fallbackImage = null
     if (product?.product_images && Array.isArray(product.product_images) && product.product_images.length > 0) {
@@ -132,11 +158,13 @@ async function getJourneyData(code: string) {
           lucky_draw_enabled: journeyConfig.lucky_draw_enabled,
           redemption_enabled: journeyConfig.redemption_enabled,
           show_product_image: journeyConfig.show_product_image,
-          product_image_source: journeyConfig.product_image_source,
+          product_image_source: journeyConfig.product_image_source || 'variant',
           custom_image_url: journeyConfig.custom_image_url,
           genuine_badge_style: journeyConfig.genuine_badge_style,
           redemption_requires_login: journeyConfig.redemption_requires_login || false,
-          variant_image_url: variant?.image_url || fallbackImage || null
+          variant_image_url: variant?.image_url || fallbackImage || null,
+          lucky_draw_image_url: luckyDrawCampaign?.campaign_image_url || null,
+          lucky_draw_campaign_name: luckyDrawCampaign?.campaign_name || null
         },
         product_info: {
           product_name: product?.product_name,
