@@ -73,11 +73,13 @@ interface UserProfile {
 
 interface DashboardContentProps {
   userProfile: UserProfile
+  initialView?: string
+  initialOrderId?: string
 }
 
-export default function DashboardContent({ userProfile }: DashboardContentProps) {
+export default function DashboardContent({ userProfile, initialView, initialOrderId }: DashboardContentProps) {
   const router = useRouter()
-  const [currentView, setCurrentView] = useState('dashboard')
+  const [currentView, setCurrentView] = useState(initialView || 'dashboard')
 
   const handleViewChange = (view: string) => {
     // Don't clear org selection for edit/view flows
@@ -149,7 +151,13 @@ export default function DashboardContent({ userProfile }: DashboardContentProps)
       case 'lucky-draw':
         return <LuckyDrawView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'redeem-gift-management':
-        return <RedeemGiftManagementView userProfile={userProfile} onViewChange={handleViewChange} />
+        return (
+          <RedeemGiftManagementView 
+            userProfile={userProfile} 
+            onViewChange={handleViewChange} 
+            initialOrderId={initialOrderId}
+          />
+        )
       case 'consumer-activations':
         return <ConsumerActivationsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'product-catalog':

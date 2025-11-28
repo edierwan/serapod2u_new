@@ -7,9 +7,14 @@ import { headers } from 'next/headers'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
   // Force Next.js to treat this as dynamic by reading headers
   await headers()
+  const resolvedSearchParams = await searchParams
   
   const supabase = await createClient()
   
@@ -70,5 +75,11 @@ export default async function DashboardPage() {
       : userProfile.roles
   }
 
-  return <DashboardContent userProfile={transformedUserProfile} />
+  return (
+    <DashboardContent 
+      userProfile={transformedUserProfile} 
+      initialView={resolvedSearchParams?.view as string}
+      initialOrderId={resolvedSearchParams?.order_id as string}
+    />
+  )
 }

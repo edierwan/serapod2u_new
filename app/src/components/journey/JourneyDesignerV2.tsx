@@ -866,7 +866,7 @@ export default function JourneyDesignerV2({
                                                 <p className="mt-1">
                                                     {!order.has_redeem 
                                                         ? "This order was created without Redemption enabled." 
-                                                        : <>Please <a href={`/dashboard/consumer-engagement/redeem?order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">configure redemption settings</a> for this order first.</>}
+                                                        : <>Please <a href={`/dashboard?view=redeem-gift-management&order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">configure redemption settings</a> for this order first.</>}
                                                 </p>
                                             </div>
                                         )}

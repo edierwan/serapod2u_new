@@ -37,6 +37,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 interface RedeemGiftManagementViewProps {
     userProfile: any;
     onViewChange: (view: string) => void;
+    initialOrderId?: string;
 }
 
 interface Order {
@@ -61,7 +62,7 @@ interface RedeemGift {
     updated_at: string;
 }
 
-export default function RedeemGiftManagementView({ userProfile, onViewChange }: RedeemGiftManagementViewProps) {
+export default function RedeemGiftManagementView({ userProfile, onViewChange, initialOrderId }: RedeemGiftManagementViewProps) {
   const supabase = createClient();
   const [orders, setOrders] = useState<Order[]>([]);
   const [gifts, setGifts] = useState<RedeemGift[]>([]);
@@ -194,6 +195,16 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange }: 
     fetchOrders();
     fetchRedemptionStatistics();
   }, [fetchOrders, fetchRedemptionStatistics]);
+
+  // Handle initial order selection from URL
+  useEffect(() => {
+    if (orders.length > 0 && initialOrderId && !selectedOrder) {
+      const order = orders.find(o => o.id === initialOrderId);
+      if (order) {
+        setSelectedOrder(order);
+      }
+    }
+  }, [orders, initialOrderId, selectedOrder]);
 
   useEffect(() => {
     if (selectedOrder) {
