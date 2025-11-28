@@ -782,18 +782,22 @@ const handleUniqueShipment = async (
   }
 
   if (qrCode.current_location_org_id && qrCode.current_location_org_id !== session.warehouse_org_id) {
-    console.warn('⚠️ Warehouse mismatch detected:', {
-      code: normalizedCode,
-      qr_current_location: qrCode.current_location_org_id,
-      session_warehouse: session.warehouse_org_id,
-      qr_status: qrCode.status
-    })
-    return {
-      code,
-      normalized_code: normalizedCode,
-      code_type: 'unique',
-      outcome: 'wrong_warehouse',
-      message: `This product code is currently assigned to a different warehouse location. Expected: ${session.warehouse_org_id.substring(0, 8)}..., but code is at: ${qrCode.current_location_org_id.substring(0, 8)}...`
+    // Allow if status is 'warehouse_packed' - this means it's physically at warehouse but logically assigned to a distributor
+    // This allows re-scanning items that were previously scanned but not finalized, or changing distributor
+    if (qrCode.status !== 'warehouse_packed') {
+      console.warn('⚠️ Warehouse mismatch detected:', {
+        code: normalizedCode,
+        qr_current_location: qrCode.current_location_org_id,
+        session_warehouse: session.warehouse_org_id,
+        qr_status: qrCode.status
+      })
+      return {
+        code,
+        normalized_code: normalizedCode,
+        code_type: 'unique',
+        outcome: 'wrong_warehouse',
+        message: `This product code is currently assigned to a different warehouse location. Expected: ${session.warehouse_org_id.substring(0, 8)}..., but code is at: ${qrCode.current_location_org_id.substring(0, 8)}...`
+      }
     }
   }
 
