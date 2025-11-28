@@ -1,6 +1,6 @@
 'use client'
 
-// Build: 2025-11-27 - Force fresh build to resolve detailedStats reference error
+// Build: 2025-11-28 - Fix useMemo reference error
 import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
