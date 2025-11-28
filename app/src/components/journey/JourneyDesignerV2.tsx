@@ -70,6 +70,7 @@ interface JourneyConfig {
     show_product_image?: boolean
     product_image_source?: 'variant' | 'custom' | 'genuine_badge'
     product_image_url?: string
+    variant_image_url?: string | null
     custom_image_url?: string
     genuine_badge_style?: string
 }
@@ -278,6 +279,39 @@ export default function JourneyDesignerV2({
 
         checkFeatures()
     }, [order.id, order.has_lucky_draw, order.has_redeem, journey, supabase])
+
+    // Fetch product variant image
+    useEffect(() => {
+        async function fetchProductImage() {
+            if (!order.id) return
+
+            try {
+                // Get the first order item to find the variant
+                const { data: orderItems } = await supabase
+                    .from('order_items')
+                    .select('variant_id')
+                    .eq('order_id', order.id)
+                    .limit(1)
+                    .single()
+
+                if (orderItems?.variant_id) {
+                    const { data: variant } = await supabase
+                        .from('product_variants')
+                        .select('image_url')
+                        .eq('id', orderItems.variant_id)
+                        .single()
+
+                    if (variant?.image_url) {
+                        setConfig(prev => ({ ...prev, variant_image_url: variant.image_url }))
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching product image:', error)
+            }
+        }
+
+        fetchProductImage()
+    }, [order.id, supabase])
 
     // Compress image for mobile optimization
     const compressImage = (file: File): Promise<File> => {
