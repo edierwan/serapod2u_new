@@ -63,24 +63,52 @@ async function getJourneyData(code: string) {
       console.log('🔍 QR Code company_id:', qrCode.company_id)
     }
 
-    const { data: variant, error: variantError } = await supabase
-      .from('product_variants')
-      .select(`
-        id,
-        variant_name,
-        image_url,
-        products(
+    let variant = null
+    let product = null
+
+    if (qrCode.variant_id) {
+      const { data: v, error: vError } = await supabase
+        .from('product_variants')
+        .select(`
+          id,
+          variant_name,
+          image_url,
+          products(
+            id,
+            product_name,
+            brands(brand_name),
+            product_images(image_url, is_primary)
+          )
+        `)
+        .eq('id', qrCode.variant_id)
+        .single()
+      
+      if (v) {
+        variant = v
+        product = v.products
+      } else if (vError) {
+        console.error('❌ Variant query error:', vError)
+      }
+    }
+
+    // Fallback: If no variant found but product_id exists, fetch product directly
+    if (!product && qrCode.product_id) {
+      const { data: p, error: pError } = await supabase
+        .from('products')
+        .select(`
           id,
           product_name,
           brands(brand_name),
           product_images(image_url, is_primary)
-        )
-      `)
-      .eq('id', qrCode.variant_id)
-      .single()
-
-    if (variantError) {
-      console.error('❌ Variant query error:', variantError)
+        `)
+        .eq('id', qrCode.product_id)
+        .single()
+      
+      if (p) {
+        product = p
+      } else if (pError) {
+        console.error('❌ Product query error:', pError)
+      }
     }
 
     const { data: order, error: orderError } = await supabase
@@ -93,7 +121,6 @@ async function getJourneyData(code: string) {
       console.error('❌ Order query error:', orderError)
     }
 
-    const product = variant?.products
     const brand = Array.isArray(product?.brands) ? product.brands[0] : product?.brands
 
     // Get active lucky draw campaign for this order
