@@ -106,10 +106,10 @@ async function getJourneyData(code: string) {
         .limit(1)
         .maybeSingle()
 
-      if (links?.campaign_id) {
+        if (links?.campaign_id) {
         const { data: campaign } = await supabase
           .from('lucky_draw_campaigns')
-          .select('campaign_name, campaign_image_url, status, start_date, end_date')
+          .select('campaign_name, campaign_image_url, status, start_date, end_date, prizes_json')
           .eq('id', links.campaign_id)
           .eq('status', 'active')
           .lte('start_date', new Date().toISOString())
@@ -164,7 +164,8 @@ async function getJourneyData(code: string) {
           redemption_requires_login: journeyConfig.redemption_requires_login || false,
           variant_image_url: variant?.image_url || fallbackImage || null,
           lucky_draw_image_url: luckyDrawCampaign?.campaign_image_url || null,
-          lucky_draw_campaign_name: luckyDrawCampaign?.campaign_name || null
+          lucky_draw_campaign_name: luckyDrawCampaign?.campaign_name || null,
+          lucky_draw_prizes: luckyDrawCampaign?.prizes_json || []
         },
         product_info: {
           product_name: product?.product_name,

@@ -29,6 +29,9 @@ interface JourneyConfig {
   genuine_badge_style?: string
   redemption_requires_login?: boolean
   variant_image_url?: string | null
+  lucky_draw_image_url?: string | null
+  lucky_draw_campaign_name?: string | null
+  lucky_draw_prizes?: any[]
 }
 
 interface VerificationData {

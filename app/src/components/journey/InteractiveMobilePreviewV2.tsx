@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X } from 'lucide-react'
+import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users } from 'lucide-react'
 
 interface JourneyConfig {
     welcome_title: string
@@ -25,6 +25,7 @@ interface JourneyConfig {
     variant_image_url?: string | null
     lucky_draw_image_url?: string | null
     lucky_draw_campaign_name?: string | null
+    lucky_draw_prizes?: any[]
 }
 
 type PageType = 'welcome' | 'collect-points' | 'lucky-draw' | 'redeem-gift' | 'thank-you'
@@ -394,7 +395,6 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                         <div className="w-24 h-24 bg-white bg-opacity-30 rounded-lg flex items-center justify-center">
                                             <Gift className="w-12 h-12 text-white" />
                                         </div>
-                                        <p className="text-xs mt-1 opacity-75">Product Variant Image</p>
                                     </div>
                                 )}
                             </div>
@@ -678,6 +678,9 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
             )
         }
 
+        const prizes = config.lucky_draw_prizes || []
+        const totalPrizes = prizes.reduce((sum: number, prize: any) => sum + (parseInt(prize.quantity) || 0), 0)
+
         return (
             <>
                 <div className="flex items-center gap-3 px-4 py-3 border-b">
@@ -687,26 +690,67 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     <h2 className="font-semibold">Lucky Draw</h2>
                 </div>
                 <div className="px-4 py-6 space-y-4">
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
-                        {config.lucky_draw_image_url ? (
-                            <div className="w-full h-48 mb-4 rounded-lg overflow-hidden bg-white flex items-center justify-center">
-                                <img 
-                                    src={config.lucky_draw_image_url} 
-                                    alt={config.lucky_draw_campaign_name || "Lucky Draw Prize"} 
-                                    className="max-w-full max-h-full object-contain"
-                                />
+                    {/* Campaign Header */}
+                    <div className="flex items-center justify-between mb-2">
+                        <h1 className="text-xl font-bold text-gray-900">
+                            {config.lucky_draw_campaign_name || 'Lucky Draw'}
+                        </h1>
+                        <div className="flex items-center gap-2">
+                            <div className="w-10 h-5 bg-blue-600 rounded-full relative">
+                                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
                             </div>
-                        ) : (
-                            <Star className="w-12 h-12 text-purple-600 mx-auto mb-2" />
-                        )}
-                        <p className="text-sm text-purple-800">
-                            {config.lucky_draw_campaign_name 
-                                ? `Enter for a chance to win in ${config.lucky_draw_campaign_name}!` 
-                                : "Enter your details to participate"}
-                        </p>
+                            <span className="text-green-600 font-medium text-sm">Active</span>
+                        </div>
                     </div>
 
-                    <div className="space-y-4">
+                    {/* Prizes List */}
+                    {prizes.length > 0 ? (
+                        <div className="flex gap-3 overflow-x-auto pb-2">
+                            {prizes.map((prize: any, idx: number) => (
+                                <div key={idx} className="relative flex-shrink-0">
+                                    <div className="w-20 h-20 bg-white rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center">
+                                        {prize.image_url ? (
+                                            <img 
+                                                src={prize.image_url} 
+                                                alt={prize.name} 
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <Gift className="w-8 h-8 text-gray-300" />
+                                        )}
+                                    </div>
+                                    <div className="absolute -bottom-2 -right-2 bg-black text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                                        x{prize.quantity}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : config.lucky_draw_image_url && (
+                        <div className="w-full h-48 mb-4 rounded-lg overflow-hidden bg-white flex items-center justify-center border border-gray-200">
+                            <img 
+                                src={config.lucky_draw_image_url} 
+                                alt={config.lucky_draw_campaign_name || "Lucky Draw Prize"} 
+                                className="max-w-full max-h-full object-contain"
+                            />
+                        </div>
+                    )}
+
+                    {/* Stats */}
+                    <div className="flex gap-6 text-gray-600 mb-2">
+                        <div className="flex items-center gap-2">
+                            <Users className="w-5 h-5" />
+                            <span>0 entries</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Gift className="w-5 h-5" />
+                            <span>{totalPrizes} prizes</span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 pt-4 border-t border-gray-100">
+                        <p className="text-sm text-purple-800 font-medium text-center">
+                            Enter your details to participate!
+                        </p>
                         <div className="space-y-2">
                             <Label className="text-sm">Name *</Label>
                             <Input

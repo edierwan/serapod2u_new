@@ -504,6 +504,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
     const typeNames: Record<string, string> = {
       'HQ': 'Headquarters',
       'MANU': 'Manufacturer',
+      'MFG': 'Manufacturer',
       'DIST': 'Distributor',
       'WH': 'Warehouse',
       'SHOP': 'Shop',
