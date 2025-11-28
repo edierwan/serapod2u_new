@@ -140,8 +140,6 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <WarehouseReceiveView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'warehouse-ship-v2':
         return <WarehouseShipV2 userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'consumer-scan':
-        return <ConsumerScanView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'qr-validation':
         return <QRValidationView userProfile={userProfile} onViewChange={handleViewChange} />
 

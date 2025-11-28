@@ -117,6 +117,48 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
     exportData.transaction_data.document_workflows = docWorkflows || []
 
+    // Inventory
+    const { data: inventory } = await supabase
+      .from('inventory' as any)
+      .select('*')
+      .order('created_at', { ascending: false })
+    exportData.transaction_data.inventory = inventory || []
+
+    // Consumer QR Scans
+    const { data: consumerScans } = await supabase
+      .from('consumer_qr_scans')
+      .select('*')
+      .order('created_at', { ascending: false })
+    exportData.transaction_data.consumer_qr_scans = consumerScans || []
+
+    // Lucky Draw Entries
+    const { data: luckyDrawEntries } = await supabase
+      .from('lucky_draw_entries')
+      .select('*')
+      .order('created_at', { ascending: false })
+    exportData.transaction_data.lucky_draw_entries = luckyDrawEntries || []
+
+    // Points Transactions
+    const { data: pointsTransactions } = await supabase
+      .from('points_transactions')
+      .select('*')
+      .order('created_at', { ascending: false })
+    exportData.transaction_data.points_transactions = pointsTransactions || []
+
+    // Consumer Activations
+    const { data: consumerActivations } = await supabase
+      .from('consumer_activations')
+      .select('*')
+      .order('created_at', { ascending: false })
+    exportData.transaction_data.consumer_activations = consumerActivations || []
+
+    // Journey Order Links
+    const { data: journeyOrderLinks } = await supabase
+      .from('journey_order_links')
+      .select('*')
+      .order('created_at', { ascending: false })
+    exportData.transaction_data.journey_order_links = journeyOrderLinks || []
+
     console.log('✓ Transaction data exported')
 
     // ========================================
@@ -230,7 +272,13 @@ export async function POST(request: NextRequest) {
         invoices: invoices?.length || 0,
         payments: payments?.length || 0,
         shipments: shipments?.length || 0,
-        document_workflows: docWorkflows?.length || 0
+        document_workflows: docWorkflows?.length || 0,
+        inventory: inventory?.length || 0,
+        consumer_qr_scans: consumerScans?.length || 0,
+        lucky_draw_entries: luckyDrawEntries?.length || 0,
+        points_transactions: pointsTransactions?.length || 0,
+        consumer_activations: consumerActivations?.length || 0,
+        journey_order_links: journeyOrderLinks?.length || 0
       },
       master_data: {
         organizations: organizations?.length || 0,

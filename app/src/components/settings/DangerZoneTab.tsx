@@ -13,6 +13,7 @@ import {
   Trash2, 
   Database, 
   Download,
+  Upload,
   AlertCircle,
   Shield,
   Loader2
@@ -62,6 +63,7 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
 
   // Backup/Export state
   const [exportLoading, setExportLoading] = useState(false)
+  const [restoreLoading, setRestoreLoading] = useState(false)
 
   if (!isSuperAdmin) {
     return (
@@ -129,6 +131,75 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
       })
     } finally {
       setExportLoading(false)
+    }
+  }
+
+  const handleRestoreBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      setRestoreLoading(true)
+      
+      toast({
+        title: 'Restore Started',
+        description: 'Reading backup file...',
+      })
+
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const jsonContent = e.target?.result as string
+          const backupData = JSON.parse(jsonContent)
+
+          toast({
+            title: 'Restoring Data',
+            description: 'Uploading and restoring data... This may take a while.',
+          })
+
+          const response = await fetch('/api/admin/restore-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(backupData),
+          })
+
+          const result = await response.json()
+
+          if (!response.ok) {
+            const errorMessage = result.details || result.error || 'Restore failed'
+            throw new Error(errorMessage)
+          }
+
+          toast({
+            title: 'Restore Complete',
+            description: `Successfully restored data.`,
+          })
+          
+          // Reset file input
+          event.target.value = ''
+          
+        } catch (error: any) {
+          console.error('Restore processing error:', error)
+          toast({
+            title: 'Restore Failed',
+            description: error.message || 'Could not process backup file.',
+            variant: 'destructive',
+          })
+        } finally {
+          setRestoreLoading(false)
+        }
+      }
+      
+      reader.readAsText(file)
+
+    } catch (error: any) {
+      console.error('Restore error:', error)
+      toast({
+        title: 'Restore Failed',
+        description: error.message || 'Could not restore data.',
+        variant: 'destructive',
+      })
+      setRestoreLoading(false)
     }
   }
 
@@ -284,53 +355,105 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
         </div>
       </div>
 
-      {/* Export Backup Section */}
-      <Card className="border-blue-200">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Download className="w-5 h-5 text-blue-600" />
-            <CardTitle>Export Data Backup</CardTitle>
-          </div>
-          <CardDescription>
-            Download a complete backup of all system data before performing any deletions
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-semibold text-blue-900 mb-2">Backup includes:</h4>
-              <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
-                <li>All transaction records (orders, QR codes, invoices)</li>
-                <li>All master data (products, organizations, users)</li>
-                <li>System configuration and settings</li>
-                <li>Timestamps and metadata</li>
-              </ul>
-              <p className="text-xs text-blue-600 mt-3 italic">
-                * File links are not included in backup. Download files separately if needed.
-              </p>
+      {/* Backup & Restore Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Export Backup */}
+        <Card className="border-blue-200">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Download className="w-5 h-5 text-blue-600" />
+              <CardTitle>Export Data Backup</CardTitle>
             </div>
+            <CardDescription>
+              Download a complete backup of all system data
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 h-40 overflow-y-auto">
+                <h4 className="font-semibold text-blue-900 mb-2">Backup includes:</h4>
+                <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
+                  <li>All transaction records</li>
+                  <li>All master data</li>
+                  <li>System configuration</li>
+                  <li>Timestamps and metadata</li>
+                </ul>
+              </div>
 
-            <Button 
-              onClick={handleExportBackup} 
-              disabled={exportLoading}
-              className="w-full"
-              variant="outline"
-            >
-              {exportLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Backup Now
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <Button 
+                onClick={handleExportBackup} 
+                disabled={exportLoading}
+                className="w-full"
+                variant="outline"
+              >
+                {exportLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Export Backup Now
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Restore Backup */}
+        <Card className="border-green-200">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-green-600" />
+              <CardTitle>Restore Data Backup</CardTitle>
+            </div>
+            <CardDescription>
+              Restore transaction data from a backup file
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 h-40 overflow-y-auto">
+                <h4 className="font-semibold text-green-900 mb-2">Restore Process:</h4>
+                <p className="text-sm text-green-700 mb-2">
+                  This will restore transaction data (orders, QR codes, inventory) from a previously exported JSON file.
+                </p>
+                <p className="text-xs text-green-600 italic">
+                  * Recommended: Delete existing transactions first to avoid duplicates.
+                </p>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleRestoreBackup}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  disabled={restoreLoading}
+                />
+                <Button 
+                  className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  disabled={restoreLoading}
+                >
+                  {restoreLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Restoring...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Select Backup File to Restore
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Delete Transactions Only */}
       <Card className="border-orange-200">

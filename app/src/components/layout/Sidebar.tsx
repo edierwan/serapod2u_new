@@ -148,16 +148,6 @@ const navigationItems: MenuItem[] = [
         }
       },
       {
-        id: 'consumer-scan',
-        label: 'Consumer Scan',
-        icon: Scan,
-        access: {
-          // Shops and HQ
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 50
-        }
-      },
-      {
         id: 'qr-validation',
         label: 'Validation Reports',
         icon: ShieldCheck,
