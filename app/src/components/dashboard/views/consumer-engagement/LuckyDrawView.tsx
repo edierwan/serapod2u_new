@@ -88,6 +88,7 @@ interface Prize {
   description: string
   quantity: number
   image_url?: string
+  file?: File
 }
 
 interface LuckyDrawViewProps {
@@ -284,19 +285,29 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
 
     try {
       let imageUrl = newPrize.image_url
+      let fileToUpload = prizeImageFile
 
-      // Upload image if a new file is selected
-      if (prizeImageFile && selectedCampaign) {
+      // Compress image if selected
+      if (fileToUpload) {
+        try {
+          fileToUpload = await compressImage(fileToUpload)
+        } catch (err) {
+          console.error('Image compression failed, using original:', err)
+        }
+      }
+
+      // Upload image if a new file is selected AND we have a campaign ID
+      if (fileToUpload && selectedCampaign) {
         const { createClient } = await import('@/lib/supabase/client')
         const supabase = createClient()
         
-        const fileExt = prizeImageFile.name.split('.').pop()
+        const fileExt = fileToUpload.name.split('.').pop()
         const fileName = `${selectedCampaign.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
         const filePath = `lucky-draw-prizes/${selectedCampaign.id}/${fileName}`
 
         const { error: uploadError } = await supabase.storage
           .from('avatars') // Use same bucket as avatars
-          .upload(filePath, prizeImageFile, {
+          .upload(filePath, fileToUpload, {
             cacheControl: '3600',
             upsert: true
           })
@@ -312,9 +323,17 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
           .getPublicUrl(filePath)
         
         imageUrl = `${publicUrl}?v=${Date.now()}`
+        fileToUpload = null // Clear file since it's uploaded
+      } else if (fileToUpload && !selectedCampaign) {
+        // If no campaign yet (creating new), use preview URL temporarily and store file
+        imageUrl = prizeImagePreview || ''
       }
 
-      const prizeWithImage = { ...newPrize, image_url: imageUrl }
+      const prizeWithImage: Prize = { 
+        ...newPrize, 
+        image_url: imageUrl,
+        file: fileToUpload || undefined
+      }
 
       let updatedPrizes: Prize[]
       if (editingPrizeIndex !== null) {
@@ -327,8 +346,10 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
       
       setPrizes(updatedPrizes)
 
-      // Save to database immediately
-      await handleSavePrizes(updatedPrizes)
+      // Save to database immediately ONLY if we are editing an existing campaign
+      if (selectedCampaign) {
+        await handleSavePrizes(updatedPrizes)
+      }
 
       setNewPrize({ name: '', description: '', quantity: 1, image_url: '' })
       setPrizeImageFile(null)
@@ -440,6 +461,72 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
     totalWinners: entries.filter(e => e.is_winner).length,
     totalPrizes: selectedCampaign?.prizes_json?.reduce((sum, p) => sum + p.quantity, 0) || 0,
     claimedPrizes: entries.filter(e => e.is_winner && e.prize_claimed).length
+  }
+
+  // Compress image for mobile optimization
+  const compressImage = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = (event) => {
+        const img = new window.Image()
+        img.src = event.target?.result as string
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'))
+            return
+          }
+
+          // Target size: 400x400px for mobile display
+          const MAX_WIDTH = 400
+          const MAX_HEIGHT = 400
+          let width = img.width
+          let height = img.height
+
+          // Calculate aspect ratio
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width)
+              width = MAX_WIDTH
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width * MAX_HEIGHT) / height)
+              height = MAX_HEIGHT
+            }
+          }
+
+          canvas.width = width
+          canvas.height = height
+
+          // Draw image on canvas with high quality
+          ctx.imageSmoothingEnabled = true
+          ctx.imageSmoothingQuality = 'high'
+          ctx.drawImage(img, 0, 0, width, height)
+
+          // Convert to blob with compression (JPEG 70% quality for ~5KB)
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                })
+                resolve(compressedFile)
+              } else {
+                reject(new Error('Failed to compress image'))
+              }
+            },
+            'image/jpeg',
+            0.7
+          )
+        }
+        img.onerror = () => reject(new Error('Failed to load image'))
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+    })
   }
 
   return (
@@ -1015,17 +1102,49 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
                 <div className="space-y-2">
                   {prizes.map((prize, idx) => (
                     <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">{prize.name}</div>
-                        <div className="text-xs text-gray-600">Quantity: {prize.quantity}</div>
+                      <div className="flex items-center gap-3 flex-1">
+                        {prize.image_url && (
+                          <div className="w-10 h-10 rounded overflow-hidden border bg-white flex-shrink-0">
+                            <Image
+                              src={prize.image_url}
+                              alt={prize.name}
+                              width={40}
+                              height={40}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-medium text-sm">{prize.name}</div>
+                          <div className="text-xs text-gray-600">Quantity: {prize.quantity}</div>
+                        </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        variant="ghost"
-                        onClick={() => handleDeletePrize(idx)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingPrizeIndex(idx)
+                            setNewPrize({ 
+                              name: prize.name, 
+                              description: prize.description, 
+                              quantity: prize.quantity,
+                              image_url: prize.image_url || ''
+                            })
+                            setPrizeImagePreview(prize.image_url || null)
+                            setShowPrizeModal(true)
+                          }}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => handleDeletePrize(idx)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
