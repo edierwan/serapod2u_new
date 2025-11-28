@@ -261,6 +261,32 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: updateError.message }, { status: 500 })
     }
 
+    // Sync with Journey Builder configuration if status changed
+    if (status) {
+      try {
+        // Find the link to get journey_config_id
+        const { data: link } = await supabase
+          .from('lucky_draw_order_links')
+          .select('journey_config_id')
+          .eq('campaign_id', campaign_id)
+          .single()
+
+        if (link && link.journey_config_id) {
+          // Update journey configuration
+          await supabase
+            .from('journey_configurations')
+            .update({ 
+              lucky_draw_enabled: status === 'active',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', link.journey_config_id)
+        }
+      } catch (syncError) {
+        console.error('Error syncing with journey config:', syncError)
+        // Don't fail the request if sync fails, just log it
+      }
+    }
+
     let message = 'Campaign updated successfully'
     if (status && prizes_json !== undefined) {
       message = `Campaign status updated to ${status} and prizes updated`

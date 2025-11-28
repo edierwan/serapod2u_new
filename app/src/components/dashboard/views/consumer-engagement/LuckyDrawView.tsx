@@ -38,6 +38,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Switch } from '@/components/ui/switch'
 
 interface UserProfile {
   id: string
@@ -740,19 +741,46 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
                               <div className="flex-1">
                                 <div className="flex items-center gap-3 mb-2">
                                   <h3 className="font-semibold text-lg">{campaign.campaign_name}</h3>
-                                  <Badge 
-                                    className={
-                                      campaign.status === 'active' ? 'bg-green-500' :
-                                      campaign.status === 'draft' ? 'bg-gray-500' :
-                                      campaign.status === 'drawn' ? 'bg-blue-500' :
-                                      campaign.status === 'closed' ? 'bg-red-500' :
-                                      'bg-purple-500'
-                                    }
-                                  >
-                                    {campaign.status}
-                                  </Badge>
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      checked={campaign.status === 'active'}
+                                      onCheckedChange={(checked) => handleToggleCampaignStatus(campaign.id, checked ? 'active' : 'closed')}
+                                    />
+                                    <span className={`text-sm font-medium ${campaign.status === 'active' ? 'text-green-600' : 'text-gray-500'}`}>
+                                      {campaign.status === 'active' ? 'Active' : 'Inactive'}
+                                    </span>
+                                  </div>
                                 </div>
                                 <p className="text-sm text-gray-500 mb-3">{campaign.campaign_description}</p>
+                                
+                                {/* Prize Images Preview */}
+                                {campaign.prizes_json && campaign.prizes_json.length > 0 && (
+                                  <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2">
+                                    {campaign.prizes_json.map((prize, idx) => (
+                                      <div key={idx} className="relative group flex-shrink-0">
+                                        <div className="w-12 h-12 rounded-lg border bg-gray-50 overflow-hidden">
+                                          {prize.image_url ? (
+                                            <Image
+                                              src={prize.image_url}
+                                              alt={prize.name}
+                                              width={48}
+                                              height={48}
+                                              className="w-full h-full object-cover"
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                              <Gift className="w-6 h-6" />
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="absolute -bottom-1 -right-1 bg-black text-white text-[10px] px-1 rounded-full">
+                                          x{prize.quantity}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
                                 <div className="flex items-center gap-4 text-xs text-gray-600">
                                   <div className="flex items-center gap-1">
                                     <Users className="w-4 h-4" />
@@ -790,25 +818,6 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
                                   <Edit className="w-4 h-4 mr-1" />
                                   Edit
                                 </Button>
-                                {campaign.status === 'draft' && (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleToggleCampaignStatus(campaign.id, 'active')}
-                                    className="bg-green-500 hover:bg-green-600"
-                                  >
-                                    <Sparkles className="w-4 h-4 mr-1" />
-                                    Activate
-                                  </Button>
-                                )}
-                                {campaign.status === 'active' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleToggleCampaignStatus(campaign.id, 'closed')}
-                                  >
-                                    Close
-                                  </Button>
-                                )}
                               </div>
                             </div>
                           </CardContent>

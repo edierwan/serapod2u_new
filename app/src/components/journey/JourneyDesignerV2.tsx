@@ -96,6 +96,7 @@ export default function JourneyDesignerV2({
     const [hasLuckyDrawCampaign, setHasLuckyDrawCampaign] = useState(false)
     const [hasRedemptionConfig, setHasRedemptionConfig] = useState(false)
     const [checkingFeatures, setCheckingFeatures] = useState(true)
+    const [luckyDrawCampaignId, setLuckyDrawCampaignId] = useState<string | null>(null)
     const headerRef = useRef<HTMLDivElement | null>(null)
     const [previewMetrics, setPreviewMetrics] = useState({ top: 104, maxHeight: 640 })
     const { toast } = useToast()
@@ -242,12 +243,15 @@ export default function JourneyDesignerV2({
                 if (order.has_lucky_draw) {
                     const { data: ldLink } = await supabase
                         .from('lucky_draw_order_links')
-                        .select('id')
+                        .select('id, campaign_id')
                         .eq('order_id', order.id)
                         .limit(1)
                         .maybeSingle()
                     
                     setHasLuckyDrawCampaign(!!ldLink)
+                    if (ldLink?.campaign_id) {
+                        setLuckyDrawCampaignId(ldLink.campaign_id)
+                    }
                     
                     // If no campaign, ensure toggle is off (only for new journeys or if invalid)
                     if (!ldLink && !journey) {
@@ -548,6 +552,17 @@ export default function JourneyDesignerV2({
                     console.error('Supabase link error:', linkError)
                     throw new Error(linkError.message || 'Failed to link journey to order')
                 }
+            }
+
+            // Update Lucky Draw Campaign status if needed
+            if (luckyDrawCampaignId) {
+                await supabase
+                    .from('lucky_draw_campaigns')
+                    .update({ 
+                        status: config.lucky_draw_enabled ? 'active' : 'closed',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', luckyDrawCampaignId)
             }
 
             // Show success message based on activation status

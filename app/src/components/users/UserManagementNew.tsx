@@ -65,6 +65,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
   const [roleFilter, setRoleFilter] = useState('')
   const [orgFilter, setOrgFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [orgTypeFilter, setOrgTypeFilter] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [roles, setRoles] = useState<Role[]>([])
@@ -424,6 +425,10 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       
       // Organization filter
       const matchesOrg = !orgFilter || user.organization_id === orgFilter
+
+      // Organization Type filter
+      const userOrg = organizations.find(o => o.id === user.organization_id)
+      const matchesOrgType = !orgTypeFilter || (userOrg && userOrg.org_type_code === orgTypeFilter)
       
       // Status filter
       const matchesStatus = !statusFilter || 
@@ -431,8 +436,9 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         (statusFilter === 'inactive' && !user.is_active) ||
         (statusFilter === 'verified' && user.is_verified) ||
         (statusFilter === 'unverified' && !user.is_verified)
-      
-      return matchesSearch && matchesRole && matchesOrg && matchesStatus
+
+            return matchesSearch && matchesRole && matchesOrg && matchesOrgType && matchesStatus
+    })
     })
     .sort((a, b) => {
       let aVal: any = a[sortField]
@@ -589,7 +595,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       <Card>
         <CardContent className="pt-6 space-y-4">
           {/* Filters Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Role Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Role</label>
@@ -604,6 +610,23 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                     {role.role_name}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            {/* Organization Type Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Org Type</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setOrgTypeFilter(e.target.value)}
+                value={orgTypeFilter}
+              >
+                <option value="">All Types</option>
+                <option value="HQ">Headquarters</option>
+                <option value="MANU">Manufacturer</option>
+                <option value="DIST">Distributor</option>
+                <option value="WH">Warehouse</option>
+                <option value="SHOP">Shop</option>
               </select>
             </div>
 
@@ -637,6 +660,23 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 <option value="inactive">Inactive</option>
                 <option value="verified">Verified</option>
                 <option value="unverified">Unverified</option>
+              </select>
+            </div>
+
+            {/* Organization Type Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Organization Type</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setOrgTypeFilter(e.target.value)}
+                value={orgTypeFilter}
+              >
+                <option value="">All Types</option>
+                {Array.from(new Set(organizations.map(org => org.org_type_code))).map(typeCode => (
+                  <option key={typeCode} value={typeCode}>
+                    {getOrgTypeName(typeCode)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

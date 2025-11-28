@@ -299,6 +299,7 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
           unit_price,
           product_variants!inner(
             product_id,
+            base_cost,
             products!inner(
               product_name,
               product_code,
@@ -307,10 +308,14 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
           ),
           orders!inner(
             status,
-            created_at
+            created_at,
+            seller_org:organizations!orders_seller_org_id_fkey!inner(org_type_code),
+            buyer_org:organizations!orders_buyer_org_id_fkey!inner(org_type_code)
           )
         `)
         .eq('orders.status', 'approved')
+        .eq('orders.seller_org.org_type_code', 'WH')
+        .eq('orders.buyer_org.org_type_code', 'DIST')
         .gte('orders.created_at', periods.currentStart.toISOString())
         .lte('orders.created_at', periods.currentEnd.toISOString())
 
@@ -323,10 +328,14 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
         const key = product.product_code
         const existing = productMap.get(key)
         
+        const baseCost = item.product_variants?.base_cost || 0
+        const unitPrice = item.unit_price || 0
+        const revenue = (unitPrice - baseCost) * (item.qty || 0)
+        
         if (existing) {
           existing.total_quantity += item.qty || 0
           existing.total_orders += 1
-          existing.total_revenue += (item.qty || 0) * (item.unit_price || 0)
+          existing.total_revenue += revenue
         } else {
           productMap.set(key, {
             product_name: product.product_name,
@@ -334,7 +343,7 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
             brand_name: product.brand_name,
             total_quantity: item.qty || 0,
             total_orders: 1,
-            total_revenue: (item.qty || 0) * (item.unit_price || 0),
+            total_revenue: revenue,
             previous_quantity: 0,
             growth_percent: 0
           })
@@ -355,10 +364,14 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
             ),
             orders!inner(
               status,
-              created_at
+              created_at,
+              seller_org:organizations!orders_seller_org_id_fkey!inner(org_type_code),
+              buyer_org:organizations!orders_buyer_org_id_fkey!inner(org_type_code)
             )
           `)
           .eq('orders.status', 'approved')
+          .eq('orders.seller_org.org_type_code', 'WH')
+          .eq('orders.buyer_org.org_type_code', 'DIST')
           .gte('orders.created_at', periods.previousStart.toISOString())
           .lte('orders.created_at', periods.previousEnd.toISOString())
 
