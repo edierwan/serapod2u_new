@@ -92,6 +92,9 @@ export default function JourneyDesignerV2({
     const [uploadingImage, setUploadingImage] = useState(false)
     const [productsShipped, setProductsShipped] = useState(false)
     const [checkingShipment, setCheckingShipment] = useState(true)
+    const [hasLuckyDrawCampaign, setHasLuckyDrawCampaign] = useState(false)
+    const [hasRedemptionConfig, setHasRedemptionConfig] = useState(false)
+    const [checkingFeatures, setCheckingFeatures] = useState(true)
     const headerRef = useRef<HTMLDivElement | null>(null)
     const [previewMetrics, setPreviewMetrics] = useState({ top: 104, maxHeight: 640 })
     const { toast } = useToast()
@@ -226,6 +229,55 @@ export default function JourneyDesignerV2({
         
         checkShipmentStatus()
     }, [order.id, order.order_no, supabase])
+
+    // Check for feature configuration existence
+    useEffect(() => {
+        async function checkFeatures() {
+            if (!order.id) return
+            setCheckingFeatures(true)
+            
+            try {
+                // Check Lucky Draw
+                if (order.has_lucky_draw) {
+                    const { data: ldLink } = await supabase
+                        .from('lucky_draw_order_links')
+                        .select('id')
+                        .eq('order_id', order.id)
+                        .limit(1)
+                        .maybeSingle()
+                    
+                    setHasLuckyDrawCampaign(!!ldLink)
+                    
+                    // If no campaign, ensure toggle is off (only for new journeys or if invalid)
+                    if (!ldLink && !journey) {
+                        setConfig(prev => ({ ...prev, lucky_draw_enabled: false }))
+                    }
+                }
+
+                // Check Redemption
+                if (order.has_redeem) {
+                    const { count } = await supabase
+                        .from('redemption_gifts')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('order_id', order.id)
+                    
+                    const hasRedeem = (count || 0) > 0
+                    setHasRedemptionConfig(hasRedeem)
+
+                    // If no redemption config, ensure toggle is off
+                    if (!hasRedeem && !journey) {
+                        setConfig(prev => ({ ...prev, redemption_enabled: false }))
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking features:', error)
+            } finally {
+                setCheckingFeatures(false)
+            }
+        }
+
+        checkFeatures()
+    }, [order.id, order.has_lucky_draw, order.has_redeem, journey, supabase])
 
     // Compress image for mobile optimization
     const compressImage = (file: File): Promise<File> => {
@@ -711,13 +763,23 @@ export default function JourneyDesignerV2({
                                             <Switch
                                                 checked={config.lucky_draw_enabled && order.has_lucky_draw}
                                                 onCheckedChange={(checked) => {
-                                                    if (checked && !order.has_lucky_draw) {
-                                                        toast({
-                                                            title: "Cannot enable Lucky Draw",
-                                                            description: "Please create a lucky draw campaign for this order first.",
-                                                            variant: "destructive",
-                                                        })
-                                                        return
+                                                    if (checked) {
+                                                        if (!order.has_lucky_draw) {
+                                                            toast({
+                                                                title: "Cannot enable Lucky Draw",
+                                                                description: "This order type does not support Lucky Draw.",
+                                                                variant: "destructive",
+                                                            })
+                                                            return
+                                                        }
+                                                        if (!hasLuckyDrawCampaign && !checkingFeatures) {
+                                                            toast({
+                                                                title: "Cannot enable Lucky Draw",
+                                                                description: "Please create a lucky draw campaign for this order first.",
+                                                                variant: "destructive",
+                                                            })
+                                                            return
+                                                        }
                                                     }
                                                     setConfig({ ...config, lucky_draw_enabled: checked })
                                                 }}
@@ -727,11 +789,15 @@ export default function JourneyDesignerV2({
                                             Give consumers chances to win prizes
                                         </p>
 
-                                        {!order.has_lucky_draw && (
+                                        {(!order.has_lucky_draw || (order.has_lucky_draw && !hasLuckyDrawCampaign && !checkingFeatures)) && (
                                             <div className="mt-3 text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-                                                <p className="font-medium">No Lucky Draw Campaign Found</p>
+                                                <p className="font-medium">
+                                                    {!order.has_lucky_draw ? "Feature Not Available" : "No Lucky Draw Campaign Found"}
+                                                </p>
                                                 <p className="mt-1">
-                                                    Please <a href={`/dashboard/consumer-engagement/lucky-draw?order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">create a lucky draw campaign</a> for this order first.
+                                                    {!order.has_lucky_draw 
+                                                        ? "This order was created without Lucky Draw enabled." 
+                                                        : <>Please <a href={`/dashboard/consumer-engagement/lucky-draw?order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">create a lucky draw campaign</a> for this order first.</>}
                                                 </p>
                                             </div>
                                         )}
@@ -766,13 +832,23 @@ export default function JourneyDesignerV2({
                                             <Switch
                                                 checked={config.redemption_enabled && order.has_redeem}
                                                 onCheckedChange={(checked) => {
-                                                    if (checked && !order.has_redeem) {
-                                                        toast({
-                                                            title: "Cannot enable Redemption",
-                                                            description: "Please configure redemption settings for this order first.",
-                                                            variant: "destructive",
-                                                        })
-                                                        return
+                                                    if (checked) {
+                                                        if (!order.has_redeem) {
+                                                            toast({
+                                                                title: "Cannot enable Redemption",
+                                                                description: "This order type does not support Redemption.",
+                                                                variant: "destructive",
+                                                            })
+                                                            return
+                                                        }
+                                                        if (!hasRedemptionConfig && !checkingFeatures) {
+                                                            toast({
+                                                                title: "Cannot enable Redemption",
+                                                                description: "Please configure redemption settings for this order first.",
+                                                                variant: "destructive",
+                                                            })
+                                                            return
+                                                        }
                                                     }
                                                     setConfig({ ...config, redemption_enabled: checked })
                                                 }}
@@ -782,11 +858,15 @@ export default function JourneyDesignerV2({
                                             Consumers claim free gifts at shops by scanning QR codes
                                         </p>
 
-                                        {!order.has_redeem && (
+                                        {(!order.has_redeem || (order.has_redeem && !hasRedemptionConfig && !checkingFeatures)) && (
                                             <div className="mt-3 text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-                                                <p className="font-medium">No Redemption Configuration Found</p>
+                                                <p className="font-medium">
+                                                    {!order.has_redeem ? "Feature Not Available" : "No Redemption Configuration Found"}
+                                                </p>
                                                 <p className="mt-1">
-                                                    Please <a href={`/dashboard/consumer-engagement/redeem?order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">configure redemption settings</a> for this order first.
+                                                    {!order.has_redeem 
+                                                        ? "This order was created without Redemption enabled." 
+                                                        : <>Please <a href={`/dashboard/consumer-engagement/redeem?order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">configure redemption settings</a> for this order first.</>}
                                                 </p>
                                             </div>
                                         )}
