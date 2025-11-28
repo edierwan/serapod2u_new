@@ -66,7 +66,8 @@ export async function GET(request: NextRequest) {
     const availableGifts = gifts?.filter(gift => {
       if (gift.start_date && new Date(gift.start_date) > now) return false
       if (gift.end_date && new Date(gift.end_date) < now) return false
-      if (gift.claimed_quantity >= gift.total_quantity) return false
+      // If total_quantity is 0, it means unlimited, so don't check quantity limit
+      if (gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity) return false
       return true
     }) || []
 
