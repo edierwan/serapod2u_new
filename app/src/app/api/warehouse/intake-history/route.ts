@@ -10,6 +10,7 @@ interface HistoryRow {
   orderId: string
   orderNo: string
   buyerOrgName: string | null
+  sellerOrgName: string | null // NEW: Seller organization name
   casesReceived: number
   unitsReceived: number
   casesScanned: number
@@ -98,6 +99,7 @@ export async function GET(request: NextRequest) {
         `
           id,
           master_code,
+          company_id,
           warehouse_received_at,
           warehouse_org_id,
           actual_unit_count,
@@ -108,7 +110,14 @@ export async function GET(request: NextRequest) {
               id,
               order_no,
               buyer_org_id,
+              seller_org_id,
               organizations!orders_buyer_org_id_fkey (
+                org_name
+              ),
+              seller_org:organizations!orders_seller_org_id_fkey (
+                org_name
+              ),
+              company:organizations!orders_company_id_fkey (
                 org_name
               )
             )
@@ -192,6 +201,16 @@ export async function GET(request: NextRequest) {
       const buyerOrgRecord = Array.isArray(buyerOrg) ? buyerOrg[0] : buyerOrg
       const buyerOrgName = buyerOrgRecord?.org_name || null
 
+      const sellerOrg = orderRecord?.seller_org
+      const sellerOrgRecord = Array.isArray(sellerOrg) ? sellerOrg[0] : sellerOrg
+      
+      const companyOrg = orderRecord?.company
+      const companyOrgRecord = Array.isArray(companyOrg) ? companyOrg[0] : companyOrg
+
+      // Fallback: If seller_org is missing, try to use company_id from the master code or order
+      // Note: In this system, Company usually equals Manufacturer
+      let sellerOrgName = sellerOrgRecord?.org_name || companyOrgRecord?.org_name || null
+
       const resolvedOrderNo = (() => {
         const rawOrderNo = orderRecord?.order_no || null
         if (rawOrderNo && rawOrderNo.trim().length > 0) {
@@ -210,6 +229,7 @@ export async function GET(request: NextRequest) {
           orderId,
           orderNo: resolvedOrderNo,
           buyerOrgName,
+          sellerOrgName,
           casesReceived: 1,
           unitsReceived: units,
           casesScanned: 0, // Will be updated below
@@ -304,16 +324,48 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // NEW: Load unlinked shipped codes (loose items) for these orders
+        // These are codes that were shipped but unlinked from their master case
+        let unlinkedShippedByOrder = new Map<string, number>()
+        if (orderIds.length > 0) {
+          const { data: unlinkedRows, error: unlinkedError } = await supabase
+            .from('qr_codes')
+            .select(`
+              qr_batches!inner (
+                order_id
+              )
+            `)
+            .eq('status', 'shipped_distributor')
+            .is('master_code_id', null)
+            .in('qr_batches.order_id', orderIds)
+
+          if (!unlinkedError && unlinkedRows) {
+            unlinkedShippedByOrder = unlinkedRows.reduce((map: Map<string, number>, row: any) => {
+              const batches = Array.isArray(row.qr_batches) ? row.qr_batches : [row.qr_batches]
+              const batch = batches[0]
+              const orderId = batch?.order_id
+              if (orderId) {
+                map.set(orderId, (map.get(orderId) || 0) + 1)
+              }
+              return map
+            }, new Map<string, number>())
+          }
+        }
+
         const casesShippedByOrder = new Map<string, number>()
         const unitsShippedByOrder = new Map<string, number>()
         
         console.log('🔍 [Intake History] Calculating shipped counts...')
         console.log('🔍 [Intake History] Total master IDs:', masterIds.length)
         console.log('🔍 [Intake History] Shipped unique by master entries:', shippedUniqueByMaster.size)
+        console.log('🔍 [Intake History] Unlinked shipped by order entries:', unlinkedShippedByOrder.size)
         
         masterInfoByOrder.forEach((masters, orderId) => {
           let shippedCasesCount = 0
           let shippedUnitsCount = 0
+          
+          // Add unlinked shipped units first
+          shippedUnitsCount += unlinkedShippedByOrder.get(orderId) || 0
           
           masters.forEach((master) => {
             const caseUnits = master.units > 0 ? master.units : 0
@@ -328,17 +380,18 @@ export async function GET(request: NextRequest) {
 
             console.log(`🔍 [Intake History] Master ${master.id.slice(0, 8)}: status=${masterStatus}, units=${caseUnits}, shippedUniques=${shippedUniqueCount}, isShipped=${masterShipped || shippedByUniques}`)
 
-            if (masterShipped || shippedByUniques) {
+            if (masterShipped) {
               shippedCasesCount += 1
-              // When the master is shipped, count the actual units (either from unique count or master count)
-              // If master is shipped via status, use caseUnits (all units in master)
-              // If shipped via individual uniques, use the shippedUniqueCount
-              if (masterShipped) {
-                // Master was shipped as a whole - count all units
-                shippedUnitsCount += caseUnits
-              } else {
-                // Shipped via individual unique codes
-                shippedUnitsCount += shippedUniqueCount
+              // Master was shipped as a whole - count all units
+              shippedUnitsCount += caseUnits
+            } else {
+              // Not fully shipped by status
+              // Count shipped units from unique codes (partial shipment)
+              shippedUnitsCount += shippedUniqueCount
+              
+              // If all units are shipped via unique codes, count as a shipped case
+              if (shippedByUniques) {
+                shippedCasesCount += 1
               }
             }
           })
@@ -382,7 +435,7 @@ export async function GET(request: NextRequest) {
 
     if (searchTerm) {
       rows = rows.filter((row) => {
-        const haystack = [row.orderNo, row.buyerOrgName || '', row.orderId].join(' ').toLowerCase()
+        const haystack = [row.orderNo, row.buyerOrgName || '', row.sellerOrgName || '', row.orderId].join(' ').toLowerCase()
         return haystack.includes(searchTerm)
       })
     }

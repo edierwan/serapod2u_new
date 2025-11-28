@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { loadSession, processShipmentScan } from '../scan-for-shipment/route'
-
-// IMPORTANT: Process codes sequentially to avoid race conditions with session state
-// Each scan updates scanned_quantities which must be accumulated properly
-const PROGRESS_UPDATE_INTERVAL = 5 // Send progress update every 5 codes
+import { loadSession } from '../scan-for-shipment/route'
+import { processBatchShipment } from './batch-processor'
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,96 +38,67 @@ export async function POST(request: NextRequest) {
     }
 
     const requestingUserId = overrideUserId || user.id
-    const total = codes.length
     const encoder = new TextEncoder()
 
-    let successCount = 0
-    let duplicateCount = 0
-    let errorCount = 0
+    // Perform bulk processing
+    // This is significantly faster than sequential processing
+    const { results, summary, sessionUpdate } = await processBatchShipment(
+      supabase,
+      session,
+      codes,
+      requestingUserId
+    )
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // CRITICAL: Process codes SEQUENTIALLY to avoid race conditions
-          // Each scan updates session.scanned_quantities cumulatively
-          // Concurrent processing would cause each scan to read stale state
-          for (let index = 0; index < codes.length; index++) {
-            const code = codes[index]
+          // Stream individual results to satisfy client expectation
+          // Since we already processed everything, we can just dump them
+          // We'll chunk them slightly to avoid blocking the event loop if the list is huge
+          const CHUNK_SIZE = 20
+          
+          for (let i = 0; i < results.length; i += CHUNK_SIZE) {
+            const chunk = results.slice(i, i + CHUNK_SIZE)
             
-            try {
-              const { result, status } = await processShipmentScan({
-                supabase,
-                session,
-                code,
-                requestingUserId
-              })
-
-              if (result.outcome === 'shipped') {
-                successCount++
-              } else if (result.outcome === 'duplicate') {
-                duplicateCount++
-              } else {
-                errorCount++
-              }
-
-              // Send progress update (every N codes or last code)
-              const shouldSendUpdate = 
-                (index + 1) % PROGRESS_UPDATE_INTERVAL === 0 || 
-                index === codes.length - 1
-
-              if (shouldSendUpdate) {
-                const payload = {
-                  type: 'progress' as const,
-                  index: index + 1,
-                  total,
-                  status,
-                  result
-                }
-
-                controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'))
-              }
-            } catch (error: any) {
-              console.error(`❌ Error processing code at index ${index}:`, error)
-              errorCount++
+            for (const result of chunk) {
+              // Calculate index for progress
+              const index = results.indexOf(result)
               
-              // Send error progress update
-              if ((index + 1) % PROGRESS_UPDATE_INTERVAL === 0 || index === codes.length - 1) {
-                const payload = {
-                  type: 'progress' as const,
-                  index: index + 1,
-                  total,
-                  status: 500,
-                  result: {
-                    code,
-                    normalized_code: code,
-                    code_type: 'master' as const,
-                    outcome: 'error' as const,
-                    message: error?.message || 'Processing failed'
-                  }
-                }
-                controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'))
+              // Attach session update to the result if it was successful
+              // This ensures the frontend updates the progress bar and quantities
+              if (result.outcome === 'shipped' && sessionUpdate) {
+                result.session_update = sessionUpdate
               }
+
+              // Send progress update for every item (or we could skip some)
+              // The client expects 'progress' events
+              const payload = {
+                type: 'progress' as const,
+                index: index + 1,
+                total: summary.total,
+                status: result.outcome === 'shipped' || result.outcome === 'duplicate' ? 200 : 400,
+                result
+              }
+              controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'))
             }
+            
+            // Small yield to allow flush
+            await new Promise(resolve => setTimeout(resolve, 0))
           }
 
           // Send final summary
           const finalPayload = {
             type: 'complete' as const,
-            summary: {
-              total,
-              success: successCount,
-              duplicates: duplicateCount,
-              errors: errorCount
-            }
+            summary
           }
 
           controller.enqueue(encoder.encode(JSON.stringify(finalPayload) + '\n'))
           controller.close()
         } catch (error: any) {
-          console.error('❌ Batch shipment scan error:', error)
+          console.error('❌ Batch stream error:', error)
           const errorPayload = {
             type: 'error' as const,
-            message: error?.message || 'Batch processing failed'
+            message: error?.message || 'Stream processing failed'
           }
           controller.enqueue(encoder.encode(JSON.stringify(errorPayload) + '\n'))
           controller.close()

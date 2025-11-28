@@ -7,6 +7,22 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -28,7 +44,13 @@ import {
   ClipboardPaste,
   Unlink,
   XCircle,
-  Search
+  Search,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
@@ -49,6 +71,82 @@ interface WarehouseShipV2Props {
   userProfile: UserProfile
   onViewChange: (view: string) => void
 }
+
+type HistoryPreset = 'today' | 'last7' | 'last30' | 'all'
+
+interface IntakeHistoryRow {
+  orderId: string
+  orderNo: string
+  buyerOrgName: string | null
+  sellerOrgName: string | null // NEW: Seller organization name
+  casesReceived: number
+  unitsReceived: number
+  casesScanned: number
+  unitsScanned: number
+  casesShipped: number
+  unitsShipped: number
+  firstReceivedAt: string | null
+  lastReceivedAt: string | null
+}
+
+type HistorySortColumn = 'orderNo' | 'buyerOrgName' | 'sellerOrgName' | 'casesReceived' | 'unitsReceived' | 'casesScanned' | 'unitsScanned' | 'casesShipped' | 'unitsShipped' | 'firstReceivedAt' | 'lastReceivedAt'
+type SortDirection = 'asc' | 'desc'
+
+const HISTORY_PRESETS: Array<{ value: HistoryPreset; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'last7', label: 'Last 7 days' },
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'all', label: 'All time' }
+]
+
+const buildPresetRange = (preset: HistoryPreset) => {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date(end)
+
+  switch (preset) {
+    case 'today':
+      start.setHours(0, 0, 0, 0)
+      break
+    case 'last7':
+      start.setDate(start.getDate() - 6)
+      start.setHours(0, 0, 0, 0)
+      break
+    case 'last30':
+      start.setDate(start.getDate() - 29)
+      start.setHours(0, 0, 0, 0)
+      break
+    case 'all':
+      // Go back 10 years for "all time"
+      start.setFullYear(start.getFullYear() - 10)
+      start.setHours(0, 0, 0, 0)
+      break
+    default:
+      start.setDate(start.getDate() - 29)
+      start.setHours(0, 0, 0, 0)
+      break
+  }
+
+  return { start, end }
+}
+
+const formatDateTime = (value: string | null) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  })
+}
+
+const formatDateOnly = (date: Date) =>
+  date.toLocaleDateString(undefined, {
+    dateStyle: 'medium'
+  })
+
+const formatNumber = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 0 })
+
 
 interface ShipmentProgress {
   distributor_id: string
@@ -81,6 +179,7 @@ interface ScanHistory {
   status: string  // Code status: 'warehouse_packed' or 'shipped_distributor'
   validation_status?: string  // Session status: 'pending', 'matched', 'approved'
   product_breakdown: Record<string, number>
+  product_images?: Record<string, string | null>
   pending_master_codes?: string[]
   pending_unique_codes?: PendingUniqueCode[]
 }
@@ -145,9 +244,166 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   const [distributorHistoryPage, setDistributorHistoryPage] = useState(1)
   const [overallHistoryPage, setOverallHistoryPage] = useState(1)
   const ITEMS_PER_PAGE = 5
+
+  // Sorting state for Overall History
+  const [overallSortColumn, setOverallSortColumn] = useState<string>('lastScanned')
+  const [overallSortDirection, setOverallSortDirection] = useState<SortDirection>('desc')
+
+  // Sorting state for Distributor History
+  const [distributorSortColumn, setDistributorSortColumn] = useState<string>('lastScanned')
+  const [distributorSortDirection, setDistributorSortDirection] = useState<SortDirection>('desc')
   
   const { toast } = useToast()
   const supabase = createClient()
+
+  // Intake History State
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyRows, setHistoryRows] = useState<IntakeHistoryRow[]>([])
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyPageSize, setHistoryPageSize] = useState(10)
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyTotalPages, setHistoryTotalPages] = useState(1)
+  const [historyPreset, setHistoryPreset] = useState<HistoryPreset>('last30')
+  const historyRange = useMemo(() => buildPresetRange(historyPreset), [historyPreset])
+  const [historySearchInput, setHistorySearchInput] = useState('')
+  const [historySearch, setHistorySearch] = useState('')
+  const [historySortColumn, setHistorySortColumn] = useState<HistorySortColumn>('lastReceivedAt')
+  const [historySortDirection, setHistorySortDirection] = useState<SortDirection>('desc')
+  const historyRangeParams = useMemo(() => ({
+    start: historyRange.start.toISOString(),
+    end: historyRange.end.toISOString()
+  }), [historyRange])
+  const historySummary = useMemo(() => {
+    return historyRows.reduce(
+      (acc, row) => {
+        acc.cases += row.casesReceived
+        acc.units += row.unitsReceived
+        return acc
+      },
+      { cases: 0, units: 0 }
+    )
+  }, [historyRows])
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setHistorySearch(historySearchInput)
+      setHistoryPage(1)
+    }, 350)
+
+    return () => clearTimeout(timeout)
+  }, [historySearchInput])
+
+  useEffect(() => {
+    loadIntakeHistory()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyPage, historyRangeParams.start, historyRangeParams.end, historySearch, historyPageSize])
+
+  const loadIntakeHistory = async (pageOverride?: number, options?: { silent?: boolean }) => {
+    const nextPage = pageOverride ?? historyPage
+    try {
+      if (!options?.silent) {
+        setHistoryLoading(true)
+      }
+
+      const params = new URLSearchParams({
+        warehouse_org_id: userProfile.organization_id,
+        page: String(nextPage),
+        pageSize: String(historyPageSize),
+        start: historyRangeParams.start,
+        end: historyRangeParams.end
+      })
+
+      if (historySearch) {
+        params.set('search', historySearch)
+      }
+
+      const response = await fetch(`/api/warehouse/intake-history?${params.toString()}`)
+
+      if (!response.ok) {
+        let message = 'Failed to load intake history'
+        try {
+          const payload = await response.json()
+          message = payload?.error || message
+        } catch (parseError) {
+          console.error('Failed to parse intake history error payload', parseError)
+        }
+        throw new Error(message)
+      }
+
+      const payload = await response.json()
+      const rows: IntakeHistoryRow[] = Array.isArray(payload?.data) ? payload.data : []
+      const total = typeof payload?.pageInfo?.total === 'number' ? payload.pageInfo.total : rows.length
+      const totalPages = Math.max(
+        typeof payload?.pageInfo?.totalPages === 'number'
+          ? payload.pageInfo.totalPages
+          : Math.ceil(total / historyPageSize) || 1,
+        1
+      )
+      const resolvedPage = typeof payload?.pageInfo?.page === 'number' ? payload.pageInfo.page : nextPage
+
+      setHistoryRows(rows)
+      setHistoryTotal(total)
+      setHistoryTotalPages(totalPages)
+      setHistoryPage(Math.min(Math.max(resolvedPage, 1), totalPages))
+      setHistoryError(null)
+    } catch (error: any) {
+      console.error('Error loading intake history:', error)
+      setHistoryError(error?.message || 'Unable to load intake history')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const handleHistorySort = (column: HistorySortColumn) => {
+    if (historySortColumn === column) {
+      // Toggle direction if same column
+      setHistorySortDirection(historySortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // New column, default to descending for numbers/dates, ascending for text
+      setHistorySortColumn(column)
+      setHistorySortDirection(
+        column === 'orderNo' || column === 'buyerOrgName' || column === 'sellerOrgName' ? 'asc' : 'desc'
+      )
+    }
+  }
+
+  const getSortIcon = (column: HistorySortColumn) => {
+    if (historySortColumn !== column) {
+      return <ArrowUpDown className="h-3 w-3 ml-1 text-gray-400" />
+    }
+    return historySortDirection === 'asc' ? (
+      <ArrowUp className="h-3 w-3 ml-1 text-indigo-600" />
+    ) : (
+      <ArrowDown className="h-3 w-3 ml-1 text-indigo-600" />
+    )
+  }
+
+  const sortedHistoryRows = useMemo(() => {
+    const sorted = [...historyRows].sort((a, b) => {
+      let aValue: any = a[historySortColumn]
+      let bValue: any = b[historySortColumn]
+
+      // Handle null values
+      if (aValue === null && bValue === null) return 0
+      if (aValue === null) return 1
+      if (bValue === null) return -1
+
+      // Handle different types
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = bValue.toLowerCase()
+      }
+
+      if (aValue < bValue) return historySortDirection === 'asc' ? -1 : 1
+      if (aValue > bValue) return historySortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+    return sorted
+  }, [historyRows, historySortColumn, historySortDirection])
+
+  const historyPageStart = (historyPage - 1) * historyPageSize + 1
+  const historyPageEnd = Math.min(historyPage * historyPageSize, historyTotal)
 
   useEffect(() => {
     loadDistributors()
@@ -850,6 +1106,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         status: item.status || 'warehouse_packed',
         validation_status: item.validation_status,  // Session validation status
         product_breakdown: item.product_breakdown || {},
+        product_images: item.product_images || {},
         pending_master_codes: item.pending_master_codes || [],
         pending_unique_codes: item.pending_unique_codes || []
       }))
@@ -1705,7 +1962,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
   // Aggregated Distributor History
   const aggregatedDistributorHistory = useMemo(() => {
-    const productAggregation: Record<string, { units: number, lastScanned: string, status: string, distributorName: string, sessionIds: string[], validation_status?: string, variantName: string }> = {}
+    const productAggregation: Record<string, { units: number, lastScanned: string, status: string, distributorName: string, sessionIds: string[], validation_status?: string, variantName: string, imageUrl: string | null }> = {}
     
     distributorHistory.forEach(item => {
       Object.entries(item.product_breakdown).forEach(([product, qty]) => {
@@ -1728,7 +1985,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             distributorName: item.distributor_name,
             sessionIds: [],
             validation_status: item.validation_status,
-            variantName: variantName
+            variantName: variantName,
+            imageUrl: item.product_images?.[product] || null
           }
         }
         productAggregation[product].units += Number(qty)
@@ -1746,7 +2004,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
   // Aggregated Overall History
   const aggregatedOverallHistory = useMemo(() => {
-    const aggregation: Record<string, { distributor: string, product: string, units: number, lastScanned: string, status: string, sessionIds: string[], variantName: string }> = {}
+    const aggregation: Record<string, { distributor: string, product: string, units: number, lastScanned: string, status: string, sessionIds: string[], variantName: string, imageUrl: string | null }> = {}
     
     overallHistory.forEach(item => {
       Object.entries(item.product_breakdown).forEach(([product, qty]) => {
@@ -1769,7 +2027,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             lastScanned: item.scanned_at,
             status: item.status,
             sessionIds: [],
-            variantName: variantName
+            variantName: variantName,
+            imageUrl: item.product_images?.[product] || null
           }
         }
         aggregation[key].units += Number(qty)
@@ -1783,8 +2042,78 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     return Object.values(aggregation)
   }, [overallHistory])
 
-  const paginatedDistributorHistory = aggregatedDistributorHistory.slice((distributorHistoryPage - 1) * ITEMS_PER_PAGE, distributorHistoryPage * ITEMS_PER_PAGE)
-  const paginatedOverallHistory = aggregatedOverallHistory.slice((overallHistoryPage - 1) * ITEMS_PER_PAGE, overallHistoryPage * ITEMS_PER_PAGE)
+  const sortedDistributorHistory = useMemo(() => {
+    return [...aggregatedDistributorHistory].sort((a, b) => {
+      const aValue = a[distributorSortColumn as keyof typeof a]
+      const bValue = b[distributorSortColumn as keyof typeof b]
+      
+      if (aValue === bValue) return 0
+      
+      const direction = distributorSortDirection === 'asc' ? 1 : -1
+      
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return aValue.localeCompare(bValue) * direction
+      }
+      
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return (aValue - bValue) * direction
+      }
+      
+      return 0
+    })
+  }, [aggregatedDistributorHistory, distributorSortColumn, distributorSortDirection])
+
+  const sortedOverallHistory = useMemo(() => {
+    return [...aggregatedOverallHistory].sort((a, b) => {
+      const aValue = a[overallSortColumn as keyof typeof a]
+      const bValue = b[overallSortColumn as keyof typeof b]
+      
+      if (aValue === bValue) return 0
+      
+      const direction = overallSortDirection === 'asc' ? 1 : -1
+      
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return aValue.localeCompare(bValue) * direction
+      }
+      
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return (aValue - bValue) * direction
+      }
+      
+      return 0
+    })
+  }, [aggregatedOverallHistory, overallSortColumn, overallSortDirection])
+
+  const paginatedDistributorHistory = sortedDistributorHistory.slice((distributorHistoryPage - 1) * ITEMS_PER_PAGE, distributorHistoryPage * ITEMS_PER_PAGE)
+  const paginatedOverallHistory = sortedOverallHistory.slice((overallHistoryPage - 1) * ITEMS_PER_PAGE, overallHistoryPage * ITEMS_PER_PAGE)
+
+  const handleDistributorSort = (column: string) => {
+    if (distributorSortColumn === column) {
+      setDistributorSortDirection(distributorSortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setDistributorSortColumn(column)
+      setDistributorSortDirection('desc')
+    }
+  }
+
+  const getDistributorSortIcon = (column: string) => {
+    if (distributorSortColumn !== column) return <ArrowUpDown className="ml-2 h-3 w-3" />
+    return distributorSortDirection === 'asc' ? <ArrowUp className="ml-2 h-3 w-3" /> : <ArrowDown className="ml-2 h-3 w-3" />
+  }
+
+  const handleOverallSort = (column: string) => {
+    if (overallSortColumn === column) {
+      setOverallSortDirection(overallSortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setOverallSortColumn(column)
+      setOverallSortDirection('desc')
+    }
+  }
+
+  const getOverallSortIcon = (column: string) => {
+    if (overallSortColumn !== column) return <ArrowUpDown className="ml-2 h-3 w-3" />
+    return overallSortDirection === 'asc' ? <ArrowUp className="ml-2 h-3 w-3" /> : <ArrowDown className="ml-2 h-3 w-3" />
+  }
 
   // Fetch variant details when sessionQuantities.per_variant changes
   useEffect(() => {
@@ -2519,7 +2848,296 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <Card className="border-indigo-100 mb-6">
+        <CardHeader className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 justify-between">
+              <CardTitle className="flex items-center gap-2 text-indigo-900">
+                <History className="h-5 w-5" />
+                Warehouse Scan History
+              </CardTitle>
+            </div>
+            <p className="text-sm text-gray-500">
+              Showing orders received between {formatDateOnly(historyRange.start)} and {formatDateOnly(historyRange.end)}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">
+              {formatNumber(historySummary.cases)} case{historySummary.cases === 1 ? '' : 's'}
+            </Badge>
+            <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">
+              {formatNumber(historySummary.units)} units
+            </Badge>
+            <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
+              {historyTotal} record{historyTotal === 1 ? '' : 's'}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {historyError && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {historyError}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <Select
+                value={historyPreset}
+                onValueChange={(value) => {
+                  setHistoryPreset(value as HistoryPreset)
+                  setHistoryPage(1)
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Date range" />
+                </SelectTrigger>
+                <SelectContent>
+                  {HISTORY_PRESETS.map((preset) => (
+                    <SelectItem key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-2 rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+                <CalendarRange className="h-4 w-4" />
+                <span>
+                  {formatDateOnly(historyRange.start)}
+                  <span className="mx-1 text-gray-400">→</span>
+                  {formatDateOnly(historyRange.end)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 w-full lg:w-auto lg:flex-row lg:items-center">
+              <div className="relative w-full lg:w-64">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  value={historySearchInput}
+                  onChange={(event) => setHistorySearchInput(event.target.value)}
+                  placeholder="Search order or buyer"
+                  className="pl-9"
+                />
+              </div>
+
+              <Select
+                value={String(historyPageSize)}
+                onValueChange={(value) => {
+                  setHistoryPageSize(Number(value))
+                  setHistoryPage(1)
+                }}
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="Page size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 30, 40, 50].map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size} / page
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('orderNo')}
+                  >
+                    <div className="flex items-center">
+                      Order
+                      {getSortIcon('orderNo')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('sellerOrgName')}
+                  >
+                    <div className="flex items-center">
+                      Seller
+                      {getSortIcon('sellerOrgName')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('casesScanned')}
+                  >
+                    <div className="flex items-center">
+                      Cases Scanned
+                      {getSortIcon('casesScanned')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('unitsScanned')}
+                  >
+                    <div className="flex items-center">
+                      Units Scanned
+                      {getSortIcon('unitsScanned')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('casesReceived')}
+                  >
+                    <div className="flex items-center">
+                      Cases Received
+                      {getSortIcon('casesReceived')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('unitsReceived')}
+                  >
+                    <div className="flex items-center">
+                      Units Received
+                      {getSortIcon('unitsReceived')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('casesShipped')}
+                  >
+                    <div className="flex items-center">
+                      Cases Shipped
+                      {getSortIcon('casesShipped')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('unitsShipped')}
+                  >
+                    <div className="flex items-center">
+                      Units Shipped
+                      {getSortIcon('unitsShipped')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('firstReceivedAt')}
+                  >
+                    <div className="flex items-center">
+                      First Received
+                      {getSortIcon('firstReceivedAt')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleHistorySort('lastReceivedAt')}
+                  >
+                    <div className="flex items-center">
+                      Last Received
+                      {getSortIcon('lastReceivedAt')}
+                    </div>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyLoading
+                  ? Array.from({ length: 5 }).map((_, index) => (
+                      <TableRow key={`history-skeleton-${index}`}>
+                        <TableCell colSpan={10}>
+                          <div className="h-4 animate-pulse rounded bg-gray-200" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  : sortedHistoryRows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10}>
+                          <div className="py-8 text-center text-sm text-gray-500">
+                            No received orders in this period. Adjust the filters to broaden your search.
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sortedHistoryRows.map((row) => (
+                        <TableRow key={row.orderId} className="hover:bg-indigo-50/40">
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-gray-900 text-xs">{row.orderNo}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs text-gray-700">{row.sellerOrgName || '—'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
+                              {formatNumber(row.casesScanned)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium text-blue-900 text-xs">{formatNumber(row.unitsScanned)}</span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                              {formatNumber(row.casesReceived)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium text-gray-900 text-xs">{formatNumber(row.unitsReceived)}</span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px]">
+                              {formatNumber(row.casesShipped)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium text-purple-900 text-xs">{formatNumber(row.unitsShipped)}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs text-gray-600">{formatDateTime(row.firstReceivedAt)}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs text-gray-600">{formatDateTime(row.lastReceivedAt)}</span>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-gray-600">
+              {historyTotal === 0
+                ? 'No records to display'
+                : `Showing ${historyPageStart} – ${historyPageEnd} of ${historyTotal} record${historyTotal === 1 ? '' : 's'}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHistoryPage((previous) => Math.max(previous - 1, 1))}
+                disabled={historyPage <= 1 || historyLoading}
+              >
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Previous
+              </Button>
+              <span className="text-sm text-gray-600">
+                Page {historyTotalPages === 0 ? 0 : historyPage} of {historyTotalPages || 1}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHistoryPage((previous) => Math.min(previous + 1, historyTotalPages || previous + 1))}
+                disabled={historyPage >= (historyTotalPages || 1) || historyLoading}
+              >
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-col gap-6">
         <Card>
           <CardHeader className="space-y-1">
             <CardTitle className="flex items-center gap-2">
@@ -2548,48 +3166,116 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 Refresh
               </Button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Distributor</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Product</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Units</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Scanned At</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleDistributorSort('variantName')}
+                    >
+                      <div className="flex items-center">
+                        Product
+                        {getDistributorSortIcon('variantName')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleDistributorSort('distributorName')}
+                    >
+                      <div className="flex items-center">
+                        Distributor
+                        {getDistributorSortIcon('distributorName')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleDistributorSort('units')}
+                    >
+                      <div className="flex items-center">
+                        Units
+                        {getDistributorSortIcon('units')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleDistributorSort('lastScanned')}
+                    >
+                      <div className="flex items-center">
+                        Scanned At
+                        {getDistributorSortIcon('lastScanned')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleDistributorSort('status')}
+                    >
+                      <div className="flex items-center">
+                        Status
+                        {getDistributorSortIcon('status')}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-xs font-medium uppercase text-gray-500">
+                      Action
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {aggregatedDistributorHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-500">
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                         <Box className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                         <p>{selectedDistributor ? 'No scans for this distributor yet' : 'No distributor selected'}</p>
                         <p className="text-sm text-gray-400 mt-1">
                           {selectedDistributor ? 'Scan codes above to begin tracking shipments.' : 'Choose a distributor from the dropdown above.'}
                         </p>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     paginatedDistributorHistory.map((data) => (
-                      <tr key={data.product} className="hover:bg-gray-50">
-                        <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                      <TableRow key={data.product} className="hover:bg-gray-50">
+                        <TableCell className="py-3 px-4 text-sm font-medium text-gray-900">
+                          <div className="flex items-center gap-3">
+                            {data.imageUrl ? (
+                              <img 
+                                src={data.imageUrl} 
+                                alt={data.variantName} 
+                                className="h-10 w-10 rounded-md object-cover border border-gray-200"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-md bg-gray-100 flex items-center justify-center border border-gray-200">
+                                <Box className="h-5 w-5 text-gray-400" />
+                              </div>
+                            )}
+                            <div className="flex flex-col">
+                              {(() => {
+                                const parts = data.variantName.split('[')
+                                if (parts.length > 1) {
+                                  return (
+                                    <>
+                                      <span className="font-medium text-gray-900">{parts[0].trim()}</span>
+                                      <span className="text-xs text-gray-500">[{parts[1]}</span>
+                                    </>
+                                  )
+                                }
+                                return <span className="font-medium text-gray-900">{data.variantName}</span>
+                              })()}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-sm text-gray-700">
                           {data.distributorName}
-                        </td>
-                        <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                          {data.variantName}
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <span className="text-sm font-semibold text-blue-600">
                             {data.units} units
                           </span>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-gray-600">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-sm text-gray-600">
                           {data.lastScanned ? new Date(data.lastScanned).toLocaleString() : '-'}
-                        </td>
-                        <td className="py-3 px-4">{renderStatusBadge(data.status)}</td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">{renderStatusBadge(data.status)}</TableCell>
+                        <TableCell className="py-3 px-4">
                           {data.status === 'warehouse_packed' && data.validation_status !== 'approved' ? (
                             <Button
                               variant="ghost"
@@ -2612,38 +3298,44 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                               {data.status === 'shipped_distributor' ? 'Shipped' : '-'}
                             </span>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))
                   )}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
-            {aggregatedDistributorHistory.length > ITEMS_PER_PAGE && (
-              <div className="flex items-center justify-between border-t border-gray-200 pt-4">
-                <div className="text-sm text-gray-500">
-                  Showing {((distributorHistoryPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(distributorHistoryPage * ITEMS_PER_PAGE, aggregatedDistributorHistory.length)} of {aggregatedDistributorHistory.length} results
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDistributorHistoryPage(p => Math.max(1, p - 1))}
-                    disabled={distributorHistoryPage === 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDistributorHistoryPage(p => Math.min(Math.ceil(aggregatedDistributorHistory.length / ITEMS_PER_PAGE), p + 1))}
-                    disabled={distributorHistoryPage >= Math.ceil(aggregatedDistributorHistory.length / ITEMS_PER_PAGE)}
-                  >
-                    Next
-                  </Button>
-                </div>
+            
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mt-4">
+              <p className="text-sm text-gray-600">
+                {aggregatedDistributorHistory.length === 0
+                  ? 'No records to display'
+                  : `Showing ${((distributorHistoryPage - 1) * ITEMS_PER_PAGE) + 1} – ${Math.min(distributorHistoryPage * ITEMS_PER_PAGE, aggregatedDistributorHistory.length)} of ${aggregatedDistributorHistory.length} record${aggregatedDistributorHistory.length === 1 ? '' : 's'}`}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDistributorHistoryPage(p => Math.max(1, p - 1))}
+                  disabled={distributorHistoryPage === 1}
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {distributorHistoryPage} of {Math.ceil(aggregatedDistributorHistory.length / ITEMS_PER_PAGE)}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDistributorHistoryPage(p => Math.min(Math.ceil(aggregatedDistributorHistory.length / ITEMS_PER_PAGE), p + 1))}
+                  disabled={distributorHistoryPage >= Math.ceil(aggregatedDistributorHistory.length / ITEMS_PER_PAGE)}
+                >
+                  Next
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
 
@@ -2661,48 +3353,116 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Distributor</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Product</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Units</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Scanned At</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleOverallSort('variantName')}
+                    >
+                      <div className="flex items-center">
+                        Product
+                        {getOverallSortIcon('variantName')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleOverallSort('distributor')}
+                    >
+                      <div className="flex items-center">
+                        Distributor
+                        {getOverallSortIcon('distributor')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleOverallSort('units')}
+                    >
+                      <div className="flex items-center">
+                        Units
+                        {getOverallSortIcon('units')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleOverallSort('lastScanned')}
+                    >
+                      <div className="flex items-center">
+                        Scanned At
+                        {getOverallSortIcon('lastScanned')}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-xs font-medium uppercase text-gray-500 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleOverallSort('status')}
+                    >
+                      <div className="flex items-center">
+                        Status
+                        {getOverallSortIcon('status')}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-xs font-medium uppercase text-gray-500">
+                      Action
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {aggregatedOverallHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-500">
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                         <Box className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                         <p>No scan history yet</p>
                         <p className="text-sm text-gray-400 mt-1">
                           Start scanning master cases to track warehouse shipments.
                         </p>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     paginatedOverallHistory.map((data, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                      <TableRow key={idx} className="hover:bg-gray-50">
+                        <TableCell className="py-3 px-4 text-sm font-medium text-gray-900">
+                          <div className="flex items-center gap-3">
+                            {data.imageUrl ? (
+                              <img 
+                                src={data.imageUrl} 
+                                alt={data.variantName} 
+                                className="h-10 w-10 rounded-md object-cover border border-gray-200"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-md bg-gray-100 flex items-center justify-center border border-gray-200">
+                                <Box className="h-5 w-5 text-gray-400" />
+                              </div>
+                            )}
+                            <div className="flex flex-col">
+                              {(() => {
+                                const parts = data.variantName.split('[')
+                                if (parts.length > 1) {
+                                  return (
+                                    <>
+                                      <span className="font-medium text-gray-900">{parts[0].trim()}</span>
+                                      <span className="text-xs text-gray-500">[{parts[1]}</span>
+                                    </>
+                                  )
+                                }
+                                return <span className="font-medium text-gray-900">{data.variantName}</span>
+                              })()}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-sm text-gray-700">
                           {data.distributor}
-                        </td>
-                        <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                          {data.variantName}
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <span className="text-sm font-semibold text-blue-600">
                             {data.units} units
                           </span>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-gray-600">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-sm text-gray-600">
                           {data.lastScanned ? new Date(data.lastScanned).toLocaleString() : '-'}
-                        </td>
-                        <td className="py-3 px-4">{renderStatusBadge(data.status)}</td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">{renderStatusBadge(data.status)}</TableCell>
+                        <TableCell className="py-3 px-4">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -2719,38 +3479,44 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                               </>
                             )}
                           </Button>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))
                   )}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
-            {aggregatedOverallHistory.length > ITEMS_PER_PAGE && (
-              <div className="flex items-center justify-between border-t border-gray-200 pt-4">
-                <div className="text-sm text-gray-500">
-                  Showing {((overallHistoryPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(overallHistoryPage * ITEMS_PER_PAGE, aggregatedOverallHistory.length)} of {aggregatedOverallHistory.length} results
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setOverallHistoryPage(p => Math.max(1, p - 1))}
-                    disabled={overallHistoryPage === 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setOverallHistoryPage(p => Math.min(Math.ceil(aggregatedOverallHistory.length / ITEMS_PER_PAGE), p + 1))}
-                    disabled={overallHistoryPage >= Math.ceil(aggregatedOverallHistory.length / ITEMS_PER_PAGE)}
-                  >
-                    Next
-                  </Button>
-                </div>
+            
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mt-4">
+              <p className="text-sm text-gray-600">
+                {aggregatedOverallHistory.length === 0
+                  ? 'No records to display'
+                  : `Showing ${((overallHistoryPage - 1) * ITEMS_PER_PAGE) + 1} – ${Math.min(overallHistoryPage * ITEMS_PER_PAGE, aggregatedOverallHistory.length)} of ${aggregatedOverallHistory.length} record${aggregatedOverallHistory.length === 1 ? '' : 's'}`}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOverallHistoryPage(p => Math.max(1, p - 1))}
+                  disabled={overallHistoryPage === 1}
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {overallHistoryPage} of {Math.ceil(aggregatedOverallHistory.length / ITEMS_PER_PAGE)}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOverallHistoryPage(p => Math.min(Math.ceil(aggregatedOverallHistory.length / ITEMS_PER_PAGE), p + 1))}
+                  disabled={overallHistoryPage >= Math.ceil(aggregatedOverallHistory.length / ITEMS_PER_PAGE)}
+                >
+                  Next
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
       </div>

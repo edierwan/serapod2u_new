@@ -99,7 +99,7 @@ export type ValidationSession = {
   discrepancy_details: DiscrepancyDetails | null
 }
 
-const normalizeCode = (value: unknown): string | null => {
+export const normalizeCode = (value: unknown): string | null => {
   if (typeof value !== 'string') return null
   let token = value.trim()
   if (!token) return null
@@ -181,7 +181,7 @@ const variantMetadataCache = new Map<string, {
 
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes cache
 
-const fetchVariantMetadata = async (
+export const fetchVariantMetadata = async (
   supabase: Awaited<ReturnType<typeof createClient>>,
   variantIds: string[]
 ) => {
@@ -981,7 +981,7 @@ const handleUniqueShipment = async (
   }
 }
 
-const mapOutcomeToStatus = (outcome: ScanOutcome): number => {
+export const mapOutcomeToStatus = (outcome: ScanOutcome): number => {
   switch (outcome) {
     case 'shipped':
       return 200

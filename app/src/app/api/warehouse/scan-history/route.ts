@@ -146,6 +146,7 @@ export async function GET() {
             variant_id,
             product_variants (
               variant_name,
+              image_url,
               products (
                 product_name
               )
@@ -194,6 +195,7 @@ export async function GET() {
               status,
               product_variants (
                 variant_name,
+                image_url,
                 products (
                   product_name
                 )
@@ -270,6 +272,7 @@ export async function GET() {
         codeProductMap.set(qr.code, {
           product_name: product.product_name,
           variant_name: variant.variant_name,
+          image_url: variant.image_url || null,
           master_code: master?.master_code || null,
           case_number: master?.case_number || null,
           product_label: productLabel
@@ -290,6 +293,7 @@ export async function GET() {
         codeProductMap.set(master.master_code, {
           product_name: product.product_name,
           variant_name: variant.variant_name,
+          image_url: variant.image_url || null,
           master_code: master.master_code,
           case_number: master.case_number || null,
           product_label: productLabel
@@ -348,6 +352,7 @@ export async function GET() {
       
       // Aggregate products across all codes in this session
       const productBreakdown: Record<string, number> = {}
+      const productImages: Record<string, string | null> = {}
       let totalUnits = 0
       let caseNumber = 0
       let masterCode = ''
@@ -357,6 +362,9 @@ export async function GET() {
         if (productInfo) {
           const label = productInfo.product_label || buildProductLabel(productInfo.product_name, productInfo.variant_name) || productInfo.product_name || 'Unknown Product'
           productBreakdown[label] = (productBreakdown[label] || 0) + 1
+          if (productInfo.image_url) {
+            productImages[label] = productInfo.image_url
+          }
           totalUnits++
           
           if (productInfo.case_number && !caseNumber) {
@@ -469,7 +477,8 @@ export async function GET() {
         distributor_name: distributorName,
         status: actualStatus,  // Use actual QR code status, not session status
         validation_status: session.validation_status,  // Keep original for UI logic
-        product_breakdown: productBreakdown
+        product_breakdown: productBreakdown,
+        product_images: productImages
       })
     }
 

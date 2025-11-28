@@ -362,7 +362,8 @@ export async function POST(request: NextRequest) {
           updated_at: shippedAt
         })
         .in('id', qrCodeIds)
-        .eq('status', 'warehouse_packed')
+        // Allow updating from both warehouse_packed (normal flow) and received_warehouse (recovery/fallback)
+        .in('status', ['warehouse_packed', 'received_warehouse'])
         .select('id, code')
 
       if (updateError) {
