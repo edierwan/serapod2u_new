@@ -315,6 +315,12 @@ export async function POST(request: NextRequest) {
       // 3. Update QR status → trigger sees skip flag and doesn't create duplicate movements
       
       console.log('📦 Step 1: Creating consolidated movement via WMS function')
+      console.log('📦 WMS Params:', {
+        p_qr_code_ids_count: qrCodeIds.length,
+        p_from_org_id: fromOrg,
+        p_to_org_id: toOrg,
+        p_order_id: orderId
+      })
       // Use admin client for WMS RPC call to bypass RLS and ensure function access
       const { data: wmsResult, error: wmsError } = await supabaseAdmin.rpc('wms_ship_unique_auto', {
         p_qr_code_ids: qrCodeIds,
