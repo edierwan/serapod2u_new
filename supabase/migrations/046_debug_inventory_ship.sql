@@ -33,7 +33,7 @@ BEGIN
   -- Check if sufficient stock
   IF v_current_qty < p_units THEN
     -- Get names for better error message
-    SELECT name INTO v_org_name FROM public.organizations WHERE id = p_organization_id;
+    SELECT org_name INTO v_org_name FROM public.organizations WHERE id = p_organization_id;
     SELECT variant_name INTO v_variant_name FROM public.product_variants WHERE id = p_variant_id;
     
     RAISE EXCEPTION 'Insufficient stock for shipment. On hand: %, requested: %. Variant: % (%), Org: % (%)', 
@@ -51,7 +51,7 @@ BEGIN
     
   -- If no row was updated (shouldn't happen due to check above, but if row didn't exist), raise error
   IF NOT FOUND THEN
-     SELECT name INTO v_org_name FROM public.organizations WHERE id = p_organization_id;
+     SELECT org_name INTO v_org_name FROM public.organizations WHERE id = p_organization_id;
      SELECT variant_name INTO v_variant_name FROM public.product_variants WHERE id = p_variant_id;
      
      RAISE EXCEPTION 'Inventory record not found for Variant % (%) in Org % (%)', 
