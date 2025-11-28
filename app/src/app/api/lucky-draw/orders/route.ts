@@ -34,7 +34,14 @@ export async function GET(request: NextRequest) {
         seller_org_id,
         buyer_org:organizations!orders_buyer_org_id_fkey(org_name),
         seller_org:organizations!orders_seller_org_id_fkey(org_name),
-        created_at
+        created_at,
+        order_items (
+          qty,
+          variant:product_variants (
+            variant_name,
+            image_url
+          )
+        )
       `)
       .eq('has_lucky_draw', true)
       .or(`buyer_org_id.eq.${profile.organization_id},seller_org_id.eq.${profile.organization_id}`)
@@ -54,7 +61,12 @@ export async function GET(request: NextRequest) {
       has_lucky_draw: order.has_lucky_draw,
       buyer_org_name: Array.isArray(order.buyer_org) && order.buyer_org.length > 0 ? order.buyer_org[0].org_name : null,
       seller_org_name: Array.isArray(order.seller_org) && order.seller_org.length > 0 ? order.seller_org[0].org_name : null,
-      created_at: order.created_at
+      created_at: order.created_at,
+      items: order.order_items?.map((item: any) => ({
+        quantity: item.qty,
+        variant_name: item.variant?.variant_name,
+        image_url: item.variant?.image_url
+      })) || []
     }))
 
     return NextResponse.json({ success: true, orders: transformedOrders })

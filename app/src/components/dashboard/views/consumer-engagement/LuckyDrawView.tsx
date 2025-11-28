@@ -54,6 +54,11 @@ interface Order {
   buyer_org_name: string | null
   seller_org_name: string | null
   created_at: string
+  items?: {
+    quantity: number
+    variant_name: string
+    image_url: string
+  }[]
 }
 
 interface Campaign {
@@ -224,16 +229,31 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
         prizes_json: prizes
       }
 
-      const response = await fetch('/api/lucky-draw/campaigns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(campaignData)
-      })
+      let response;
+      
+      // If a campaign already exists for this order, update it instead of creating new
+      if (campaigns.length > 0 && selectedCampaignId) {
+        response = await fetch('/api/lucky-draw/campaigns', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...campaignData,
+            campaign_id: selectedCampaignId
+          })
+        })
+      } else {
+        response = await fetch('/api/lucky-draw/campaigns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(campaignData)
+        })
+      }
       
       const data = await response.json()
       
       if (data.success) {
         setShowNewCampaignModal(false)
+        // Don't clear form immediately if we might edit again, but for now it's fine as we reset on open
         setNewCampaign({
           campaign_name: '',
           campaign_description: '',
@@ -246,11 +266,11 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
           loadCampaigns(selectedOrderId)
         }
       } else {
-        alert('Failed to create campaign: ' + data.error)
+        alert('Failed to save campaign: ' + data.error)
       }
     } catch (error) {
-      console.error('Error creating campaign:', error)
-      alert('Failed to create campaign')
+      console.error('Error saving campaign:', error)
+      alert('Failed to save campaign')
     }
   }
 
@@ -546,10 +566,43 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
             <Button 
               className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
               disabled={!selectedOrderId}
-              onClick={() => setShowNewCampaignModal(true)}
+              onClick={() => {
+                if (campaigns.length > 0 && selectedCampaign) {
+                  // Edit mode
+                  setNewCampaign({
+                    campaign_name: selectedCampaign.campaign_name,
+                    campaign_description: selectedCampaign.campaign_description,
+                    start_date: selectedCampaign.start_date,
+                    end_date: selectedCampaign.end_date,
+                    draw_date: selectedCampaign.draw_date || ''
+                  })
+                  setPrizes(selectedCampaign.prizes_json || [])
+                  setShowNewCampaignModal(true)
+                } else {
+                  // Create mode
+                  setNewCampaign({
+                    campaign_name: '',
+                    campaign_description: '',
+                    start_date: new Date().toISOString().split('T')[0],
+                    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    draw_date: ''
+                  })
+                  setPrizes([])
+                  setShowNewCampaignModal(true)
+                }
+              }}
             >
-              <Plus className="w-4 h-4" />
-              New Campaign
+              {campaigns.length > 0 ? (
+                <>
+                  <Edit className="w-4 h-4" />
+                  Edit Campaign
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  New Campaign
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -592,6 +645,46 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
             )}
           </CardContent>
         </Card>
+
+        {selectedOrder && selectedOrder.items && selectedOrder.items.length > 0 && (
+          <Card className="mb-6 border-2 bg-slate-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Gift className="w-5 h-5 text-purple-500" />
+                Order Products
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {selectedOrder.items.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-4 bg-white p-3 rounded-lg border shadow-sm">
+                    <div className="w-16 h-16 rounded-md overflow-hidden border bg-gray-100 flex-shrink-0">
+                      {item.image_url ? (
+                        <Image
+                          src={item.image_url}
+                          alt={item.variant_name || 'Product'}
+                          width={64}
+                          height={64}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                          <ImageIcon className="w-6 h-6" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-sm line-clamp-2">{item.variant_name || 'Unknown Product'}</h4>
+                      <Badge variant="secondary" className="mt-1 text-xs">
+                        {item.quantity} unit{item.quantity !== 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {selectedOrderId && campaigns.length > 0 && (
           <Card className="mb-6">
@@ -678,6 +771,25 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
                                 </div>
                               </div>
                               <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedCampaignId(campaign.id)
+                                    setNewCampaign({
+                                      campaign_name: campaign.campaign_name,
+                                      campaign_description: campaign.campaign_description,
+                                      start_date: campaign.start_date,
+                                      end_date: campaign.end_date,
+                                      draw_date: campaign.draw_date || ''
+                                    })
+                                    setPrizes(campaign.prizes_json || [])
+                                    setShowNewCampaignModal(true)
+                                  }}
+                                >
+                                  <Edit className="w-4 h-4 mr-1" />
+                                  Edit
+                                </Button>
                                 {campaign.status === 'draft' && (
                                   <Button
                                     size="sm"
@@ -1024,9 +1136,9 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
       <Dialog open={showNewCampaignModal} onOpenChange={setShowNewCampaignModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create New Campaign</DialogTitle>
+            <DialogTitle>{campaigns.length > 0 ? 'Edit Campaign' : 'Create New Campaign'}</DialogTitle>
             <DialogDescription>
-              Create a lucky draw campaign for {selectedOrder?.order_no}
+              {campaigns.length > 0 ? 'Edit details for' : 'Create a lucky draw campaign for'} {selectedOrder?.order_no}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -1158,7 +1270,7 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
               Cancel
             </Button>
             <Button onClick={handleCreateCampaign} className="bg-purple-500 hover:bg-purple-600">
-              Create Campaign
+              {campaigns.length > 0 ? 'Save Changes' : 'Create Campaign'}
             </Button>
           </DialogFooter>
         </DialogContent>
