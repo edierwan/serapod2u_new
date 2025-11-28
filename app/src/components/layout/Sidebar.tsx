@@ -353,13 +353,6 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   // Set mounted flag after client-side hydration
   useEffect(() => {
     setIsMounted(true)
-    // Restore expanded menu state from session storage
-    const savedExpandedMenu = typeof window !== 'undefined' 
-      ? sessionStorage.getItem('sidebarExpandedMenu') 
-      : null
-    if (savedExpandedMenu) {
-      setExpandedMenu(savedExpandedMenu)
-    }
   }, [])
   
   // Load branding settings from organization

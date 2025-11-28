@@ -1746,15 +1746,6 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
                 </div>
               </div>
             )}
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Quick tips</h4>
-              <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
-                <li>Scan only the master case QR code (child units move automatically).</li>
-                <li>Once the target cases are received, the order moves to the next stage of the tracker.</li>
-                <li>Need to pause? Select a different order anytime—progress is saved.</li>
-              </ul>
-            </div>
           </CardContent>
         </Card>
 
@@ -2031,42 +2022,41 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
                         <TableRow key={row.orderId} className="hover:bg-indigo-50/40">
                           <TableCell>
                             <div className="flex flex-col">
-                              <span className="font-semibold text-gray-900">{row.orderNo}</span>
-                              <span className="text-xs text-gray-500">{row.orderId.slice(0, 8)}</span>
+                              <span className="font-semibold text-gray-900 text-xs">{row.orderNo}</span>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="text-sm text-gray-700">{row.buyerOrgName || '—'}</span>
+                            <span className="text-xs text-gray-700">{row.buyerOrgName || '—'}</span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                            <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
                               {formatNumber(row.casesScanned)}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium text-blue-900">{formatNumber(row.unitsScanned)}</span>
+                            <span className="font-medium text-blue-900 text-xs">{formatNumber(row.unitsScanned)}</span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
                               {formatNumber(row.casesReceived)}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium text-gray-900">{formatNumber(row.unitsReceived)}</span>
+                            <span className="font-medium text-gray-900 text-xs">{formatNumber(row.unitsReceived)}</span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
+                            <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px]">
                               {formatNumber(row.casesShipped)}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium text-purple-900">{formatNumber(row.unitsShipped)}</span>
+                            <span className="font-medium text-purple-900 text-xs">{formatNumber(row.unitsShipped)}</span>
                           </TableCell>
                           <TableCell>
-                            <span className="text-sm text-gray-600">{formatDateTime(row.firstReceivedAt)}</span>
+                            <span className="text-xs text-gray-600">{formatDateTime(row.firstReceivedAt)}</span>
                           </TableCell>
                           <TableCell>
-                            <span className="text-sm text-gray-600">{formatDateTime(row.lastReceivedAt)}</span>
+                            <span className="text-xs text-gray-600">{formatDateTime(row.lastReceivedAt)}</span>
                           </TableCell>
                         </TableRow>
                       ))
