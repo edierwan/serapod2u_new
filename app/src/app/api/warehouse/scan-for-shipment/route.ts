@@ -279,7 +279,11 @@ const buildScannedQuantities = (
   }
 
   for (const adjustment of adjustments) {
-    updated.total_units += adjustment.units_removed
+    // Include shortfall in the total count so that the UI reflects the scanned item
+    // even if there is an inventory warning.
+    const totalUnits = adjustment.units_removed + (adjustment.shortfall || 0)
+    
+    updated.total_units += totalUnits
     updated.total_cases += adjustment.cases_removed
 
     if (!updated.per_variant[adjustment.variant_id]) {
@@ -289,7 +293,7 @@ const buildScannedQuantities = (
       }
     }
 
-    updated.per_variant[adjustment.variant_id].units += adjustment.units_removed
+    updated.per_variant[adjustment.variant_id].units += totalUnits
     updated.per_variant[adjustment.variant_id].cases += adjustment.cases_removed
   }
 
