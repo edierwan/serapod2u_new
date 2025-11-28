@@ -257,7 +257,7 @@ export default function JourneyDesignerV2({
                 // Check Redemption
                 if (order.has_redeem) {
                     const { count } = await supabase
-                        .from('redemption_gifts')
+                        .from('redeem_gifts')
                         .select('*', { count: 'exact', head: true })
                         .eq('order_id', order.id)
                     
