@@ -225,7 +225,16 @@ export async function POST(request: NextRequest) {
       }
 
       // Get warehouse and distributor info from session or QR codes
-      const fromOrg = resolvedFromOrg || firstQR.current_location_org_id || session.warehouse_org_id || null
+      // CRITICAL FIX: Do NOT use firstQR.current_location_org_id if status is warehouse_packed
+      // because scan-for-shipment updates it to the distributor (destination)!
+      let fromOrg = resolvedFromOrg || session.warehouse_org_id || null
+      
+      // Only use QR location if NOT warehouse_packed (e.g. if we support shipping from other states)
+      // But for warehouse_packed, the location on the QR is the DESTINATION.
+      if (!fromOrg && firstQR.status !== 'warehouse_packed') {
+        fromOrg = firstQR.current_location_org_id
+      }
+
       const toOrg = resolvedToOrg || session.distributor_org_id || null
 
       // If QR codes have master codes, try to get additional info from them
@@ -249,6 +258,12 @@ export async function POST(request: NextRequest) {
           if (!orderId && masterData.shipment_order_id) {
             orderId = masterData.shipment_order_id
             console.log('✅ Found order_id from master code:', orderId)
+          }
+          
+          // Fallback for warehouse ID if missing
+          if (!fromOrg && masterData.warehouse_org_id) {
+             fromOrg = masterData.warehouse_org_id
+             console.log('✅ Found warehouse_org_id from master code:', fromOrg)
           }
         }
       }
