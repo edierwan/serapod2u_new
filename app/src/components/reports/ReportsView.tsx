@@ -191,47 +191,66 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
       setLoading(true)
       const periods = getComparisonPeriods()
 
-      // Current period data
-      const { data: currentRevenueData } = await supabase
-        .from('orders')
-        .select('total_amount')
-        .eq('status', 'approved')
+      // Current period revenue and sales from stock movements (Warehouse -> Distributor)
+      const { data: currentMovements } = await supabase
+        .from('stock_movements')
+        .select(`
+          quantity_change,
+          product_variants!inner(
+            base_cost,
+            distributor_price
+          ),
+          from_org:organizations!stock_movements_from_organization_id_fkey!inner(org_type_code),
+          to_org:organizations!stock_movements_to_organization_id_fkey!inner(org_type_code)
+        `)
+        .eq('movement_type', 'order_fulfillment')
+        .eq('from_org.org_type_code', 'WH')
+        .eq('to_org.org_type_code', 'DIST')
         .gte('created_at', periods.currentStart.toISOString())
         .lte('created_at', periods.currentEnd.toISOString())
 
-      const currentRevenue = currentRevenueData?.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0) || 0
+      let currentRevenue = 0
+      let currentSales = 0
 
-      const { data: currentSalesData } = await supabase
-        .from('order_items')
-        .select('qty, orders!inner(status, created_at)')
-        .eq('orders.status', 'approved')
-        .gte('orders.created_at', periods.currentStart.toISOString())
-        .lte('orders.created_at', periods.currentEnd.toISOString())
-
-      const currentSales = currentSalesData?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
+      currentMovements?.forEach((m: any) => {
+        const qty = Math.abs(m.quantity_change || 0)
+        const price = m.product_variants?.distributor_price || 0
+        const cost = m.product_variants?.base_cost || 0
+        
+        currentSales += qty
+        currentRevenue += (price - cost) * qty
+      })
 
       // Previous period data (for comparison)
       let previousRevenue = 0
       let previousSales = 0
 
       if (enableComparison) {
-        const { data: prevRevenueData } = await supabase
-          .from('orders')
-          .select('total_amount')
-          .eq('status', 'approved')
+        const { data: prevMovements } = await supabase
+          .from('stock_movements')
+          .select(`
+            quantity_change,
+            product_variants!inner(
+              base_cost,
+              distributor_price
+            ),
+            from_org:organizations!stock_movements_from_organization_id_fkey!inner(org_type_code),
+            to_org:organizations!stock_movements_to_organization_id_fkey!inner(org_type_code)
+          `)
+          .eq('movement_type', 'order_fulfillment')
+          .eq('from_org.org_type_code', 'WH')
+          .eq('to_org.org_type_code', 'DIST')
           .gte('created_at', periods.previousStart.toISOString())
           .lte('created_at', periods.previousEnd.toISOString())
 
-        previousRevenue = prevRevenueData?.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0) || 0
-
-        const { data: prevSalesData } = await supabase
-          .from('order_items')
-          .select('qty, orders!inner(status, created_at)')
-          .eq('orders.status', 'approved')
-          .gte('orders.created_at', periods.previousStart.toISOString())
-          .lte('orders.created_at', periods.previousEnd.toISOString())
-
-        previousSales = prevSalesData?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
+        prevMovements?.forEach((m: any) => {
+          const qty = Math.abs(m.quantity_change || 0)
+          const price = m.product_variants?.distributor_price || 0
+          const cost = m.product_variants?.base_cost || 0
+          
+          previousSales += qty
+          previousRevenue += (price - cost) * qty
+        })
       }
 
       const { count: orgCount } = await supabase
@@ -291,33 +310,29 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
       setLoadingTopProducts(true)
       const periods = getComparisonPeriods()
 
-      // Current period data
+      // Current period data from stock movements
       const { data: currentData } = await supabase
-        .from('order_items')
+        .from('stock_movements')
         .select(`
-          qty,
-          unit_price,
+          quantity_change,
           product_variants!inner(
             product_id,
             base_cost,
+            distributor_price,
             products!inner(
               product_name,
               product_code,
               brand_name
             )
           ),
-          orders!inner(
-            status,
-            created_at,
-            seller_org:organizations!orders_seller_org_id_fkey!inner(org_type_code),
-            buyer_org:organizations!orders_buyer_org_id_fkey!inner(org_type_code)
-          )
+          from_org:organizations!stock_movements_from_organization_id_fkey!inner(org_type_code),
+          to_org:organizations!stock_movements_to_organization_id_fkey!inner(org_type_code)
         `)
-        .eq('orders.status', 'approved')
-        .eq('orders.seller_org.org_type_code', 'WH')
-        .eq('orders.buyer_org.org_type_code', 'DIST')
-        .gte('orders.created_at', periods.currentStart.toISOString())
-        .lte('orders.created_at', periods.currentEnd.toISOString())
+        .eq('movement_type', 'order_fulfillment')
+        .eq('from_org.org_type_code', 'WH')
+        .eq('to_org.org_type_code', 'DIST')
+        .gte('created_at', periods.currentStart.toISOString())
+        .lte('created_at', periods.currentEnd.toISOString())
 
       const productMap = new Map<string, TopProduct>()
       
@@ -328,12 +343,13 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
         const key = product.product_code
         const existing = productMap.get(key)
         
+        const qty = Math.abs(item.quantity_change || 0)
         const baseCost = item.product_variants?.base_cost || 0
-        const unitPrice = item.unit_price || 0
-        const revenue = (unitPrice - baseCost) * (item.qty || 0)
+        const distPrice = item.product_variants?.distributor_price || 0
+        const revenue = (distPrice - baseCost) * qty
         
         if (existing) {
-          existing.total_quantity += item.qty || 0
+          existing.total_quantity += qty
           existing.total_orders += 1
           existing.total_revenue += revenue
         } else {
@@ -341,7 +357,7 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
             product_name: product.product_name,
             product_code: product.product_code,
             brand_name: product.brand_name,
-            total_quantity: item.qty || 0,
+            total_quantity: qty,
             total_orders: 1,
             total_revenue: revenue,
             previous_quantity: 0,
@@ -353,33 +369,30 @@ export default function ReportsView({ userProfile }: ReportsViewProps) {
       // Previous period data for comparison
       if (enableComparison) {
         const { data: previousData } = await supabase
-          .from('order_items')
+          .from('stock_movements')
           .select(`
-            qty,
+            quantity_change,
             product_variants!inner(
               product_id,
               products!inner(
                 product_code
               )
             ),
-            orders!inner(
-              status,
-              created_at,
-              seller_org:organizations!orders_seller_org_id_fkey!inner(org_type_code),
-              buyer_org:organizations!orders_buyer_org_id_fkey!inner(org_type_code)
-            )
+            from_org:organizations!stock_movements_from_organization_id_fkey!inner(org_type_code),
+            to_org:organizations!stock_movements_to_organization_id_fkey!inner(org_type_code)
           `)
-          .eq('orders.status', 'approved')
-          .eq('orders.seller_org.org_type_code', 'WH')
-          .eq('orders.buyer_org.org_type_code', 'DIST')
-          .gte('orders.created_at', periods.previousStart.toISOString())
-          .lte('orders.created_at', periods.previousEnd.toISOString())
+          .eq('movement_type', 'order_fulfillment')
+          .eq('from_org.org_type_code', 'WH')
+          .eq('to_org.org_type_code', 'DIST')
+          .gte('created_at', periods.previousStart.toISOString())
+          .lte('created_at', periods.previousEnd.toISOString())
 
         const previousMap = new Map<string, number>()
         previousData?.forEach((item: any) => {
           const code = item.product_variants?.products?.product_code
           if (code) {
-            previousMap.set(code, (previousMap.get(code) || 0) + (item.qty || 0))
+            const qty = Math.abs(item.quantity_change || 0)
+            previousMap.set(code, (previousMap.get(code) || 0) + qty)
           }
         })
 
