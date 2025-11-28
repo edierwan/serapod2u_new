@@ -439,7 +439,6 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
 
             return matchesSearch && matchesRole && matchesOrg && matchesOrgType && matchesStatus
     })
-    })
     .sort((a, b) => {
       let aVal: any = a[sortField]
       let bVal: any = b[sortField]
@@ -672,7 +671,9 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 value={orgTypeFilter}
               >
                 <option value="">All Types</option>
-                {Array.from(new Set(organizations.map(org => org.org_type_code))).map(typeCode => (
+                {Array.from(new Set(organizations.map(org => org.org_type_code)))
+                  .filter((t): t is string => !!t)
+                  .map(typeCode => (
                   <option key={typeCode} value={typeCode}>
                     {getOrgTypeName(typeCode)}
                   </option>
