@@ -153,7 +153,7 @@ const navigationItems: MenuItem[] = [
         icon: Scan,
         access: {
           // Shops and HQ
-          allowedOrgTypes: ['SHOP', 'HQ'],
+          allowedOrgTypes: ['HQ'],
           maxRoleLevel: 50
         }
       },
@@ -194,8 +194,8 @@ const navigationItems: MenuItem[] = [
         label: 'Point Catalog',
         icon: Gift,
         access: {
-          minRoleLevel: 1,
-          maxRoleLevel: 30,
+          allowedOrgTypes: ['HQ', 'SHOP'],
+          maxRoleLevel: 50,
         }
       },
       {
@@ -221,7 +221,7 @@ const navigationItems: MenuItem[] = [
         label: 'Consumer Activations',
         icon: Scan,
         access: {
-          allowedOrgTypes: ['HQ', 'SHOP'],
+          allowedOrgTypes: ['HQ'],
           maxRoleLevel: 50
         }
       },

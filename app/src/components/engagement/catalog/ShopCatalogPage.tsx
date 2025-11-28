@@ -95,7 +95,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [selectedSort, setSelectedSort] = useState<string>("points-asc")
   const [onlyAvailable, setOnlyAvailable] = useState(false)
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null)
-  const [productSummary, setProductSummary] = useState<{product: string, variant: string, count: number, points: number}[]>([])
+  const [productSummary, setProductSummary] = useState<{product: string, variant: string, count: number, points: number, imageUrl?: string | null}[]>([])
   const [redeeming, setRedeeming] = useState(false)
 
   const shopOrgId = userProfile.organization_id
@@ -238,9 +238,9 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           console.log('📊 First ledger entry:', enrichedLedger[0])
           
           // Calculate product summary from scan transactions
-          const productMap = new Map<string, {product: string, variant: string, count: number, points: number}>()
+          const productMap = new Map<string, {product: string, variant: string, count: number, points: number, imageUrl?: string | null}>()
           
-          ledgerRes.data.forEach((entry: any) => {
+          enrichedLedger.forEach((entry: any) => {
             if (entry.transaction_type === 'scan' && entry.product_name) {
               const productName = entry.product_name || 'Unknown Product'
               const variantName = entry.variant_name || 'Unknown Variant'
@@ -255,7 +255,8 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                   product: productName,
                   variant: variantName,
                   count: 1,
-                  points: entry.points_change
+                  points: entry.points_change,
+                  imageUrl: entry.imageUrl
                 })
               }
             }
@@ -598,7 +599,41 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           </CardHeader>
           <CardContent>
             <div className="overflow-hidden rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
+              {/* Mobile View (Cards) */}
+              <div className="block md:hidden divide-y divide-slate-100">
+                {productSummary.map((item, idx) => (
+                  <div key={idx} className="p-4 flex items-start gap-3">
+                    <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
+                      {item.imageUrl ? (
+                        <Image
+                          src={item.imageUrl}
+                          alt={item.variant}
+                          width={48}
+                          height={48}
+                          className="object-cover w-full h-full"
+                        />
+                      ) : (
+                        <Gift className="h-6 w-6 text-slate-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-slate-800 truncate">{item.product}</div>
+                      <div className="text-sm text-slate-600 truncate">{item.variant}</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                          {item.count} {item.count === 1 ? 'scan' : 'scans'}
+                        </Badge>
+                        <span className="text-sm font-semibold text-emerald-600">
+                          +{formatNumber(item.points)} pts
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop View (Table) */}
+              <table className="hidden md:table w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3">Product</th>
@@ -613,7 +648,24 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-800">{item.product}</div>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{item.variant}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-shrink-0 w-10 h-10 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
+                            {item.imageUrl ? (
+                              <Image
+                                src={item.imageUrl}
+                                alt={item.variant}
+                                width={40}
+                                height={40}
+                                className="object-cover w-full h-full"
+                              />
+                            ) : (
+                              <Gift className="h-5 w-5 text-slate-400" />
+                            )}
+                          </div>
+                          <span>{item.variant}</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                           {item.count} {item.count === 1 ? 'scan' : 'scans'}

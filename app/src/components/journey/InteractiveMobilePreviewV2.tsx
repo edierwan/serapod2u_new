@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +38,7 @@ interface InteractiveMobilePreviewV2Props {
 }
 
 export default function InteractiveMobilePreviewV2({ config, fullScreen = false, qrCode }: InteractiveMobilePreviewV2Props) {
+    const router = useRouter()
     const [currentPage, setCurrentPage] = useState<PageType>('welcome')
     const [pointsCollected, setPointsCollected] = useState(false)
     const [luckyDrawEntered, setLuckyDrawEntered] = useState(false)
@@ -562,20 +564,30 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                             </div>
                         </div>
 
-                        <div className="flex gap-3">
+                        <div className="space-y-3">
                             <button
-                                onClick={() => setCurrentPage('welcome')}
-                                className="flex-1 py-3 px-4 bg-white border-2 border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
-                            >
-                                Main Menu
-                            </button>
-                            <button
-                                onClick={() => setCurrentPage('thank-you')}
-                                className="flex-1 py-3 px-4 text-white font-medium rounded-lg"
+                                onClick={() => router.push('/engagement/catalog')}
+                                className="w-full py-3 px-4 text-white font-medium rounded-lg shadow-md flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                                 style={{ backgroundColor: config.button_color }}
                             >
-                                Exit
+                                <Gift className="w-5 h-5" />
+                                View Rewards Catalog
                             </button>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setCurrentPage('welcome')}
+                                    className="flex-1 py-3 px-4 bg-white border-2 border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+                                >
+                                    Main Menu
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage('thank-you')}
+                                    className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200"
+                                >
+                                    Exit
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </>

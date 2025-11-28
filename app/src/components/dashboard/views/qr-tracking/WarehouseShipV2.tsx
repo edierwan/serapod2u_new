@@ -141,6 +141,11 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     finalTotal: 0
   })
   
+  // Pagination state
+  const [distributorHistoryPage, setDistributorHistoryPage] = useState(1)
+  const [overallHistoryPage, setOverallHistoryPage] = useState(1)
+  const ITEMS_PER_PAGE = 5
+  
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -1697,7 +1702,90 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     units: number
     cases: number
   }>>([])
-  
+
+  // Aggregated Distributor History
+  const aggregatedDistributorHistory = useMemo(() => {
+    const productAggregation: Record<string, { units: number, lastScanned: string, status: string, distributorName: string, sessionIds: string[], validation_status?: string, variantName: string }> = {}
+    
+    distributorHistory.forEach(item => {
+      Object.entries(item.product_breakdown).forEach(([product, qty]) => {
+        if (!productAggregation[product]) {
+          // Try to extract variant name if product string is "Product - Variant"
+          let variantName = product
+          if (product.includes(' - ')) {
+            const parts = product.split(' - ')
+            if (parts.length > 1) variantName = parts[parts.length - 1]
+          } else if (product.includes('[')) {
+             // Handle "Product Name [ Variant Name ]" format if exists
+             const match = product.match(/\[(.*?)\]/)
+             if (match && match[1]) variantName = match[1].trim()
+          }
+
+          productAggregation[product] = {
+            units: 0,
+            lastScanned: item.scanned_at,
+            status: item.status,
+            distributorName: item.distributor_name,
+            sessionIds: [],
+            validation_status: item.validation_status,
+            variantName: variantName
+          }
+        }
+        productAggregation[product].units += Number(qty)
+        productAggregation[product].sessionIds.push(item.id)
+        // Keep the most recent scan time
+        if (new Date(item.scanned_at) > new Date(productAggregation[product].lastScanned)) {
+          productAggregation[product].lastScanned = item.scanned_at
+          productAggregation[product].status = item.status
+          productAggregation[product].validation_status = item.validation_status
+        }
+      })
+    })
+    return Object.entries(productAggregation).map(([product, data]) => ({ product, ...data }))
+  }, [distributorHistory])
+
+  // Aggregated Overall History
+  const aggregatedOverallHistory = useMemo(() => {
+    const aggregation: Record<string, { distributor: string, product: string, units: number, lastScanned: string, status: string, sessionIds: string[], variantName: string }> = {}
+    
+    overallHistory.forEach(item => {
+      Object.entries(item.product_breakdown).forEach(([product, qty]) => {
+        const key = `${item.distributor_id}|||${product}`
+        if (!aggregation[key]) {
+          // Try to extract variant name
+          let variantName = product
+          if (product.includes(' - ')) {
+            const parts = product.split(' - ')
+            if (parts.length > 1) variantName = parts[parts.length - 1]
+          } else if (product.includes('[')) {
+             const match = product.match(/\[(.*?)\]/)
+             if (match && match[1]) variantName = match[1].trim()
+          }
+
+          aggregation[key] = {
+            distributor: item.distributor_name,
+            product: product,
+            units: 0,
+            lastScanned: item.scanned_at,
+            status: item.status,
+            sessionIds: [],
+            variantName: variantName
+          }
+        }
+        aggregation[key].units += Number(qty)
+        aggregation[key].sessionIds.push(item.id)
+        if (new Date(item.scanned_at) > new Date(aggregation[key].lastScanned)) {
+          aggregation[key].lastScanned = item.scanned_at
+          aggregation[key].status = item.status
+        }
+      })
+    })
+    return Object.values(aggregation)
+  }, [overallHistory])
+
+  const paginatedDistributorHistory = aggregatedDistributorHistory.slice((distributorHistoryPage - 1) * ITEMS_PER_PAGE, distributorHistoryPage * ITEMS_PER_PAGE)
+  const paginatedOverallHistory = aggregatedOverallHistory.slice((overallHistoryPage - 1) * ITEMS_PER_PAGE, overallHistoryPage * ITEMS_PER_PAGE)
+
   // Fetch variant details when sessionQuantities.per_variant changes
   useEffect(() => {
     const fetchVariantDetails = async () => {
@@ -1788,7 +1876,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Warehouse ShipV2</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Warehouse Ship</h1>
           <p className="text-gray-600 mt-1">
             Scan master cases and unique QR codes for distributor shipments
           </p>
@@ -2473,54 +2561,24 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {(() => {
-                    if (distributorHistory.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8 text-gray-500">
-                            <Box className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                            <p>{selectedDistributor ? 'No scans for this distributor yet' : 'No distributor selected'}</p>
-                            <p className="text-sm text-gray-400 mt-1">
-                              {selectedDistributor ? 'Scan codes above to begin tracking shipments.' : 'Choose a distributor from the dropdown above.'}
-                            </p>
-                          </td>
-                        </tr>
-                      )
-                    }
-                    
-                    // Aggregate by product across all sessions for this distributor
-                    const productAggregation: Record<string, { units: number, lastScanned: string, status: string, distributorName: string, sessionIds: string[], validation_status?: string }> = {}
-                    
-                    distributorHistory.forEach(item => {
-                      Object.entries(item.product_breakdown).forEach(([product, qty]) => {
-                        if (!productAggregation[product]) {
-                          productAggregation[product] = {
-                            units: 0,
-                            lastScanned: item.scanned_at,
-                            status: item.status,
-                            distributorName: item.distributor_name,
-                            sessionIds: [],
-                            validation_status: item.validation_status
-                          }
-                        }
-                        productAggregation[product].units += Number(qty)
-                        productAggregation[product].sessionIds.push(item.id)
-                        // Keep the most recent scan time
-                        if (new Date(item.scanned_at) > new Date(productAggregation[product].lastScanned)) {
-                          productAggregation[product].lastScanned = item.scanned_at
-                          productAggregation[product].status = item.status
-                          productAggregation[product].validation_status = item.validation_status
-                        }
-                      })
-                    })
-                    
-                    return Object.entries(productAggregation).map(([product, data]) => (
-                      <tr key={product} className="hover:bg-gray-50">
+                  {aggregatedDistributorHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-gray-500">
+                        <Box className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                        <p>{selectedDistributor ? 'No scans for this distributor yet' : 'No distributor selected'}</p>
+                        <p className="text-sm text-gray-400 mt-1">
+                          {selectedDistributor ? 'Scan codes above to begin tracking shipments.' : 'Choose a distributor from the dropdown above.'}
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedDistributorHistory.map((data) => (
+                      <tr key={data.product} className="hover:bg-gray-50">
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">
                           {data.distributorName}
                         </td>
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                          {product}
+                          {data.variantName}
                         </td>
                         <td className="py-3 px-4">
                           <span className="text-sm font-semibold text-blue-600">
@@ -2536,11 +2594,11 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleUnlinkProduct(data.sessionIds, product)}
-                              disabled={unlinking === product}
+                              onClick={() => handleUnlinkProduct(data.sessionIds, data.product)}
+                              disabled={unlinking === data.product}
                               className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {unlinking === product ? (
+                              {unlinking === data.product ? (
                                 <RefreshCw className="h-4 w-4 animate-spin" />
                               ) : (
                                 <>
@@ -2557,10 +2615,35 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                         </td>
                       </tr>
                     ))
-                  })()}
+                  )}
                 </tbody>
               </table>
             </div>
+            {aggregatedDistributorHistory.length > ITEMS_PER_PAGE && (
+              <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                <div className="text-sm text-gray-500">
+                  Showing {((distributorHistoryPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(distributorHistoryPage * ITEMS_PER_PAGE, aggregatedDistributorHistory.length)} of {aggregatedDistributorHistory.length} results
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDistributorHistoryPage(p => Math.max(1, p - 1))}
+                    disabled={distributorHistoryPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDistributorHistoryPage(p => Math.min(Math.ceil(aggregatedDistributorHistory.length / ITEMS_PER_PAGE), p + 1))}
+                    disabled={distributorHistoryPage >= Math.ceil(aggregatedDistributorHistory.length / ITEMS_PER_PAGE)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -2591,90 +2674,83 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {(() => {
-                    if (overallHistory.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8 text-gray-500">
-                            <Box className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                            <p>No scan history yet</p>
-                            <p className="text-sm text-gray-400 mt-1">
-                              Start scanning master cases to track warehouse shipments.
-                            </p>
-                          </td>
-                        </tr>
-                      )
-                    }
-                    
-                    // Aggregate by distributor + product across all sessions
-                    const aggregation: Record<string, { distributor: string, product: string, units: number, lastScanned: string, status: string, sessionIds: string[] }> = {}
-                    
-                    overallHistory.forEach(item => {
-                      Object.entries(item.product_breakdown).forEach(([product, qty]) => {
-                        const key = `${item.distributor_id}|||${product}` // Use ||| as separator to avoid conflicts with hyphens
-                        if (!aggregation[key]) {
-                          aggregation[key] = {
-                            distributor: item.distributor_name,
-                            product: product,
-                            units: 0,
-                            lastScanned: item.scanned_at,
-                            status: item.status,
-                            sessionIds: []
-                          }
-                        }
-                        aggregation[key].units += Number(qty)
-                        aggregation[key].sessionIds.push(item.id)
-                        // Keep the most recent scan time
-                        if (new Date(item.scanned_at) > new Date(aggregation[key].lastScanned)) {
-                          aggregation[key].lastScanned = item.scanned_at
-                          aggregation[key].status = item.status
-                        }
-                      })
-                    })
-                    
-                    return Object.entries(aggregation).map(([key, data]) => {
-                      return (
-                        <tr key={key} className="hover:bg-gray-50">
-                          <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                            {data.distributor}
-                          </td>
-                          <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                            {data.product}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="text-sm font-semibold text-blue-600">
-                              {data.units} units
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-sm text-gray-600">
-                            {data.lastScanned ? new Date(data.lastScanned).toLocaleString() : '-'}
-                          </td>
-                          <td className="py-3 px-4">{renderStatusBadge(data.status)}</td>
-                          <td className="py-3 px-4">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleUnlinkProduct(data.sessionIds, data.product)}
-                              disabled={data.status === 'shipped_distributor' || unlinking === data.product}
-                              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {unlinking === data.product ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <Unlink className="h-4 w-4 mr-1" />
-                                  Unlink
-                                </>
-                              )}
-                            </Button>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  })()}
+                  {aggregatedOverallHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-gray-500">
+                        <Box className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                        <p>No scan history yet</p>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Start scanning master cases to track warehouse shipments.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedOverallHistory.map((data, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                          {data.distributor}
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                          {data.variantName}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-sm font-semibold text-blue-600">
+                            {data.units} units
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">
+                          {data.lastScanned ? new Date(data.lastScanned).toLocaleString() : '-'}
+                        </td>
+                        <td className="py-3 px-4">{renderStatusBadge(data.status)}</td>
+                        <td className="py-3 px-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleUnlinkProduct(data.sessionIds, data.product)}
+                            disabled={data.status === 'shipped_distributor' || unlinking === data.product}
+                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {unlinking === data.product ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Unlink className="h-4 w-4 mr-1" />
+                                Unlink
+                              </>
+                            )}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
+            {aggregatedOverallHistory.length > ITEMS_PER_PAGE && (
+              <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                <div className="text-sm text-gray-500">
+                  Showing {((overallHistoryPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(overallHistoryPage * ITEMS_PER_PAGE, aggregatedOverallHistory.length)} of {aggregatedOverallHistory.length} results
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setOverallHistoryPage(p => Math.max(1, p - 1))}
+                    disabled={overallHistoryPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setOverallHistoryPage(p => Math.min(Math.ceil(aggregatedOverallHistory.length / ITEMS_PER_PAGE), p + 1))}
+                    disabled={overallHistoryPage >= Math.ceil(aggregatedOverallHistory.length / ITEMS_PER_PAGE)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

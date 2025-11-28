@@ -138,7 +138,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     }
   }
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       // Validate file type
@@ -163,26 +163,92 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         }
         return
       }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
+
+      try {
+        // Compress image to be under 5KB
+        const compressedFile = await compressImage(file)
+        
+        setAvatarFile(compressedFile)
+        
+        // Create preview
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setAvatarPreview(reader.result as string)
+        }
+        reader.readAsDataURL(compressedFile)
+      } catch (error) {
+        console.error('Compression error:', error)
         toast({
-          title: "File Too Large",
-          description: "Image must be less than 5MB.",
+          title: "Error",
+          description: "Failed to process image. Please try another one.",
           variant: "destructive",
         })
-        return
       }
-      
-      setAvatarFile(file)
-      
-      // Create preview
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
     }
+  }
+
+  const compressImage = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = (event) => {
+        const img = new Image()
+        img.src = event.target?.result as string
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          let width = img.width
+          let height = img.height
+          
+          // Resize to max 150px to ensure small size
+          const MAX_SIZE = 150
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width
+              width = MAX_SIZE
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height
+              height = MAX_SIZE
+            }
+          }
+          
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          ctx?.drawImage(img, 0, 0, width, height)
+          
+          // Start with quality 0.7
+          let quality = 0.7
+          
+          const compress = () => {
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                reject(new Error('Canvas is empty'))
+                return
+              }
+              
+              // If still > 5KB and quality > 0.1, reduce quality and try again
+              if (blob.size > 5 * 1024 && quality > 0.1) {
+                quality -= 0.1
+                compress()
+              } else {
+                // Create new file
+                const newFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                })
+                resolve(newFile)
+              }
+            }, 'image/jpeg', quality)
+          }
+          
+          compress()
+        }
+        img.onerror = (error) => reject(error)
+      }
+      reader.onerror = (error) => reject(error)
+    })
   }
 
   const handleAvatarClick = () => {
