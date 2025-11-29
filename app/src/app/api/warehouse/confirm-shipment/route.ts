@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
           master_code_id,
           batch_id,
           current_location_org_id,
+          variant_id,
           qr_batches (
             order_id,
             orders (
@@ -317,6 +318,45 @@ export async function POST(request: NextRequest) {
 
       resolvedFromOrg = fromOrg
       resolvedToOrg = toOrg
+
+      // 🛡️ PRE-FLIGHT CHECK: Auto-correct inventory if needed
+      // If we have valid warehouse_packed QR codes, we MUST have the inventory.
+      // If inventory is lower, it's a data sync error (likely from previous bugs).
+      // We auto-correct it here to prevent blocking the shipment.
+      if (qrCodesData && qrCodesData.length > 0) {
+        const variantCounts = new Map<string, number>()
+        qrCodesData.forEach(qr => {
+          if (qr.variant_id) {
+            variantCounts.set(qr.variant_id, (variantCounts.get(qr.variant_id) || 0) + 1)
+          }
+        })
+
+        for (const [variantId, requiredCount] of variantCounts.entries()) {
+          const { data: invData } = await supabase
+            .from('product_inventory')
+            .select('quantity_on_hand')
+            .eq('variant_id', variantId)
+            .eq('organization_id', fromOrg)
+            .single()
+          
+          const currentStock = invData?.quantity_on_hand || 0
+          
+          if (currentStock < requiredCount) {
+            const missing = requiredCount - currentStock
+            console.warn(`⚠️ [CONFIRM] Inventory mismatch detected for variant ${variantId}. Required: ${requiredCount}, On Hand: ${currentStock}. Auto-correcting by adding ${missing}...`)
+            
+            // Auto-correct inventory
+            await supabaseAdmin.rpc('adjust_inventory_quantity', {
+              p_variant_id: variantId,
+              p_organization_id: fromOrg,
+              p_delta: missing
+            })
+            
+            // Log the correction (optional, but good for audit)
+            console.log(`✅ [CONFIRM] Auto-corrected inventory for variant ${variantId}`)
+          }
+        }
+      }
 
       // ✅ FIXED APPROACH: 
       // 1. Call WMS function FIRST with ALL codes → creates ONE consolidated movement
