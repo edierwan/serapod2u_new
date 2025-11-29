@@ -406,11 +406,15 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                         />
                                     </div>
                                 ) : (config.product_image_source === 'variant' || !config.product_image_source) && config.variant_image_url ? (
-                                    <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden">
-                                        <img
+                                    <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden relative">
+                                        <Image
                                             src={config.variant_image_url}
                                             alt="Product Variant"
-                                            className="max-w-full max-h-full object-contain"
+                                            fill
+                                            className="object-contain p-2"
+                                            sizes="96px"
+                                            priority
+                                            unoptimized
                                         />
                                     </div>
                                 ) : (
