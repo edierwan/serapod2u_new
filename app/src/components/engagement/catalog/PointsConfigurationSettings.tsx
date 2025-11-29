@@ -17,7 +17,8 @@ import {
   Coins,
   TrendingUp,
   Calendar,
-  Info
+  Info,
+  Banknote
 } from 'lucide-react'
 import { Database } from '@/types/database'
 
@@ -41,6 +42,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   
   // Form state
   const [pointsPerScan, setPointsPerScan] = useState<number>(50)
+  const [pointValueRM, setPointValueRM] = useState<number>(0.01)
   const [ruleName, setRuleName] = useState<string>('Default Point Collection Rule')
   const [expiresAfterDays, setExpiresAfterDays] = useState<number | null>(null)
   const [allowManualAdjustment, setAllowManualAdjustment] = useState<boolean>(true)
@@ -81,6 +83,20 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           setExpiresAfterDays(active.expires_after_days)
           setAllowManualAdjustment(active.allow_manual_adjustment)
         }
+
+        // Fetch organization settings for point value
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('settings')
+          .eq('id', companyId)
+          .single()
+
+        if (orgData?.settings && typeof orgData.settings === 'object') {
+          const settings = orgData.settings as any
+          if (settings.point_value_rm !== undefined) {
+            setPointValueRM(settings.point_value_rm)
+          }
+        }
       } catch (error: any) {
         console.error('Error fetching rules:', error)
         showAlert('error', 'Failed to load point configuration')
@@ -107,6 +123,26 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         showAlert('error', 'Points per scan cannot exceed 10,000')
         return
       }
+
+      // Save point value to organization settings
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', companyId)
+        .single()
+
+      const currentSettings = (orgData?.settings as any) || {}
+      const newSettings = {
+        ...currentSettings,
+        point_value_rm: pointValueRM
+      }
+
+      const { error: settingsError } = await supabase
+        .from('organizations')
+        .update({ settings: newSettings })
+        .eq('id', companyId)
+
+      if (settingsError) throw settingsError
 
       if (activeRule) {
         // Update existing rule
@@ -266,31 +302,65 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Points Per Scan Input */}
-          <div className="space-y-2">
-            <Label htmlFor="pointsPerScan" className="text-base font-semibold">
-              Points Per QR Scan <span className="text-red-500">*</span>
-            </Label>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1 max-w-xs">
-                <Coins className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="pointsPerScan"
-                  type="number"
-                  min="1"
-                  max="10000"
-                  value={pointsPerScan}
-                  onChange={(e) => setPointsPerScan(parseInt(e.target.value) || 0)}
-                  className="pl-10 text-lg font-semibold"
-                  placeholder="50"
-                />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="pointsPerScan" className="text-base font-semibold">
+                Points Per QR Scan <span className="text-red-500">*</span>
+              </Label>
+              <div className="flex items-center gap-4">
+                <div className="relative flex-1 max-w-xs">
+                  <Coins className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="pointsPerScan"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    value={pointsPerScan}
+                    onChange={(e) => setPointsPerScan(parseInt(e.target.value) || 0)}
+                    className="pl-10 text-lg font-semibold"
+                    placeholder="50"
+                  />
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  points per scan
+                </div>
               </div>
-              <div className="text-sm text-muted-foreground">
-                points per scan
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Recommended: 10-100 points.
+              </p>
+              {pointsPerScan > 0 && pointValueRM > 0 && (
+                <div className="text-sm font-medium text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 inline-block">
+                  Estimated Cost: RM {(pointsPerScan * pointValueRM).toFixed(2)} per scan
+                </div>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Recommended: 10-100 points per scan. Higher values increase shop engagement but reduce point value.
-            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="pointValueRM" className="text-base font-semibold">
+                Point Value (RM)
+              </Label>
+              <div className="flex items-center gap-4">
+                <div className="relative flex-1 max-w-xs">
+                  <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="pointValueRM"
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    value={pointValueRM}
+                    onChange={(e) => setPointValueRM(parseFloat(e.target.value) || 0)}
+                    className="pl-10 text-lg font-semibold"
+                    placeholder="0.01"
+                  />
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  RM per point
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Internal reference value for budget estimation.
+              </p>
+            </div>
           </div>
 
           {/* Rule Name */}

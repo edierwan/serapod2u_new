@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Database } from "@/types/database"
@@ -57,6 +58,7 @@ import {
   Settings
 } from "lucide-react"
 import { PointsConfigurationSettings } from './PointsConfigurationSettings'
+import { CategorySettingsDialog } from './CategorySettingsDialog'
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
@@ -120,6 +122,7 @@ function formatRelative(date: Date): string {
 }
 
 export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
+  const supabase = createClient()
   const [rewards, setRewards] = useState<RedeemItemRow[]>([])
   const [transactions, setTransactions] = useState<PointsTransactionRow[]>([])
   const [shopUsers, setShopUsers] = useState<ShopUser[]>([])
@@ -132,6 +135,26 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
   const [activeTab, setActiveTab] = useState<"rewards" | "users" | "settings">("rewards")
+  const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
+  const [showCategorySettings, setShowCategorySettings] = useState(false)
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', userProfile.organizations.id)
+        .single()
+
+      if (orgData?.settings && typeof orgData.settings === 'object') {
+        const settings = orgData.settings as any
+        if (settings.category_labels) {
+          setCategoryLabels({ ...CATEGORY_LABELS, ...settings.category_labels })
+        }
+      }
+    }
+    loadSettings()
+  }, [supabase, userProfile.organizations.id])
   
   // Points adjustment modal
   const [showAdjustPointsModal, setShowAdjustPointsModal] = useState(false)
@@ -685,7 +708,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+      <div className="space-y-6">
         <Card>
           <CardHeader className="gap-4 border-b border-border/50 pb-6">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -749,16 +772,24 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               >
                 All categories
               </Button>
-              {(Object.keys(CATEGORY_LABELS) as RewardCategory[]).map((category) => (
+              {(Object.keys(categoryLabels) as RewardCategory[]).map((category) => (
                 <Button
                   key={category}
                   size="sm"
                   variant={categoryFilter === category ? "default" : "outline"}
                   onClick={() => setCategoryFilter(category)}
                 >
-                  {CATEGORY_LABELS[category]}
+                  {categoryLabels[category]}
                 </Button>
               ))}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowCategorySettings(true)}
+                className="ml-2"
+              >
+                <Edit className="mr-2 h-3 w-3" /> Rename
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -790,14 +821,33 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                     {filteredRewards.map((reward) => (
                       <tr key={reward.id} className="hover:bg-muted/40">
                         <td className="px-4 py-4">
-                          <div className="font-medium text-foreground">{reward.item_name}</div>
-                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            <Badge variant="outline" className="border-border/70 bg-background">
-                              {CATEGORY_LABELS[reward.category]}
-                            </Badge>
-                            {reward.lowStock && (
-                              <Badge className="bg-amber-500 text-white">Low stock</Badge>
-                            )}
+                          <div className="flex items-center gap-3">
+                            <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+                              {reward.item_image_url ? (
+                                <Image
+                                  src={reward.item_image_url}
+                                  alt={reward.item_name}
+                                  fill
+                                  className="object-cover"
+                                  unoptimized={reward.item_image_url.startsWith('data:')}
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                                  <Package className="h-5 w-5" />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-medium text-foreground">{reward.item_name}</div>
+                              <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                <Badge variant="outline" className="border-border/70 bg-background">
+                                  {categoryLabels[reward.category]}
+                                </Badge>
+                                {reward.lowStock && (
+                                  <Badge className="bg-amber-500 text-white">Low stock</Badge>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-4 font-semibold text-blue-600">{formatNumber(reward.points_required)}</td>
@@ -843,7 +893,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-3">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -1148,6 +1198,14 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CategorySettingsDialog 
+        open={showCategorySettings} 
+        onOpenChange={setShowCategorySettings}
+        userProfile={userProfile}
+        onUpdate={setCategoryLabels}
+        currentLabels={categoryLabels}
+      />
     </div>
   )
 }

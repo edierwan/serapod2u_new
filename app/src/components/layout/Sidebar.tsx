@@ -52,6 +52,16 @@ const navigationItems: MenuItem[] = [
     // Accessible to all users
   },
   {
+    id: 'reporting',
+    label: 'Reporting',
+    icon: TrendingUp,
+    description: 'Executive reports & insights',
+    access: {
+      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
+      maxRoleLevel: 40 // Managers and above
+    }
+  },
+  {
     id: 'products',
     label: 'Products',
     icon: Package,
@@ -316,17 +326,7 @@ const secondaryItems: MenuItem[] = [
       maxRoleLevel: 30
     }
   },
-  {
-    id: 'reports',
-    label: 'Reports',
-    icon: FileText,
-    description: 'Analytics & reports',
-    access: {
-      // HQ and admin roles
-      allowedOrgTypes: ['HQ'],
-      maxRoleLevel: 30
-    }
-  },
+
   {
     id: 'settings',
     label: 'Settings',

@@ -60,9 +60,9 @@ const compressImage = (file: File): Promise<File> => {
         let width = img.width
         let height = img.height
         
-        // Reward image dimensions - larger than avatars but still optimized
-        const MAX_WIDTH = 800
-        const MAX_HEIGHT = 800
+        // Aggressive compression for mobile optimization (< 5KB target)
+        const MAX_WIDTH = 300 // Reduced from 800
+        const MAX_HEIGHT = 300 // Reduced from 800
         
         // Calculate new dimensions while maintaining aspect ratio
         if (width > height) {
@@ -81,9 +81,14 @@ const compressImage = (file: File): Promise<File> => {
         canvas.height = height
         
         const ctx = canvas.getContext('2d')
-        ctx?.drawImage(img, 0, 0, width, height)
+        // Fill white background for JPEGs (transparency becomes black otherwise)
+        if (ctx) {
+            ctx.fillStyle = '#FFFFFF'
+            ctx.fillRect(0, 0, width, height)
+            ctx.drawImage(img, 0, 0, width, height)
+        }
         
-        // Convert to JPEG with good compression (quality 0.8 = 80%)
+        // Convert to JPEG with aggressive compression (quality 0.5 = 50%)
         canvas.toBlob(
           (blob) => {
             if (blob) {
@@ -98,7 +103,7 @@ const compressImage = (file: File): Promise<File> => {
             }
           },
           'image/jpeg',
-          0.8
+          0.5 // Reduced quality
         )
       }
       img.onerror = () => reject(new Error('Image loading failed'))
@@ -174,6 +179,29 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [pointValueRM, setPointValueRM] = useState<number>(0)
+  const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', userProfile.organizations.id)
+        .single()
+
+      if (orgData?.settings && typeof orgData.settings === 'object') {
+        const settings = orgData.settings as any
+        if (settings.point_value_rm) {
+          setPointValueRM(settings.point_value_rm)
+        }
+        if (settings.category_labels) {
+          setCategoryLabels({ ...CATEGORY_LABELS, ...settings.category_labels })
+        }
+      }
+    }
+    fetchSettings()
+  }, [supabase, userProfile.organizations.id])
 
   useEffect(() => {
     if (mode !== "edit" || !rewardId) return
@@ -577,9 +605,9 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(Object.keys(CATEGORY_LABELS) as RewardCategory[]).map((key) => (
+                        {(Object.keys(categoryLabels) as RewardCategory[]).map((key) => (
                           <SelectItem key={key} value={key} className="capitalize">
-                            {CATEGORY_LABELS[key]}
+                            {categoryLabels[key]}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -623,6 +651,11 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                       value={form.points}
                       onChange={(event) => updateForm("points", event.target.value)}
                     />
+                    {pointValueRM > 0 && form.points && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Estimated Cost: RM {(parseInt(form.points) * pointValueRM).toFixed(2)}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="stock">Stock quantity</Label>
@@ -665,7 +698,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                             src={imagePreview || form.imageUrl} 
                             alt="Reward preview" 
                             fill 
-                            className="object-cover"
+                            className="object-contain"
                             unoptimized={(imagePreview || form.imageUrl).startsWith('data:')}
                           />
                         </div>
@@ -803,7 +836,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                       src={previewReward.item_image_url} 
                       alt={previewReward.item_name} 
                       fill 
-                      className="object-cover" 
+                      className="object-contain" 
                       style={{ objectPosition: 'center' }}
                       unoptimized={previewReward.item_image_url.startsWith('data:')}
                     />
@@ -814,7 +847,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                   )}
                   <div className="absolute left-3 top-3 flex flex-wrap gap-2">
                     <Badge className="bg-white/90 text-xs text-foreground shadow">
-                      {CATEGORY_LABELS[previewReward.category]}
+                      {categoryLabels[previewReward.category]}
                     </Badge>
                     <Badge className={getStatusBadgeClass(previewReward.status)}>{previewReward.status}</Badge>
                   </div>
