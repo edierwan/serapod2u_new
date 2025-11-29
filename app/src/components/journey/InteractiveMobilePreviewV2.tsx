@@ -211,9 +211,40 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
         }
     }
 
+    // Validation helpers
+    const validateMalaysianPhone = (phone: string) => {
+        // Remove non-numeric characters
+        const cleanPhone = phone.replace(/\D/g, '')
+        // Check if it starts with 60 or 0
+        // If starts with 60, length should be 11-12 (e.g. 60123456789)
+        // If starts with 0, length should be 10-11 (e.g. 0123456789)
+        
+        if (cleanPhone.startsWith('60')) {
+            return /^601[0-9]{8,9}$/.test(cleanPhone)
+        } else if (cleanPhone.startsWith('0')) {
+            return /^01[0-9]{8,9}$/.test(cleanPhone)
+        }
+        return false
+    }
+
+    const validateEmail = (email: string) => {
+        if (!email) return true // Optional
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    }
+
     async function handleLuckyDrawEntry() {
         if (!customerName || !customerPhone) {
             alert('Please enter Name and Phone')
+            return
+        }
+
+        if (!validateMalaysianPhone(customerPhone)) {
+            alert('Please enter a valid Malaysian phone number (e.g., 0123456789)')
+            return
+        }
+
+        if (customerEmail && !validateEmail(customerEmail)) {
+            alert('Please enter a valid email address')
             return
         }
 
@@ -281,6 +312,16 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
             if (!customerName || !customerPhone) {
                 alert('Please enter your Name and Phone Number')
+                return
+            }
+
+            if (!validateMalaysianPhone(customerPhone)) {
+                alert('Please enter a valid Malaysian phone number (e.g., 0123456789)')
+                return
+            }
+
+            if (customerEmail && !validateEmail(customerEmail)) {
+                alert('Please enter a valid email address')
                 return
             }
 
