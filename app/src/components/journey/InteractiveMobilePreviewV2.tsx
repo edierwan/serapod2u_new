@@ -624,7 +624,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     <p className="text-4xl font-bold text-green-600">+{totalPoints}</p>
                                 </div>
                                 <div className="pt-3 border-t border-green-200">
-                                    <p className="text-sm text-gray-600">Total Cumulative Points</p>
+                                    <p className="text-sm text-gray-600">Current Balance Point</p>
                                     <p className="text-3xl font-bold text-blue-600">{cumulativePoints}</p>
                                 </div>
                             </div>

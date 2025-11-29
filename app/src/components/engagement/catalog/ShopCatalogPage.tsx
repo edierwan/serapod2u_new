@@ -696,44 +696,25 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="catalog" className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Filter className="h-4 w-4" /> Tailor the catalog
-                </CardTitle>
-                <CardDescription>Search, filter, and sort rewards to suit your shop&apos;s priorities.</CardDescription>
+        <TabsContent value="catalog" className="space-y-4">
+          {/* Mobile-friendly Filter Section */}
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3">
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search rewards..."
+                  className="pl-9 bg-white"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
               </div>
-              <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                <div className="relative md:w-64">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search rewards or categories"
-                    className="pl-9"
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                  />
-                </div>
-                <Select value={selectedSort} onValueChange={setSelectedSort}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SORT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
+              
+              <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
                 <Button
                   size="sm"
                   variant={selectedCategory === "all" ? "default" : "outline"}
+                  className="whitespace-nowrap rounded-full"
                   onClick={() => setSelectedCategory("all")}
                 >
                   All ({enrichedRewards.length})
@@ -743,24 +724,43 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                     key={category}
                     size="sm"
                     variant={selectedCategory === category ? "default" : "outline"}
+                    className="whitespace-nowrap rounded-full"
                     onClick={() => setSelectedCategory(category)}
                   >
                     {CATEGORY_LABELS[category]}
-                    <span className="ml-2 rounded-full bg-muted px-2 text-xs text-muted-foreground">
+                    <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                       {categoriesWithCounts.get(category) ?? 0}
                     </span>
                   </Button>
                 ))}
               </div>
-              <div className="flex items-center gap-3 rounded-lg border border-dashed border-muted-foreground/20 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                <ShieldCheck className="h-4 w-4" />
-                <div className="flex-1">
-                  Show only rewards that can be redeemed immediately
+
+              <div className="flex items-center justify-between gap-2">
+                <Select value={selectedSort} onValueChange={setSelectedSort}>
+                  <SelectTrigger className="w-[160px] h-9 text-xs bg-white">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="text-xs">
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-white px-3 py-2 rounded-md border shadow-sm">
+                  <Switch 
+                    id="available-mode"
+                    checked={onlyAvailable} 
+                    onCheckedChange={setOnlyAvailable} 
+                    className="scale-75 data-[state=checked]:bg-green-600"
+                  />
+                  <label htmlFor="available-mode" className="whitespace-nowrap">Available only</label>
                 </div>
-                <Switch checked={onlyAvailable} onCheckedChange={setOnlyAvailable} />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -886,130 +886,78 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         </TabsContent>
 
         <TabsContent value="points-history">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Clock className="h-4 w-4" /> Points History
-              </CardTitle>
-              <CardDescription>
-                Complete history of all point transactions. Showing last {ledgerTransactions.length} {ledgerTransactions.length === 1 ? 'transaction' : 'transactions'}.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+          <Card className="border-none shadow-none bg-transparent">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <Clock className="h-5 w-5 text-muted-foreground" /> 
+                History
+              </h3>
+              <span className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded-full">
+                Last {ledgerTransactions.length} items
+              </span>
+            </div>
+            
+            <CardContent className="p-0">
               {ledgerTransactions.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground bg-white rounded-lg border border-slate-200">
                   <Gift className="h-10 w-10" />
-                  <p className="text-sm">No points collected yet. Scan QR codes to earn points and they will appear here.</p>
+                  <p className="text-sm">No points collected yet.</p>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-slate-200">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Product / Description</th>
-                        <th className="px-4 py-3">Points</th>
-                        <th className="px-4 py-3">Running Balance</th>
-                        <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3">Type</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ledgerTransactions.slice(0, 50).map((txn, index) => {
-                        // Calculate running balance: Start from current balance and work backwards
-                        // Since transactions are newest first, subtract future transactions from current balance
-                        const runningBalance = currentBalance - ledgerTransactions
-                          .slice(0, index)
-                          .reduce((sum, t) => sum + t.points_change, 0)
-                        return (
-                        <tr key={txn.id} className="border-t border-slate-100">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              {txn.product_name ? (
-                                <>
-                                  <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
-                                    {(txn as any).imageUrl ? (
-                                      <Image
-                                        src={(txn as any).imageUrl}
-                                        alt={txn.product_name}
-                                        width={48}
-                                        height={48}
-                                        className="object-cover w-full h-full"
-                                      />
-                                    ) : (
-                                      <Gift className="h-6 w-6 text-slate-400" />
-                                    )}
-                                  </div>
-                                  <div>
-                                    <div className="font-medium text-slate-800">{txn.product_name}</div>
-                                    <div className="text-xs text-muted-foreground">{txn.variant_name || 'Standard'}</div>
-                                  </div>
-                                </>
-                              ) : txn.reward_name ? (
-                                <>
-                                  <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
-                                    {(txn as any).imageUrl ? (
-                                      <Image
-                                        src={(txn as any).imageUrl}
-                                        alt={txn.reward_name}
-                                        width={48}
-                                        height={48}
-                                        className="object-cover w-full h-full"
-                                      />
-                                    ) : (
-                                      <Gift className="h-6 w-6 text-slate-400" />
-                                    )}
-                                  </div>
-                                  <div>
-                                    <div className="font-medium text-slate-800">Redeemed: {txn.reward_name}</div>
-                                    <div className="text-xs text-muted-foreground">Reward redemption</div>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
-                                    <Settings className="h-6 w-6 text-slate-400" />
-                                  </div>
-                                  <div>
-                                    <div className="font-medium text-slate-800">{txn.description || 'Point transaction'}</div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {txn.adjustment_reason || 'Manual adjustment'}
-                                    </div>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-semibold">
-                            <span className={txn.points_change < 0 ? 'text-red-600' : 'text-emerald-600'}>
-                              {txn.points_change > 0 ? '+' : ''}{formatNumber(txn.points_change)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-semibold">
-                            <span className="text-blue-600">{formatNumber(runningBalance)}</span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">
-                            {formatDateLabel(txn.occurred_at)}
-                          </td>
-                          <td className="px-4 py-3">
-                            {txn.transaction_type === 'scan' ? (
-                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                                QR Scan
-                              </Badge>
-                            ) : txn.transaction_type === 'redeem' ? (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                Redemption
-                              </Badge>
+                <div className="space-y-3">
+                  {ledgerTransactions.slice(0, 50).map((txn, index) => {
+                    const runningBalance = currentBalance - ledgerTransactions
+                      .slice(0, index)
+                      .reduce((sum, t) => sum + t.points_change, 0)
+                    
+                    const isPositive = txn.points_change > 0;
+                    
+                    return (
+                      <div key={txn.id} className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm flex gap-4 items-start">
+                        {/* Icon/Image Section */}
+                        <div className="flex-shrink-0">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden ${isPositive ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                            {(txn as any).imageUrl ? (
+                              <Image
+                                src={(txn as any).imageUrl}
+                                alt="Product"
+                                width={48}
+                                height={48}
+                                className="object-cover w-full h-full"
+                              />
+                            ) : isPositive ? (
+                              <Gift className="h-6 w-6 text-emerald-500" />
                             ) : (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                {txn.transaction_type === 'adjust' ? 'Adjustment' : 'Manual'}
-                              </Badge>
+                              <Gift className="h-6 w-6 text-red-500" />
                             )}
-                          </td>
-                        </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                          </div>
+                        </div>
+
+                        {/* Content Section */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-1">
+                            <h4 className="font-medium text-sm text-slate-900 line-clamp-1">
+                              {txn.product_name || txn.reward_name || txn.description || 'Transaction'}
+                            </h4>
+                            <span className={`font-bold text-sm ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {isPositive ? '+' : ''}{formatNumber(txn.points_change)}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center text-xs text-muted-foreground">
+                            <div className="flex flex-col gap-0.5">
+                              <span>{txn.variant_name || (txn.transaction_type === 'redeem' ? 'Redemption' : 'Standard')}</span>
+                              <span className="text-[10px] opacity-70">{formatDateLabel(txn.occurred_at)}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="block text-[10px] uppercase tracking-wider opacity-70">Balance</span>
+                              <span className="font-medium text-slate-700">{formatNumber(runningBalance)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -1018,78 +966,66 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
         {/* Redemption History Tab - Shows only redemptions */}
         <TabsContent value="redemption-history">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Gift className="h-4 w-4" /> Redemption History
-              </CardTitle>
-              <CardDescription>
-                History of reward redemptions only. Showing {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length} {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length === 1 ? 'redemption' : 'redemptions'}.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+          <Card className="border-none shadow-none bg-transparent">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <Gift className="h-5 w-5 text-muted-foreground" /> 
+                Redemptions
+              </h3>
+              <span className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded-full">
+                {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length} items
+              </span>
+            </div>
+            
+            <CardContent className="p-0">
               {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground bg-white rounded-lg border border-slate-200">
                   <Gift className="h-10 w-10" />
-                  <p className="text-sm">No redemptions yet. Visit the catalog to redeem rewards.</p>
+                  <p className="text-sm">No redemptions yet.</p>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-slate-200">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Reward</th>
-                        <th className="px-4 py-3">Points Used</th>
-                        <th className="px-4 py-3">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ledgerTransactions.filter(t => t.transaction_type === 'redeem').slice(0, 50).map((txn) => {
-                        return (
-                        <tr key={txn.id} className="border-t border-slate-100">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
-                                {(txn as any).imageUrl ? (
-                                  <Image
-                                    src={(txn as any).imageUrl}
-                                    alt={txn.reward_name || 'Reward'}
-                                    width={48}
-                                    height={48}
-                                    className="object-cover w-full h-full"
-                                  />
-                                ) : (
-                                  <Gift className="h-6 w-6 text-slate-400" />
-                                )}
-                              </div>
-                              <div>
-                                {txn.reward_name ? (
-                                  <>
-                                    <div className="font-medium text-slate-800">{txn.reward_name}</div>
-                                    <div className="text-xs text-muted-foreground">Reward redemption</div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="font-medium text-slate-800">{txn.description || 'Reward'}</div>
-                                    <div className="text-xs text-muted-foreground">Redemption</div>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-semibold">
-                            <span className="text-red-600">
+                <div className="space-y-3">
+                  {ledgerTransactions.filter(t => t.transaction_type === 'redeem').slice(0, 50).map((txn) => {
+                    return (
+                      <div key={txn.id} className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm flex gap-4 items-start">
+                        {/* Icon/Image Section */}
+                        <div className="flex-shrink-0">
+                          <div className="w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden bg-red-50">
+                            {(txn as any).imageUrl ? (
+                              <Image
+                                src={(txn as any).imageUrl}
+                                alt={txn.reward_name || 'Reward'}
+                                width={48}
+                                height={48}
+                                className="object-cover w-full h-full"
+                              />
+                            ) : (
+                              <Gift className="h-6 w-6 text-red-500" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Content Section */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-1">
+                            <h4 className="font-medium text-sm text-slate-900 line-clamp-1">
+                              {txn.reward_name || txn.description || 'Reward Redemption'}
+                            </h4>
+                            <span className="font-bold text-sm text-red-600">
                               {formatNumber(Math.abs(txn.points_change))}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">
-                            {formatDateLabel(txn.occurred_at)}
-                          </td>
-                        </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                          </div>
+                          
+                          <div className="flex justify-between items-center text-xs text-muted-foreground">
+                            <div className="flex flex-col gap-0.5">
+                              <span>Reward redemption</span>
+                              <span className="text-[10px] opacity-70">{formatDateLabel(txn.occurred_at)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

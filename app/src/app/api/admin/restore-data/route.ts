@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * POST /api/admin/restore-data
@@ -36,6 +37,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create admin client for restore operations to bypass RLS
+    const adminSupabase = createAdminClient()
+
     const backupData = await request.json()
 
     if (!backupData || !backupData.transaction_data) {
@@ -62,7 +66,7 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < data.length; i += chunkSize) {
         const chunk = data.slice(i, i + chunkSize)
         try {
-          const { error } = await supabase
+          const { error } = await adminSupabase
             .from(tableName as any)
             .upsert(chunk)
           
@@ -82,29 +86,35 @@ export async function POST(request: NextRequest) {
 
     // Restore in order of dependencies
     
-    // 1. QR Batches
-    if (txData.qr_batches) {
-      results.qr_batches = await restoreTable('qr_batches', txData.qr_batches)
-    }
-
-    // 2. QR Master Codes
-    if (txData.qr_master_codes) {
-      results.qr_master_codes = await restoreTable('qr_master_codes', txData.qr_master_codes)
-    }
-
-    // 3. QR Codes
-    if (txData.qr_codes) {
-      results.qr_codes = await restoreTable('qr_codes', txData.qr_codes)
-    }
-
-    // 4. Orders
+    // 1. Orders
     if (txData.orders) {
       results.orders = await restoreTable('orders', txData.orders)
     }
 
+    // 2. QR Batches
+    if (txData.qr_batches) {
+      results.qr_batches = await restoreTable('qr_batches', txData.qr_batches)
+    }
+
+    // 3. QR Master Codes
+    if (txData.qr_master_codes) {
+      results.qr_master_codes = await restoreTable('qr_master_codes', txData.qr_master_codes)
+    }
+
+    // 4. QR Codes
+    if (txData.qr_codes) {
+      results.qr_codes = await restoreTable('qr_codes', txData.qr_codes)
+    }
+
     // 5. Order Items
     if (txData.order_items) {
-      results.order_items = await restoreTable('order_items', txData.order_items)
+      // Remove generated columns that cannot be inserted
+      const sanitizedOrderItems = txData.order_items.map((item: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { line_total, ...rest } = item
+        return rest
+      })
+      results.order_items = await restoreTable('order_items', sanitizedOrderItems)
     }
 
     // 6. Invoices

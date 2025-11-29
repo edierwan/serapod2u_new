@@ -249,6 +249,12 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   const [overallSortColumn, setOverallSortColumn] = useState<string>('lastScanned')
   const [overallSortDirection, setOverallSortDirection] = useState<SortDirection>('desc')
 
+  // Filters for Overall History
+  const [overallFilterOrderNo, setOverallFilterOrderNo] = useState('')
+  const [overallFilterDistributor, setOverallFilterDistributor] = useState('')
+  const [overallFilterProduct, setOverallFilterProduct] = useState('')
+  const [overallFilterDate, setOverallFilterDate] = useState('') // MMYY
+
   // Sorting state for Distributor History
   const [distributorSortColumn, setDistributorSortColumn] = useState<string>('lastScanned')
   const [distributorSortDirection, setDistributorSortDirection] = useState<SortDirection>('desc')
@@ -2006,10 +2012,32 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
   // Aggregated Overall History
   const aggregatedOverallHistory = useMemo(() => {
-    const aggregation: Record<string, { distributor: string, product: string, units: number, lastScanned: string, status: string, sessionIds: string[], variantName: string, imageUrl: string | null }> = {}
+    const aggregation: Record<string, { distributor: string, product: string, units: number, lastScanned: string, status: string, sessionIds: string[], variantName: string, imageUrl: string | null, orderNos: Set<string> }> = {}
     
     overallHistory.forEach(item => {
+      // Apply filters
+      if (overallFilterOrderNo && !item.order_no?.toLowerCase().includes(overallFilterOrderNo.trim().toLowerCase())) {
+        return
+      }
+      if (overallFilterDistributor && !item.distributor_name?.toLowerCase().includes(overallFilterDistributor.trim().toLowerCase())) {
+        return
+      }
+      if (overallFilterDate) {
+        const date = new Date(item.scanned_at)
+        const month = (date.getMonth() + 1).toString().padStart(2, '0')
+        const year = date.getFullYear().toString().slice(-2)
+        const mmyy = `${month}${year}`
+        if (!mmyy.includes(overallFilterDate)) {
+          return
+        }
+      }
+
       Object.entries(item.product_breakdown).forEach(([product, qty]) => {
+        // Apply Product Filter
+        if (overallFilterProduct && !product.toLowerCase().includes(overallFilterProduct.trim().toLowerCase())) {
+          return
+        }
+
         const key = `${item.distributor_id}|||${product}`
         if (!aggregation[key]) {
           // Try to extract variant name
@@ -2030,19 +2058,24 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             status: item.status,
             sessionIds: [],
             variantName: variantName,
-            imageUrl: item.product_images?.[product] || null
+            imageUrl: item.product_images?.[product] || null,
+            orderNos: new Set()
           }
         }
         aggregation[key].units += Number(qty)
         aggregation[key].sessionIds.push(item.id)
+        aggregation[key].orderNos.add(item.order_no || 'Unknown')
         if (new Date(item.scanned_at) > new Date(aggregation[key].lastScanned)) {
           aggregation[key].lastScanned = item.scanned_at
           aggregation[key].status = item.status
         }
       })
     })
-    return Object.values(aggregation)
-  }, [overallHistory])
+    return Object.values(aggregation).map(item => ({
+      ...item,
+      orderNos: Array.from(item.orderNos)
+    }))
+  }, [overallHistory, overallFilterOrderNo, overallFilterDistributor, overallFilterDate, overallFilterProduct])
 
   const sortedDistributorHistory = useMemo(() => {
     return [...aggregatedDistributorHistory].sort((a, b) => {
@@ -3355,6 +3388,41 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="flex flex-col md:flex-row gap-4 mb-4">
+              <div className="flex-1">
+                <Input
+                  placeholder="Filter by Order No"
+                  value={overallFilterOrderNo}
+                  onChange={(e) => setOverallFilterOrderNo(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="flex-1">
+                <Input
+                  placeholder="Filter by Distributor"
+                  value={overallFilterDistributor}
+                  onChange={(e) => setOverallFilterDistributor(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="flex-1">
+                <Input
+                  placeholder="Filter by Product Variant"
+                  value={overallFilterProduct}
+                  onChange={(e) => setOverallFilterProduct(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="w-32">
+                <Input
+                  placeholder="MMYY"
+                  value={overallFilterDate}
+                  onChange={(e) => setOverallFilterDate(e.target.value)}
+                  className="h-8 text-xs"
+                  maxLength={4}
+                />
+              </div>
+            </div>
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <Table>
                 <TableHeader>
@@ -3453,7 +3521,16 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                           </div>
                         </TableCell>
                         <TableCell className="py-3 px-4 text-xs text-gray-700">
-                          {data.distributor}
+                          <div>{data.distributor}</div>
+                          {data.orderNos && data.orderNos.length > 0 ? (
+                            <div className="text-[10px] text-gray-500 mt-1">
+                              {data.orderNos.join(', ')}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-gray-400 mt-1 italic">
+                              No Order #
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="py-3 px-4">
                           <span className="text-xs font-semibold text-blue-600">

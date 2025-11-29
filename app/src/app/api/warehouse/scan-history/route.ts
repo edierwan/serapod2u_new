@@ -73,7 +73,7 @@ export async function GET() {
       `)
       .in('validation_status', ['approved', 'pending', 'matched'])  // Show approved (shipped) AND current scanning sessions
       .order('updated_at', { ascending: false })  // Most recent first
-      .limit(20)  // Show more to include both current and recent history
+      .limit(100)  // Show more to include both current and recent history
 
     // Only filter by warehouse_org_id if not Super Admin
     if (!isSuperAdmin && warehouseOrgId) {
@@ -540,7 +540,7 @@ export async function GET() {
       `)
       .eq('status', 'warehouse_packed')  // ONLY warehouse_packed - not received_warehouse (which is after unlink)
       .order('created_at', { ascending: false })
-      .limit(50)
+      .limit(100)
 
     // Only filter by warehouse_org_id if not Super Admin
     if (!isSuperAdmin && warehouseOrgId) {
