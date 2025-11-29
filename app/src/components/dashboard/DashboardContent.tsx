@@ -25,7 +25,8 @@ import EditOrganizationView from '@/components/organizations/EditOrganizationVie
 import DistributorsView from '@/components/distributors/DistributorsView'
 import UsersView from '@/components/users/UsersView'
 import MyProfileViewNew from '@/components/dashboard/views/MyProfileViewNew'
-import ReportsView from '@/components/reports/ReportsView'
+
+import ReportingView from '@/components/dashboard/views/reporting/ReportingView'
 import SettingsView from '@/components/settings/SettingsView'
 import DashboardOverview from '@/components/dashboard/DashboardOverview'
 // QR Tracking Components
@@ -197,8 +198,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <MyProfileViewNew userProfile={userProfile} />
       case 'users':
         return <UsersView userProfile={userProfile} />
-      case 'reports':
-        return <ReportsView userProfile={userProfile} />
+
+      case 'reporting':
+        return <ReportingView userProfile={userProfile} />
       case 'settings':
         return <SettingsView userProfile={userProfile} />
       default:
