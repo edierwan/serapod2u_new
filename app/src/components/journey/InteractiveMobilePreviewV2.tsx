@@ -386,10 +386,13 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     </div>
                                 ) : (config.product_image_source === 'variant' || !config.product_image_source) && config.variant_image_url ? (
                                     <div className="inline-flex mb-2 w-24 h-24 bg-white rounded-lg p-2 items-center justify-center overflow-hidden">
-                                        <img
+                                        <Image
                                             src={config.variant_image_url}
                                             alt="Product Variant"
+                                            width={96}
+                                            height={96}
                                             className="max-w-full max-h-full object-contain"
+                                            unoptimized
                                         />
                                     </div>
                                 ) : (
@@ -566,7 +569,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
                         <div className="space-y-3">
                             <button
-                                onClick={() => router.push('/engagement/catalog')}
+                                onClick={() => window.location.href = '/engagement/catalog'}
                                 className="w-full py-3 px-4 text-white font-medium rounded-lg shadow-md flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                                 style={{ backgroundColor: config.button_color }}
                             >
