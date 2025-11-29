@@ -684,17 +684,19 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
       )}
 
       <Tabs defaultValue="catalog" className="space-y-6" suppressHydrationWarning>
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="catalog" className="gap-2">
-            <Gift className="h-4 w-4" /> Rewards Catalog
-          </TabsTrigger>
-          <TabsTrigger value="points-history" className="gap-2">
-            <Clock className="h-4 w-4" /> Points History
-          </TabsTrigger>
-          <TabsTrigger value="redemption-history" className="gap-2">
-            <History className="h-4 w-4" /> Redemption History
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
+          <TabsList className="w-auto inline-flex justify-start h-auto p-1">
+            <TabsTrigger value="catalog" className="gap-2 py-2 px-4 whitespace-nowrap">
+              <Gift className="h-4 w-4" /> Rewards Catalog
+            </TabsTrigger>
+            <TabsTrigger value="points-history" className="gap-2 py-2 px-4 whitespace-nowrap">
+              <Clock className="h-4 w-4" /> Points History
+            </TabsTrigger>
+            <TabsTrigger value="redemption-history" className="gap-2 py-2 px-4 whitespace-nowrap">
+              <History className="h-4 w-4" /> Redemption History
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="catalog" className="space-y-4">
           {/* Mobile-friendly Filter Section */}

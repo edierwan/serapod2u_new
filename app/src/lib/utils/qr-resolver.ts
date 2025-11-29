@@ -146,6 +146,23 @@ export async function calculateShopTotalPoints(
   supabase: SupabaseClient,
   shop_id: string
 ): Promise<number> {
+  // Try to get balance from the view first (includes redemptions and adjustments)
+  const { data: balance, error: viewError } = await supabase
+    .from('v_shop_points_balance')
+    .select('current_balance')
+    .eq('shop_id', shop_id)
+    .maybeSingle()
+
+  if (!viewError && balance) {
+    console.log(`💰 Balance for shop ${shop_id} from view: ${balance.current_balance}`)
+    return balance.current_balance
+  }
+
+  if (viewError) {
+    console.warn('⚠️ Error fetching balance from view, falling back to scan sum:', viewError)
+  }
+
+  // Fallback: Sum only scans (Note: This ignores redemptions!)
   const { data: allScans, error } = await supabase
     .from('consumer_qr_scans')
     .select('points_amount')
@@ -161,6 +178,6 @@ export async function calculateShopTotalPoints(
     return sum + (scan.points_amount || 0)
   }, 0) || 0
   
-  console.log(`💰 Total points for shop ${shop_id}: ${total}`)
+  console.log(`💰 Total points for shop ${shop_id} (fallback): ${total}`)
   return total
 }
