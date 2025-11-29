@@ -218,10 +218,10 @@ export default function JourneyFormModal({ journey, orderId, onClose, onSave }: 
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Shield className="w-5 h-5" />
-                OTP Verification Settings
+                Verification & Login Settings
               </CardTitle>
               <CardDescription>
-                Require OTP for additional security
+                Control additional security steps before staff complete an action
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -261,7 +261,7 @@ export default function JourneyFormModal({ journey, orderId, onClose, onSave }: 
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-green-600" />
                   <Label className="text-sm font-medium text-green-900">
-                    Customer OTP for Redemption
+                    Staff login required for redemption
                   </Label>
                 </div>
                 <Switch

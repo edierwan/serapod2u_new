@@ -24,6 +24,7 @@ export interface JourneyConfig {
   show_product_image?: boolean
   product_image_source?: 'variant' | 'custom' | 'genuine_badge'
   product_image_url?: string
+  redemption_requires_login?: boolean
 }
 
 export interface RedemptionPolicy {
@@ -209,7 +210,7 @@ export async function needOtp(
         if (journeyConfig.require_customer_otp_for_redemption) {
           return {
             required: true,
-            reason: 'Journey requires customer OTP for redemption',
+            reason: 'Journey requires staff login before redemption',
             channels: availableChannels
           }
         }

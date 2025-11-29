@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -128,6 +129,28 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
                 const result = await response.json()
 
+                // Handle already collected case (status 409)
+                if (result.already_collected) {
+                    console.log('⚠️ Points already collected for this QR code')
+                    alert('Points already collected for this QR code!')
+                    
+                    // Attempt client-side login to establish session
+                    if (result.email && password) {
+                        const supabase = createClient()
+                        await supabase.auth.signInWithPassword({
+                            email: result.email,
+                            password: password
+                        })
+                    }
+
+                    setTotalPoints(result.points_earned || 0)
+                    setCumulativePoints(result.total_balance || 0)
+                    setPointsCollected(true)
+                    setIsCollectingPoints(false)
+                    setCurrentPage('thank-you')
+                    return
+                }
+
                 if (!response.ok || !result.success) {
                     // Check if it's a preview mode error
                     if (result.preview) {
@@ -139,16 +162,14 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     return
                 }
 
-                // Check if points were already collected
-                if (result.already_collected) {
-                    console.log('⚠️ Points already collected for this QR code')
-                    alert('Points already collected for this QR code!')
-                    setTotalPoints(result.points_earned || 0)
-                    setCumulativePoints(result.total_balance || 0)
-                    setPointsCollected(true)
-                    setIsCollectingPoints(false)
-                    setCurrentPage('thank-you')
-                    return
+                // Success case
+                // Attempt client-side login to establish session
+                if (result.email && password) {
+                    const supabase = createClient()
+                    await supabase.auth.signInWithPassword({
+                        email: result.email,
+                        password: password
+                    })
                 }
 
                 // Success - update points

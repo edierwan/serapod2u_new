@@ -358,7 +358,8 @@ export async function POST(request: NextRequest) {
             already_collected: true,
             error: 'Points for this QR code have already been collected.',
             points_earned: result.points_earned || 0,
-            total_balance: totalBalance
+            total_balance: totalBalance,
+            email: emailToAuth // Return email for client-side session handling
           },
           { status: 409 }
         )
@@ -385,7 +386,8 @@ export async function POST(request: NextRequest) {
       total_balance: totalBalance,
       shop_name: shopUser.full_name || shopUser.email,
       qr_code: qrCodeData.code,
-      message: 'Points collected successfully!'
+      message: 'Points collected successfully!',
+      email: emailToAuth // Return email for client-side session handling
     })
 
   } catch (error) {
