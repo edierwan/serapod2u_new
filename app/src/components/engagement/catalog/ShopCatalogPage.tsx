@@ -97,6 +97,10 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null)
   const [productSummary, setProductSummary] = useState<{product: string, variant: string, count: number, points: number, imageUrl?: string | null}[]>([])
   const [redeeming, setRedeeming] = useState(false)
+  
+  // Pagination states
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(12)
+  const [visibleProductCount, setVisibleProductCount] = useState(5)
 
   const shopOrgId = userProfile.organization_id
 
@@ -601,7 +605,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
             <div className="overflow-hidden rounded-lg border border-slate-200">
               {/* Mobile View (Cards) */}
               <div className="block md:hidden divide-y divide-slate-100">
-                {productSummary.map((item, idx) => (
+                {productSummary.slice(0, visibleProductCount).map((item, idx) => (
                   <div key={idx} className="p-4 flex items-start gap-3">
                     <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
                       {item.imageUrl ? (
@@ -617,19 +621,31 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-slate-800 truncate">{item.product}</div>
-                      <div className="text-sm text-slate-600 truncate">{item.variant}</div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                      <div className="font-medium text-sm text-slate-900 line-clamp-2">{item.product}</div>
+                      <div className="text-xs text-slate-600 line-clamp-2 mt-0.5">{item.variant}</div>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-1.5 py-0">
                           {item.count} {item.count === 1 ? 'scan' : 'scans'}
                         </Badge>
-                        <span className="text-sm font-semibold text-emerald-600">
+                        <span className="text-xs font-semibold text-emerald-600">
                           +{formatNumber(item.points)} pts
                         </span>
                       </div>
                     </div>
                   </div>
                 ))}
+                {productSummary.length > visibleProductCount && (
+                  <div className="p-3 text-center border-t border-slate-50">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full text-xs text-muted-foreground h-8"
+                      onClick={() => setVisibleProductCount(prev => prev + 5)}
+                    >
+                      Show more products ({productSummary.length - visibleProductCount} remaining)
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Desktop View (Table) */}
@@ -721,7 +737,9 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 >
                   All ({enrichedRewards.length})
                 </Button>
-                {(Object.keys(CATEGORY_LABELS) as RewardCategory[]).map((category) => (
+                {(Object.keys(CATEGORY_LABELS) as RewardCategory[])
+                  .filter(category => (categoriesWithCounts.get(category) ?? 0) > 0)
+                  .map((category) => (
                   <Button
                     key={category}
                     size="sm"
@@ -895,7 +913,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 History
               </h3>
               <span className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded-full">
-                Last {ledgerTransactions.length} items
+                Showing {Math.min(visibleHistoryCount, ledgerTransactions.length)} of {ledgerTransactions.length}
               </span>
             </div>
             
@@ -907,7 +925,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {ledgerTransactions.slice(0, 50).map((txn, index) => {
+                  {ledgerTransactions.slice(0, visibleHistoryCount).map((txn, index) => {
                     const runningBalance = currentBalance - ledgerTransactions
                       .slice(0, index)
                       .reduce((sum, t) => sum + t.points_change, 0)
@@ -960,6 +978,19 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                       </div>
                     );
                   })}
+                  
+                  {ledgerTransactions.length > visibleHistoryCount && (
+                    <div className="pt-2 text-center">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full"
+                        onClick={() => setVisibleHistoryCount(prev => prev + 10)}
+                      >
+                        Load more history
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
