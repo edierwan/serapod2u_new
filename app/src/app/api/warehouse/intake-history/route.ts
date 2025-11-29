@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { extractOrderNumber } from '@/lib/qr-code-utils'
 
+export const dynamic = 'force-dynamic'
+
 const MAX_PAGE_SIZE = 50
 const DEFAULT_PAGE_SIZE = 30
 const DEFAULT_RANGE_DAYS = 30
@@ -373,9 +375,9 @@ export async function GET(request: NextRequest) {
             const shippedUniqueCount = shippedUniqueByMaster.get(master.id) || 0
 
             // A master case is shipped if:
-            // 1. Its status is shipped_distributor or opened
+            // 1. Its status is shipped_distributor
             // 2. OR all its unique codes have been shipped (shippedUniqueCount >= caseUnits)
-            const masterShipped = masterStatus === 'shipped_distributor' || masterStatus === 'opened'
+            const masterShipped = masterStatus === 'shipped_distributor'
             const shippedByUniques = caseUnits > 0 && shippedUniqueCount >= caseUnits
 
             console.log(`🔍 [Intake History] Master ${master.id.slice(0, 8)}: status=${masterStatus}, units=${caseUnits}, shippedUniques=${shippedUniqueCount}, isShipped=${masterShipped || shippedByUniques}`)

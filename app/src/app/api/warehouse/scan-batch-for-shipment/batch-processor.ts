@@ -376,8 +376,8 @@ export async function processBatchShipment(
         current_location_org_id: session.distributor_org_id,
         last_scanned_at: scannedAt,
         last_scanned_by: requestingUserId,
-        updated_at: scannedAt,
-        master_code_id: null // Unlink from master if it was linked
+        updated_at: scannedAt
+        // master_code_id: null // REMOVED: Do not unlink from master, we need it for tracking
       })
       .in('id', updates.uniqueIds)
   }

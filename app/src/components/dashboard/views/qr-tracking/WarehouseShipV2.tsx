@@ -1068,7 +1068,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        cache: 'no-store'
       })
       
       if (!response.ok) {
@@ -1842,6 +1843,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       }
 
       await loadScanHistory()
+      await loadIntakeHistory(undefined, { silent: true })
 
     } catch (error: any) {
       console.error('Shipment error:', error)
@@ -1874,14 +1876,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     switch (status) {
       case 'warehouse_packed':
         return (
-          <Badge variant="secondary" className="bg-blue-100 text-blue-900 border-blue-200">
+          <Badge variant="secondary" className="bg-blue-100 text-blue-900 border-blue-200 text-[10px] px-2 py-0.5">
             Warehouse Packed
           </Badge>
         )
       case 'shipped_distributor':
       case 'shipped':
         return (
-          <Badge variant="default" className="bg-green-600">
+          <Badge variant="default" className="bg-green-600 text-[10px] px-2 py-0.5">
             <CheckCircle className="h-3 w-3 mr-1" />
             Shipped
           </Badge>
@@ -1889,13 +1891,13 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       case 'received_distributor':
       case 'received':
         return (
-          <Badge variant="default" className="bg-purple-600">
+          <Badge variant="default" className="bg-purple-600 text-[10px] px-2 py-0.5">
             Received by Distributor
           </Badge>
         )
       default:
         return (
-          <Badge variant="secondary" className="uppercase text-xs">
+          <Badge variant="secondary" className="uppercase text-[10px] px-2 py-0.5">
             {status?.replace(/_/g, ' ') || 'Unknown'}
           </Badge>
         )
@@ -3253,25 +3255,25 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                                 if (parts.length > 1) {
                                   return (
                                     <>
-                                      <span className="font-medium text-gray-900">{parts[0].trim()}</span>
-                                      <span className="text-xs text-gray-500">[{parts[1]}</span>
+                                      <span className="text-xs font-medium text-gray-900">{parts[0].trim()}</span>
+                                      <span className="text-[10px] text-gray-500">[{parts[1]}</span>
                                     </>
                                   )
                                 }
-                                return <span className="font-medium text-gray-900">{data.variantName}</span>
+                                return <span className="text-xs font-medium text-gray-900">{data.variantName}</span>
                               })()}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="py-3 px-4 text-sm text-gray-700">
+                        <TableCell className="py-3 px-4 text-xs text-gray-700">
                           {data.distributorName}
                         </TableCell>
                         <TableCell className="py-3 px-4">
-                          <span className="text-sm font-semibold text-blue-600">
+                          <span className="text-xs font-semibold text-blue-600">
                             {data.units} units
                           </span>
                         </TableCell>
-                        <TableCell className="py-3 px-4 text-sm text-gray-600">
+                        <TableCell className="py-3 px-4 text-xs text-gray-600">
                           {data.lastScanned ? new Date(data.lastScanned).toLocaleString() : '-'}
                         </TableCell>
                         <TableCell className="py-3 px-4">{renderStatusBadge(data.status)}</TableCell>
@@ -3282,13 +3284,13 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                               size="sm"
                               onClick={() => handleUnlinkProduct(data.sessionIds, data.product)}
                               disabled={unlinking === data.product}
-                              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
                             >
                               {unlinking === data.product ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                <RefreshCw className="h-3 w-3 animate-spin" />
                               ) : (
                                 <>
-                                  <Unlink className="h-4 w-4 mr-1" />
+                                  <Unlink className="h-3 w-3 mr-1" />
                                   Unlink
                                 </>
                               )}
@@ -3440,25 +3442,25 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                                 if (parts.length > 1) {
                                   return (
                                     <>
-                                      <span className="font-medium text-gray-900">{parts[0].trim()}</span>
-                                      <span className="text-xs text-gray-500">[{parts[1]}</span>
+                                      <span className="text-xs font-medium text-gray-900">{parts[0].trim()}</span>
+                                      <span className="text-[10px] text-gray-500">[{parts[1]}</span>
                                     </>
                                   )
                                 }
-                                return <span className="font-medium text-gray-900">{data.variantName}</span>
+                                return <span className="text-xs font-medium text-gray-900">{data.variantName}</span>
                               })()}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="py-3 px-4 text-sm text-gray-700">
+                        <TableCell className="py-3 px-4 text-xs text-gray-700">
                           {data.distributor}
                         </TableCell>
                         <TableCell className="py-3 px-4">
-                          <span className="text-sm font-semibold text-blue-600">
+                          <span className="text-xs font-semibold text-blue-600">
                             {data.units} units
                           </span>
                         </TableCell>
-                        <TableCell className="py-3 px-4 text-sm text-gray-600">
+                        <TableCell className="py-3 px-4 text-xs text-gray-600">
                           {data.lastScanned ? new Date(data.lastScanned).toLocaleString() : '-'}
                         </TableCell>
                         <TableCell className="py-3 px-4">{renderStatusBadge(data.status)}</TableCell>
@@ -3468,13 +3470,13 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                             size="sm"
                             onClick={() => handleUnlinkProduct(data.sessionIds, data.product)}
                             disabled={data.status === 'shipped_distributor' || unlinking === data.product}
-                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
                           >
                             {unlinking === data.product ? (
-                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              <RefreshCw className="h-3 w-3 animate-spin" />
                             ) : (
                               <>
-                                <Unlink className="h-4 w-4 mr-1" />
+                                <Unlink className="h-3 w-3 mr-1" />
                                 Unlink
                               </>
                             )}

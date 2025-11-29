@@ -881,11 +881,14 @@ const handleUniqueShipment = async (
     updated_at: scannedAt
   }
 
-  // If this loose item was part of a master case, unlink it now
+  // REMOVED: Do not unlink loose items from master case
+  // We need to keep the link to track when the master case is fully shipped
+  /*
   if (qrCode.master_code_id) {
     updates.master_code_id = null
     console.log(`🔓 Unlinking loose item ${normalizedCode} from master case ${qrCode.master_code_id}`)
   }
+  */
 
   const { error: updateError } = await supabase
     .from('qr_codes')

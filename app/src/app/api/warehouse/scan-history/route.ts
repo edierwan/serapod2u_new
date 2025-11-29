@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -239,7 +241,12 @@ export async function GET() {
                 masterCodeData.push({
                   master_code: master.master_code,
                   case_number: master.case_number,
-                  product_variants: [{ variant_name: variant.variant_name, products: [{ product_name: product.product_name }] }]
+                  actual_unit_count: master.actual_unit_count,
+                  product_variants: [{ 
+                    variant_name: variant.variant_name, 
+                    image_url: variant.image_url,
+                    products: [{ product_name: product.product_name }] 
+                  }]
                 })
               } else {
                 console.warn(`⚠️ No product/variant info for master ${master.master_code}`)
@@ -296,6 +303,7 @@ export async function GET() {
           image_url: variant.image_url || null,
           master_code: master.master_code,
           case_number: master.case_number || null,
+          actual_unit_count: master.actual_unit_count || null,
           product_label: productLabel
         })
       }
@@ -361,7 +369,16 @@ export async function GET() {
         const productInfo = codeProductMap.get(code)
         if (productInfo) {
           const label = productInfo.product_label || buildProductLabel(productInfo.product_name, productInfo.variant_name) || productInfo.product_name || 'Unknown Product'
-          productBreakdown[label] = (productBreakdown[label] || 0) + 1
+          
+          // If it's a master code, add its actual unit count (or default to 1 if not found)
+          // If it's a unique code, add 1
+          let unitsToAdd = 1
+          if (productInfo.master_code === code && productInfo.actual_unit_count) {
+            unitsToAdd = productInfo.actual_unit_count
+          }
+          
+          productBreakdown[label] = (productBreakdown[label] || 0) + unitsToAdd
+          
           if (productInfo.image_url) {
             productImages[label] = productInfo.image_url
           }
@@ -548,6 +565,7 @@ export async function GET() {
           master_code_id,
           product_variants (
             variant_name,
+            image_url,
             products (
               product_name
             )
@@ -563,6 +581,7 @@ export async function GET() {
 
       const childCountMap = new Map<string, number>()
       const productBreakdownMap = new Map<string, Record<string, number>>()
+      const productImagesMap = new Map<string, Record<string, string | null>>()
       const uniqueDetailsMap = new Map<string, Array<{ code: string, product_name: string, variant_name: string }>>()
 
       ;(unshippedCodes || []).forEach(code => {
@@ -579,12 +598,21 @@ export async function GET() {
           productBreakdownMap.set(code.master_code_id, {})
         }
 
+        if (!productImagesMap.has(code.master_code_id)) {
+          productImagesMap.set(code.master_code_id, {})
+        }
+
         if (!uniqueDetailsMap.has(code.master_code_id)) {
           uniqueDetailsMap.set(code.master_code_id, [])
         }
 
         const breakdown = productBreakdownMap.get(code.master_code_id)!
         breakdown[productLabel] = (breakdown[productLabel] || 0) + 1
+
+        if (variant?.image_url) {
+          const images = productImagesMap.get(code.master_code_id)!
+          images[productLabel] = variant.image_url
+        }
 
         uniqueDetailsMap.get(code.master_code_id)!.push({
           code: code.code,
@@ -658,6 +686,11 @@ export async function GET() {
             existingEntry.product_breakdown = breakdown
           }
 
+          const images = productImagesMap.get(master.id)
+          if (images && Object.keys(images).length > 0) {
+            existingEntry.product_images = { ...(existingEntry.product_images || {}), ...images }
+          }
+
           existingEntry.pending_master_codes = Array.from(new Set([...(existingEntry.pending_master_codes || []), master.master_code]))
           existingEntry.pending_unique_codes = [
             ...(existingEntry.pending_unique_codes || []),
@@ -678,6 +711,7 @@ export async function GET() {
             status: 'warehouse_packed',  // Show as warehouse_packed (not yet shipped)
             validation_status: null,  // No session yet
             product_breakdown: breakdown,
+            product_images: productImagesMap.get(master.id) || {},
             pending_master_codes: [master.master_code],
             pending_unique_codes: uniqueDetails
           })

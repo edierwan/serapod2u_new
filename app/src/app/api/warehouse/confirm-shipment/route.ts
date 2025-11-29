@@ -84,7 +84,10 @@ export async function POST(request: NextRequest) {
     masterCodesScanned = Array.from(
       new Set(
         masterCodesScanned
-          .map((code) => extractMasterCode(code))
+          .map((code) => {
+            const extracted = extractMasterCode(code)
+            return extracted || code // Fallback to raw code if extraction returns empty
+          })
           .filter((code): code is string => Boolean(code && code.length > 0))
       )
     )
@@ -102,42 +105,48 @@ export async function POST(request: NextRequest) {
 
     // FALLBACK: If session has no master codes but has scanned quantities with cases,
     // try to infer master codes from database based on this session
-    if (masterCodesScanned.length === 0 && session.scanned_quantities) {
-      const totalCases = (session.scanned_quantities as any)?.total_cases || 0
-      if (totalCases > 0) {
-        console.log('⚠️ [CONFIRM] Session has scanned cases but no master_codes_scanned array. Attempting to infer from DB...')
-        console.log('⚠️ [CONFIRM] Looking for', totalCases, 'cases in warehouse', session.warehouse_org_id)
-        
-        // Query for masters that were scanned for this session (warehouse_packed status)
-        // Use a recent time window to avoid picking up old sessions
-        const recentTimeThreshold = new Date(Date.now() - 60 * 60 * 1000).toISOString() // Last hour
-        const { data: inferredMasters, error: inferError } = await supabase
-          .from('qr_master_codes')
-          .select('master_code, status, updated_at')
-          .eq('warehouse_org_id', session.warehouse_org_id)
-          .eq('status', 'warehouse_packed')
-          .gte('updated_at', recentTimeThreshold)
-          .order('updated_at', { ascending: false })
-          .limit(totalCases)
-        
-        if (!inferError && inferredMasters && inferredMasters.length > 0) {
-          masterCodesScanned = Array.from(
-            new Set(
-              inferredMasters
-                .map((m) => extractMasterCode(m.master_code))
-                .filter((code): code is string => Boolean(code && code.length > 0))
+    if (masterCodesScanned.length === 0) {
+      // Try to infer from scanned_quantities
+      if (session.scanned_quantities) {
+        const totalCases = (session.scanned_quantities as any)?.total_cases || 0
+        if (totalCases > 0) {
+          console.log('⚠️ [CONFIRM] Session has scanned cases but no master_codes_scanned array. Attempting to infer from DB...')
+          console.log('⚠️ [CONFIRM] Looking for', totalCases, 'cases in warehouse', session.warehouse_org_id)
+          
+          // Query for masters that were scanned for this session (warehouse_packed status)
+          // Use a recent time window to avoid picking up old sessions
+          const recentTimeThreshold = new Date(Date.now() - 60 * 60 * 1000).toISOString() // Last hour
+          const { data: inferredMasters, error: inferError } = await supabase
+            .from('qr_master_codes')
+            .select('master_code, status, updated_at')
+            .eq('warehouse_org_id', session.warehouse_org_id)
+            .eq('status', 'warehouse_packed')
+            .gte('updated_at', recentTimeThreshold)
+            .order('updated_at', { ascending: false })
+            .limit(totalCases)
+          
+          if (!inferError && inferredMasters && inferredMasters.length > 0) {
+            const inferredCodes = Array.from(
+              new Set(
+                inferredMasters
+                  .map((m) => extractMasterCode(m.master_code) || m.master_code)
+                  .filter((code): code is string => Boolean(code && code.length > 0))
+              )
             )
-          )
-          console.log('✅ [CONFIRM] Inferred', masterCodesScanned.length, 'master codes from database:', masterCodesScanned)
-          console.log('✅ [CONFIRM] Inferred masters:', inferredMasters.map(m => ({ code: m.master_code, status: m.status, updated_at: m.updated_at })))
-        } else {
-          console.log('❌ [CONFIRM] Could not infer master codes. Error:', inferError, 'Found:', inferredMasters?.length || 0)
+            masterCodesScanned = [...masterCodesScanned, ...inferredCodes]
+            console.log('✅ [CONFIRM] Inferred', inferredCodes.length, 'master codes from database:', inferredCodes)
+          } else {
+            console.log('❌ [CONFIRM] Could not infer master codes. Error:', inferError, 'Found:', inferredMasters?.length || 0)
+          }
         }
-      } else {
-        console.log('⚠️ [CONFIRM] No master codes in session and no cases in scanned_quantities')
       }
-    } else if (masterCodesScanned.length === 0) {
-      console.log('⚠️ [CONFIRM] No master codes to process (session.master_codes_scanned is empty or null)')
+      
+      // Also try to infer from unique codes if we have them
+      // REMOVED: This causes a bug where shipping a single unique item marks the entire master case as shipped
+      // if (uniqueCodesScanned.length > 0) {
+      //   console.log('⚠️ [CONFIRM] Attempting to infer master codes from unique codes...')
+      //   ...
+      // }
     }
 
   let resolvedFromOrg: string | null = session.warehouse_org_id ?? null
@@ -338,45 +347,15 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      console.log('✅ WMS function created consolidated movement:', wmsResult)
+      console.log('✅ WMS function created consolidated movement and updated QR statuses:', wmsResult)
       wmsSummary = wmsResult
 
-      // Step 2: Set session variable to tell trigger to skip
-      console.log('📝 Step 2: Setting session variable to skip trigger')
-      const { error: sessionError } = await supabase.rpc('set_skip_ship_trigger', {
-        p_skip: true
-      })
-
-      if (sessionError) {
-        console.log('⚠️  Warning: Could not set session variable, trigger may create duplicates:', sessionError.message)
-      }
-
-      // Step 3: Update QR codes status (trigger will be skipped due to session variable)
-      console.log('📝 Step 3: Updating', qrCodeIds.length, 'QR codes to shipped_distributor')
+      // Step 2 & 3: QR codes are now updated INSIDE wms_ship_unique_auto to prevent double deduction
+      // We no longer need to manually update them here or set the skip trigger variable
       
-      const { data: updatedCodes, error: updateError } = await supabase
-        .from('qr_codes')
-        .update({
-          status: 'shipped_distributor',
-          current_location_org_id: toOrg,
-          updated_at: shippedAt
-        })
-        .in('id', qrCodeIds)
-        // Allow updating from both warehouse_packed (normal flow) and received_warehouse (recovery/fallback)
-        .in('status', ['warehouse_packed', 'received_warehouse'])
-        .select('id, code')
-
-      if (updateError) {
-        console.error('Error updating QR codes:', updateError)
-        return NextResponse.json(
-          { error: 'Failed to update QR codes to shipped status' },
-          { status: 500 }
-        )
-      }
-
-      const updatedUniqueCount = updatedCodes?.length || 0
+      const updatedUniqueCount = qrCodeIds.length
       uniqueCodesShipped += updatedUniqueCount
-      console.log('✅ Updated', updatedUniqueCount, 'QR codes to shipped_distributor')
+      console.log('✅ Updated', updatedUniqueCount, 'QR codes to shipped_distributor (via WMS function)')
 
       // Auto-update related master cases if all their children are now shipped
       const masterIdsFromUnique = Array.from(
@@ -414,7 +393,7 @@ export async function POST(request: NextRequest) {
             .filter((masterId) => !updatedMasterIdSet.has(masterId))
 
           if (mastersFullyShipped.length > 0) {
-            const { error: skipAutoMasterError } = await supabase.rpc('set_skip_ship_trigger', {
+            const { error: skipAutoMasterError } = await supabaseAdmin.rpc('set_skip_ship_trigger', {
               p_skip: true
             })
 
@@ -422,7 +401,7 @@ export async function POST(request: NextRequest) {
               console.log('⚠️ Could not set skip trigger before auto master update:', skipAutoMasterError.message)
             }
 
-            const { data: autoUpdatedMasters, error: autoMasterUpdateError } = await supabase
+            const { data: autoUpdatedMasters, error: autoMasterUpdateError } = await supabaseAdmin
               .from('qr_master_codes')
               .update({
                 status: 'shipped_distributor',
@@ -442,6 +421,32 @@ export async function POST(request: NextRequest) {
               autoUpdatedMasters?.forEach((master) => updatedMasterIdSet.add(master.id))
               console.log('✅ Auto-updated', autoMasterCount, 'master cases to shipped_distributor based on unique shipments')
             }
+          }
+
+          // Identify masters that are partially shipped (shipped > 0 but < total)
+          // and update their status to 'opened' if they are currently 'warehouse_packed'
+          const mastersPartiallyShipped = Array.from(masterStatusMap.entries())
+            .filter(([, stats]) => stats.shipped > 0 && stats.shipped < stats.total)
+            .map(([masterId]) => masterId)
+            .filter((masterId) => !updatedMasterIdSet.has(masterId))
+
+          if (mastersPartiallyShipped.length > 0) {
+             console.log('📦 Found', mastersPartiallyShipped.length, 'partially shipped master cases, setting to opened')
+             const { data: openedMasters, error: openError } = await supabaseAdmin
+               .from('qr_master_codes')
+               .update({
+                 status: 'opened',
+                 updated_at: shippedAt
+               })
+               .in('id', mastersPartiallyShipped)
+               .eq('status', 'warehouse_packed')
+               .select('id, master_code')
+               
+             if (openError) {
+               console.error('❌ Failed to update partially shipped masters to opened:', openError)
+             } else {
+               console.log('✅ Updated', openedMasters?.length || 0, 'master cases to opened status (partial shipment)')
+             }
           }
         }
       }
@@ -594,7 +599,8 @@ export async function POST(request: NextRequest) {
         })
         
         // Set session variable to skip trigger (prevent duplicate inventory movements)
-        const { error: skipMasterError } = await supabase.rpc('set_skip_ship_trigger', {
+        // Use admin client to ensure we can set the session variable on the same connection we'll use for updates
+        const { error: skipMasterError } = await supabaseAdmin.rpc('set_skip_ship_trigger', {
           p_skip: true
         })
 
@@ -607,7 +613,8 @@ export async function POST(request: NextRequest) {
 
         // Update master codes - NO status filter to ensure ALL scanned masters are updated
         console.log('📝 [CONFIRM] Executing master update query...')
-        const { data: updatedMasters, error: masterError } = await supabase
+        // Use admin client to bypass RLS and ensure update succeeds
+        const { data: updatedMasters, error: masterError } = await supabaseAdmin
           .from('qr_master_codes')
           .update({
             status: 'shipped_distributor',
@@ -673,7 +680,8 @@ export async function POST(request: NextRequest) {
           }
 
           if (childIdsToUpdate.length > 0) {
-            const { error: skipChildError } = await supabase.rpc('set_skip_ship_trigger', {
+            // Use admin client for session variable
+            const { error: skipChildError } = await supabaseAdmin.rpc('set_skip_ship_trigger', {
               p_skip: true
             })
 
@@ -681,7 +689,8 @@ export async function POST(request: NextRequest) {
               console.log('⚠️  Warning: Could not set session variable before master child update:', skipChildError.message)
             }
 
-            const { data: updatedChildCodes, error: updateChildError } = await supabase
+            // Use admin client for child updates
+            const { data: updatedChildCodes, error: updateChildError } = await supabaseAdmin
               .from('qr_codes')
               .update({
                 status: 'shipped_distributor',
