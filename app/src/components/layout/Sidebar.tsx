@@ -437,10 +437,25 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   const { day, date, time } = formatDateTime()
 
   // Filter menu items based on user role and organization
-  const filteredNavigationItems = useMemo(() =>
-    filterMenuItems(navigationItems, userProfile),
-    [userProfile]
-  )
+  const filteredNavigationItems = useMemo(() => {
+    const items = filterMenuItems(navigationItems, userProfile)
+
+    // Special handling for Product Catalog visibility
+    // Only show Product Catalog to SHOP users if they are super@dev.com
+    if (userProfile?.organizations?.org_type_code === 'SHOP' && userProfile?.email !== 'super@dev.com') {
+      return items.map(item => {
+        if (item.id === 'consumer-engagement' && item.submenu) {
+          return {
+            ...item,
+            submenu: item.submenu.filter(sub => sub.id !== 'product-catalog')
+          }
+        }
+        return item
+      })
+    }
+
+    return items
+  }, [userProfile])
 
   const filteredSecondaryItems = useMemo(() =>
     filterMenuItems(secondaryItems, userProfile),
