@@ -1670,11 +1670,14 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     throw new Error(data.error || 'Failed to play')
                 }
                 
+                const isWin = data.reward.type !== 'no_prize'
                 setScratchResult({
-                    result: data.status,
+                    result: isWin ? 'win' : 'loss',
                     reward: data.reward,
-                    message: data.message,
-                    playId: data.play_id || data.id
+                    message: isWin 
+                        ? (config.theme_config?.success_message || 'You won: {{reward_name}}').replace('{{reward_name}}', data.reward.name)
+                        : (config.theme_config?.no_prize_message || 'Better luck next time!'),
+                    playId: data.play_id
                 })
                 
             } catch (err: any) {
