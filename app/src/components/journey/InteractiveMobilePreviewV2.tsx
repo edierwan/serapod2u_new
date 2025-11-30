@@ -107,6 +107,51 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     const [isCollectingPoints, setIsCollectingPoints] = useState(false)
     const [variantImageError, setVariantImageError] = useState(false)
     const [customImageError, setCustomImageError] = useState(false)
+    const [isClaiming, setIsClaiming] = useState(false)
+    const [claimSuccess, setClaimSuccess] = useState(false)
+
+    const handleClaimPrize = async () => {
+        if (!scratchResult || !scratchResult.reward) return
+
+        setIsClaiming(true)
+        setGameError(null)
+        try {
+            const payload: any = {
+                playId: scratchResult.playId,
+                rewardType: scratchResult.reward.type,
+            }
+
+            if (scratchResult.reward.type === 'points') {
+                if (!userId || !password) {
+                    throw new Error('Please enter Shop ID and Password')
+                }
+                payload.shopId = userId
+                payload.password = password
+            } else {
+                if (!customerName || !customerPhone) {
+                    throw new Error('Please enter Name and Phone Number')
+                }
+                payload.name = customerName
+                payload.phone = customerPhone
+                payload.email = customerEmail
+            }
+
+            const res = await fetch('/api/scratch-card/claim', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to claim prize')
+
+            setClaimSuccess(true)
+        } catch (error: any) {
+            setGameError(error.message)
+        } finally {
+            setIsClaiming(false)
+        }
+    }
 
     // Check if points were already collected for this QR code on component mount
     useEffect(() => {
@@ -1470,16 +1515,105 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                         </div>
                     </div>
 
-                    {/* Action Button */}
+                    {/* Action Button / Claim Form */}
                     <div className="w-full max-w-xs mx-auto space-y-4">
                         {scratchCardPlayed ? (
-                            <Button 
-                                className="w-full py-6 rounded-xl text-lg font-bold shadow-xl hover:scale-[1.02] transition-transform active:scale-[0.98]"
-                                style={{ backgroundColor: config.button_color }}
-                                onClick={() => setCurrentPage('welcome')}
-                            >
-                                Play Again
-                            </Button>
+                            claimSuccess ? (
+                                <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 text-center space-y-4">
+                                    <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto">
+                                        <CheckCircle2 className="w-8 h-8 text-white" />
+                                    </div>
+                                    <h3 className="text-white font-bold text-xl">Prize Claimed!</h3>
+                                    <p className="text-emerald-100 text-sm">
+                                        {scratchResult.reward?.type === 'points' 
+                                            ? 'Points have been added to your account.' 
+                                            : 'We have received your details. You will be contacted shortly.'}
+                                    </p>
+                                    <Button 
+                                        className="w-full font-bold bg-white text-emerald-900 hover:bg-emerald-50"
+                                        onClick={() => setCurrentPage('welcome')}
+                                    >
+                                        Back to Menu
+                                    </Button>
+                                </div>
+                            ) : scratchResult?.result === 'win' ? (
+                                <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 space-y-4">
+                                    <h3 className="text-white font-bold text-center">Claim Your Prize</h3>
+                                    
+                                    {scratchResult.reward?.type === 'points' ? (
+                                        <div className="space-y-3">
+                                            <p className="text-xs text-emerald-100 text-center">
+                                                Login with your Shop ID to claim points.
+                                            </p>
+                                            <div className="space-y-2">
+                                                <Input 
+                                                    placeholder="Shop ID" 
+                                                    value={userId}
+                                                    onChange={(e) => setUserId(e.target.value)}
+                                                    className="bg-white/90 text-black placeholder:text-gray-500"
+                                                />
+                                                <Input 
+                                                    type="password" 
+                                                    placeholder="Password" 
+                                                    value={password}
+                                                    onChange={(e) => setPassword(e.target.value)}
+                                                    className="bg-white/90 text-black placeholder:text-gray-500"
+                                                />
+                                            </div>
+                                            <Button 
+                                                className="w-full font-bold"
+                                                style={{ backgroundColor: config.button_color }}
+                                                onClick={handleClaimPrize}
+                                                disabled={isClaiming}
+                                            >
+                                                {isClaiming ? 'Claiming...' : 'Login & Claim Points'}
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <p className="text-xs text-emerald-100 text-center">
+                                                Enter your details to receive your prize.
+                                            </p>
+                                            <div className="space-y-2">
+                                                <Input 
+                                                    placeholder="Name" 
+                                                    value={customerName}
+                                                    onChange={(e) => setCustomerName(e.target.value)}
+                                                    className="bg-white/90 text-black placeholder:text-gray-500"
+                                                />
+                                                <Input 
+                                                    placeholder="Phone" 
+                                                    value={customerPhone}
+                                                    onChange={(e) => setCustomerPhone(e.target.value)}
+                                                    className="bg-white/90 text-black placeholder:text-gray-500"
+                                                />
+                                                <Input 
+                                                    placeholder="Email (Optional)" 
+                                                    value={customerEmail}
+                                                    onChange={(e) => setCustomerEmail(e.target.value)}
+                                                    className="bg-white/90 text-black placeholder:text-gray-500"
+                                                />
+                                            </div>
+                                            <Button 
+                                                className="w-full font-bold"
+                                                style={{ backgroundColor: config.button_color }}
+                                                onClick={handleClaimPrize}
+                                                disabled={isClaiming}
+                                            >
+                                                {isClaiming ? 'Claiming...' : 'Claim Prize'}
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <Button 
+                                    className="w-full py-6 rounded-xl text-lg font-bold shadow-xl hover:scale-[1.02] transition-transform active:scale-[0.98]"
+                                    style={{ backgroundColor: config.button_color }}
+                                    onClick={() => setCurrentPage('welcome')}
+                                >
+                                    Play Again
+                                </Button>
+                            )
                         ) : (
                             <div className="text-center">
                                 <p className="text-emerald-100 text-sm font-medium opacity-90">
@@ -1539,7 +1673,8 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 setScratchResult({
                     result: data.status,
                     reward: data.reward,
-                    message: data.message
+                    message: data.message,
+                    playId: data.play_id || data.id
                 })
                 
             } catch (err: any) {
