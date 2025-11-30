@@ -915,7 +915,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Product</label>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Product Name</label>
                 <Select value={productFilter} onValueChange={setProductFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Products" />
@@ -960,9 +960,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="in_stock">In Stock</SelectItem>
+                    <SelectItem value="in_stock">Available</SelectItem>
                     <SelectItem value="low_stock">Low Stock</SelectItem>
-                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                    <SelectItem value="out_of_stock">Not Available</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1129,7 +1129,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             {item.product_name || 'Unknown Product'}
                           </p>
                           <p className="text-xs text-gray-600">
-                            {item.variant_name || 'No variant'}
+                            [{item.variant_name || 'No variant'}]
                           </p>
                         </div>
                       </div>

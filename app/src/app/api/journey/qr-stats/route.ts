@@ -98,12 +98,30 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Fetch scratch card plays count separately since it's not in the RPC yet
+    let scratchCardPlaysCount = 0
+    try {
+      const { count, error: scratchError } = await supabase
+        .from('scratch_card_plays')
+        .select('id, qr_codes!inner(order_id)', { count: 'exact', head: true })
+        .eq('qr_codes.order_id', orderId)
+      
+      if (!scratchError) {
+        scratchCardPlaysCount = count || 0
+      } else {
+        console.error('Error fetching scratch card plays:', scratchError)
+      }
+    } catch (e) {
+      console.error('Exception fetching scratch card plays:', e)
+    }
+
     console.log(`📊 Stats for order ${orderId}:`, {
       total_qr_codes: statsData?.total_qr_codes || 0,
       unique_consumer_scans: statsData?.unique_consumer_scans || 0,
       points_collected_count: statsData?.points_collected_count || 0,
       lucky_draw_entries: statsData?.lucky_draw_entries || 0,
-      redemptions: statsData?.redemptions || 0
+      redemptions: statsData?.redemptions || 0,
+      scratch_card_plays: scratchCardPlaysCount
     })
 
     return NextResponse.json({
@@ -113,7 +131,8 @@ export async function GET(request: NextRequest) {
         links_scanned: Number(statsData?.unique_consumer_scans || 0),
         lucky_draw_entries: Number(statsData?.lucky_draw_entries || 0),
         redemptions: Number(statsData?.redemptions || 0),
-        points_collected: Number(statsData?.points_collected_count || 0)
+        points_collected: Number(statsData?.points_collected_count || 0),
+        scratch_card_plays: scratchCardPlaysCount
       }
     })
 

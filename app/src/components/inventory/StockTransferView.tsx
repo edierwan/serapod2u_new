@@ -78,12 +78,26 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   useEffect(() => {
     if (isReady) {
       loadWarehouses()
-      loadProducts()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
+
+  useEffect(() => {
+    if (fromWarehouse) {
+      loadProducts()
+      setSelectedProduct('')
+      setSelectedVariant('')
+      setVariants([])
+      setQuantity('')
+    } else {
+      setProducts([])
+      setVariants([])
+      setSelectedProduct('')
+      setSelectedVariant('')
+      setQuantity('')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromWarehouse])
 
   useEffect(() => {
     if (selectedProduct) {
@@ -92,8 +106,6 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
       setVariants([])
       setSelectedVariant('')
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
 
@@ -125,15 +137,42 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   }
 
   const loadProducts = async () => {
+    if (!fromWarehouse) return
+
     try {
       const { data, error } = await supabase
-        .from('products')
-        .select('id, product_code, product_name')
-        .eq('is_active', true)
-        .order('product_name')
+        .from('product_inventory')
+        .select(`
+          variant_id,
+          product_variants!inner (
+            product_id,
+            products!inner (
+              id,
+              product_code,
+              product_name
+            )
+          )
+        `)
+        .eq('organization_id', fromWarehouse)
+        .gt('quantity_available', 0)
 
       if (error) throw error
-      setProducts(data || [])
+
+      // Extract unique products
+      const uniqueProductsMap = new Map()
+      if (data) {
+        data.forEach((item: any) => {
+          const product = item.product_variants.products
+          if (!uniqueProductsMap.has(product.id)) {
+            uniqueProductsMap.set(product.id, product)
+          }
+        })
+      }
+
+      const productsList = Array.from(uniqueProductsMap.values())
+        .sort((a: any, b: any) => a.product_name.localeCompare(b.product_name))
+
+      setProducts(productsList)
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -144,16 +183,31 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   }
 
   const loadVariants = async (productId: string) => {
+    if (!fromWarehouse) return
+
     try {
       const { data, error } = await supabase
-        .from('product_variants')
-        .select('id, variant_code, variant_name, product_id')
-        .eq('product_id', productId)
-        .eq('is_active', true)
-        .order('variant_name')
+        .from('product_inventory')
+        .select(`
+          quantity_available,
+          product_variants!inner (
+            id,
+            variant_code,
+            variant_name,
+            product_id
+          )
+        `)
+        .eq('organization_id', fromWarehouse)
+        .eq('product_variants.product_id', productId)
+        .gt('quantity_available', 0)
 
       if (error) throw error
-      setVariants(data || [])
+      
+      const variantsList = (data || [])
+        .map((item: any) => item.product_variants)
+        .sort((a: any, b: any) => a.variant_name.localeCompare(b.variant_name))
+
+      setVariants(variantsList)
     } catch (error: any) {
       toast({
         title: 'Error',

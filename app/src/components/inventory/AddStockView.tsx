@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { 
   Package, 
   Plus,
@@ -17,7 +18,8 @@ import {
   ArrowLeft,
   CheckCircle,
   AlertCircle,
-  ImageIcon
+  ImageIcon,
+  Trash2
 } from 'lucide-react'
 
 interface Product {
@@ -40,6 +42,18 @@ interface Variant {
   variant_name: string
   suggested_retail_price: number | null
   base_cost: number | null
+  image_url: string | null
+}
+
+interface StockItem {
+  id: string
+  product_id: string
+  product_name: string
+  variant_id: string
+  variant_name: string
+  variant_code: string
+  quantity: number
+  unit_cost: number | null
   image_url: string | null
 }
 
@@ -74,6 +88,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   const [unitCost, setUnitCost] = useState('')
   const [warehouseLocationText, setWarehouseLocationText] = useState('')
   const [notes, setNotes] = useState('')
+  const [stockItems, setStockItems] = useState<StockItem[]>([])
   
   const [loading, setLoading] = useState(false)
   const [productsLoading, setProductsLoading] = useState(true)
@@ -108,6 +123,82 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
+
+  const addItem = () => {
+    if (!selectedProduct || !selectedVariant || !quantity) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please select product, variant and enter quantity',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    const qty = parseInt(quantity)
+    if (qty <= 0) {
+      toast({
+        title: 'Validation Error',
+        description: 'Quantity must be greater than 0',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    const cost = unitCost ? parseFloat(unitCost) : null
+    if (cost !== null && cost < 0) {
+      toast({
+        title: 'Validation Error',
+        description: 'Unit cost cannot be negative',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // Check if variant already added
+    if (stockItems.some(item => item.variant_id === selectedVariant)) {
+      toast({
+        title: 'Duplicate Item',
+        description: 'This variant is already in the list',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    const product = products.find(p => p.id === selectedProduct)
+    const variant = variants.find(v => v.id === selectedVariant)
+
+    if (!product || !variant) return
+
+    const newItem: StockItem = {
+      id: Date.now().toString(),
+      product_id: product.id,
+      product_name: product.product_name,
+      variant_id: variant.id,
+      variant_name: variant.variant_name,
+      variant_code: variant.variant_code,
+      quantity: qty,
+      unit_cost: cost,
+      image_url: variant.image_url
+    }
+
+    setStockItems([...stockItems, newItem])
+    
+    // Reset selection but keep product if desired? 
+    // Usually better to reset variant and quantity, keep product?
+    // Or reset all. Let's reset variant and quantity.
+    setSelectedVariant('')
+    setQuantity('')
+    setUnitCost('')
+    
+    toast({
+      title: 'Item Added',
+      description: `${qty} units of ${variant.variant_name} added to list`
+    })
+  }
+
+  const removeItem = (itemId: string) => {
+    setStockItems(stockItems.filter(item => item.id !== itemId))
+  }
 
   const loadProducts = async () => {
     try {
@@ -232,30 +323,19 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!selectedProduct || !selectedVariant || !selectedWarehouse || !quantity) {
+    if (stockItems.length === 0) {
       toast({
         title: 'Validation Error',
-        description: 'Please fill in all required fields',
+        description: 'Please add at least one item to the list',
         variant: 'destructive'
       })
       return
     }
 
-    const qty = parseInt(quantity)
-    if (qty <= 0) {
+    if (!selectedWarehouse) {
       toast({
         title: 'Validation Error',
-        description: 'Quantity must be greater than 0',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    const cost = unitCost ? parseFloat(unitCost) : null
-    if (cost !== null && cost < 0) {
-      toast({
-        title: 'Validation Error',
-        description: 'Unit cost cannot be negative',
+        description: 'Please select a warehouse',
         variant: 'destructive'
       })
       return
@@ -264,29 +344,31 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     try {
       setLoading(true)
 
-      // Call the record_stock_movement function via RPC
-      const { error } = await supabase.rpc('record_stock_movement', {
-        p_movement_type: 'manual_in',
-        p_variant_id: selectedVariant,
-        p_organization_id: selectedWarehouse,
-        p_quantity_change: qty,
-        p_unit_cost: cost,
-        p_manufacturer_id: selectedManufacturer || null,
-        p_warehouse_location: warehouseLocationText || null,
-        p_reason: 'Manual stock addition',
-        p_notes: notes || null,
-        p_reference_type: 'manual',
-        p_reference_id: null,
-        p_reference_no: null,
-        p_company_id: userProfile.organizations.id,
-        p_created_by: userProfile.id
-      } as any)
+      // Process all items sequentially
+      for (const item of stockItems) {
+        const { error } = await supabase.rpc('record_stock_movement', {
+          p_movement_type: 'manual_in',
+          p_variant_id: item.variant_id,
+          p_organization_id: selectedWarehouse,
+          p_quantity_change: item.quantity,
+          p_unit_cost: item.unit_cost,
+          p_manufacturer_id: selectedManufacturer || null,
+          p_warehouse_location: warehouseLocationText || null,
+          p_reason: 'Manual stock addition',
+          p_notes: notes || null,
+          p_reference_type: 'manual',
+          p_reference_id: null,
+          p_reference_no: null,
+          p_company_id: userProfile.organizations.id,
+          p_created_by: userProfile.id
+        } as any)
 
-      if (error) throw error
+        if (error) throw error
+      }
 
       toast({
         title: 'Success',
-        description: `Successfully added ${qty} units to inventory`,
+        description: `Successfully added ${stockItems.length} items to inventory`,
         variant: 'default'
       })
 
@@ -299,6 +381,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       setWarehouseLocationText('')
       setNotes('')
       setVariants([])
+      setStockItems([])
 
       // Optionally navigate back to inventory
       // onViewChange?.('inventory')
@@ -418,21 +501,25 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       } />
                     </SelectTrigger>
                     <SelectContent>
-                      {variants.map(variant => (
-                        <SelectItem key={variant.id} value={variant.id}>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {variant.variant_code}
-                            </Badge>
-                            <span>{variant.variant_name}</span>
-                            {variant.suggested_retail_price && (
-                              <span className="text-gray-500 text-sm">
-                                - RM {variant.suggested_retail_price.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {variants.map(variant => {
+                        const isAdded = stockItems.some(item => item.variant_id === variant.id)
+                        return (
+                          <SelectItem key={variant.id} value={variant.id} disabled={isAdded}>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="text-xs">
+                                {variant.variant_code}
+                              </Badge>
+                              <span className={isAdded ? "text-gray-400 line-through" : ""}>{variant.variant_name}</span>
+                              {isAdded && <span className="text-xs text-red-500 ml-2">(Added)</span>}
+                              {!isAdded && variant.suggested_retail_price && (
+                                <span className="text-gray-500 text-sm">
+                                  - RM {variant.suggested_retail_price.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -513,7 +600,6 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
                       placeholder="e.g., 500"
-                      required
                     />
                     <p className="text-xs text-gray-500 mt-1">Number of units to add</p>
                   </div>
@@ -549,8 +635,81 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                     </p>
                   </div>
                 )}
+
+                <Button 
+                  type="button" 
+                  onClick={addItem}
+                  disabled={!selectedProduct || !selectedVariant || !quantity}
+                  className="w-full"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item to List
+                </Button>
               </CardContent>
             </Card>
+
+            {/* Items List */}
+            {stockItems.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Items to Add ({stockItems.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product Name</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Cost</TableHead>
+                        <TableHead className="w-12"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {stockItems.map(item => (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-md overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+                                {item.image_url ? (
+                                  <img
+                                    src={item.image_url}
+                                    alt={item.variant_name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                    <ImageIcon className="w-5 h-5" />
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{item.product_name}</p>
+                                <p className="text-xs text-gray-500">[{item.variant_name}]</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold text-sm">{item.quantity}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            {item.unit_cost ? `RM ${item.unit_cost.toFixed(2)}` : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Button 
+                              type="button"
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => removeItem(item.id)}
+                              className="h-8 w-8"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-600" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Right Column - Additional Details */}
@@ -686,11 +845,11 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
           )}
           <Button 
             type="submit" 
-            disabled={loading || !selectedProduct || !selectedVariant || !selectedWarehouse || !quantity}
+            disabled={loading || stockItems.length === 0 || !selectedWarehouse}
             className="bg-green-600 hover:bg-green-700"
           >
             <Save className="w-4 h-4 mr-2" />
-            {loading ? 'Adding Stock...' : 'Add Stock to Inventory'}
+            {loading ? 'Adding Stock...' : `Add ${stockItems.length} Items to Inventory`}
           </Button>
         </div>
       </form>

@@ -822,7 +822,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                         src={reward.item_image_url}
                         alt={reward.item_name}
                         fill
-                        className="object-cover"
+                        className="object-contain p-2"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">

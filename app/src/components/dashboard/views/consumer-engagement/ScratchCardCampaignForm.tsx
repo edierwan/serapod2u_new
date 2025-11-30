@@ -56,6 +56,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
     })
 
     const [rewards, setRewards] = useState<any[]>([])
+    const [winners, setWinners] = useState<any[]>([])
 
     useEffect(() => {
         fetchJourneys()
@@ -63,8 +64,62 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
         fetchOrgSettings()
         if (campaignId) {
             fetchCampaign()
+            fetchWinners()
         }
     }, [campaignId])
+
+    const fetchWinners = async () => {
+        if (!campaignId) return
+        const { data } = await supabase
+            .from('scratch_card_plays')
+            .select(`
+                *,
+                scratch_card_rewards (
+                    name,
+                    type,
+                    image_url,
+                    variant_id,
+                    product_variants (
+                        image_url
+                    )
+                )
+            `)
+            .eq('campaign_id', campaignId)
+            .eq('is_win', true)
+            .order('played_at', { ascending: false })
+        
+        if (data) setWinners(data)
+    }
+
+    // Auto-sync QR stats when journey is loaded
+    useEffect(() => {
+        const syncStats = async () => {
+            if (formData.journey_config_id && journeys.length > 0) {
+                const selectedJourney = journeys.find(j => j.id === formData.journey_config_id)
+                
+                if (selectedJourney?.order_id) {
+                    try {
+                        const response = await fetch(`/api/journey/qr-stats?order_id=${selectedJourney.order_id}`)
+                        const data = await response.json()
+                        
+                        if (data.success && data.data) {
+                            // Only update if value is different
+                            if (formData.max_total_plays !== data.data.total_valid_links) {
+                                setFormData(prev => ({ 
+                                    ...prev, 
+                                    max_total_plays: data.data.total_valid_links
+                                }))
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error syncing QR stats:', error)
+                    }
+                }
+            }
+        }
+        
+        syncStats()
+    }, [formData.journey_config_id, journeys, formData.max_total_plays])
 
     const handleThemeChange = (direction: 'next' | 'prev') => {
         const currentIndex = THEMES.findIndex(t => t.id === formData.theme_config.theme_id)
@@ -78,6 +133,53 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
             ...formData,
             theme_config: { ...formData.theme_config, theme_id: THEMES[newIndex].id }
         })
+    }
+
+    const handleJourneyChange = async (journeyId: string) => {
+        const selectedJourney = journeys.find(j => j.id === journeyId)
+        
+        setFormData(prev => ({ 
+            ...prev, 
+            journey_config_id: journeyId,
+            start_at: selectedJourney?.start_at ? selectedJourney.start_at.split('T')[0] : '',
+            end_at: selectedJourney?.end_at ? selectedJourney.end_at.split('T')[0] : ''
+        }))
+        
+        if (!journeyId) return
+
+        // Try to fetch accurate stats using the API if we have an order_id
+        if (selectedJourney?.order_id) {
+            try {
+                const response = await fetch(`/api/journey/qr-stats?order_id=${selectedJourney.order_id}`)
+                const data = await response.json()
+                
+                if (data.success && data.data) {
+                    setFormData(prev => ({ 
+                        ...prev, 
+                        max_total_plays: data.data.total_valid_links,
+                        max_plays_per_day: 0, // Unlimited (system rule)
+                        max_plays_total_per_consumer: 0 // Unlimited (system rule)
+                    }))
+                    return // Exit if successful
+                }
+            } catch (error) {
+                console.error('Error fetching QR stats:', error)
+            }
+        }
+
+        // Fallback to RPC if API fails or no order_id
+        const { data, error } = await supabase.rpc('get_journey_qr_count', {
+            p_journey_id: journeyId
+        })
+
+        if (!error && typeof data === 'number') {
+            setFormData(prev => ({ 
+                ...prev, 
+                max_total_plays: data,
+                max_plays_per_day: 0, // Unlimited (system rule)
+                max_plays_total_per_consumer: 0 // Unlimited (system rule)
+            }))
+        }
     }
 
     const fetchOrgSettings = async () => {
@@ -96,12 +198,28 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
     }
 
     const fetchJourneys = async () => {
-        const { data } = await supabase
+        const { data: journeysData } = await supabase
             .from('journey_configurations')
-            .select('id, name')
+            .select('id, name, start_at, end_at')
             .eq('org_id', userProfile.organization_id)
             .eq('is_active', true)
-        if (data) setJourneys(data)
+        
+        if (journeysData) {
+            // Fetch linked orders
+            const { data: links } = await supabase
+                .from('journey_order_links')
+                .select('journey_config_id, order_id')
+                .in('journey_config_id', journeysData.map(j => j.id))
+
+            const journeysWithOrder = journeysData.map(j => {
+                const link = links?.find(l => l.journey_config_id === j.id)
+                return {
+                    ...j,
+                    order_id: link?.order_id
+                }
+            })
+            setJourneys(journeysWithOrder)
+        }
     }
 
     const fetchProducts = async () => {
@@ -202,11 +320,15 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
             return
         }
 
-        // Validate probability
-        const totalProb = rewards.reduce((sum, r) => sum + (parseFloat(r.probability) || 0), 0)
-        if (Math.abs(totalProb - 100) > 0.1) {
-            toast({ title: "Warning", description: `Total probability is ${totalProb}%. It should be 100%.`, variant: "destructive" })
-            // We allow saving but warn
+        // Validate allocation
+        const totalAllocated = rewards.reduce((sum, r) => sum + (parseInt(r.quantity_allocated) || 0), 0)
+        if (formData.max_total_plays > 0 && totalAllocated > formData.max_total_plays) {
+            toast({ 
+                title: "Error", 
+                description: `Total allocated rewards (${totalAllocated}) exceeds Max Total Plays (${formData.max_total_plays}).`, 
+                variant: "destructive" 
+            })
+            return
         }
 
         setLoading(true)
@@ -219,8 +341,8 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
             status: formData.status,
             start_at: formData.start_at ? new Date(formData.start_at).toISOString() : null,
             end_at: formData.end_at ? new Date(formData.end_at).toISOString() : null,
-            max_plays_per_day: formData.max_plays_per_day,
-            max_plays_total_per_consumer: formData.max_plays_total_per_consumer || null,
+            max_plays_per_day: null, // System rule: Unlimited daily plays (limited by QR)
+            max_plays_total_per_consumer: null, // System rule: Unlimited consumer plays (limited by QR)
             max_total_plays: formData.max_total_plays || null,
             theme_config: formData.theme_config,
             updated_at: new Date().toISOString(),
@@ -274,11 +396,13 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                 value_points: r.value_points || null,
                 product_id: r.product_id || null,
                 variant_id: r.variant_id || null,
-                product_quantity: r.product_quantity || 1,
+                product_quantity: r.product_quantity || 1, // This is "items per win"
+                quantity_allocated: r.quantity_allocated || 0, // This is "total wins available"
+                quantity_remaining: r.quantity_allocated || 0, // Initialize remaining same as allocated
                 external_link: r.external_link || null,
                 image_url: r.image_url || null,
-                probability: r.probability,
-                max_winners: r.max_winners || null,
+                probability: null, // Deprecated
+                max_winners: null, // Deprecated
                 max_winners_per_day: r.max_winners_per_day || null,
                 is_active: r.is_active !== false
             }))
@@ -296,18 +420,25 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                     const stockChanges = new Map<string, number>()
 
                     // Add new requirements (deduct from stock)
+                    // Logic: We allocate stock based on (quantity_allocated * product_quantity)
+                    // Wait, product_quantity is "items per win". quantity_allocated is "number of wins".
+                    // So total items needed = quantity_allocated * product_quantity
                     rewards.forEach(r => {
-                        if (r.type === 'product' && r.variant_id && r.product_quantity) {
+                        if (r.type === 'product' && r.variant_id && r.quantity_allocated) {
+                            const itemsPerWin = r.product_quantity || 1
+                            const totalItems = r.quantity_allocated * itemsPerWin
                             const current = stockChanges.get(r.variant_id) || 0
-                            stockChanges.set(r.variant_id, current + r.product_quantity)
+                            stockChanges.set(r.variant_id, current + totalItems)
                         }
                     })
 
                     // Subtract existing allocations (return to stock)
                     existingRewards.forEach(r => {
-                        if (r.type === 'product' && r.variant_id && r.product_quantity) {
+                        if (r.type === 'product' && r.variant_id && r.quantity_allocated) {
+                            const itemsPerWin = r.product_quantity || 1
+                            const totalItems = r.quantity_allocated * itemsPerWin
                             const current = stockChanges.get(r.variant_id) || 0
-                            stockChanges.set(r.variant_id, current - r.product_quantity)
+                            stockChanges.set(r.variant_id, current - totalItems)
                         }
                     })
 
@@ -471,7 +602,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
         setRewards([...rewards, {
             name: 'New Reward',
             type: 'points',
-            probability: 0,
+            quantity_allocated: 0,
             is_active: true
         }])
     }
@@ -512,6 +643,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                     <TabsTrigger value="basic">Basic Info</TabsTrigger>
                     <TabsTrigger value="rewards">Rewards & Rules</TabsTrigger>
                     <TabsTrigger value="design">Design & Experience</TabsTrigger>
+                    <TabsTrigger value="winners">Winners</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="basic">
@@ -550,19 +682,10 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Description</Label>
-                                <Textarea 
-                                    value={formData.description} 
-                                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                                    placeholder="Internal description..."
-                                />
-                            </div>
-
-                            <div className="space-y-2">
                                 <Label>Linked Journey</Label>
                                 <Select 
                                     value={formData.journey_config_id} 
-                                    onValueChange={(val) => setFormData({...formData, journey_config_id: val})}
+                                    onValueChange={handleJourneyChange}
                                     disabled={journeys.length === 0}
                                 >
                                     <SelectTrigger>
@@ -579,61 +702,41 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Start Date</Label>
-                                    <Input 
-                                        type="date" 
-                                        value={formData.start_at} 
-                                        onChange={(e) => setFormData({...formData, start_at: e.target.value})}
-                                    />
+                            {formData.journey_config_id && (
+                                <div className="bg-slate-50 border rounded-lg p-4 space-y-2">
+                                    <h4 className="font-medium text-sm text-slate-900">Journey Info (Auto-Synced)</h4>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div>
+                                            <span className="text-muted-foreground block">Start Date</span>
+                                            <span className="font-medium">{formData.start_at || '-'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted-foreground block">End Date</span>
+                                            <span className="font-medium">{formData.end_at || '-'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted-foreground block">Total QR Codes</span>
+                                            <span className="font-medium">{formData.max_total_plays || 0}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted-foreground block">Total Plays Available</span>
+                                            <span className="font-medium">{formData.max_total_plays || 0}</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground pt-2 border-t mt-2">
+                                        <p>• Scratch Card Active Period follows Journey Period automatically.</p>
+                                        <p>• Each QR = 1 scratch play.</p>
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>End Date</Label>
-                                    <Input 
-                                        type="date" 
-                                        value={formData.end_at} 
-                                        onChange={(e) => setFormData({...formData, end_at: e.target.value})}
-                                    />
-                                </div>
-                            </div>
+                            )}
 
-                            <div className="grid grid-cols-3 gap-4 pt-4 border-t">
-                                <div className="space-y-2">
-                                    <Label>Max Plays / Day</Label>
-                                    <Input 
-                                        type="number" 
-                                        value={formData.max_plays_per_day} 
-                                        onChange={(e) => {
-                                            const val = parseInt(e.target.value)
-                                            setFormData({...formData, max_plays_per_day: isNaN(val) ? 0 : val})
-                                        }}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Max Plays / Consumer</Label>
-                                    <Input 
-                                        type="number" 
-                                        value={formData.max_plays_total_per_consumer} 
-                                        onChange={(e) => {
-                                            const val = parseInt(e.target.value)
-                                            setFormData({...formData, max_plays_total_per_consumer: isNaN(val) ? 0 : val})
-                                        }}
-                                        placeholder="0 for unlimited"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Max Total Plays (Campaign)</Label>
-                                    <Input 
-                                        type="number" 
-                                        value={formData.max_total_plays} 
-                                        onChange={(e) => {
-                                            const val = parseInt(e.target.value)
-                                            setFormData({...formData, max_total_plays: isNaN(val) ? 0 : val})
-                                        }}
-                                        placeholder="0 for unlimited"
-                                    />
-                                </div>
+                            <div className="space-y-2">
+                                <Label>Description (Optional)</Label>
+                                <Textarea 
+                                    value={formData.description} 
+                                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                                    placeholder="Internal description..."
+                                />
                             </div>
                         </CardContent>
                     </Card>
@@ -643,9 +746,9 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
-                                <CardTitle>Rewards & Probabilities</CardTitle>
+                                <CardTitle>Rewards & Allocation</CardTitle>
                                 <CardDescription>
-                                    Define what users can win. Total probability must equal 100%.
+                                    Allocate quantities for each reward. "No Prize" will be automatically calculated based on remaining plays.
                                 </CardDescription>
                             </div>
                             <Button size="sm" onClick={addReward}>
@@ -653,7 +756,11 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                             </Button>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {rewards.map((reward, index) => (
+                            {rewards.map((reward, index) => {
+                                const totalPlays = formData.max_total_plays > 0 ? formData.max_total_plays : rewards.reduce((sum, r) => sum + (parseInt(r.quantity_allocated) || 0), 0)
+                                const chance = totalPlays > 0 ? ((reward.quantity_allocated || 0) / totalPlays * 100).toFixed(2) : '0.00'
+                                
+                                return (
                                 <div key={index} className="flex gap-4 items-start p-4 border rounded-lg bg-slate-50">
                                     <div className="flex-1 grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
@@ -678,7 +785,6 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                                     <SelectItem value="product">Product Gift</SelectItem>
                                                     <SelectItem value="voucher">Voucher</SelectItem>
                                                     <SelectItem value="link">Mystery Gift</SelectItem>
-                                                    <SelectItem value="no_prize">No Prize</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -737,19 +843,21 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                                         )}
                                                     </SelectContent>
                                                 </Select>
+                                                
                                                 <div className="space-y-2 mt-2">
-                                                    <Label>Quantity to Allocate</Label>
+                                                    <Label>Items per Winner</Label>
                                                     <Input
                                                         type="number"
                                                         min="1"
-                                                        value={reward.product_quantity || ''}
+                                                        value={reward.product_quantity || 1}
                                                         onChange={(e) => {
                                                             const val = parseInt(e.target.value)
-                                                            updateReward(index, 'product_quantity', isNaN(val) ? 0 : val)
+                                                            updateReward(index, 'product_quantity', isNaN(val) ? 1 : val)
                                                         }}
                                                         placeholder="Qty"
                                                     />
                                                 </div>
+
                                                 {reward.variant_id && (
                                                     <div className="mt-2 p-2 border rounded-md bg-slate-50">
                                                         <Label className="text-xs text-muted-foreground mb-2 block">Product Variant Preview</Label>
@@ -815,25 +923,70 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                         )}
 
                                         <div className="space-y-2">
-                                            <Label>Probability (%)</Label>
+                                            <Label>Quantity to Allocate</Label>
                                             <Input 
                                                 type="number" 
-                                                step="0.1"
-                                                value={isNaN(reward.probability) ? '' : reward.probability} 
+                                                min="0"
+                                                value={reward.quantity_allocated || ''} 
                                                 onChange={(e) => {
-                                                    const val = parseFloat(e.target.value)
-                                                    updateReward(index, 'probability', isNaN(val) ? 0 : val)
+                                                    const val = parseInt(e.target.value)
+                                                    updateReward(index, 'quantity_allocated', isNaN(val) ? 0 : val)
                                                 }}
+                                                placeholder="Total wins available"
                                             />
+                                            <p className="text-xs text-muted-foreground">
+                                                Implied Chance: {chance}%
+                                            </p>
                                         </div>
                                     </div>
                                     <Button variant="ghost" size="icon" className="text-red-500 mt-8" onClick={() => removeReward(index)}>
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </div>
-                            ))}
-                            <div className="text-right text-sm font-medium">
-                                Total Probability: {rewards.reduce((sum, r) => sum + (parseFloat(r.probability) || 0), 0)}%
+                            )})}
+                            
+                            {/* No Prize Summary */}
+                            {(() => {
+                                const totalAllocated = rewards.reduce((sum, r) => sum + (parseInt(r.quantity_allocated) || 0), 0)
+                                const noPrizeCount = Math.max(0, formData.max_total_plays - totalAllocated)
+                                const totalPlays = formData.max_total_plays > 0 ? formData.max_total_plays : totalAllocated
+                                const noPrizeChance = totalPlays > 0 ? (noPrizeCount / totalPlays * 100).toFixed(2) : '0.00'
+                                
+                                return (
+                                    <div className="flex gap-4 items-center p-4 border rounded-lg bg-gray-100 text-gray-500">
+                                        <div className="flex-1 grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Reward Name</Label>
+                                                <Input value="No Prize (Try Again)" disabled className="bg-gray-200" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Type</Label>
+                                                <Input value="System Generated" disabled className="bg-gray-200" />
+                                            </div>
+                                            <div className="space-y-2 col-span-2">
+                                                <Label>Quantity (Auto-Calculated)</Label>
+                                                <div className="flex items-center justify-between p-2 border rounded bg-gray-200">
+                                                    <span className="font-mono font-bold">{noPrizeCount}</span>
+                                                    <span className="text-sm text-gray-500">Implied Chance: {noPrizeChance}%</span>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Remaining plays that are not allocated to any reward.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="w-10"></div> {/* Spacer for delete button alignment */}
+                                    </div>
+                                )
+                            })()}
+
+                            <div className="text-right text-sm font-medium space-y-1">
+                                <div>Total Allocated: {rewards.reduce((sum, r) => sum + (parseInt(r.quantity_allocated) || 0), 0)}</div>
+                                <div>Max Total Plays: {formData.max_total_plays}</div>
+                                <div className={rewards.reduce((sum, r) => sum + (parseInt(r.quantity_allocated) || 0), 0) > formData.max_total_plays ? "text-red-500" : "text-green-600"}>
+                                    {rewards.reduce((sum, r) => sum + (parseInt(r.quantity_allocated) || 0), 0) > formData.max_total_plays 
+                                        ? "Warning: Allocation exceeds Max Plays!" 
+                                        : "Allocation Valid"}
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
@@ -1099,6 +1252,79 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                             </CardContent>
                         </Card>
                     </div>
+                </TabsContent>
+
+                <TabsContent value="winners">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Campaign Winners</CardTitle>
+                            <CardDescription>List of users who have won rewards.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="rounded-md border">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-50 text-slate-500 font-medium">
+                                        <tr>
+                                            <th className="p-3">Date</th>
+                                            <th className="p-3">Winner</th>
+                                            <th className="p-3">Contact</th>
+                                            <th className="p-3">Reward</th>
+                                            <th className="p-3">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {winners.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                                                    No winners yet.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            winners.map((w) => {
+                                                const reward = w.scratch_card_rewards
+                                                const imageUrl = reward?.image_url || reward?.product_variants?.image_url
+                                                
+                                                return (
+                                                <tr key={w.id} className="border-t">
+                                                    <td className="p-3">{new Date(w.played_at).toLocaleDateString()}</td>
+                                                    <td className="p-3 font-medium">{w.consumer_name || 'Anonymous'}</td>
+                                                    <td className="p-3">
+                                                        <div className="flex flex-col">
+                                                            <span>{w.consumer_phone}</span>
+                                                            <span className="text-xs text-muted-foreground">{w.consumer_email}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded border bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+                                                                {imageUrl ? (
+                                                                    <img src={imageUrl} alt={reward?.name} className="w-full h-full object-contain" />
+                                                                ) : (
+                                                                    <Gift className="w-5 h-5 text-slate-300" />
+                                                                )}
+                                                            </div>
+                                                            <span className="font-medium">{reward?.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        {w.winner_details_submitted_at ? (
+                                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                                                Claimed
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                                Pending Details
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )})
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
             </Tabs>
         </div>

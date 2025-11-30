@@ -161,7 +161,28 @@ function buildOverview(records: RawRecord[]): {
   let totalCompletionScore = 0
 
   records.forEach((record) => {
-    const status = (record.status && STAGE_ORDER.includes(record.status)) ? record.status : 'pending'
+    let status = (record.status && STAGE_ORDER.includes(record.status)) ? record.status : 'pending'
+
+    // Fix: Infer status from foreign keys if status column is lagging
+    let statusIndex = STAGE_ORDER.indexOf(status)
+
+    // 1. Check Distributor (Higher priority than warehouse)
+    if (record.shipped_to_distributor_id) {
+      const shippedIndex = STAGE_ORDER.indexOf('shipped_distributor')
+      if (statusIndex < shippedIndex) {
+        status = 'shipped_distributor'
+        statusIndex = shippedIndex
+      }
+    }
+    // 2. Check Warehouse
+    else if (record.warehouse_org_id) {
+      const receivedIndex = STAGE_ORDER.indexOf('received_warehouse')
+      if (statusIndex < receivedIndex) {
+        status = 'received_warehouse'
+        statusIndex = receivedIndex
+      }
+    }
+
     const stageCount = stageCounts[status]
     stageCounts[status] = stageCount + 1
     totalCases += 1
