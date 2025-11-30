@@ -100,30 +100,34 @@ BEGIN
     SELECT * FROM scratch_card_rewards 
     WHERE campaign_id = p_campaign_id 
     AND is_active = true
-    AND (type != 'product' OR product_quantity > 0);
+    AND (
+        (type = 'product' AND quantity_remaining > 0)
+        OR
+        (type != 'product' AND (quantity_allocated = 0 OR quantity_remaining > 0))
+    );
 
     -- Check if any rewards exist
     IF NOT EXISTS (SELECT 1 FROM temp_eligible_rewards) THEN
         RETURN jsonb_build_object('error', 'No rewards available', 'code', 'NO_REWARDS');
     END IF;
 
-    -- Calculate Total Probability
-    SELECT SUM(probability) INTO v_total_prob FROM temp_eligible_rewards;
+    -- Calculate Total Weight (using quantity_remaining)
+    SELECT SUM(quantity_remaining) INTO v_total_prob FROM temp_eligible_rewards;
 
-    -- If total prob is 0, pick any (or fail)
+    -- If total weight is 0 (e.g. unlimited points), pick random
     IF v_total_prob IS NULL OR v_total_prob = 0 THEN
-         -- Fallback to first available
-         SELECT id INTO v_selected_reward_id FROM temp_eligible_rewards LIMIT 1;
+         -- Fallback to random selection among available
+         SELECT id INTO v_selected_reward_id FROM temp_eligible_rewards ORDER BY random() LIMIT 1;
     ELSE
-        -- Weighted Random Selection
-        v_random_val := random() * v_total_prob;
+        -- Weighted Random Selection based on remaining quantity
+        v_random_val := floor(random() * v_total_prob);
         
         SELECT id INTO v_selected_reward_id
         FROM (
-            SELECT id, SUM(probability) OVER (ORDER BY id) as cum_prob
+            SELECT id, SUM(quantity_remaining) OVER (ORDER BY id) as cum_prob
             FROM temp_eligible_rewards
         ) t
-        WHERE cum_prob >= v_random_val
+        WHERE cum_prob > v_random_val
         LIMIT 1;
     END IF;
 
@@ -153,10 +157,11 @@ BEGIN
         NOW()
     ) RETURNING id INTO v_play_id;
 
-    -- 5. Update Reward Inventory (if product)
-    IF v_reward.type = 'product' THEN
+    -- 5. Update Reward Inventory
+    -- Decrement quantity_remaining for ALL limited rewards (including points if allocated)
+    IF v_reward.quantity_allocated > 0 THEN
         UPDATE scratch_card_rewards
-        SET product_quantity = product_quantity - 1
+        SET quantity_remaining = quantity_remaining - 1
         WHERE id = v_selected_reward_id;
     END IF;
 
