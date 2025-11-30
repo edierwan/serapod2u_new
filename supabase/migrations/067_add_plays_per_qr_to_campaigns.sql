@@ -112,19 +112,27 @@ BEGIN
     END IF;
 
     -- Calculate Total Weight (using quantity_remaining)
-    SELECT SUM(quantity_remaining) INTO v_total_prob FROM temp_eligible_rewards;
+    SELECT SUM(COALESCE(quantity_remaining, 0)) INTO v_total_prob FROM temp_eligible_rewards;
 
     -- If total weight is 0 (e.g. unlimited points), pick random
     IF v_total_prob IS NULL OR v_total_prob = 0 THEN
-         -- Fallback to random selection among available
-         SELECT id INTO v_selected_reward_id FROM temp_eligible_rewards ORDER BY random() LIMIT 1;
+         -- Fallback: Pick an unlimited reward (quantity_allocated = 0) if available
+         SELECT id INTO v_selected_reward_id 
+         FROM temp_eligible_rewards 
+         WHERE quantity_allocated = 0 
+         LIMIT 1;
+         
+         -- If no unlimited reward, pick random from whatever is available
+         IF v_selected_reward_id IS NULL THEN
+            SELECT id INTO v_selected_reward_id FROM temp_eligible_rewards ORDER BY random() LIMIT 1;
+         END IF;
     ELSE
         -- Weighted Random Selection based on remaining quantity
         v_random_val := floor(random() * v_total_prob);
         
         SELECT id INTO v_selected_reward_id
         FROM (
-            SELECT id, SUM(quantity_remaining) OVER (ORDER BY id) as cum_prob
+            SELECT id, SUM(COALESCE(quantity_remaining, 0)) OVER (ORDER BY id) as cum_prob
             FROM temp_eligible_rewards
         ) t
         WHERE cum_prob > v_random_val
