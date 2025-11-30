@@ -80,8 +80,41 @@ export async function POST(request: Request) {
 
             // Add points transaction if shop found
             if (shop) {
-                // Add points logic here
-                // ...
+                // @ts-ignore - Supabase types might not infer the join correctly
+                const reward = play.scratch_card_rewards
+                const rewardPoints = reward?.value_points || 0
+                
+                if (rewardPoints > 0) {
+                    // 1. Get current balance
+                    const { data: balanceData } = await supabase
+                        .from('v_shop_points_balance')
+                        .select('current_balance')
+                        .eq('shop_id', shop.id)
+                        .maybeSingle()
+                    
+                    const currentBalance = balanceData?.current_balance || 0
+                    const newBalance = currentBalance + rewardPoints
+
+                    // 2. Insert transaction
+                    const { error: txnError } = await supabase
+                        .from('points_transactions')
+                        .insert({
+                            company_id: shop.id,
+                            consumer_phone: play.consumer_phone || 'UNKNOWN',
+                            consumer_email: play.consumer_email,
+                            transaction_type: 'scratch_reward',
+                            points_amount: rewardPoints,
+                            balance_after: newBalance,
+                            qr_code_id: play.qr_code_id,
+                            description: `Won from Scratch Card: ${reward?.name || 'Reward'}`,
+                            transaction_date: new Date().toISOString()
+                        })
+
+                    if (txnError) {
+                        console.error('Failed to add points transaction:', txnError)
+                        throw new Error('Failed to credit points: ' + txnError.message)
+                    }
+                }
             }
 
         } else {
