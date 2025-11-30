@@ -184,6 +184,26 @@ async function getJourneyData(code: string) {
           points_enabled: journeyConfig.points_enabled,
           lucky_draw_enabled: journeyConfig.lucky_draw_enabled,
           redemption_enabled: journeyConfig.redemption_enabled,
+          enable_scratch_card_game: journeyConfig.enable_scratch_card_game,
+          scratch_card_require_otp: journeyConfig.scratch_card_require_otp,
+          
+          // Feature Customization
+          points_title: journeyConfig.points_title,
+          points_description: journeyConfig.points_description,
+          points_icon: journeyConfig.points_icon,
+          
+          lucky_draw_title: journeyConfig.lucky_draw_title,
+          lucky_draw_description: journeyConfig.lucky_draw_description,
+          lucky_draw_icon: journeyConfig.lucky_draw_icon,
+          
+          redemption_title: journeyConfig.redemption_title,
+          redemption_description: journeyConfig.redemption_description,
+          redemption_icon: journeyConfig.redemption_icon,
+          
+          scratch_card_title: journeyConfig.scratch_card_title,
+          scratch_card_description: journeyConfig.scratch_card_description,
+          scratch_card_icon: journeyConfig.scratch_card_icon,
+
           show_product_image: journeyConfig.show_product_image,
           product_image_source: journeyConfig.product_image_source || 'variant',
           custom_image_url: journeyConfig.custom_image_url,

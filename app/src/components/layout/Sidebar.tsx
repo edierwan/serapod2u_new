@@ -208,6 +208,15 @@ const navigationItems: MenuItem[] = [
         }
       },
       {
+        id: 'scratch-card-game',
+        label: 'Scratch Card Game',
+        icon: Gift,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 30
+        }
+      },
+      {
         id: 'redeem-gift-management',
         label: 'Redeem',
         icon: Gift,
@@ -566,14 +575,28 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
               </div>
             </div>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="h-8 w-8 p-0 flex-shrink-0"
-          >
-            {isCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-1">
+            {!isCollapsed && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSignOut}
+                disabled={isSigningOut}
+                className="h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                title="Sign Out"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="h-8 w-8 p-0 flex-shrink-0"
+            >
+              {isCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
       </div>
 

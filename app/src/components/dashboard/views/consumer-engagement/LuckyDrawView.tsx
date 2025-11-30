@@ -100,11 +100,12 @@ interface Prize {
 interface LuckyDrawViewProps {
   userProfile: UserProfile
   onViewChange: (view: string) => void
+  initialOrderId?: string
 }
 
-export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawViewProps) {
+export default function LuckyDrawView({ userProfile, onViewChange, initialOrderId }: LuckyDrawViewProps) {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'participants' | 'prizes' | 'draw'>('dashboard')
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(initialOrderId || null)
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -170,7 +171,10 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
       if (data.success) {
         setOrders(data.orders || [])
         if (data.orders && data.orders.length > 0) {
-          setSelectedOrderId(data.orders[0].id)
+          // Only set default if no order is currently selected (e.g. not passed via props)
+          if (!selectedOrderId) {
+            setSelectedOrderId(data.orders[0].id)
+          }
         }
       }
     } catch (error) {
@@ -656,32 +660,43 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {selectedOrder.items.map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-4 bg-white p-3 rounded-lg border shadow-sm">
-                    <div className="w-16 h-16 rounded-md overflow-hidden border bg-gray-100 flex-shrink-0">
-                      {item.image_url ? (
-                        <Image
-                          src={item.image_url}
-                          alt={item.variant_name || 'Product'}
-                          width={64}
-                          height={64}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400">
-                          <ImageIcon className="w-6 h-6" />
-                        </div>
-                      )}
+              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+                {selectedOrder.items.map((item, idx) => {
+                  const parts = (item.variant_name || '').split('[')
+                  const productName = parts[0]?.trim() || 'Unknown Product'
+                  const variantName = parts[1]?.replace(']', '').trim()
+
+                  return (
+                    <div key={idx} className="flex items-start gap-3 bg-white p-2 rounded-lg border shadow-sm">
+                      <div className="w-10 h-10 rounded-md overflow-hidden border bg-gray-100 flex-shrink-0 mt-0.5">
+                        {item.image_url ? (
+                          <Image
+                            src={item.image_url}
+                            alt={item.variant_name || 'Product'}
+                            width={40}
+                            height={40}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400">
+                            <ImageIcon className="w-4 h-4" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-medium text-xs leading-tight truncate" title={productName}>{productName}</h4>
+                        {variantName && (
+                          <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate" title={variantName}>
+                            [{variantName}]
+                          </p>
+                        )}
+                        <Badge variant="secondary" className="mt-1.5 text-[10px] h-4 px-1.5 font-normal">
+                          {item.quantity} unit{item.quantity !== 1 ? 's' : ''}
+                        </Badge>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-medium text-sm line-clamp-2">{item.variant_name || 'Unknown Product'}</h4>
-                      <Badge variant="secondary" className="mt-1 text-xs">
-                        {item.quantity} unit{item.quantity !== 1 ? 's' : ''}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -758,14 +773,14 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
                                   <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2">
                                     {campaign.prizes_json.map((prize, idx) => (
                                       <div key={idx} className="relative group flex-shrink-0">
-                                        <div className="w-12 h-12 rounded-lg border bg-gray-50 overflow-hidden">
+                                        <div className="w-12 h-12 rounded-lg border bg-white overflow-hidden">
                                           {prize.image_url ? (
                                             <Image
                                               src={prize.image_url}
                                               alt={prize.name}
                                               width={48}
                                               height={48}
-                                              className="w-full h-full object-cover"
+                                              className="w-full h-full object-contain"
                                             />
                                           ) : (
                                             <div className="w-full h-full flex items-center justify-center text-gray-300">
@@ -937,13 +952,13 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
                               <CardContent className="p-6">
                                 <div className="flex gap-4">
                                   {prize.image_url && (
-                                    <div className="flex-shrink-0">
+                                    <div className="flex-shrink-0 bg-white rounded-lg overflow-hidden border w-20 h-20">
                                       <Image
                                         src={prize.image_url}
                                         alt={prize.name}
                                         width={80}
                                         height={80}
-                                        className="object-cover rounded-lg border"
+                                        className="w-full h-full object-contain"
                                       />
                                     </div>
                                   )}
@@ -1328,13 +1343,13 @@ export default function LuckyDrawView({ userProfile, onViewChange }: LuckyDrawVi
               <Label htmlFor="prize_image">Prize Image</Label>
               <div className="flex items-center gap-4">
                 {prizeImagePreview && (
-                  <div className="relative w-24 h-24 rounded-lg border overflow-hidden">
+                  <div className="relative w-24 h-24 rounded-lg border overflow-hidden bg-white">
                     <Image
                       src={prizeImagePreview}
                       alt="Prize preview"
                       width={96}
                       height={96}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                     />
                   </div>
                 )}

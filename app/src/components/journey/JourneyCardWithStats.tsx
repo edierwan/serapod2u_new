@@ -28,6 +28,7 @@ interface JourneyConfig {
     points_enabled: boolean
     lucky_draw_enabled: boolean
     redemption_enabled: boolean
+    enable_scratch_card_game?: boolean
     start_at: string | null
     end_at: string | null
     activation_status?: string | null
@@ -45,6 +46,7 @@ interface QRStats {
     lucky_draw_entries: number
     redemptions: number
     points_collected: number
+    scratch_card_plays?: number
 }
 
 interface JourneyCardWithStatsProps {
@@ -184,7 +186,13 @@ export default function JourneyCardWithStats({
                                 Redemption
                             </Badge>
                         )}
-                        {!journey.points_enabled && !journey.lucky_draw_enabled && !journey.redemption_enabled && (
+                        {journey.enable_scratch_card_game && (
+                            <Badge variant="outline" className="bg-pink-50 text-pink-700 border-pink-200">
+                                <Gift className="w-3 h-3 mr-1" />
+                                Scratch Card
+                            </Badge>
+                        )}
+                        {!journey.points_enabled && !journey.lucky_draw_enabled && !journey.redemption_enabled && !journey.enable_scratch_card_game && (
                             <span className="text-sm text-gray-500">No features enabled</span>
                         )}
                     </div>
@@ -238,6 +246,16 @@ export default function JourneyCardWithStats({
                                             <p className="text-[10px] text-gray-600">Lucky Draw</p>
                                         </div>
                                         <p className="text-lg font-bold text-purple-900">{stats.lucky_draw_entries}</p>
+                                    </div>
+                                )}
+
+                                {journey.enable_scratch_card_game && (
+                                    <div className="bg-white rounded p-2 border border-pink-100">
+                                        <div className="flex items-center gap-1 mb-1">
+                                            <Gift className="w-3 h-3 text-gray-600" />
+                                            <p className="text-[10px] text-gray-600">Scratch Card</p>
+                                        </div>
+                                        <p className="text-lg font-bold text-pink-900">{stats.scratch_card_plays || 0}</p>
                                     </div>
                                 )}
                             </div>

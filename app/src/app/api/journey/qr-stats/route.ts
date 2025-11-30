@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
           links_scanned: 0,
           lucky_draw_entries: 0,
           redemptions: 0,
-          points_collected: 0
+          points_collected: 0,
+          scratch_card_plays: 0
         }
       })
     }
@@ -91,7 +92,8 @@ export async function GET(request: NextRequest) {
           links_scanned: 0,
           lucky_draw_entries: 0,
           redemptions: 0,
-          points_collected: 0
+          points_collected: 0,
+          scratch_card_plays: 0
         }
       })
     }

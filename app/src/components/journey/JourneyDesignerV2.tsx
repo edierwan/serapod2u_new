@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/components/ui/use-toast'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
     ArrowLeft,
     Save,
@@ -26,7 +27,11 @@ import {
     Layout,
     Info,
     Truck,
-    Clock
+    Clock,
+    Zap,
+    Trophy,
+    Heart,
+    ShoppingBag
 } from 'lucide-react'
 import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
 import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
@@ -60,6 +65,26 @@ interface JourneyConfig {
     require_staff_otp_for_points: boolean
     require_customer_otp_for_lucky_draw: boolean
     require_customer_otp_for_redemption: boolean
+    enable_scratch_card_game: boolean
+    scratch_card_require_otp: boolean
+    
+    // Feature Customization
+    points_title?: string
+    points_description?: string
+    points_icon?: string
+    
+    lucky_draw_title?: string
+    lucky_draw_description?: string
+    lucky_draw_icon?: string
+    
+    redemption_title?: string
+    redemption_description?: string
+    redemption_icon?: string
+    
+    scratch_card_title?: string
+    scratch_card_description?: string
+    scratch_card_icon?: string
+
     start_at: string
     end_at: string
     welcome_title: string
@@ -73,6 +98,74 @@ interface JourneyConfig {
     variant_image_url?: string | null
     custom_image_url?: string
     genuine_badge_style?: string
+}
+
+const FeatureCustomizer = ({ 
+    title, 
+    description, 
+    icon, 
+    onUpdate,
+    enabled 
+}: { 
+    title: string, 
+    description: string, 
+    icon: string, 
+    onUpdate: (field: string, value: string) => void,
+    enabled: boolean
+}) => {
+    if (!enabled) return null;
+
+    const icons = [
+        { value: 'Coins', label: 'Coins', icon: Coins },
+        { value: 'Star', label: 'Star', icon: Star },
+        { value: 'Gift', label: 'Gift', icon: Gift },
+        { value: 'Smartphone', label: 'Smartphone', icon: Smartphone },
+        { value: 'Zap', label: 'Zap', icon: Zap },
+        { value: 'Trophy', label: 'Trophy', icon: Trophy },
+        { value: 'Heart', label: 'Heart', icon: Heart },
+        { value: 'ShoppingBag', label: 'Shopping Bag', icon: ShoppingBag },
+    ];
+
+    return (
+        <div className="mt-4 p-3 bg-white/50 rounded border border-gray-200 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                    <Label className="text-xs">Button Title</Label>
+                    <Input 
+                        value={title} 
+                        onChange={(e) => onUpdate('title', e.target.value)}
+                        className="h-8 text-sm"
+                    />
+                </div>
+                <div className="space-y-1">
+                    <Label className="text-xs">Icon</Label>
+                    <Select value={icon} onValueChange={(val) => onUpdate('icon', val)}>
+                        <SelectTrigger className="h-8">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {icons.map(i => (
+                                <SelectItem key={i.value} value={i.value}>
+                                    <div className="flex items-center gap-2">
+                                        <i.icon className="w-4 h-4" />
+                                        <span>{i.label}</span>
+                                    </div>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            <div className="space-y-1">
+                <Label className="text-xs">Description</Label>
+                <Input 
+                    value={description} 
+                    onChange={(e) => onUpdate('description', e.target.value)}
+                    className="h-8 text-sm"
+                />
+            </div>
+        </div>
+    )
 }
 
 export default function JourneyDesignerV2({
@@ -112,6 +205,26 @@ export default function JourneyDesignerV2({
         require_staff_otp_for_points: journey?.require_staff_otp_for_points ?? false,
         require_customer_otp_for_lucky_draw: journey?.require_customer_otp_for_lucky_draw ?? false,
         require_customer_otp_for_redemption: journey?.require_customer_otp_for_redemption ?? false,
+        enable_scratch_card_game: journey?.enable_scratch_card_game ?? false,
+        scratch_card_require_otp: journey?.scratch_card_require_otp ?? false,
+        
+        // Feature Customization
+        points_title: journey?.points_title || 'Collect Points',
+        points_description: journey?.points_description || 'Earn rewards with every scan',
+        points_icon: journey?.points_icon || 'Coins',
+        
+        lucky_draw_title: journey?.lucky_draw_title || 'Lucky Draw',
+        lucky_draw_description: journey?.lucky_draw_description || 'Try your luck and win prizes!',
+        lucky_draw_icon: journey?.lucky_draw_icon || 'Star',
+        
+        redemption_title: journey?.redemption_title || 'Claim Free Gift',
+        redemption_description: journey?.redemption_description || 'Get your free gift at the shop',
+        redemption_icon: journey?.redemption_icon || 'Gift',
+        
+        scratch_card_title: journey?.scratch_card_title || 'Scratch Card Game',
+        scratch_card_description: journey?.scratch_card_description || 'Scratch & win surprise rewards',
+        scratch_card_icon: journey?.scratch_card_icon || 'Gift',
+
         start_at: journey?.start_at ? journey.start_at.split('T')[0] : new Date().toISOString().split('T')[0],
         end_at: journey?.end_at ? journey.end_at.split('T')[0] : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         welcome_title: journey?.welcome_title || 'Welcome!',
@@ -494,6 +607,8 @@ export default function JourneyDesignerV2({
                 require_staff_otp_for_points: config.require_staff_otp_for_points,
                 require_customer_otp_for_lucky_draw: config.require_customer_otp_for_lucky_draw,
                 require_customer_otp_for_redemption: config.require_customer_otp_for_redemption,
+                enable_scratch_card_game: config.enable_scratch_card_game,
+                scratch_card_require_otp: config.scratch_card_require_otp,
                 start_at: config.start_at || null,
                 end_at: config.end_at || null,
                 created_by: userProfile.id,
@@ -511,6 +626,23 @@ export default function JourneyDesignerV2({
             if (config.product_image_source !== undefined) journeyData.product_image_source = config.product_image_source
             if (config.custom_image_url !== undefined) journeyData.custom_image_url = config.custom_image_url
             if (config.genuine_badge_style !== undefined) journeyData.genuine_badge_style = config.genuine_badge_style
+
+            // Feature Customization
+            if (config.points_title !== undefined) journeyData.points_title = config.points_title
+            if (config.points_description !== undefined) journeyData.points_description = config.points_description
+            if (config.points_icon !== undefined) journeyData.points_icon = config.points_icon
+            
+            if (config.lucky_draw_title !== undefined) journeyData.lucky_draw_title = config.lucky_draw_title
+            if (config.lucky_draw_description !== undefined) journeyData.lucky_draw_description = config.lucky_draw_description
+            if (config.lucky_draw_icon !== undefined) journeyData.lucky_draw_icon = config.lucky_draw_icon
+            
+            if (config.redemption_title !== undefined) journeyData.redemption_title = config.redemption_title
+            if (config.redemption_description !== undefined) journeyData.redemption_description = config.redemption_description
+            if (config.redemption_icon !== undefined) journeyData.redemption_icon = config.redemption_icon
+            
+            if (config.scratch_card_title !== undefined) journeyData.scratch_card_title = config.scratch_card_title
+            if (config.scratch_card_description !== undefined) journeyData.scratch_card_description = config.scratch_card_description
+            if (config.scratch_card_icon !== undefined) journeyData.scratch_card_icon = config.scratch_card_icon
 
             let journeyId = config.id
 
@@ -796,6 +928,17 @@ export default function JourneyDesignerV2({
                                                 </Label>
                                             </div>
                                         )}
+                                        <FeatureCustomizer 
+                                            title={config.points_title || 'Collect Points'}
+                                            description={config.points_description || 'Earn rewards with every scan'}
+                                            icon={config.points_icon || 'Coins'}
+                                            enabled={config.points_enabled}
+                                            onUpdate={(field, value) => {
+                                                if (field === 'title') setConfig({ ...config, points_title: value })
+                                                if (field === 'description') setConfig({ ...config, points_description: value })
+                                                if (field === 'icon') setConfig({ ...config, points_icon: value })
+                                            }}
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -846,7 +989,7 @@ export default function JourneyDesignerV2({
                                                 <p className="mt-1">
                                                     {!order.has_lucky_draw 
                                                         ? "This order was created without Lucky Draw enabled." 
-                                                        : <>Please <a href={`/dashboard/consumer-engagement/lucky-draw?order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">create a lucky draw campaign</a> for this order first.</>}
+                                                        : <>Please <a href={`/dashboard?view=lucky-draw&order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">create a lucky draw campaign</a> for this order first.</>}
                                                 </p>
                                             </div>
                                         )}
@@ -865,6 +1008,17 @@ export default function JourneyDesignerV2({
                                                 </Label>
                                             </div>
                                         )}
+                                        <FeatureCustomizer 
+                                            title={config.lucky_draw_title || 'Lucky Draw'}
+                                            description={config.lucky_draw_description || 'Try your luck and win prizes!'}
+                                            icon={config.lucky_draw_icon || 'Star'}
+                                            enabled={config.lucky_draw_enabled && order.has_lucky_draw}
+                                            onUpdate={(field, value) => {
+                                                if (field === 'title') setConfig({ ...config, lucky_draw_title: value })
+                                                if (field === 'description') setConfig({ ...config, lucky_draw_description: value })
+                                                if (field === 'icon') setConfig({ ...config, lucky_draw_icon: value })
+                                            }}
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -934,6 +1088,63 @@ export default function JourneyDesignerV2({
                                                 </Label>
                                             </div>
                                         )}
+                                        <FeatureCustomizer 
+                                            title={config.redemption_title || 'Claim Free Gift'}
+                                            description={config.redemption_description || 'Get your free gift at the shop'}
+                                            icon={config.redemption_icon || 'Gift'}
+                                            enabled={config.redemption_enabled && order.has_redeem}
+                                            onUpdate={(field, value) => {
+                                                if (field === 'title') setConfig({ ...config, redemption_title: value })
+                                                if (field === 'description') setConfig({ ...config, redemption_description: value })
+                                                if (field === 'icon') setConfig({ ...config, redemption_icon: value })
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Scratch Card Game */}
+                            <div className="flex items-start justify-between p-4 bg-purple-50 rounded-lg border border-purple-200">
+                                <div className="flex items-start gap-3 flex-1">
+                                    <div className="p-2 bg-purple-100 rounded-lg">
+                                        <Gift className="w-5 h-5 text-purple-600" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="font-semibold text-purple-900">Scratch Card Game</h3>
+                                            <Switch
+                                                checked={config.enable_scratch_card_game}
+                                                onCheckedChange={(checked) => setConfig({ ...config, enable_scratch_card_game: checked })}
+                                            />
+                                        </div>
+                                        <p className="text-sm text-purple-700 mt-1">
+                                            Let consumers scratch to reveal random gifts
+                                        </p>
+                                        {config.enable_scratch_card_game && (
+                                            <div className="mt-3 flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id="scratch_card_require_otp"
+                                                    checked={config.scratch_card_require_otp}
+                                                    onChange={(e) => setConfig({ ...config, scratch_card_require_otp: e.target.checked })}
+                                                    className="rounded"
+                                                />
+                                                <Label htmlFor="scratch_card_require_otp" className="text-sm font-normal cursor-pointer">
+                                                    Require customer OTP verification
+                                                </Label>
+                                            </div>
+                                        )}
+                                        <FeatureCustomizer 
+                                            title={config.scratch_card_title || 'Scratch Card Game'}
+                                            description={config.scratch_card_description || 'Scratch & win surprise rewards'}
+                                            icon={config.scratch_card_icon || 'Gift'}
+                                            enabled={config.enable_scratch_card_game}
+                                            onUpdate={(field, value) => {
+                                                if (field === 'title') setConfig({ ...config, scratch_card_title: value })
+                                                if (field === 'description') setConfig({ ...config, scratch_card_description: value })
+                                                if (field === 'icon') setConfig({ ...config, scratch_card_icon: value })
+                                            }}
+                                        />
                                     </div>
                                 </div>
                             </div>

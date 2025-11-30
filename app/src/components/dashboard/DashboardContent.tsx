@@ -42,6 +42,7 @@ import ConsumerActivationsView from '@/components/dashboard/views/consumer-engag
 import ProductCatalogView from '@/components/dashboard/views/consumer-engagement/ProductCatalogView'
 import RedeemGiftManagementView from '@/components/redeem-gift/RedeemGiftManagementView'
 import JourneyBuilderV2 from '@/components/journey/JourneyBuilderV2'
+import ScratchCardGameView from '@/components/dashboard/views/consumer-engagement/ScratchCardGameView'
 
 interface UserProfile {
   id: string
@@ -148,7 +149,15 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'journey-builder':
         return <JourneyBuilderV2 userProfile={userProfile} />
       case 'lucky-draw':
-        return <LuckyDrawView userProfile={userProfile} onViewChange={handleViewChange} />
+        return (
+          <LuckyDrawView 
+            userProfile={userProfile} 
+            onViewChange={handleViewChange} 
+            initialOrderId={initialOrderId}
+          />
+        )
+      case 'scratch-card-game':
+        return <ScratchCardGameView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'redeem-gift-management':
         return (
           <RedeemGiftManagementView 

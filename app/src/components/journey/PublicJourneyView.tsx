@@ -23,6 +23,26 @@ interface JourneyConfig {
   points_enabled: boolean
   lucky_draw_enabled: boolean
   redemption_enabled: boolean
+  enable_scratch_card_game?: boolean
+  scratch_card_require_otp?: boolean
+  
+  // Feature Customization
+  points_title?: string
+  points_description?: string
+  points_icon?: string
+  
+  lucky_draw_title?: string
+  lucky_draw_description?: string
+  lucky_draw_icon?: string
+  
+  redemption_title?: string
+  redemption_description?: string
+  redemption_icon?: string
+  
+  scratch_card_title?: string
+  scratch_card_description?: string
+  scratch_card_icon?: string
+
   show_product_image?: boolean
   product_image_source?: 'variant' | 'custom' | 'genuine_badge'
   custom_image_url?: string
@@ -203,6 +223,8 @@ export default function PublicJourneyView({
     points_enabled: true,
     lucky_draw_enabled: true,
     redemption_enabled: true,
+    enable_scratch_card_game: false,
+    scratch_card_require_otp: false,
     show_product_image: true,
     product_image_source: 'genuine_badge',
     genuine_badge_style: 'gold',

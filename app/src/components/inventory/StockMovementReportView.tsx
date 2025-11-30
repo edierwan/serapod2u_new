@@ -262,6 +262,19 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
     try {
       setLoading(true)
       
+      // Pre-fetch variants matching the search query if present
+      let matchingVariantIds: string[] = []
+      if (searchQuery) {
+        const { data: variants } = await supabase
+          .from('product_variants')
+          .select('id, variant_code, variant_name, products!inner(product_name)')
+          .or(`variant_code.ilike.%${searchQuery}%,variant_name.ilike.%${searchQuery}%,products.product_name.ilike.%${searchQuery}%`)
+        
+        if (variants) {
+          matchingVariantIds = variants.map(v => v.id)
+        }
+      }
+
       // Try using the optimized ordered view first, fallback to base table if unavailable
       let tableName = 'vw_stock_movements_ordered'
       let query = supabase
@@ -273,9 +286,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
       // Apply filters
       if (searchQuery) {
-        // Note: search on variant won't work without join, but we'll handle it client-side
-        query = query.or(
-          [
+        const textSearchConditions = [
             'reference_no',
             'notes',
             'movement_type',
@@ -285,10 +296,13 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             'organization_name',
             'manufacturer_name',
             'created_by_email'
-          ]
-            .map((column) => `${column}.ilike.%${searchQuery}%`)
-            .join(',')
-        )
+        ].map((column) => `${column}.ilike.%${searchQuery}%`)
+
+        if (matchingVariantIds.length > 0) {
+             textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
+        }
+        
+        query = query.or(textSearchConditions.join(','))
       }
 
       if (movementTypeFilter !== 'all') {
@@ -348,11 +362,19 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
         // Re-apply filters
         if (searchQuery) {
-          query = query.or(
-            ['reference_no', 'notes', 'movement_type', 'reason', 'warehouse_location']
-              .map((column) => `${column}.ilike.%${searchQuery}%`)
-              .join(',')
-          )
+          const textSearchConditions = [
+            'reference_no', 
+            'notes', 
+            'movement_type', 
+            'reason', 
+            'warehouse_location'
+          ].map((column) => `${column}.ilike.%${searchQuery}%`)
+
+          if (matchingVariantIds.length > 0) {
+             textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
+          }
+
+          query = query.or(textSearchConditions.join(','))
         }
         if (movementTypeFilter !== 'all') {
           query = query.eq('movement_type', movementTypeFilter)
@@ -768,7 +790,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   }
 
   const getMovementTypeBadge = (type: string) => {
-    const configs: Record<string, { label: string; title: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+    const configs: Record<string, { label: string; title: string; variant: "default" | "secondary" | "destructive" | "outline", className?: string }> = {
       'addition': { label: 'Add', title: 'Addition', variant: 'default' as const },
       'adjustment': { label: 'Adj', title: 'Adjustment', variant: 'secondary' as const },
       'transfer_out': { label: 'Xfer↑', title: 'Transfer Out', variant: 'outline' as const },
@@ -778,7 +800,9 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       'order_fulfillment': { label: 'Ship', title: 'Shipment', variant: 'destructive' as const },
       'order_cancelled': { label: 'Cxl', title: 'Cancelled', variant: 'outline' as const },
       'manual_in': { label: 'M-In', title: 'Manual In', variant: 'default' as const },
-      'manual_out': { label: 'M-Out', title: 'Manual Out', variant: 'destructive' as const }
+      'manual_out': { label: 'M-Out', title: 'Manual Out', variant: 'destructive' as const },
+      'scratch_game_out': { label: 'SG-', title: 'Scratch Game Out', variant: 'secondary' as const, className: 'bg-green-100 text-green-800 hover:bg-green-200 border-green-200' },
+      'scratch_game_in': { label: 'SG+', title: 'Scratch Game In', variant: 'secondary' as const, className: 'bg-green-100 text-green-800 hover:bg-green-200 border-green-200' }
     }
 
     const config = configs[type] || { label: type, title: type, variant: 'outline' as const }
@@ -786,7 +810,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Badge variant={config.variant} className="text-[10px] px-1.5 py-0 font-medium cursor-default">{config.label}</Badge>
+            <Badge variant={config.variant} className={`text-[10px] px-1.5 py-0 font-medium cursor-default ${config.className || ''}`}>{config.label}</Badge>
           </TooltipTrigger>
           <TooltipContent>
             <p>{config.title}</p>
@@ -946,6 +970,10 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                     <SelectItem value="deallocation">Deallocation</SelectItem>
                     <SelectItem value="order_fulfillment">Order Fulfillment</SelectItem>
                     <SelectItem value="order_cancelled">Order Cancelled</SelectItem>
+                    <SelectItem value="manual_in">Manual In</SelectItem>
+                    <SelectItem value="manual_out">Manual Out</SelectItem>
+                    <SelectItem value="scratch_game_out">Scratch Game Out</SelectItem>
+                    <SelectItem value="scratch_game_in">Scratch Game In</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1270,7 +1298,15 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                         </div>
                       </TableCell>
                       <TableCell className="text-xs">
-                        {movement.organizations?.org_name || 'N/A'}
+                        {(() => {
+                          if (movement.movement_type === 'scratch_game_out') {
+                            return 'Serapod Technology Sdn. Bhd'
+                          }
+                          if (movement.movement_type === 'scratch_game_in') {
+                            return movement.organizations?.org_name || 'Serapod Warehouse'
+                          }
+                          return movement.organizations?.org_name || 'N/A'
+                        })()}
                         {movement.warehouse_location && (
                           <p className="text-xs text-gray-500">{movement.warehouse_location}</p>
                         )}
@@ -1315,7 +1351,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       </TableCell>
                       <TableCell className="text-xs">
                         {movement.reference_no ? (
-                          <Badge variant="outline" className="text-xs">{movement.reference_no}</Badge>
+                          <span className="text-xs font-medium">{movement.reference_no}</span>
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}

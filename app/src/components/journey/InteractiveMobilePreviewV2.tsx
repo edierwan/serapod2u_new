@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users } from 'lucide-react'
+import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users, Zap, Trophy, Heart, ShoppingBag } from 'lucide-react'
 
 interface JourneyConfig {
     welcome_title: string
@@ -28,9 +28,45 @@ interface JourneyConfig {
     lucky_draw_image_url?: string | null
     lucky_draw_campaign_name?: string | null
     lucky_draw_prizes?: any[]
+    enable_scratch_card_game?: boolean
+    scratch_card_require_otp?: boolean
+    
+    // Feature Customization
+    points_title?: string
+    points_description?: string
+    points_icon?: string
+    
+    lucky_draw_title?: string
+    lucky_draw_description?: string
+    lucky_draw_icon?: string
+    
+    redemption_title?: string
+    redemption_description?: string
+    redemption_icon?: string
+    
+    scratch_card_title?: string
+    scratch_card_description?: string
+    scratch_card_icon?: string
+
+    theme_config?: {
+        theme_id?: string
+        primary_color?: string
+        title_text?: string
+        success_message?: string
+        no_prize_message?: string
+        show_confetti?: boolean
+        play_sound?: boolean
+    }
 }
 
-type PageType = 'welcome' | 'collect-points' | 'lucky-draw' | 'redeem-gift' | 'thank-you'
+const THEMES = [
+    { id: 'modern', name: 'Modern Gradient' },
+    { id: 'retro', name: 'Retro Carnival' },
+    { id: 'vip', name: 'VIP Gold' },
+    { id: 'cyber', name: 'Cyber Arcade' }
+]
+
+type PageType = 'welcome' | 'collect-points' | 'lucky-draw' | 'redeem-gift' | 'scratch-card-game' | 'thank-you'
 
 interface InteractiveMobilePreviewV2Props {
     config: JourneyConfig
@@ -44,6 +80,9 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     const [pointsCollected, setPointsCollected] = useState(false)
     const [luckyDrawEntered, setLuckyDrawEntered] = useState(false)
     const [giftRedeemed, setGiftRedeemed] = useState(false)
+    const [scratchCardPlayed, setScratchCardPlayed] = useState(false)
+    const [scratchResult, setScratchResult] = useState<any>(null)
+    const [isScratching, setIsScratching] = useState(false)
     const [redeemGifts, setRedeemGifts] = useState<any[]>([])
     const [loadingGifts, setLoadingGifts] = useState(false)
     const [claimingGift, setClaimingGift] = useState(false)
@@ -385,6 +424,25 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     }
 
     function renderWelcomePage() {
+        const getIcon = (iconName: string | undefined, defaultIcon: any) => {
+            switch (iconName) {
+                case 'Coins': return Coins;
+                case 'Star': return Star;
+                case 'Gift': return Gift;
+                case 'Smartphone': return Smartphone;
+                case 'Zap': return Zap;
+                case 'Trophy': return Trophy;
+                case 'Heart': return Heart;
+                case 'ShoppingBag': return ShoppingBag;
+                default: return defaultIcon;
+            }
+        }
+
+        const PointsIcon = getIcon(config.points_icon, Coins)
+        const LuckyDrawIcon = getIcon(config.lucky_draw_icon, Star)
+        const RedemptionIcon = getIcon(config.redemption_icon, Gift)
+        const ScratchCardIcon = getIcon(config.scratch_card_icon, Gift)
+
         // Genuine badge images based on style
         const genuineBadgeImages = {
             gold: 'https://images.unsplash.com/photo-1606318313732-1f8f83e9b6e1?w=200&h=200&fit=crop',
@@ -527,11 +585,11 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     className="p-3 rounded-full"
                                     style={{ backgroundColor: `${config.primary_color}20` }}
                                 >
-                                    <Coins className="w-5 h-5" style={{ color: config.primary_color }} />
+                                    <PointsIcon className="w-5 h-5" style={{ color: config.primary_color }} />
                                 </div>
                                 <div className="flex-1">
-                                    <h3 className="font-semibold text-sm">Collect Points</h3>
-                                    <p className="text-xs text-gray-600">Earn rewards with every scan</p>
+                                    <h3 className="font-semibold text-sm">{config.points_title || 'Collect Points'}</h3>
+                                    <p className="text-xs text-gray-600">{config.points_description || 'Earn rewards with every scan'}</p>
                                 </div>
                                 {pointsCollected && (
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -551,11 +609,11 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     className="p-3 rounded-full"
                                     style={{ backgroundColor: `${config.primary_color}20` }}
                                 >
-                                    <Star className="w-5 h-5" style={{ color: config.primary_color }} />
+                                    <LuckyDrawIcon className="w-5 h-5" style={{ color: config.primary_color }} />
                                 </div>
                                 <div className="flex-1">
-                                    <h3 className="font-semibold text-sm">Lucky Draw</h3>
-                                    <p className="text-xs text-gray-600">Try your luck and win prizes!</p>
+                                    <h3 className="font-semibold text-sm">{config.lucky_draw_title || 'Lucky Draw'}</h3>
+                                    <p className="text-xs text-gray-600">{config.lucky_draw_description || 'Try your luck and win prizes!'}</p>
                                 </div>
                                 {luckyDrawEntered && (
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -578,13 +636,37 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     className="p-3 rounded-full"
                                     style={{ backgroundColor: `${config.primary_color}20` }}
                                 >
-                                    <Gift className="w-5 h-5" style={{ color: config.primary_color }} />
+                                    <RedemptionIcon className="w-5 h-5" style={{ color: config.primary_color }} />
                                 </div>
                                 <div className="flex-1">
-                                    <h3 className="font-semibold text-sm">Claim Free Gift</h3>
-                                    <p className="text-xs text-gray-600">Get your free gift at the shop</p>
+                                    <h3 className="font-semibold text-sm">{config.redemption_title || 'Claim Free Gift'}</h3>
+                                    <p className="text-xs text-gray-600">{config.redemption_description || 'Get your free gift at the shop'}</p>
                                 </div>
                                 {giftRedeemed && (
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                )}
+                            </div>
+                        </button>
+                    )}
+
+                    {/* Scratch Card Game */}
+                    {config.enable_scratch_card_game && (
+                        <button
+                            onClick={() => setCurrentPage('scratch-card-game')}
+                            className="w-full bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:border-purple-300 transition-colors text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div
+                                    className="p-3 rounded-full"
+                                    style={{ backgroundColor: `${config.primary_color}20` }}
+                                >
+                                    <ScratchCardIcon className="w-5 h-5" style={{ color: config.primary_color }} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-semibold text-sm">{config.scratch_card_title || 'Scratch Card Game'}</h3>
+                                    <p className="text-xs text-gray-600">{config.scratch_card_description || 'Scratch & win surprise rewards'}</p>
+                                </div>
+                                {scratchCardPlayed && (
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                                 )}
                             </div>
@@ -1156,6 +1238,336 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
         )
     }
 
+    function renderScratchCardGamePage() {
+        const themeId = config.theme_config?.theme_id || 'modern'
+        const titleText = config.theme_config?.title_text || config.lucky_draw_campaign_name || 'SCRATCH & WIN'
+
+        // Render different layouts based on theme
+        if (themeId === 'retro') {
+            return (
+                <div className="h-full flex flex-col relative overflow-hidden bg-green-500">
+                    {/* Sunburst Background */}
+                    <div className="absolute inset-0 bg-[repeating-conic-gradient(#22c55e_0deg_15deg,#4ade80_15deg_30deg)] opacity-100 animate-[spin_20s_linear_infinite]"></div>
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/20"></div>
+                    
+                    {/* Header */}
+                    <div className="relative z-10 flex items-center justify-between px-4 py-4">
+                        <button onClick={() => setCurrentPage('welcome')} className="p-2 bg-white/90 rounded-full shadow-lg hover:scale-110 transition-transform text-green-700">
+                            <ArrowLeft className="w-6 h-6" strokeWidth={3} />
+                        </button>
+                    </div>
+
+                    <div className="relative z-10 flex-1 flex flex-col items-center px-4 pb-8 overflow-y-auto">
+                        {/* Retro Title */}
+                        <div className="mt-4 mb-8 relative transform -rotate-2 hover:rotate-0 transition-transform duration-300">
+                            <div className="absolute inset-0 bg-red-700 rounded-2xl transform rotate-3 scale-105 border-4 border-white shadow-xl"></div>
+                            <div className="relative bg-red-600 px-8 py-4 rounded-xl border-4 border-yellow-400 shadow-[0_10px_0_rgb(180,0,0)]">
+                                <h1 className="text-4xl font-black text-yellow-300 drop-shadow-[2px_2px_0_rgba(0,0,0,0.5)] uppercase tracking-wider text-center leading-none">
+                                    {titleText}
+                                </h1>
+                                <div className="absolute -top-3 -right-3 text-yellow-400 animate-bounce">
+                                    <Star className="w-8 h-8 fill-current" />
+                                </div>
+                                <div className="absolute -bottom-3 -left-3 text-yellow-400 animate-bounce delay-100">
+                                    <Star className="w-6 h-6 fill-current" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Scratch Area Frame */}
+                        <div className="w-full max-w-xs mx-auto relative z-20 mb-8">
+                            <div className="bg-yellow-400 p-2 rounded-xl shadow-[0_0_20px_rgba(255,255,0,0.5)]">
+                                <div className="bg-red-600 p-2 rounded-lg border-4 border-dashed border-white/50">
+                                    <div className="bg-white rounded-md overflow-hidden relative aspect-[4/3]">
+                                        {renderScratchArea('from-gray-300 via-gray-100 to-gray-300')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Action Button */}
+                        <div className="w-full max-w-xs mx-auto text-center">
+                            {scratchCardPlayed ? (
+                                <Button className="w-full py-6 rounded-full text-xl font-black bg-blue-600 hover:bg-blue-500 border-b-4 border-blue-800 shadow-lg uppercase tracking-widest" onClick={() => setCurrentPage('welcome')}>
+                                    Play Again
+                                </Button>
+                            ) : (
+                                <div className="bg-white/90 backdrop-blur px-6 py-3 rounded-full shadow-lg inline-block transform hover:scale-105 transition-transform">
+                                    <p className="text-green-800 font-bold text-sm uppercase tracking-wide">
+                                        Scratch the card above!
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        if (themeId === 'vip') {
+            return (
+                <div className="h-full flex flex-col bg-slate-950 relative overflow-hidden">
+                    {/* Luxury Pattern */}
+                    <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                    <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-transparent to-slate-900/80"></div>
+                    
+                    {/* Gold Border Frame */}
+                    <div className="absolute inset-4 border border-yellow-600/30 rounded-[30px] pointer-events-none"></div>
+                    <div className="absolute inset-5 border border-yellow-600/10 rounded-[26px] pointer-events-none"></div>
+
+                    {/* Header */}
+                    <div className="relative z-10 flex items-center justify-between px-6 py-6">
+                        <button onClick={() => setCurrentPage('welcome')} className="text-yellow-500 hover:text-yellow-400 transition-colors">
+                            <ArrowLeft className="w-6 h-6" />
+                        </button>
+                        <span className="text-[10px] font-serif tracking-[0.2em] text-yellow-600 uppercase">Exclusive Access</span>
+                        <div className="w-6"></div>
+                    </div>
+
+                    <div className="relative z-10 flex-1 flex flex-col items-center px-6 pb-8 overflow-y-auto">
+                        {/* Elegant Title */}
+                        <div className="mt-8 mb-12 text-center">
+                            <h1 className="text-3xl font-serif text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 via-yellow-500 to-yellow-700 drop-shadow-sm tracking-widest">
+                                {titleText}
+                            </h1>
+                            <div className="h-[1px] w-24 mx-auto mt-4 bg-gradient-to-r from-transparent via-yellow-600 to-transparent"></div>
+                        </div>
+
+                        {/* Scratch Area */}
+                        <div className="w-full max-w-xs mx-auto relative z-20 mb-12">
+                            <div className="p-[1px] bg-gradient-to-br from-yellow-400 via-yellow-600 to-yellow-800 rounded-xl shadow-2xl">
+                                <div className="bg-slate-900 p-4 rounded-xl">
+                                    <div className="relative aspect-[4/3] rounded-lg overflow-hidden border border-yellow-900/50">
+                                        {renderScratchArea('from-yellow-100 via-yellow-200 to-yellow-100', 'text-yellow-900')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Action Button */}
+                        <div className="w-full max-w-xs mx-auto text-center">
+                            {scratchCardPlayed ? (
+                                <Button className="w-full py-6 bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-500 hover:to-yellow-600 text-slate-950 font-serif tracking-widest uppercase shadow-lg border border-yellow-400/20" onClick={() => setCurrentPage('welcome')}>
+                                    Play Again
+                                </Button>
+                            ) : (
+                                <p className="text-yellow-500/60 font-serif italic text-sm">
+                                    Reveal your exclusive reward
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        if (themeId === 'cyber') {
+            return (
+                <div className="h-full flex flex-col bg-slate-900 relative overflow-hidden font-mono">
+                    {/* Grid Background */}
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_0%,#000_70%,transparent_110%)]"></div>
+                    
+                    {/* Header */}
+                    <div className="relative z-10 flex items-center justify-between px-4 py-4">
+                        <button onClick={() => setCurrentPage('welcome')} className="p-1 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-950/50">
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+                        <div className="px-2 py-0.5 border border-pink-500/50 bg-pink-950/30">
+                            <span className="text-[10px] text-pink-400 uppercase tracking-widest">System.Game.Init</span>
+                        </div>
+                        <div className="w-7"></div>
+                    </div>
+
+                    <div className="relative z-10 flex-1 flex flex-col items-center px-4 pb-8 overflow-y-auto">
+                        {/* Glitch Title */}
+                        <div className="mt-8 mb-10 text-center relative">
+                            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 drop-shadow-[0_0_10px_rgba(0,255,255,0.5)] tracking-tighter">
+                                {titleText}
+                            </h1>
+                            <div className="absolute -inset-1 bg-cyan-500/20 blur-xl -z-10"></div>
+                        </div>
+
+                        {/* Scratch Area */}
+                        <div className="w-full max-w-xs mx-auto relative z-20 mb-10">
+                            <div className="relative">
+                                {/* Corner Accents */}
+                                <div className="absolute -top-2 -left-2 w-4 h-4 border-t-2 border-l-2 border-cyan-500"></div>
+                                <div className="absolute -top-2 -right-2 w-4 h-4 border-t-2 border-r-2 border-cyan-500"></div>
+                                <div className="absolute -bottom-2 -left-2 w-4 h-4 border-b-2 border-l-2 border-cyan-500"></div>
+                                <div className="absolute -bottom-2 -right-2 w-4 h-4 border-b-2 border-r-2 border-cyan-500"></div>
+                                
+                                <div className="bg-slate-800/80 backdrop-blur border border-slate-700 p-1">
+                                    <div className="relative aspect-[4/3] overflow-hidden">
+                                        {renderScratchArea('from-slate-700 via-slate-600 to-slate-700', 'text-cyan-400', true)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Action Button */}
+                        <div className="w-full max-w-xs mx-auto text-center space-y-4">
+                            {scratchCardPlayed ? (
+                                <Button className="w-full py-6 bg-cyan-600 hover:bg-cyan-500 text-white font-bold tracking-widest uppercase shadow-[0_0_20px_rgba(6,182,212,0.5)] border border-cyan-400" onClick={() => setCurrentPage('welcome')}>
+                                    Reboot Game
+                                </Button>
+                            ) : (
+                                <div className="animate-pulse">
+                                    <p className="text-cyan-400 text-xs uppercase tracking-[0.2em]">
+                                        &gt; Initiate Scratch Sequence_
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        // Default: Modern Gradient (Emerald)
+        return (
+            <div className="h-full flex flex-col bg-gradient-to-b from-emerald-500 via-emerald-600 to-emerald-800 text-white">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-4">
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-white hover:bg-white/20 rounded-full"
+                        onClick={() => setCurrentPage('welcome')}
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <div className="px-3 py-1 bg-black/20 rounded-full backdrop-blur-sm border border-white/10">
+                        <span className="text-xs font-medium text-emerald-100">Scratch & Win</span>
+                    </div>
+                    <div className="w-9"></div>
+                </div>
+
+                <div className="flex-1 flex flex-col items-center px-4 pb-8 overflow-y-auto">
+                    {/* Title Banner */}
+                    <div className="mt-2 mb-6 text-center relative z-10">
+                        <h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-300 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)] tracking-tight">
+                            {titleText}
+                        </h1>
+                        <div className="mt-1 inline-block px-4 py-1 bg-gradient-to-r from-red-500 to-orange-500 rounded-full shadow-lg transform -rotate-2">
+                            <p className="text-xs font-bold text-white uppercase tracking-widest">Daily Chance</p>
+                        </div>
+                    </div>
+
+                    {/* Product Visual */}
+                    <div className="relative mb-6 w-full flex justify-center">
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-white/20 blur-3xl rounded-full pointer-events-none animate-pulse"></div>
+                        <div className="relative z-10 w-32 h-32 sm:w-40 sm:h-40 transition-transform duration-700 hover:scale-105">
+                            {config.product_image_source === 'variant' && config.variant_image_url ? (
+                                <Image src={config.variant_image_url} alt="Product" fill className="object-contain drop-shadow-2xl" />
+                            ) : config.custom_image_url ? (
+                                <Image src={config.custom_image_url} alt="Brand" fill className="object-contain drop-shadow-2xl" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                    <Gift className="w-24 h-24 text-white drop-shadow-lg opacity-90" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Scratch Card Area */}
+                    <div className="w-full max-w-xs mx-auto relative z-20 mb-8">
+                        <div className="bg-white p-1 rounded-[2rem] shadow-2xl transform transition-all duration-500 hover:scale-[1.02]">
+                            <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-[1.8rem] overflow-hidden relative aspect-[4/3]">
+                                {renderScratchArea('from-gray-300 via-gray-200 to-gray-400')}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action Button */}
+                    <div className="w-full max-w-xs mx-auto space-y-4">
+                        {scratchCardPlayed ? (
+                            <Button 
+                                className="w-full py-6 rounded-xl text-lg font-bold shadow-xl hover:scale-[1.02] transition-transform active:scale-[0.98]"
+                                style={{ backgroundColor: config.button_color }}
+                                onClick={() => setCurrentPage('welcome')}
+                            >
+                                Play Again
+                            </Button>
+                        ) : (
+                            <div className="text-center">
+                                <p className="text-emerald-100 text-sm font-medium opacity-90">
+                                    Tap the silver card to reveal your prize!
+                                </p>
+                            </div>
+                        )}
+                        <p className="text-xs text-center text-emerald-200/60 mt-4">
+                            One play per day. Terms & Conditions apply.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    // Helper to render the scratch area content to avoid duplication
+    const renderScratchArea = (scratchGradient: string, textColor: string = 'text-gray-500/80', isCyber: boolean = false) => (
+        <>
+            {/* Result Layer (Underneath) */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-white">
+                {scratchResult ? (
+                    <div className="animate-in zoom-in duration-500 flex flex-col items-center">
+                        {scratchResult.result === 'win' ? (
+                            <>
+                                <div className="mb-2 relative">
+                                    <Trophy className="w-16 h-16 text-yellow-500 animate-bounce" />
+                                    <div className="absolute inset-0 bg-yellow-400 blur-xl opacity-30 animate-pulse"></div>
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 leading-tight mb-1">CONGRATS!</h3>
+                                <p className="text-sm font-medium text-gray-600">{scratchResult.message}</p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="mb-3 bg-gray-200 p-3 rounded-full">
+                                    <span className="text-3xl">😔</span>
+                                </div>
+                                <h3 className="text-lg font-bold text-gray-800 mb-1">Oh no!</h3>
+                                <p className="text-sm text-gray-600">{scratchResult.message}</p>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    <div className="text-gray-400 font-medium text-sm animate-pulse">
+                        Prize hidden here...
+                    </div>
+                )}
+            </div>
+
+            {/* Scratch Overlay (Top) */}
+            <div 
+                className={`absolute inset-0 cursor-pointer transition-opacity duration-1000 ${isScratching || scratchCardPlayed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                onClick={async () => {
+                    if (isScratching || scratchCardPlayed) return
+                    setIsScratching(true)
+                    setTimeout(() => {
+                        const isWin = Math.random() > 0.3
+                        setScratchResult({
+                            result: isWin ? 'win' : 'no_prize',
+                            reward: isWin ? { name: 'Mystery Prize', type: 'points' } : null,
+                            message: isWin ? 'You won a Mystery Prize!' : 'Better luck next time!'
+                        })
+                        setScratchCardPlayed(true)
+                        setIsScratching(false)
+                    }, 1500)
+                }}
+            >
+                <div className={`w-full h-full bg-gradient-to-br ${scratchGradient} relative overflow-hidden flex flex-col items-center justify-center`}>
+                    {!isCyber && <div className="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')]"></div>}
+                    {isCyber && <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(6,182,212,0.1)_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]"></div>}
+                    
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_2.5s_infinite]"></div>
+                    
+                    <span className={`text-2xl font-bold ${textColor} drop-shadow-sm tracking-widest`}>SCRATCH</span>
+                    <span className={`text-sm font-bold ${textColor} tracking-widest mt-1 opacity-70`}>HERE</span>
+                </div>
+            </div>
+        </>
+    )
+
     function renderCurrentPage() {
         switch (currentPage) {
             case 'welcome':
@@ -1166,6 +1578,8 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 return renderLuckyDrawPage()
             case 'redeem-gift':
                 return renderRedeemGiftPage()
+            case 'scratch-card-game':
+                return renderScratchCardGamePage()
             case 'thank-you':
                 return renderThankYouPage()
             default:

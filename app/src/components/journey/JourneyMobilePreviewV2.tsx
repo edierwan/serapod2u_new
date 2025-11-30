@@ -13,6 +13,7 @@ interface JourneyConfig {
     points_enabled: boolean
     lucky_draw_enabled: boolean
     redemption_enabled: boolean
+    enable_scratch_card_game?: boolean
 }
 
 export default function JourneyMobilePreviewV2({ config }: { config: JourneyConfig }) {
@@ -131,8 +132,32 @@ export default function JourneyMobilePreviewV2({ config }: { config: JourneyConf
                                     </div>
                                 )}
 
+                                {/* Scratch Card Game */}
+                                {config.enable_scratch_card_game && (
+                                    <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="p-3 rounded-full"
+                                                style={{ backgroundColor: `${config.primary_color}20` }}
+                                            >
+                                                <Gift className="w-5 h-5" style={{ color: config.primary_color }} />
+                                            </div>
+                                            <div className="flex-1">
+                                                <h3 className="font-semibold text-sm">Scratch Card Game</h3>
+                                                <p className="text-xs text-gray-600">Scratch & win surprise rewards</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="w-full mt-3 py-2 px-4 text-white text-sm font-medium rounded-lg transition-colors"
+                                            style={{ backgroundColor: config.button_color }}
+                                        >
+                                            Play Now
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* No Features Message */}
-                                {!config.points_enabled && !config.lucky_draw_enabled && !config.redemption_enabled && (
+                                {!config.points_enabled && !config.lucky_draw_enabled && !config.redemption_enabled && !config.enable_scratch_card_game && (
                                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
                                         <p className="text-sm text-yellow-700">
                                             No features enabled. Enable at least one feature to create a journey.
@@ -142,7 +167,7 @@ export default function JourneyMobilePreviewV2({ config }: { config: JourneyConf
                             </div>
 
                             {/* Thank You Message */}
-                            {(config.points_enabled || config.lucky_draw_enabled || config.redemption_enabled) && (
+                            {(config.points_enabled || config.lucky_draw_enabled || config.redemption_enabled || config.enable_scratch_card_game) && (
                                 <div className="px-4 py-4">
                                     <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
                                         <p className="text-sm text-gray-700 text-center">
