@@ -143,8 +143,8 @@ BEGIN
     SELECT 
         r.*,
         pv.image_url as variant_image_url,
-        p.name as product_name,
-        pv.name as variant_name
+        p.product_name as product_name,
+        pv.variant_name as variant_name
     INTO v_reward 
     FROM scratch_card_rewards r
     LEFT JOIN product_variants pv ON r.variant_id = pv.id
