@@ -238,7 +238,12 @@ export default function PublicJourneyView({
   // Always show full-screen mobile view for consumers (eliminates flash/flicker)
   return (
     <div className="min-h-screen bg-gray-50">
-      <InteractiveMobilePreviewV2 config={journeyConfig} fullScreen={fullScreenMode} qrCode={code} />
+      <InteractiveMobilePreviewV2 
+        config={journeyConfig} 
+        fullScreen={fullScreenMode} 
+        qrCode={code} 
+        isLive={true}
+      />
     </div>
   )
 }

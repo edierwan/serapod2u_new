@@ -9,9 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users, Zap, Trophy, Heart, ShoppingBag } from 'lucide-react'
+import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users, Zap, Trophy, Heart, ShoppingBag, XCircle } from 'lucide-react'
+import ScratchCanvas from './ScratchCanvas'
 
 interface JourneyConfig {
+    id?: string
     welcome_title: string
     welcome_message: string
     thank_you_message: string
@@ -72,9 +74,11 @@ interface InteractiveMobilePreviewV2Props {
     config: JourneyConfig
     fullScreen?: boolean // When true, shows full-screen mobile view without phone frame
     qrCode?: string // The QR code that was scanned (for actual submissions)
+    isLive?: boolean
+    consumerPhone?: string
 }
 
-export default function InteractiveMobilePreviewV2({ config, fullScreen = false, qrCode }: InteractiveMobilePreviewV2Props) {
+export default function InteractiveMobilePreviewV2({ config, fullScreen = false, qrCode, isLive = false, consumerPhone }: InteractiveMobilePreviewV2Props) {
     const router = useRouter()
     const [currentPage, setCurrentPage] = useState<PageType>('welcome')
     const [pointsCollected, setPointsCollected] = useState(false)
@@ -83,6 +87,8 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     const [scratchCardPlayed, setScratchCardPlayed] = useState(false)
     const [scratchResult, setScratchResult] = useState<any>(null)
     const [isScratching, setIsScratching] = useState(false)
+    const [isGameLoading, setIsGameLoading] = useState(false)
+    const [gameError, setGameError] = useState<string | null>(null)
     const [redeemGifts, setRedeemGifts] = useState<any[]>([])
     const [loadingGifts, setLoadingGifts] = useState(false)
     const [claimingGift, setClaimingGift] = useState(false)
@@ -1453,21 +1459,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                         </div>
                     </div>
 
-                    {/* Product Visual */}
-                    <div className="relative mb-6 w-full flex justify-center">
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-white/20 blur-3xl rounded-full pointer-events-none animate-pulse"></div>
-                        <div className="relative z-10 w-32 h-32 sm:w-40 sm:h-40 transition-transform duration-700 hover:scale-105">
-                            {config.product_image_source === 'variant' && config.variant_image_url ? (
-                                <Image src={config.variant_image_url} alt="Product" fill className="object-contain drop-shadow-2xl" />
-                            ) : config.custom_image_url ? (
-                                <Image src={config.custom_image_url} alt="Brand" fill className="object-contain drop-shadow-2xl" />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                    <Gift className="w-24 h-24 text-white drop-shadow-lg opacity-90" />
-                                </div>
-                            )}
-                        </div>
-                    </div>
+
 
                     {/* Scratch Card Area */}
                     <div className="w-full max-w-xs mx-auto relative z-20 mb-8">
@@ -1505,68 +1497,147 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     }
 
     // Helper to render the scratch area content to avoid duplication
-    const renderScratchArea = (scratchGradient: string, textColor: string = 'text-gray-500/80', isCyber: boolean = false) => (
-        <>
-            {/* Result Layer (Underneath) */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-white">
-                {scratchResult ? (
-                    <div className="animate-in zoom-in duration-500 flex flex-col items-center">
-                        {scratchResult.result === 'win' ? (
-                            <>
-                                <div className="mb-2 relative">
-                                    <Trophy className="w-16 h-16 text-yellow-500 animate-bounce" />
-                                    <div className="absolute inset-0 bg-yellow-400 blur-xl opacity-30 animate-pulse"></div>
-                                </div>
-                                <h3 className="text-xl font-bold text-gray-900 leading-tight mb-1">CONGRATS!</h3>
-                                <p className="text-sm font-medium text-gray-600">{scratchResult.message}</p>
-                            </>
-                        ) : (
-                            <>
-                                <div className="mb-3 bg-gray-200 p-3 rounded-full">
-                                    <span className="text-3xl">😔</span>
-                                </div>
-                                <h3 className="text-lg font-bold text-gray-800 mb-1">Oh no!</h3>
-                                <p className="text-sm text-gray-600">{scratchResult.message}</p>
-                            </>
-                        )}
-                    </div>
-                ) : (
-                    <div className="text-gray-400 font-medium text-sm animate-pulse">
-                        Prize hidden here...
+    const renderScratchArea = (scratchGradient: string, textColor: string = 'text-gray-500/80', isCyber: boolean = false) => {
+        const handlePlay = async () => {
+            if (isGameLoading || scratchCardPlayed) return
+            
+            if (!isLive) {
+                // Preview Mode: Simulate
+                setIsGameLoading(true)
+                setTimeout(() => {
+                    const isWin = Math.random() > 0.3
+                    setScratchResult({
+                        result: isWin ? 'win' : 'no_prize',
+                        reward: isWin ? { name: 'Mystery Prize', type: 'points', value: 100 } : null,
+                        message: isWin ? 'You won a Mystery Prize!' : 'Better luck next time!'
+                    })
+                    setIsGameLoading(false)
+                }, 1000)
+                return
+            }
+
+            // Live Mode: Call API
+            setIsGameLoading(true)
+            setGameError(null)
+            try {
+                const res = await fetch('/api/scratch-card/play', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        journeyConfigId: config.id,
+                        consumerPhone: consumerPhone || 'anonymous',
+                        qrCode: qrCode
+                    })
+                })
+                
+                const data = await res.json()
+                
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to play')
+                }
+                
+                setScratchResult({
+                    result: data.status,
+                    reward: data.reward,
+                    message: data.message
+                })
+                
+            } catch (err: any) {
+                console.error(err)
+                setGameError(err.message)
+            } finally {
+                setIsGameLoading(false)
+            }
+        }
+
+        const handleScratchComplete = () => {
+            setScratchCardPlayed(true)
+        }
+
+        return (
+            <div className="relative w-full h-full">
+                {/* Play Button Overlay */}
+                {!scratchResult && !isGameLoading && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/10 backdrop-blur-[1px] rounded-xl">
+                        <Button 
+                            onClick={handlePlay}
+                            className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold text-lg shadow-lg animate-bounce"
+                        >
+                            PLAY NOW
+                        </Button>
                     </div>
                 )}
-            </div>
 
-            {/* Scratch Overlay (Top) */}
-            <div 
-                className={`absolute inset-0 cursor-pointer transition-opacity duration-1000 ${isScratching || scratchCardPlayed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                onClick={async () => {
-                    if (isScratching || scratchCardPlayed) return
-                    setIsScratching(true)
-                    setTimeout(() => {
-                        const isWin = Math.random() > 0.3
-                        setScratchResult({
-                            result: isWin ? 'win' : 'no_prize',
-                            reward: isWin ? { name: 'Mystery Prize', type: 'points' } : null,
-                            message: isWin ? 'You won a Mystery Prize!' : 'Better luck next time!'
-                        })
-                        setScratchCardPlayed(true)
-                        setIsScratching(false)
-                    }, 1500)
-                }}
-            >
-                <div className={`w-full h-full bg-gradient-to-br ${scratchGradient} relative overflow-hidden flex flex-col items-center justify-center`}>
-                    {!isCyber && <div className="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')]"></div>}
-                    {isCyber && <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(6,182,212,0.1)_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]"></div>}
-                    
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_2.5s_infinite]"></div>
-                    
-                    <span className={`text-2xl font-bold ${textColor} drop-shadow-sm tracking-widest`}>SCRATCH</span>
-                    <span className={`text-sm font-bold ${textColor} tracking-widest mt-1 opacity-70`}>HERE</span>
-                </div>
+                {/* Loading Overlay */}
+                {isGameLoading && (
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/80 rounded-xl">
+                        <div className="w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                        <span className="text-sm font-medium text-gray-600">Loading...</span>
+                    </div>
+                )}
+
+                {/* Error Overlay */}
+                {gameError && (
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/90 rounded-xl p-4 text-center">
+                        <XCircle className="w-8 h-8 text-red-500 mb-2" />
+                        <p className="text-sm font-medium text-red-600 mb-2">{gameError}</p>
+                        <Button size="sm" variant="outline" onClick={() => setGameError(null)}>Try Again</Button>
+                    </div>
+                )}
+
+                <ScratchCanvas
+                    isRevealed={scratchCardPlayed}
+                    onScratchComplete={handleScratchComplete}
+                    overlayColor="#d1d5db"
+                    brushSize={40}
+                    className={(!scratchResult && !isGameLoading) ? "pointer-events-none" : ""}
+                >
+                    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-white relative select-none">
+                        {/* Reward Content */}
+                        {scratchResult ? (
+                            <div className="animate-in zoom-in duration-500 flex flex-col items-center w-full">
+                                {/* Reward Image */}
+                                <div className="relative w-24 h-24 mb-2 flex-shrink-0">
+                                    {scratchResult.reward?.type === 'product' && scratchResult.reward.reward_image_url ? (
+                                        <Image src={scratchResult.reward.reward_image_url} alt="Reward" fill className="object-contain drop-shadow-md" />
+                                    ) : scratchResult.reward?.type === 'points' ? (
+                                        <div className="w-full h-full flex items-center justify-center bg-yellow-50 rounded-full">
+                                            <Coins className="w-12 h-12 text-yellow-500" />
+                                        </div>
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-gray-50 rounded-full">
+                                            <Gift className="w-12 h-12 text-gray-300" />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {scratchResult.result === 'win' ? (
+                                    <>
+                                        <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">CONGRATS!</h3>
+                                        <p className="text-xs font-medium text-gray-600 line-clamp-2">{scratchResult.message}</p>
+                                        {scratchResult.reward?.type === 'points' && (
+                                            <Badge variant="secondary" className="mt-1 bg-yellow-100 text-yellow-800">
+                                                +{scratchResult.reward.value} Points
+                                            </Badge>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <h3 className="text-lg font-bold text-gray-800 mb-1">Oh no!</h3>
+                                        <p className="text-xs text-gray-600">{scratchResult.message}</p>
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-gray-400 font-medium text-xs animate-pulse mt-1">
+                                Prize hidden here...
+                            </div>
+                        )}
+                    </div>
+                </ScratchCanvas>
             </div>
-        </>
-    )
+        )
+    }
 
     function renderCurrentPage() {
         switch (currentPage) {
