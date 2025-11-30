@@ -15,6 +15,7 @@ import {
 import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
 
 interface JourneyConfig {
+  id?: string
   welcome_title: string
   welcome_message: string
   thank_you_message: string

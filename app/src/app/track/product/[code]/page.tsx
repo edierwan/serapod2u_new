@@ -176,6 +176,7 @@ async function getJourneyData(code: string) {
         is_valid: true,
         status: qrCode.status,
         journey_config: {
+          id: journeyConfig.id,
           welcome_title: journeyConfig.welcome_title,
           welcome_message: journeyConfig.welcome_message,
           thank_you_message: journeyConfig.thank_you_message,
