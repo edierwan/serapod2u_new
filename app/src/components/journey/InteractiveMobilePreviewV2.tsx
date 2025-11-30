@@ -1680,6 +1680,15 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     message += ` (${data.reward.value_points} Points)`
                 }
 
+                // Use product name if available
+                if (isWin && data.reward.type === 'product' && data.reward.product_name) {
+                    const productName = data.reward.variant_name 
+                        ? `${data.reward.product_name} - ${data.reward.variant_name}`
+                        : data.reward.product_name
+                    
+                    message = (config.theme_config?.success_message || 'You won: {{reward_name}}').replace('{{reward_name}}', productName)
+                }
+
                 setScratchResult({
                     result: isWin ? 'win' : 'loss',
                     reward: data.reward,
@@ -1759,7 +1768,11 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                 {scratchResult.result === 'win' ? (
                                     <>
                                         <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">
-                                            {scratchResult.reward?.type === 'product' ? scratchResult.reward.name : 'CONGRATS!'}
+                                            {scratchResult.reward?.type === 'product' && scratchResult.reward.product_name 
+                                                ? (scratchResult.reward.variant_name 
+                                                    ? `${scratchResult.reward.product_name} - ${scratchResult.reward.variant_name}`
+                                                    : scratchResult.reward.product_name)
+                                                : (scratchResult.reward?.type === 'product' ? scratchResult.reward.name : 'CONGRATS!')}
                                         </h3>
                                         <p className="text-xs font-medium text-gray-600 line-clamp-2">{scratchResult.message}</p>
                                         {scratchResult.reward?.type === 'points' && (

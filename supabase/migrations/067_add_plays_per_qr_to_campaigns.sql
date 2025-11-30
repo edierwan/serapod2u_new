@@ -139,13 +139,16 @@ BEGIN
         LIMIT 1;
     END IF;
 
-    -- Select reward with variant image
+    -- Select reward with variant image and product details
     SELECT 
         r.*,
-        pv.image_url as variant_image_url
+        pv.image_url as variant_image_url,
+        p.name as product_name,
+        pv.name as variant_name
     INTO v_reward 
     FROM scratch_card_rewards r
     LEFT JOIN product_variants pv ON r.variant_id = pv.id
+    LEFT JOIN products p ON r.product_id = p.id
     WHERE r.id = v_selected_reward_id;
 
     -- 4. Record Play
@@ -182,7 +185,9 @@ BEGIN
             'name', v_reward.name,
             'type', v_reward.type,
             'value_points', v_reward.value_points,
-            'image_url', COALESCE(v_reward.image_url, v_reward.variant_image_url)
+            'image_url', COALESCE(v_reward.image_url, v_reward.variant_image_url),
+            'product_name', v_reward.product_name,
+            'variant_name', v_reward.variant_name
         )
     );
 END;
