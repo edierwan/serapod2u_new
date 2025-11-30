@@ -1516,7 +1516,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     </div>
 
                     {/* Action Button / Claim Form */}
-                    <div className="w-full max-w-xs mx-auto space-y-4">
+                    <div className="w-full max-w-xs mx-auto space-y-4 relative z-30">
                         {scratchCardPlayed ? (
                             claimSuccess ? (
                                 <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 text-center space-y-4">
@@ -1733,8 +1733,8 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                             <div className="animate-in zoom-in duration-500 flex flex-col items-center w-full">
                                 {/* Reward Image */}
                                 <div className="relative w-24 h-24 mb-2 flex-shrink-0">
-                                    {scratchResult.reward?.type === 'product' && scratchResult.reward.reward_image_url ? (
-                                        <Image src={scratchResult.reward.reward_image_url} alt="Reward" fill className="object-contain drop-shadow-md" />
+                                    {scratchResult.reward?.type === 'product' && scratchResult.reward.image_url ? (
+                                        <Image src={scratchResult.reward.image_url} alt="Reward" fill className="object-contain drop-shadow-md" />
                                     ) : scratchResult.reward?.type === 'points' ? (
                                         <div className="w-full h-full flex items-center justify-center bg-yellow-50 rounded-full">
                                             <Coins className="w-12 h-12 text-yellow-500" />
@@ -1748,7 +1748,9 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
                                 {scratchResult.result === 'win' ? (
                                     <>
-                                        <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">CONGRATS!</h3>
+                                        <h3 className="text-lg font-bold text-gray-900 leading-tight mb-1">
+                                            {scratchResult.reward?.type === 'product' ? scratchResult.reward.name : 'CONGRATS!'}
+                                        </h3>
                                         <p className="text-xs font-medium text-gray-600 line-clamp-2">{scratchResult.message}</p>
                                         {scratchResult.reward?.type === 'points' && (
                                             <Badge variant="secondary" className="mt-1 bg-yellow-100 text-yellow-800">

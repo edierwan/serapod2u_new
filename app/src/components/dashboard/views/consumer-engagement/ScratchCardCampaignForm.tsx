@@ -41,6 +41,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
         status: 'draft',
         start_at: '',
         end_at: '',
+        plays_per_qr: 1,
         max_plays_per_day: 1,
         max_plays_total_per_consumer: 0, // 0 means unlimited
         max_total_plays: 0, // 0 means unlimited
@@ -299,6 +300,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
             status: campaign.status,
             start_at: campaign.start_at ? campaign.start_at.split('T')[0] : '',
             end_at: campaign.end_at ? campaign.end_at.split('T')[0] : '',
+            plays_per_qr: campaign.plays_per_qr || 1,
             max_plays_per_day: campaign.max_plays_per_day,
             max_plays_total_per_consumer: campaign.max_plays_total_per_consumer || 0,
             max_total_plays: campaign.max_total_plays || 0,
@@ -341,6 +343,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
             status: formData.status,
             start_at: formData.start_at ? new Date(formData.start_at).toISOString() : null,
             end_at: formData.end_at ? new Date(formData.end_at).toISOString() : null,
+            plays_per_qr: formData.plays_per_qr,
             max_plays_per_day: null, // System rule: Unlimited daily plays (limited by QR)
             max_plays_total_per_consumer: null, // System rule: Unlimited consumer plays (limited by QR)
             max_total_plays: formData.max_total_plays || null,
@@ -725,10 +728,22 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                     </div>
                                     <div className="text-xs text-muted-foreground pt-2 border-t mt-2">
                                         <p>• Scratch Card Active Period follows Journey Period automatically.</p>
-                                        <p>• Each QR = 1 scratch play.</p>
                                     </div>
                                 </div>
                             )}
+
+                            <div className="space-y-2">
+                                <Label>Plays per QR Code</Label>
+                                <Input 
+                                    type="number" 
+                                    min="1"
+                                    value={formData.plays_per_qr} 
+                                    onChange={(e) => setFormData({...formData, plays_per_qr: parseInt(e.target.value) || 1})}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    How many times a user can play with a single QR code scan.
+                                </p>
+                            </div>
 
                             <div className="space-y-2">
                                 <Label>Description (Optional)</Label>
