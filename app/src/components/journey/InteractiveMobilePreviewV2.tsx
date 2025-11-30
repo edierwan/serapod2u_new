@@ -1671,12 +1671,19 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 }
                 
                 const isWin = data.reward.type !== 'no_prize'
+                let message = isWin 
+                    ? (config.theme_config?.success_message || 'You won: {{reward_name}}').replace('{{reward_name}}', data.reward.name)
+                    : (config.theme_config?.no_prize_message || 'Better luck next time!')
+                
+                // Append points value if it's a points reward
+                if (isWin && data.reward.type === 'points' && data.reward.value_points) {
+                    message += ` (${data.reward.value_points} Points)`
+                }
+
                 setScratchResult({
                     result: isWin ? 'win' : 'loss',
                     reward: data.reward,
-                    message: isWin 
-                        ? (config.theme_config?.success_message || 'You won: {{reward_name}}').replace('{{reward_name}}', data.reward.name)
-                        : (config.theme_config?.no_prize_message || 'Better luck next time!'),
+                    message: message,
                     playId: data.play_id
                 })
                 
