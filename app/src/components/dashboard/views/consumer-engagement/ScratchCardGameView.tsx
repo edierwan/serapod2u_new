@@ -59,16 +59,22 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
             const campaignsWithOrder = await Promise.all((data || []).map(async (c: any) => {
                 let orderNo = '-'
                 if (c.journey_config_id) {
-                    const { data: qrData } = await supabase
-                        .from('qr_codes')
+                    // Try to find order via journey_order_links
+                    const { data: linkData } = await supabase
+                        .from('journey_order_links')
                         .select('orders(order_no)')
                         .eq('journey_config_id', c.journey_config_id)
                         .limit(1)
                         .maybeSingle()
                     
-                    if (qrData?.orders) {
+                    if (linkData?.orders) {
                         // @ts-ignore
-                        orderNo = qrData.orders.order_no
+                        orderNo = linkData.orders.order_no
+                    } else {
+                        // Fallback: Try finding via QR codes if journey_order_links is empty (legacy)
+                        // Note: qr_codes usually doesn't have journey_config_id directly, but if it did:
+                        // const { data: qrData } = await supabase.from('qr_codes')...
+                        // Since we know qr_codes doesn't have it, we skip.
                     }
                 }
                 return { ...c, order_no: orderNo }

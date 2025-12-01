@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users, Zap, Trophy, Heart, ShoppingBag, XCircle } from 'lucide-react'
+import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users, Zap, Trophy, Heart, ShoppingBag, XCircle, Check } from 'lucide-react'
 import ScratchCanvas from './ScratchCanvas'
 
 interface JourneyConfig {
@@ -1536,31 +1536,61 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     <div className="w-full max-w-xs mx-auto space-y-4 relative z-30">
                         {scratchCardPlayed ? (
                             claimSuccess ? (
-                                <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 text-center space-y-4">
-                                    <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto">
-                                        <CheckCircle2 className="w-8 h-8 text-white" />
+                                <div className="space-y-4">
+                                    {/* Success Card */}
+                                    <div className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 text-center shadow-lg">
+                                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-green-50">
+                                            <Check className="w-8 h-8 text-green-500" strokeWidth={3} />
+                                        </div>
+                                        
+                                        <h3 className="text-gray-800 font-bold text-xl mb-1">Prize Claimed!</h3>
+                                        
+                                        {scratchResult.reward?.type === 'points' ? (
+                                            <div className="mt-4 space-y-4">
+                                                <div>
+                                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wide">Points Earned</p>
+                                                    <p className="text-4xl font-black text-green-600">+{scratchResult.reward?.value_points}</p>
+                                                </div>
+                                                
+                                                <div className="h-px bg-gray-100 w-full"></div>
+                                                
+                                                <div>
+                                                    <p className="text-gray-500 text-sm font-medium">Current Balance Point</p>
+                                                    <p className="text-2xl font-bold text-blue-600">{cumulativePoints}</p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-gray-600 text-sm mt-2">
+                                                We have received your details. You will be contacted shortly.
+                                            </p>
+                                        )}
                                     </div>
-                                    <h3 className="text-white font-bold text-xl">Prize Claimed!</h3>
-                                    <p className="text-emerald-100 text-sm">
-                                        {scratchResult.reward?.type === 'points' 
-                                            ? 'Points have been added to your account.' 
-                                            : 'We have received your details. You will be contacted shortly.'}
-                                    </p>
+
+                                    {/* Action Buttons */}
                                     <div className="space-y-3 w-full">
                                         <Button 
-                                            className="w-full font-bold text-white shadow-md flex items-center justify-center gap-2 hover:opacity-90"
+                                            className="w-full py-6 font-bold text-white shadow-md flex items-center justify-center gap-2 hover:opacity-90 text-lg rounded-xl"
                                             style={{ backgroundColor: config.button_color || '#059669' }}
                                             onClick={() => window.location.href = '/engagement/catalog'}
                                         >
                                             <Gift className="w-5 h-5" />
                                             View Rewards Catalog
                                         </Button>
-                                        <Button 
-                                            className="w-full font-bold bg-white text-emerald-900 hover:bg-emerald-50"
-                                            onClick={() => setCurrentPage('welcome')}
-                                        >
-                                            Back to Menu
-                                        </Button>
+                                        
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Button 
+                                                className="w-full py-6 font-bold bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-xl"
+                                                onClick={() => setCurrentPage('welcome')}
+                                            >
+                                                Main Menu
+                                            </Button>
+                                            <Button 
+                                                className="w-full py-6 font-bold bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-xl"
+                                                onClick={() => window.close()} // Or handle exit
+                                            >
+                                                Exit
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             ) : scratchResult?.result === 'win' ? (
