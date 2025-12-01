@@ -60,6 +60,8 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
 
         // Fetch stats
         let statsMap = new Map()
+        let rpcSuccess = false
+
         try {
             const { data: statsData, error: statsError } = await supabase
                 .rpc('get_scratch_campaign_stats', { p_org_id: userProfile.organization_id })
@@ -68,11 +70,38 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 statsData.forEach((s: any) => {
                     statsMap.set(s.campaign_id, s)
                 })
+                rpcSuccess = true
             } else {
-                console.warn('Failed to fetch stats, using defaults', statsError)
+                console.warn('Failed to fetch stats via RPC, trying fallback', statsError)
             }
         } catch (e) {
             console.warn('RPC get_scratch_campaign_stats might not exist yet', e)
+        }
+
+        // Fallback: Fetch plays directly if RPC failed (likely migration not run)
+        if (!rpcSuccess && data && data.length > 0) {
+            try {
+                const campaignIds = data.map((c: any) => c.id)
+                const { data: playsData, error: playsError } = await supabase
+                    .from('scratch_card_plays')
+                    .select('campaign_id, is_win')
+                    .in('campaign_id', campaignIds)
+                
+                if (!playsError && playsData) {
+                    // Clear map to ensure we don't mix partial data
+                    statsMap.clear()
+                    
+                    playsData.forEach((p: any) => {
+                        const current = statsMap.get(p.campaign_id) || { plays_count: 0, winners_count: 0 }
+                        statsMap.set(p.campaign_id, {
+                            plays_count: current.plays_count + 1,
+                            winners_count: current.winners_count + (p.is_win ? 1 : 0)
+                        })
+                    })
+                }
+            } catch (e) {
+                console.error('Fallback stats fetch failed', e)
+            }
         }
 
         // Fetch Order No for each campaign
