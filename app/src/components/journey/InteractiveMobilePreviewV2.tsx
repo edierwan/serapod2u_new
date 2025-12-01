@@ -79,6 +79,7 @@ interface InteractiveMobilePreviewV2Props {
 }
 
 export default function InteractiveMobilePreviewV2({ config, fullScreen = false, qrCode, isLive = false, consumerPhone }: InteractiveMobilePreviewV2Props) {
+    const supabase = createClient()
     const router = useRouter()
     const [currentPage, setCurrentPage] = useState<PageType>('welcome')
     const [pointsCollected, setPointsCollected] = useState(false)
@@ -144,6 +145,14 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to claim prize')
+
+            // Handle session if returned (for points claim)
+            if (data.session) {
+                const { error: sessionError } = await supabase.auth.setSession(data.session)
+                if (sessionError) {
+                    console.error('Failed to set session:', sessionError)
+                }
+            }
 
             if (data.points_earned !== undefined) {
                 setTotalPoints(data.points_earned)

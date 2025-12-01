@@ -161,7 +161,8 @@ export async function POST(request: Request) {
                 return NextResponse.json({ 
                     success: true, 
                     points_earned: rewardPoints, 
-                    new_balance: newBalance 
+                    new_balance: newBalance,
+                    session: authData.session
                 })
             }
 
