@@ -1744,10 +1744,31 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
 
                 {/* Error Overlay */}
                 {gameError && (
-                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/90 rounded-xl p-4 text-center">
-                        <XCircle className="w-8 h-8 text-red-500 mb-2" />
-                        <p className="text-sm font-medium text-red-600 mb-2">{gameError}</p>
-                        <Button size="sm" variant="outline" onClick={() => setGameError(null)}>Try Again</Button>
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/95 rounded-xl p-6 text-center animate-in fade-in zoom-in duration-300">
+                        {gameError.includes('limit reached') ? (
+                            <>
+                                <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-3 shadow-sm">
+                                    <Trophy className="w-8 h-8 text-yellow-600" />
+                                </div>
+                                <h3 className="text-lg font-bold text-gray-800 mb-1">All Scratches Used!</h3>
+                                <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+                                    You've used all your chances for this code. Scan a new QR code to play again!
+                                </p>
+                                <Button 
+                                    size="sm" 
+                                    className="bg-yellow-500 hover:bg-yellow-600 text-white font-medium px-6"
+                                    onClick={() => setCurrentPage('welcome')}
+                                >
+                                    Back to Menu
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <XCircle className="w-10 h-10 text-red-500 mb-3" />
+                                <p className="text-sm font-medium text-gray-700 mb-4">{gameError}</p>
+                                <Button size="sm" variant="outline" onClick={() => setGameError(null)}>Try Again</Button>
+                            </>
+                        )}
                     </div>
                 )}
 
