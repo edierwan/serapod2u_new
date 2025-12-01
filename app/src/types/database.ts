@@ -7193,6 +7193,13 @@ export type Database = {
           },
         ]
       }
+      v_shop_points_balance: {
+        Row: {
+          shop_id: string | null
+          current_balance: number | null
+        }
+        Relationships: []
+      }
       v_stock_movements_display: {
         Row: {
           created_at: string | null
