@@ -1265,6 +1265,18 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                     </Badge>
                                 </div>
                             )}
+                            {config.enable_scratch_card_game && (
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-gray-600">Scratch & Win</span>
+                                    <Badge variant={scratchCardPlayed ? "default" : "outline"}>
+                                        {scratchCardPlayed 
+                                            ? (scratchResult?.result === 'win' 
+                                                ? `✓ Win ${scratchResult.reward?.type === 'points' ? `${scratchResult.reward.value_points} pts` : (scratchResult.reward?.product_name || 'Prize')}` 
+                                                : 'Try again later')
+                                            : 'Not played'}
+                                    </Badge>
+                                </div>
+                            )}
                         </div>
                     </div>
 
