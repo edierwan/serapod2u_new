@@ -49,6 +49,7 @@ interface TransferItem {
   quantity: number
   available_qty: number
   unit_cost: number | null
+  variant_image_url?: string | null
 }
 
 interface StockTransferViewProps {
@@ -287,6 +288,8 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
           id,
           variant_code,
           variant_name,
+          image_url,
+          base_cost,
           products (
             product_name
           )
@@ -316,7 +319,8 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
         product_name: variantInfo.products?.product_name || 'Unknown',
         quantity: qty,
         available_qty: availableStock,
-        unit_cost: inventoryCost?.average_cost || null
+        unit_cost: inventoryCost?.average_cost || variantInfo.base_cost || null,
+        variant_image_url: variantInfo.image_url
       }
 
       setTransferItems([...transferItems, newItem])
@@ -662,8 +666,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Variant</TableHead>
+                        <TableHead>Product Name</TableHead>
                         <TableHead className="text-right">Quantity</TableHead>
                         <TableHead className="text-right">Unit Cost</TableHead>
                         <TableHead className="text-right">Total</TableHead>
@@ -673,9 +676,36 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                     <TableBody>
                       {transferItems.map(item => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.product_name}</TableCell>
                           <TableCell>
-                            <Badge variant="secondary">{item.variant_name}</Badge>
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                                {item.variant_image_url ? (
+                                  <img
+                                    src={item.variant_image_url}
+                                    alt={item.variant_name || 'Product'}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement
+                                      target.style.display = 'none'
+                                      if (target.nextElementSibling) {
+                                        (target.nextElementSibling as HTMLElement).style.display = 'flex'
+                                      }
+                                    }}
+                                  />
+                                ) : null}
+                                <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ display: item.variant_image_url ? 'none' : 'flex' }}>
+                                  <Package className="w-6 h-6" />
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {item.product_name}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  [{item.variant_name}]
+                                </p>
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-semibold">{item.quantity}</TableCell>
                           <TableCell className="text-right">
