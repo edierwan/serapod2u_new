@@ -114,7 +114,19 @@ export async function POST(request: Request) {
                         console.error('Failed to add points transaction:', txnError)
                         throw new Error('Failed to credit points: ' + txnError.message)
                     }
+
+                    return NextResponse.json({ 
+                        success: true, 
+                        points_earned: rewardPoints, 
+                        new_balance: newBalance 
+                    })
                 }
+            }
+
+            // If points were 0 or no shop found (shouldn't happen due to checks), fall through or return success
+            if (!shop) {
+                 // If we didn't find the shop but updated the play, we still return success but no points added
+                 return NextResponse.json({ success: true })
             }
 
         } else {

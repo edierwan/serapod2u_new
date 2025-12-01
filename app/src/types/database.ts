@@ -14,6 +14,95 @@ export type Database = {
   }
   public: {
     Tables: {
+      scratch_card_plays: {
+        Row: {
+          id: string
+          created_at: string
+          campaign_id: string
+          is_win: boolean
+          is_claimed: boolean
+          shop_id: string | null
+          claim_details: Json | null
+          consumer_email: string | null
+          consumer_name: string | null
+          consumer_phone: string | null
+          qr_code_id: string | null
+          reward_id: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          campaign_id: string
+          is_win?: boolean
+          is_claimed?: boolean
+          shop_id?: string | null
+          claim_details?: Json | null
+          consumer_email?: string | null
+          consumer_name?: string | null
+          consumer_phone?: string | null
+          qr_code_id?: string | null
+          reward_id?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          campaign_id?: string
+          is_win?: boolean
+          is_claimed?: boolean
+          shop_id?: string | null
+          claim_details?: Json | null
+          consumer_email?: string | null
+          consumer_name?: string | null
+          consumer_phone?: string | null
+          qr_code_id?: string | null
+          reward_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scratch_card_plays_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "scratch_card_rewards"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      scratch_card_rewards: {
+        Row: {
+          id: string
+          created_at: string
+          campaign_id: string
+          name: string
+          type: string
+          value_points: number | null
+          probability: number
+          inventory_limit: number | null
+          inventory_used: number
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          campaign_id: string
+          name: string
+          type: string
+          value_points?: number | null
+          probability?: number
+          inventory_limit?: number | null
+          inventory_used?: number
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          campaign_id?: string
+          name?: string
+          type?: string
+          value_points?: number | null
+          probability?: number
+          inventory_limit?: number | null
+          inventory_used?: number
+        }
+        Relationships: []
+      },
       audit_logs: {
         Row: {
           action: string

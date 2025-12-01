@@ -145,6 +145,11 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to claim prize')
 
+            if (data.points_earned !== undefined) {
+                setTotalPoints(data.points_earned)
+                setCumulativePoints(data.new_balance)
+            }
+
             setClaimSuccess(true)
         } catch (error: any) {
             setGameError(error.message)
@@ -1541,12 +1546,22 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             ? 'Points have been added to your account.' 
                                             : 'We have received your details. You will be contacted shortly.'}
                                     </p>
-                                    <Button 
-                                        className="w-full font-bold bg-white text-emerald-900 hover:bg-emerald-50"
-                                        onClick={() => setCurrentPage('welcome')}
-                                    >
-                                        Back to Menu
-                                    </Button>
+                                    <div className="space-y-3 w-full">
+                                        <Button 
+                                            className="w-full font-bold text-white shadow-md flex items-center justify-center gap-2 hover:opacity-90"
+                                            style={{ backgroundColor: config.button_color || '#059669' }}
+                                            onClick={() => window.location.href = '/engagement/catalog'}
+                                        >
+                                            <Gift className="w-5 h-5" />
+                                            View Rewards Catalog
+                                        </Button>
+                                        <Button 
+                                            className="w-full font-bold bg-white text-emerald-900 hover:bg-emerald-50"
+                                            onClick={() => setCurrentPage('welcome')}
+                                        >
+                                            Back to Menu
+                                        </Button>
+                                    </div>
                                 </div>
                             ) : scratchResult?.result === 'win' ? (
                                 <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 space-y-4">
