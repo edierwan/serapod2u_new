@@ -55,7 +55,25 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 variant: "destructive",
             })
         } else {
-            setCampaigns(data || [])
+            // Fetch Order No for each campaign
+            const campaignsWithOrder = await Promise.all((data || []).map(async (c: any) => {
+                let orderNo = '-'
+                if (c.journey_config_id) {
+                    const { data: qrData } = await supabase
+                        .from('qr_codes')
+                        .select('orders(order_no)')
+                        .eq('journey_config_id', c.journey_config_id)
+                        .limit(1)
+                        .maybeSingle()
+                    
+                    if (qrData?.orders) {
+                        // @ts-ignore
+                        orderNo = qrData.orders.order_no
+                    }
+                }
+                return { ...c, order_no: orderNo }
+            }))
+            setCampaigns(campaignsWithOrder)
         }
         setLoading(false)
     }
@@ -137,6 +155,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Campaign Name</TableHead>
+                                <TableHead>Order No</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Validity</TableHead>
                                 <TableHead>Plays</TableHead>
@@ -147,16 +166,25 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8">Loading...</TableCell>
+                                    <TableCell colSpan={7} className="text-center py-8">Loading...</TableCell>
                                 </TableRow>
                             ) : campaigns.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8">No campaigns found. Create one to get started.</TableCell>
+                                    <TableCell colSpan={7} className="text-center py-8">No campaigns found. Create one to get started.</TableCell>
                                 </TableRow>
                             ) : (
                                 campaigns.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map((campaign) => (
                                     <TableRow key={campaign.id}>
                                         <TableCell className="font-medium">{campaign.name}</TableCell>
+                                        <TableCell>
+                                            {campaign.order_no !== '-' ? (
+                                                <Badge variant="outline" className="font-mono">
+                                                    {campaign.order_no}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
                                         <TableCell>
                                             <Badge variant={
                                                 campaign.status === 'active' ? 'default' : 

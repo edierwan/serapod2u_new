@@ -1324,6 +1324,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                             <th className="p-3">Date</th>
                                             <th className="p-3">Winner</th>
                                             <th className="p-3">Contact</th>
+                                            <th className="p-3">Email</th>
                                             <th className="p-3">Reward</th>
                                             <th className="p-3">Status</th>
                                         </tr>
@@ -1331,7 +1332,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                     <tbody>
                                         {winners.length === 0 ? (
                                             <tr>
-                                                <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                                                <td colSpan={6} className="p-8 text-center text-muted-foreground">
                                                     No winners yet.
                                                 </td>
                                             </tr>
@@ -1344,12 +1345,8 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                                 <tr key={w.id} className="border-t">
                                                     <td className="p-3">{new Date(w.played_at).toLocaleDateString()}</td>
                                                     <td className="p-3 font-medium">{w.consumer_name || 'Anonymous'}</td>
-                                                    <td className="p-3">
-                                                        <div className="flex flex-col">
-                                                            <span>{w.consumer_phone}</span>
-                                                            <span className="text-xs text-muted-foreground">{w.consumer_email}</span>
-                                                        </div>
-                                                    </td>
+                                                    <td className="p-3">{w.consumer_phone}</td>
+                                                    <td className="p-3 text-muted-foreground">{w.consumer_email || '-'}</td>
                                                     <td className="p-3">
                                                         <div className="flex items-center gap-3">
                                                             <div className="w-10 h-10 rounded border bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
