@@ -314,7 +314,12 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
   // Get orders that need QR batch generation
   const ordersNeedingBatch = useMemo(() => {
-    return approvedOrders.filter(order => !order.qr_batches)
+    return approvedOrders.filter(order => {
+      // Check if qr_batches is null/undefined OR empty array
+      if (!order.qr_batches) return true
+      if (Array.isArray(order.qr_batches) && order.qr_batches.length === 0) return true
+      return false
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -397,7 +402,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       </Card>
 
       {/* Approved Orders Section - NEW */}
-      {approvedOrders.filter(order => !order.qr_batches).length > 0 && (
+      {ordersNeedingBatch.length > 0 && (
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -419,8 +424,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                     <SelectValue placeholder="Choose an approved order..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {approvedOrders
-                      .filter(order => !order.qr_batches)
+                    {ordersNeedingBatch
                       .map((order) => {
                         const totalItems = order.order_items?.length || 0
                         const totalQuantity = order.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
