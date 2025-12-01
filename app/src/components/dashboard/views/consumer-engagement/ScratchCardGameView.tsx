@@ -39,8 +39,8 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
 
     const fetchCampaigns = async () => {
         setLoading(true)
-        // Note: plays_count and winners_count would ideally come from a joined query or a view.
-        // For now, we'll just fetch campaigns.
+        
+        // Fetch campaigns
         const { data, error } = await supabase
             .from('scratch_card_campaigns')
             .select('*')
@@ -54,33 +54,55 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 description: "Failed to load campaigns",
                 variant: "destructive",
             })
-        } else {
-            // Fetch Order No for each campaign
-            const campaignsWithOrder = await Promise.all((data || []).map(async (c: any) => {
-                let orderNo = '-'
-                if (c.journey_config_id) {
-                    // Try to find order via journey_order_links
-                    const { data: linkData } = await supabase
-                        .from('journey_order_links')
-                        .select('orders(order_no)')
-                        .eq('journey_config_id', c.journey_config_id)
-                        .limit(1)
-                        .maybeSingle()
-                    
-                    if (linkData?.orders) {
-                        // @ts-ignore
-                        orderNo = linkData.orders.order_no
-                    } else {
-                        // Fallback: Try finding via QR codes if journey_order_links is empty (legacy)
-                        // Note: qr_codes usually doesn't have journey_config_id directly, but if it did:
-                        // const { data: qrData } = await supabase.from('qr_codes')...
-                        // Since we know qr_codes doesn't have it, we skip.
-                    }
-                }
-                return { ...c, order_no: orderNo }
-            }))
-            setCampaigns(campaignsWithOrder)
+            setLoading(false)
+            return
         }
+
+        // Fetch stats
+        let statsMap = new Map()
+        try {
+            const { data: statsData, error: statsError } = await supabase
+                .rpc('get_scratch_campaign_stats', { p_org_id: userProfile.organization_id })
+            
+            if (!statsError && statsData) {
+                statsData.forEach((s: any) => {
+                    statsMap.set(s.campaign_id, s)
+                })
+            } else {
+                console.warn('Failed to fetch stats, using defaults', statsError)
+            }
+        } catch (e) {
+            console.warn('RPC get_scratch_campaign_stats might not exist yet', e)
+        }
+
+        // Fetch Order No for each campaign
+        const campaignsWithOrder = await Promise.all((data || []).map(async (c: any) => {
+            let orderNo = '-'
+            if (c.journey_config_id) {
+                // Try to find order via journey_order_links
+                const { data: linkData } = await supabase
+                    .from('journey_order_links')
+                    .select('orders(order_no)')
+                    .eq('journey_config_id', c.journey_config_id)
+                    .limit(1)
+                    .maybeSingle()
+                
+                if (linkData?.orders) {
+                    // @ts-ignore
+                    orderNo = linkData.orders.order_no
+                }
+            }
+            
+            const stats = statsMap.get(c.id) || { plays_count: 0, winners_count: 0 }
+            
+            return { 
+                ...c, 
+                order_no: orderNo,
+                plays_count: stats.plays_count,
+                winners_count: stats.winners_count
+            }
+        }))
+        setCampaigns(campaignsWithOrder)
         setLoading(false)
     }
 
