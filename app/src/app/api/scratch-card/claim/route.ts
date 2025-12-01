@@ -145,7 +145,7 @@ export async function POST(request: Request) {
                         company_id: organizationId,
                         consumer_phone: play.consumer_phone || 'UNKNOWN',
                         consumer_email: play.consumer_email,
-                        transaction_type: 'scratch_reward',
+                        transaction_type: 'adjust', // Changed from 'scratch_reward' to 'adjust' to satisfy check constraint
                         points_amount: rewardPoints,
                         balance_after: newBalance,
                         qr_code_id: play.qr_code_id,
