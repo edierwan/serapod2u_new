@@ -34,8 +34,8 @@ interface JourneyConfig {
     scratch_card_require_otp?: boolean
     
     // Feature Customization
-    points_title?: string
-    points_description?: string
+    points_title?: string | null
+    points_description?: string | null
     points_icon?: string
     
     lucky_draw_title?: string
@@ -521,7 +521,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 {/* Header with Primary Color */}
                 <div
                     className="px-4 py-6 text-white"
-                    style={{ backgroundColor: config.primary_color }}
+                    style={{ backgroundColor: config.primary_color || undefined }}
                 >
                     <div className="text-center">
                         {config.show_product_image && (
@@ -758,7 +758,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 <>
                     <div
                         className="px-4 py-4 text-white text-center"
-                        style={{ backgroundColor: config.primary_color }}
+                        style={{ backgroundColor: config.primary_color || undefined }}
                     >
                         <h2 className="text-lg font-bold">Points Collected!</h2>
                     </div>
@@ -781,7 +781,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                             <button
                                 onClick={() => window.location.href = '/engagement/catalog'}
                                 className="w-full py-3 px-4 text-white font-medium rounded-lg shadow-md flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-                                style={{ backgroundColor: config.button_color }}
+                                style={{ backgroundColor: config.button_color || undefined }}
                             >
                                 <Gift className="w-5 h-5" />
                                 View Rewards Catalog
@@ -847,7 +847,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                         onClick={handleCollectPoints}
                         disabled={isCollectingPoints}
                         className="w-full py-3 px-4 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{ backgroundColor: config.button_color }}
+                        style={{ backgroundColor: config.button_color || undefined }}
                     >
                         {isCollectingPoints ? 'Collecting Points...' : 'Collect Points'}
                     </button>
@@ -862,7 +862,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 <>
                     <div
                         className="px-4 py-4 text-white text-center"
-                        style={{ backgroundColor: config.primary_color }}
+                        style={{ backgroundColor: config.primary_color || undefined }}
                     >
                         <h2 className="text-lg font-bold">Lucky Draw Entry Submitted!</h2>
                     </div>
@@ -893,7 +893,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                             <button
                                 onClick={() => setCurrentPage('thank-you')}
                                 className="flex-1 py-3 px-4 text-white font-medium rounded-lg"
-                                style={{ backgroundColor: config.button_color }}
+                                style={{ backgroundColor: config.button_color || undefined }}
                             >
                                 Exit
                             </button>
@@ -1009,7 +1009,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     <button
                         onClick={handleLuckyDrawEntry}
                         className="w-full py-3 px-4 text-white font-medium rounded-lg"
-                        style={{ backgroundColor: config.button_color }}
+                        style={{ backgroundColor: config.button_color || undefined }}
                     >
                         Enter Lucky Draw
                     </button>
@@ -1024,7 +1024,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                 <>
                     <div
                         className="px-4 py-4 text-white text-center"
-                        style={{ backgroundColor: config.primary_color }}
+                        style={{ backgroundColor: config.primary_color || undefined }}
                     >
                         <h2 className="text-lg font-bold">Gift Claimed!</h2>
                     </div>
@@ -1080,7 +1080,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                             <button
                                 onClick={() => setCurrentPage('thank-you')}
                                 className="flex-1 py-3 px-4 text-white font-medium rounded-lg"
-                                style={{ backgroundColor: config.button_color }}
+                                style={{ backgroundColor: config.button_color || undefined }}
                             >
                                 Exit
                             </button>
@@ -1220,7 +1220,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                         onClick={handleGiftRedeem}
                                         disabled={claimingGift || !selectedGiftId || !customerName || !customerPhone || redeemGifts.every(gift => gift.total_quantity > 0 && gift.claimed_quantity >= gift.total_quantity)}
                                         className="w-full py-3 px-4 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                        style={{ backgroundColor: config.button_color }}
+                                        style={{ backgroundColor: config.button_color || undefined }}
                                     >
                                         {claimingGift ? 'Claiming...' : 'Claim Selected Gift'}
                                     </button>
@@ -1242,7 +1242,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
             <>
                 <div
                     className="px-4 py-6 text-white text-center"
-                    style={{ backgroundColor: config.primary_color }}
+                    style={{ backgroundColor: config.primary_color || undefined }}
                 >
                     <CheckCircle2 className="w-16 h-16 mx-auto mb-4 opacity-90" />
                     <h1 className="text-xl font-bold">
@@ -1628,7 +1628,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             </div>
                                             <Button 
                                                 className="w-full font-bold"
-                                                style={{ backgroundColor: config.button_color }}
+                                                style={{ backgroundColor: config.button_color || undefined }}
                                                 onClick={handleClaimPrize}
                                                 disabled={isClaiming}
                                             >
@@ -1662,7 +1662,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                                             </div>
                                             <Button 
                                                 className="w-full font-bold"
-                                                style={{ backgroundColor: config.button_color }}
+                                                style={{ backgroundColor: config.button_color || undefined }}
                                                 onClick={handleClaimPrize}
                                                 disabled={isClaiming}
                                             >
@@ -1674,7 +1674,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                             ) : (
                                 <Button 
                                     className="w-full py-6 rounded-xl text-lg font-bold shadow-xl hover:scale-[1.02] transition-transform active:scale-[0.98]"
-                                    style={{ backgroundColor: config.button_color }}
+                                    style={{ backgroundColor: config.button_color || undefined }}
                                     onClick={() => setCurrentPage('welcome')}
                                 >
                                     Play Again

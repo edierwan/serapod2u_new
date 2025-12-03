@@ -16,6 +16,8 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import SignatureUpload from '@/components/profile/SignatureUpload'
 import ChangePasswordCard from '@/components/profile/ChangePasswordCard'
+import { updateUserWithAuth } from '@/lib/actions'
+import { normalizePhone } from '@/lib/utils'
 
 interface UserProfile {
   id: string
@@ -260,6 +262,28 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const handleSave = async () => {
     setIsSaving(true)
     try {
+      // Validate phone number if changed
+      if (formData.phone && formData.phone !== userProfile.phone) {
+        const normalizedPhone = normalizePhone(formData.phone)
+        const { data: exists, error: checkError } = await supabase
+          .rpc('check_phone_exists', { 
+            p_phone: normalizedPhone,
+            p_exclude_user_id: userProfile.id
+          })
+        
+        if (checkError) throw checkError
+        
+        if (exists) {
+          toast({
+            title: "Error",
+            description: "This phone number is already in use by another account.",
+            variant: "destructive",
+          })
+          setIsSaving(false)
+          return
+        }
+      }
+
       let updateData: any = {
         full_name: formData.full_name?.trim() || null,
         phone: formData.phone?.trim() || null,
@@ -310,14 +334,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       }
 
       // Update user profile in database
-      const { data, error } = await (supabase as any)
-        .from('users')
-        .update(updateData)
-        .eq('id', userProfile.id)
-        .select()
-        .single()
+      const result = await updateUserWithAuth(userProfile.id, updateData)
 
-      if (error) throw error
+      if (!result.success) throw new Error(result.error || 'Failed to update profile')
 
       toast({
         title: "Success",

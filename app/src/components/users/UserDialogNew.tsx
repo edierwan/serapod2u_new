@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Upload, X, Loader2, ImageIcon, AlertCircle } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { normalizePhone } from '@/lib/utils'
 
 // Image compression utility for avatars
 // Avatars are displayed very small (40-80px), so we aggressively compress to ~10KB
@@ -114,8 +115,11 @@ export default function UserDialogNew({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [emailCheckStatus, setEmailCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   // Password reset for Super Admin only
   const [showPasswordReset, setShowPasswordReset] = useState(false)
@@ -172,6 +176,62 @@ export default function UserDialogNew({
     }
   }
 
+  // Check if phone exists in database
+  const checkPhoneAvailability = async (phone: string) => {
+    const normalizedPhone = normalizePhone(phone)
+    
+    if (!normalizedPhone || normalizedPhone.length < 8) {
+      setPhoneCheckStatus('idle')
+      return
+    }
+
+    // If editing and phone hasn't changed (normalized check), skip
+    if (user && user.phone && normalizePhone(user.phone) === normalizedPhone) {
+      setPhoneCheckStatus('idle')
+      return
+    }
+
+    setIsCheckingPhone(true)
+    setPhoneCheckStatus('checking')
+
+    try {
+      // Use RPC to check auth.users directly
+      const { data: exists, error } = await supabase
+        .rpc('check_phone_exists', { 
+          p_phone: normalizedPhone,
+          p_exclude_user_id: user?.id || null
+        })
+
+      if (error) {
+        console.error('Error checking phone:', error)
+        setPhoneCheckStatus('idle')
+        setIsCheckingPhone(false)
+        return
+      }
+
+      if (exists) {
+        setPhoneCheckStatus('taken')
+        setErrors(prev => ({ 
+          ...prev, 
+          phone: 'This phone number is already registered.' 
+        }))
+      } else {
+        setPhoneCheckStatus('available')
+        setErrors(prev => {
+          const newErrors = { ...prev }
+          delete newErrors.phone
+          return newErrors
+        })
+      }
+    } catch (err) {
+      console.error('Error checking phone availability:', err)
+      setPhoneCheckStatus('idle')
+    } finally {
+      setIsCheckingPhone(false)
+    }
+  }
+
+
   // Re-initialize form when user prop changes
   useEffect(() => {
     if (open) {
@@ -197,6 +257,8 @@ export default function UserDialogNew({
       setErrors({})
       setEmailCheckStatus('idle')
       setIsCheckingEmail(false)
+      setPhoneCheckStatus('idle')
+      setIsCheckingPhone(false)
       setShowPasswordReset(false)
       setResetPassword('')
       setResetPasswordConfirm('')
@@ -208,6 +270,9 @@ export default function UserDialogNew({
     return () => {
       if (emailCheckTimeoutRef.current) {
         clearTimeout(emailCheckTimeoutRef.current)
+      }
+      if (phoneCheckTimeoutRef.current) {
+        clearTimeout(phoneCheckTimeoutRef.current)
       }
     }
   }, [])
@@ -305,6 +370,17 @@ export default function UserDialogNew({
         checkEmailAvailability(value)
       }, 500) // 500ms debounce
     }
+
+    // Check phone availability with debounce
+    if (field === 'phone') {
+      setPhoneCheckStatus('idle')
+      if (phoneCheckTimeoutRef.current) {
+        clearTimeout(phoneCheckTimeoutRef.current)
+      }
+      phoneCheckTimeoutRef.current = setTimeout(() => {
+        checkPhoneAvailability(value)
+      }, 500) // 500ms debounce
+    }
   }
 
   const validateForm = (): boolean => {
@@ -316,6 +392,10 @@ export default function UserDialogNew({
       newErrors.email = 'Invalid email format'
     } else if (emailCheckStatus === 'taken') {
       newErrors.email = 'This email address is already registered. Please use a different email.'
+    }
+
+    if (phoneCheckStatus === 'taken') {
+      newErrors.phone = 'This phone number is already registered.'
     }
 
     if (!formData.full_name) {
@@ -586,14 +666,41 @@ export default function UserDialogNew({
 
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                placeholder="Enter your phone number (e.g., +60123456789)"
-                value={formData.phone || ''}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
-                disabled={isSaving}
-                className="placeholder:text-gray-400 placeholder:italic"
-              />
+              <div className="relative">
+                <Input
+                  id="phone"
+                  placeholder="Enter your phone number (e.g., +60123456789)"
+                  value={formData.phone || ''}
+                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  disabled={isSaving}
+                  className={`${errors.phone ? 'border-red-500' : ''} ${
+                    phoneCheckStatus === 'available' ? 'border-green-500' : ''
+                  } placeholder:text-gray-400 placeholder:italic`}
+                />
+                {isCheckingPhone && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                  </div>
+                )}
+                {phoneCheckStatus === 'available' && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+                {phoneCheckStatus === 'taken' && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <AlertCircle className="w-5 h-5 text-red-500" />
+                  </div>
+                )}
+              </div>
+              {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
+              {!errors.phone && phoneCheckStatus === 'available' && (
+                <p className="text-xs text-green-600">✓ Phone number is available</p>
+              )}
             </div>
           </div>
 

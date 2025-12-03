@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { useToast } from '@/components/ui/use-toast'
-import { createUserWithAuth, deleteUserWithAuth } from '@/lib/actions'
+import { createUserWithAuth, deleteUserWithAuth, updateUserWithAuth } from '@/lib/actions'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -256,12 +256,9 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         }
         
         // Update user in database
-        const { error: updateError } = await (supabase as any)
-          .from('users')
-          .update(updateData)
-          .eq('id', editingUser.id)
+        const result = await updateUserWithAuth(editingUser.id, updateData)
         
-        if (updateError) throw updateError
+        if (!result.success) throw new Error(result.error || 'Failed to update user')
         
         toast({ title: 'Success', description: `${userData.full_name} updated successfully` })
         setDialogOpen(false)

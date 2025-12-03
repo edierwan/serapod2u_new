@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { normalizePhone } from '@/lib/utils'
 
 export async function createUserWithAuth(userData: {
   email: string
@@ -24,10 +25,14 @@ export async function createUserWithAuth(userData: {
       }
     }
 
+    const phone = userData.phone ? normalizePhone(userData.phone) : undefined
+
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
       email: userData.email,
       password: userData.password,
-      email_confirm: true
+      email_confirm: true,
+      phone: phone,
+      phone_confirm: !!phone
     })
 
     if (authError) {
@@ -54,7 +59,7 @@ export async function createUserWithAuth(userData: {
         p_role_code: userData.role_code,
         p_organization_id: userData.organization_id || undefined,
         p_full_name: userData.full_name || undefined,
-        p_phone: userData.phone || undefined
+        p_phone: phone
       })
 
     if (syncError) {
@@ -82,8 +87,73 @@ export async function createUserWithAuth(userData: {
     console.error('Error creating user:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to create user'
+      error: error instanceof Error ? error.message : 'Failed to delete user'
     }
+  }
+}
+
+export async function updateUserWithAuth(userId: string, userData: {
+  full_name?: string
+  role_code?: string
+  organization_id?: string
+  phone?: string
+  is_active?: boolean
+  avatar_url?: string
+}) {
+  try {
+    const adminClient = createAdminClient()
+    if (!adminClient) return { success: false, error: 'Admin client not available' }
+
+    const supabase = await createClient()
+    
+    // Check permissions: Current user must be admin OR updating themselves
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    if (!currentUser) return { success: false, error: 'Not authenticated' }
+
+    // Fetch current user role to check if admin
+    const { data: currentUserProfile } = await supabase.from('users').select('role_code').eq('id', currentUser.id).single()
+    
+    const isSelfUpdate = currentUser.id === userId
+    const isAdmin = currentUserProfile?.role_code === 'SUPER' || currentUserProfile?.role_code === 'HQ_ADMIN'
+    
+    if (!isSelfUpdate && !isAdmin) {
+       return { success: false, error: 'Unauthorized' }
+    }
+
+    // Update Auth User (Phone)
+    if (userData.phone !== undefined) {
+        const phone = userData.phone ? normalizePhone(userData.phone) : null
+        
+        const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+            phone: phone || '', 
+            phone_confirm: true
+        })
+        
+        if (authError) {
+             return { success: false, error: `Failed to update auth user: ${authError.message}` }
+        }
+    }
+
+    // Update Public User
+    const updateData: any = { ...userData }
+    if (updateData.phone) updateData.phone = normalizePhone(updateData.phone)
+    
+    // Use adminClient to ensure update happens even if RLS is tricky (though RLS should allow self update)
+    const { error: dbError } = await adminClient
+        .from('users')
+        .update(updateData)
+        .eq('id', userId)
+
+    if (dbError) {
+        return { success: false, error: `Failed to update database user: ${dbError.message}` }
+    }
+
+    revalidatePath('/dashboard')
+    return { success: true }
+
+  } catch (error) {
+      console.error('Error updating user:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 

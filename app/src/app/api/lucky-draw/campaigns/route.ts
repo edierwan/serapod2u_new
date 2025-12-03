@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !profile) {
-      return NextResponse.json({ success: false, error: 'User profile not found' }, { status: 404 })
+    if (profileError || !profile || !profile.organization_id) {
+      return NextResponse.json({ success: false, error: 'User profile or organization not found' }, { status: 404 })
     }
 
     // Get campaigns linked to this order
@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !profile) {
-      return NextResponse.json({ success: false, error: 'User profile not found' }, { status: 404 })
+    if (profileError || !profile || !profile.organization_id) {
+      return NextResponse.json({ success: false, error: 'User profile or organization not found' }, { status: 404 })
     }
 
     // Generate campaign code
@@ -219,8 +219,8 @@ export async function PATCH(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !profile) {
-      return NextResponse.json({ success: false, error: 'User profile not found' }, { status: 404 })
+    if (profileError || !profile || !profile.organization_id) {
+      return NextResponse.json({ success: false, error: 'User profile or organization not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to user's organization

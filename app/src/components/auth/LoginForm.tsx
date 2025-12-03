@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { normalizePhone } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -38,10 +39,37 @@ export default function LoginForm() {
         originalConsoleError(...args)
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      let credentials: any = { password }
+      
+      // Check if input looks like an email
+      if (email.includes('@')) {
+        credentials.email = email
+      } else {
+        // Assume phone number - lookup email first
+        const normalizedPhone = normalizePhone(email)
+        
+        // Use the RPC function to find the email associated with this phone number
+        const { data: userEmail, error: lookupError } = await supabase
+          .rpc('get_email_by_phone', { p_phone: normalizedPhone })
+
+        if (lookupError) {
+          console.error('Phone lookup error:', lookupError)
+          setError('Error verifying phone number. Please try again.')
+          setIsLoading(false)
+          return
+        }
+
+        if (!userEmail) {
+          setError('Phone number not found. Please check your number or contact administrator.')
+          setIsLoading(false)
+          return
+        }
+
+        // Use the found email for login
+        credentials.email = userEmail
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword(credentials)
 
       // Restore console.error
       console.error = originalConsoleError
@@ -80,30 +108,36 @@ export default function LoginForm() {
       console.log('Auth User ID:', authUser.id)
       console.log('Auth User Email:', authUser.email)
 
-      // Get user profile using the database function for better error handling
-      let { data: userProfile, error: profileError } = (await supabase
-        .rpc('get_user_by_email', { p_email: authUser.email || email } as any)) as { data: any; error: any }
+      // Get user profile directly by ID
+      let { data: userProfile, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single()
 
       console.log('Profile Error:', profileError)
       console.log('User Profile:', userProfile)
 
-      if (profileError) {
+      if (profileError && profileError.code !== 'PGRST116') { // PGRST116 is "The result contains 0 rows"
         console.error('Profile lookup error:', profileError)
         setError(`Database error: ${profileError.message}`)
         await supabase.auth.signOut()
         return
       }
 
-      if (!userProfile || (Array.isArray(userProfile) && userProfile.length === 0)) {
+      if (!userProfile) {
         console.warn('⚠️ No user profile found, waiting for trigger to create user record')
         // Wait briefly for trigger to create the user record
         await new Promise(resolve => setTimeout(resolve, 500))
 
         // Retry profile lookup
-        const { data: retryProfile, error: retryError } = (await supabase
-          .rpc('get_user_by_email', { p_email: authUser.email || email } as any)) as { data: any; error: any }
+        const { data: retryProfile, error: retryError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authUser.id)
+          .single()
 
-        if (retryError || !retryProfile || (Array.isArray(retryProfile) && retryProfile.length === 0)) {
+        if (retryError || !retryProfile) {
           setError(`User record not found. Please contact administrator to create user record for ID: ${authUser.id}`)
           await supabase.auth.signOut()
           return
@@ -112,7 +146,7 @@ export default function LoginForm() {
         userProfile = retryProfile
       }
 
-      const profile = Array.isArray(userProfile) ? userProfile[0] : userProfile
+      const profile = userProfile
 
       if (!profile || !profile.is_active) {
         await supabase.auth.signOut()
@@ -187,17 +221,18 @@ export default function LoginForm() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">Email or phone number</Label>
             <Input
               id="email"
-              type="email"
-              placeholder="Enter your email"
+              type="text"
+              placeholder="Enter your email or phone number"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               className="w-full"
               disabled={isLoading}
             />
+            <p className="text-xs text-gray-500">You can log in using your email or your phone number.</p>
           </div>
 
           <div className="space-y-2">

@@ -28,8 +28,8 @@ interface JourneyConfig {
   scratch_card_require_otp?: boolean
   
   // Feature Customization
-  points_title?: string
-  points_description?: string
+  points_title?: string | null
+  points_description?: string | null
   points_icon?: string
   
   lucky_draw_title?: string
