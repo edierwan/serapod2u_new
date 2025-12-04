@@ -5,10 +5,10 @@ import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import MovementTypeBadge from './MovementTypeBadge'
+import ProductThumbnail from './ProductThumbnail'
 import { 
   BarChart3,
   Search,
@@ -20,8 +20,7 @@ import {
   Calendar,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown,
-  Package
+  ArrowDown
 } from 'lucide-react'
 
 interface StockMovement {
@@ -789,36 +788,8 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
     return movement.reason || ''
   }
 
-  const getMovementTypeBadge = (type: string) => {
-    const configs: Record<string, { label: string; title: string; variant: "default" | "secondary" | "destructive" | "outline", className?: string }> = {
-      'addition': { label: 'Add', title: 'Addition', variant: 'default' as const },
-      'adjustment': { label: 'Adj', title: 'Adjustment', variant: 'secondary' as const },
-      'transfer_out': { label: 'Xfer↑', title: 'Transfer Out', variant: 'outline' as const },
-      'transfer_in': { label: 'Xfer↓', title: 'Transfer In', variant: 'default' as const },
-      'allocation': { label: 'Alloc', title: 'Allocated', variant: 'secondary' as const },
-      'deallocation': { label: 'Dealloc', title: 'Deallocated', variant: 'outline' as const },
-      'order_fulfillment': { label: 'Ship', title: 'Shipment', variant: 'destructive' as const },
-      'order_cancelled': { label: 'Cxl', title: 'Cancelled', variant: 'outline' as const },
-      'manual_in': { label: 'M-In', title: 'Manual In', variant: 'default' as const },
-      'manual_out': { label: 'M-Out', title: 'Manual Out', variant: 'destructive' as const },
-      'scratch_game_out': { label: 'SG-', title: 'Scratch Game Out', variant: 'secondary' as const, className: 'bg-green-100 text-green-800 hover:bg-green-200 border-green-200' },
-      'scratch_game_in': { label: 'SG+', title: 'Scratch Game In', variant: 'secondary' as const, className: 'bg-green-100 text-green-800 hover:bg-green-200 border-green-200' }
-    }
-
-    const config = configs[type] || { label: type, title: type, variant: 'outline' as const }
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant={config.variant} className={`text-[10px] px-1.5 py-0 font-medium cursor-default ${config.className || ''}`}>{config.label}</Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{config.title}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
-  }
+  // Movement type rendering is handled by a single, neutral badge component to keep the UI
+  // consistent and remove coloured / variant-specific badges. See MovementTypeBadge component.
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -1261,27 +1232,15 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                         {formatDate(movement.created_at)}
                       </TableCell>
                       <TableCell>
-                        {getMovementTypeBadge(movement.movement_type)}
+                        <MovementTypeBadge type={movement.movement_type} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="relative w-10 h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-100">
-                            {movement.product_variants?.image_url ? (
-                              <img
-                                src={movement.product_variants.image_url}
-                                alt={movement.product_variants.variant_name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none'
-                                  const sibling = e.currentTarget.nextElementSibling as HTMLElement
-                                  if (sibling) sibling.style.display = 'flex'
-                                }}
-                              />
-                            ) : null}
-                            <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ display: movement.product_variants?.image_url ? 'none' : 'flex' }}>
-                              <Package className="w-5 h-5" />
-                            </div>
-                          </div>
+                          <ProductThumbnail
+                            src={movement.product_variants?.image_url ?? undefined}
+                            alt={movement.product_variants?.variant_name || movement.product_variants?.products?.product_name || 'Product image'}
+                            size={36}
+                          />
                           <div>
                             <p className="text-xs font-medium text-gray-900">
                               {movement.product_variants?.products?.product_name || 'N/A'}

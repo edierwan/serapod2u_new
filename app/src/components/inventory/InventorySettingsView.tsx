@@ -23,9 +23,9 @@ import {
   Download,
   AlertCircle,
   Info,
-  ArrowLeft,
-  Package
+  ArrowLeft
 } from 'lucide-react'
+import ProductThumbnail from './ProductThumbnail'
 
 interface InventoryItem {
   id: string
@@ -692,23 +692,11 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="relative w-10 h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-100">
-                              {item.variant_image_url ? (
-                                <img
-                                  src={item.variant_image_url}
-                                  alt={item.variant_name}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none'
-                                    const sibling = e.currentTarget.nextElementSibling as HTMLElement
-                                    if (sibling) sibling.style.display = 'flex'
-                                  }}
-                                />
-                              ) : null}
-                              <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ display: item.variant_image_url ? 'none' : 'flex' }}>
-                                <Package className="w-5 h-5" />
-                              </div>
-                            </div>
+                            <ProductThumbnail
+                              src={item.variant_image_url ?? undefined}
+                              alt={item.variant_name || item.product_name || 'Product'}
+                              size={40}
+                            />
                             <div>
                               <p className="text-sm font-medium">{item.product_name}</p>
                               <p className="text-xs text-gray-600">
