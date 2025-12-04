@@ -43,6 +43,7 @@ import ProductCatalogView from '@/components/dashboard/views/consumer-engagement
 import RedeemGiftManagementView from '@/components/redeem-gift/RedeemGiftManagementView'
 import JourneyBuilderV2 from '@/components/journey/JourneyBuilderV2'
 import ScratchCardGameView from '@/components/dashboard/views/consumer-engagement/ScratchCardGameView'
+import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
 
 interface UserProfile {
   id: string
@@ -170,6 +171,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <ConsumerActivationsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'product-catalog':
         return <ProductCatalogView userProfile={userProfile} onViewChange={handleViewChange} />
+
+      case 'manufacturer-quality-issues':
+        return <QualityIssuesView userProfile={userProfile} />
 
       case 'inventory':
       case 'inventory-list':

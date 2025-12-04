@@ -9,17 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { 
-  Truck,
-  Plus,
-  Trash2,
-  ArrowRight,
-  Save,
-  AlertCircle,
-  Package,
-  Building2,
-  X
-} from 'lucide-react'
+import { Truck, Plus, Trash2, ArrowRight, Save, AlertCircle, Building2, X } from 'lucide-react'
+import ProductThumbnail from './ProductThumbnail'
 
 interface Product {
   id: string
@@ -678,25 +669,11 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                         <TableRow key={item.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                                {item.variant_image_url ? (
-                                  <img
-                                    src={item.variant_image_url}
-                                    alt={item.variant_name || 'Product'}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement
-                                      target.style.display = 'none'
-                                      if (target.nextElementSibling) {
-                                        (target.nextElementSibling as HTMLElement).style.display = 'flex'
-                                      }
-                                    }}
-                                  />
-                                ) : null}
-                                <div className="w-full h-full flex items-center justify-center text-gray-400" style={{ display: item.variant_image_url ? 'none' : 'flex' }}>
-                                  <Package className="w-6 h-6" />
-                                </div>
-                              </div>
+                              <ProductThumbnail
+                                src={item.variant_image_url ?? undefined}
+                                alt={item.variant_name || item.product_name || 'Product'}
+                                size={48}
+                              />
                               <div>
                                 <p className="text-sm font-medium text-gray-900">
                                   {item.product_name}

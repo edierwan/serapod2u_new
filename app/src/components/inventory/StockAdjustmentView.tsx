@@ -17,7 +17,9 @@ import {
   TrendingUp,
   TrendingDown,
   Info,
-  Package
+  Package,
+  Upload,
+  X
 } from 'lucide-react'
 
 interface Product {
@@ -63,6 +65,24 @@ interface WarehouseLocation {
   org_name: string
 }
 
+interface PendingAdjustment {
+  id: string
+  variantId: string
+  variantName: string
+  productName: string
+  warehouseId: string
+  warehouseName: string
+  physicalCount: number
+  systemCount: number
+  adjustment: number
+  reasonId: string
+  reasonName: string
+  notes: string
+  evidenceFiles: File[]
+  unitCost: number | null
+  warehouseLocation: string | null
+}
+
 interface StockAdjustmentViewProps {
   userProfile: any
   onViewChange?: (view: string) => void
@@ -73,6 +93,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [variants, setVariants] = useState<Variant[]>([])
   const [reasons, setReasons] = useState<AdjustmentReason[]>([])
   const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>([])
+  const [pendingAdjustments, setPendingAdjustments] = useState<PendingAdjustment[]>([])
   
   const [selectedProduct, setSelectedProduct] = useState('')
   const [selectedVariant, setSelectedVariant] = useState('')
@@ -82,6 +103,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [currentInventory, setCurrentInventory] = useState<InventoryItem | null>(null)
   const [physicalCount, setPhysicalCount] = useState('')
   const [notes, setNotes] = useState('')
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([])
+  const [uploadingImages, setUploadingImages] = useState(false)
   
   const [loading, setLoading] = useState(false)
   const [checkingInventory, setCheckingInventory] = useState(false)
@@ -92,25 +115,34 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
   useEffect(() => {
     if (isReady) {
-      loadProducts()
       loadReasons()
       loadWarehouseLocations()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   useEffect(() => {
-    if (selectedProduct) {
-      loadVariants(selectedProduct)
+    if (selectedWarehouse) {
+      loadProducts(selectedWarehouse)
+      // Reset product and variant when warehouse changes
+      setSelectedProduct('')
+      setSelectedVariant('')
+      setVariants([])
+      setCurrentInventory(null)
+    } else {
+      setProducts([])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWarehouse])
+
+  useEffect(() => {
+    if (selectedProduct && selectedWarehouse) {
+      loadVariants(selectedProduct, selectedWarehouse)
     } else {
       setVariants([])
       setSelectedVariant('')
       setCurrentInventory(null)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
 
@@ -125,9 +157,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVariant, selectedWarehouse])
 
-  const loadProducts = async () => {
+  const loadProducts = async (warehouseId: string) => {
     try {
       setProductsLoading(true)
+      
+      // Only fetch products that have inventory in the selected warehouse
       const { data, error } = await supabase
         .from('products')
         .select(`
@@ -137,23 +171,36 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           brand_id,
           brands (
             brand_name
+          ),
+          product_variants!inner (
+            product_inventory!inner (
+              organization_id
+            )
           )
         `)
         .eq('is_active', true)
+        .eq('product_variants.product_inventory.organization_id', warehouseId)
         .order('product_name')
 
       if (error) throw error
       
       // Transform the data to handle brands array
-      const transformedData: Product[] = (data || []).map((item: any) => ({
-        id: item.id,
-        product_code: item.product_code,
-        product_name: item.product_name,
-        brand_id: item.brand_id,
-        brands: Array.isArray(item.brands) ? item.brands[0] : item.brands
-      }))
+      // Use a Map to filter out duplicates since the join might return multiple rows per product
+      const productMap = new Map()
       
-      setProducts(transformedData)
+      ;(data || []).forEach((item: any) => {
+        if (!productMap.has(item.id)) {
+          productMap.set(item.id, {
+            id: item.id,
+            product_code: item.product_code,
+            product_name: item.product_name,
+            brand_id: item.brand_id,
+            brands: Array.isArray(item.brands) ? item.brands[0] : item.brands
+          })
+        }
+      })
+      
+      setProducts(Array.from(productMap.values()))
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -165,17 +212,37 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   }
 
-  const loadVariants = async (productId: string) => {
+  const loadVariants = async (productId: string, warehouseId: string) => {
     try {
+      // Only fetch variants that have inventory in the selected warehouse
       const { data, error } = await supabase
         .from('product_variants')
-        .select('id, variant_code, variant_name, image_url, suggested_retail_price')
+        .select(`
+          id, 
+          variant_code, 
+          variant_name, 
+          image_url, 
+          suggested_retail_price,
+          product_inventory!inner (
+            organization_id
+          )
+        `)
         .eq('product_id', productId)
         .eq('is_active', true)
+        .eq('product_inventory.organization_id', warehouseId)
         .order('variant_name')
 
       if (error) throw error
-      const variantsList: Variant[] = data || []
+      
+      // Transform to remove the inner join data from the result type
+      const variantsList: Variant[] = (data || []).map((item: any) => ({
+        id: item.id,
+        variant_code: item.variant_code,
+        variant_name: item.variant_name,
+        image_url: item.image_url,
+        suggested_retail_price: item.suggested_retail_price
+      }))
+      
       setVariants(variantsList)
       
       // Auto-select if only one variant
@@ -277,7 +344,75 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     return physical - system
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files)
+      // Validate files (e.g., size, type)
+      const validFiles = newFiles.filter(file => {
+        if (!file.type.startsWith('image/')) {
+          toast({
+            title: 'Invalid File',
+            description: `${file.name} is not an image`,
+            variant: 'destructive'
+          })
+          return false
+        }
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+          toast({
+            title: 'File Too Large',
+            description: `${file.name} exceeds 5MB limit`,
+            variant: 'destructive'
+          })
+          return false
+        }
+        return true
+      })
+      
+      setEvidenceFiles(prev => [...prev, ...validFiles])
+    }
+  }
+
+  const removeFile = (index: number) => {
+    setEvidenceFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const uploadEvidenceFiles = async (filesToUpload: File[]): Promise<string[]> => {
+    if (filesToUpload.length === 0) return []
+    
+    setUploadingImages(true)
+    const uploadedUrls: string[] = []
+    
+    try {
+      for (const file of filesToUpload) {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${userProfile.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+        const filePath = `stock_evidence/${fileName}`
+        
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
+          
+        if (uploadError) throw uploadError
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('documents')
+          .getPublicUrl(filePath)
+          
+        uploadedUrls.push(publicUrl)
+      }
+      return uploadedUrls
+    } catch (error: any) {
+      console.error('Error uploading evidence:', error)
+      throw new Error('Failed to upload evidence images')
+    } finally {
+      setUploadingImages(false)
+    }
+  }
+
+  const handleAddToQueue = (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!selectedProduct || !selectedVariant || !selectedWarehouse || !physicalCount || !selectedReason) {
@@ -309,59 +444,207 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       return
     }
 
-    // Check if reason requires approval
     const selectedReasonData = reasons.find(r => r.id === selectedReason)
-    if (selectedReasonData?.requires_approval && Math.abs(adjustment) > 100) {
+    const selectedVariantData = variants.find(v => v.id === selectedVariant)
+    const selectedProductData = products.find(p => p.id === selectedProduct)
+    const selectedWarehouseData = warehouseLocations.find(w => w.id === selectedWarehouse)
+
+    if (!selectedVariantData || !selectedProductData || !selectedWarehouseData || !selectedReasonData) return
+
+    // Validation for specific reasons
+    const reasonName = selectedReasonData.reason_name
+    const reasonCode = (selectedReasonData as any).reason_code
+    
+    const decreaseOnlyReasons = [
+      "Damaged Goods",
+      "Expired Goods",
+      "Quality Issue",
+      "Return to Supplier"
+    ]
+    
+    const increaseOnlyReasons = [
+      "Found Stock"
+    ]
+
+    // Check decrease only reasons
+    if (decreaseOnlyReasons.some(r => reasonName.includes(r))) {
+      if (adjustment >= 0) {
+        toast({
+          title: 'Invalid Adjustment',
+          description: `For reason "${reasonName}", stock can only be decreased. Physical count must be less than system count.`,
+          variant: 'destructive'
+        })
+        return
+      }
+    }
+
+    // Check increase only reasons
+    if (increaseOnlyReasons.some(r => reasonName.includes(r))) {
+      if (adjustment <= 0) {
+        toast({
+          title: 'Invalid Adjustment',
+          description: `For reason "${reasonName}", stock can only be increased. Physical count must be greater than system count.`,
+          variant: 'destructive'
+        })
+        return
+      }
+    }
+
+    // If this reason requires manufacturer proof (quality/return), ensure files are attached
+    const requiresEvidenceCodes = ['quality_issue', 'return_to_supplier']
+    if (requiresEvidenceCodes.includes(reasonCode) && evidenceFiles.length === 0) {
       toast({
-        title: 'Approval Required',
-        description: 'Large adjustments with this reason require manager approval',
+        title: 'Evidence Required',
+        description: `Reason "${reasonName}" requires at least one image attachment as proof. Please attach evidence before adding to queue.`,
         variant: 'destructive'
       })
-      // TODO: Implement approval workflow
+      return
+    }
+
+    const newItem: PendingAdjustment = {
+      id: Math.random().toString(36).substring(7),
+      variantId: selectedVariant,
+      variantName: selectedVariantData.variant_name,
+      productName: selectedProductData.product_name,
+      warehouseId: selectedWarehouse,
+      warehouseName: selectedWarehouseData.org_name,
+      physicalCount: physical,
+      systemCount: currentInventory?.quantity_on_hand || 0,
+      adjustment,
+      reasonId: selectedReason,
+      reasonName: selectedReasonData?.reason_name || 'Stock adjustment',
+      notes,
+            evidenceFiles: [...evidenceFiles],
+      unitCost: currentInventory?.average_cost || null,
+      warehouseLocation: currentInventory?.warehouse_location || null
+    }
+
+    setPendingAdjustments(prev => [...prev, newItem])
+    
+    toast({
+      title: 'Added to Queue',
+      description: 'Item added to pending adjustments list',
+      variant: 'default'
+    })
+
+    // Reset form
+    setPhysicalCount('')
+    setSelectedReason('')
+    setNotes('')
+    setEvidenceFiles([])
+    // Keep warehouse selected
+  }
+
+  const handleRemovePending = (id: string) => {
+    setPendingAdjustments(prev => prev.filter(item => item.id !== id))
+  }
+
+  const handleProcessAll = async () => {
+    if (pendingAdjustments.length === 0) return
+
+    // Validate user profile requirements
+    if (!userProfile?.organizations?.id) {
+      toast({
+        title: 'Configuration Error',
+        description: 'User organization information is missing. Please contact support.',
+        variant: 'destructive'
+      })
       return
     }
 
     try {
-      setLoading(true)
-
-      // Call the record_stock_movement function via RPC
-      const { error } = await supabase.rpc('record_stock_movement', {
-        p_movement_type: 'adjustment',
-        p_variant_id: selectedVariant,
-        p_organization_id: selectedWarehouse,
-        p_quantity_change: adjustment,
-        p_unit_cost: currentInventory?.average_cost || null,
-        p_manufacturer_id: null,
-        p_warehouse_location: currentInventory?.warehouse_location || null,
-        p_reason: selectedReasonData?.reason_name || 'Stock adjustment',
-        p_notes: notes || `Physical count: ${physical}, System count: ${currentInventory?.quantity_on_hand || 0}, Adjustment: ${adjustment}`,
-        p_reference_type: 'adjustment',
-        p_reference_id: null,
-        p_reference_no: null,
-        p_company_id: userProfile.organizations.id,
-        p_created_by: userProfile.id
-      } as any)
-
-      if (error) throw error
-
-      toast({
-        title: 'Success',
-        description: `Stock adjusted by ${adjustment > 0 ? '+' : ''}${adjustment} units`,
-        variant: 'default'
+      // Prevent processing if any pending item requires evidence but has none
+      const reasonsMap = new Map(reasons.map(r => [r.id, r]))
+      const missingEvidenceItems = pendingAdjustments.filter(item => {
+        const r = reasonsMap.get(item.reasonId)
+        return r && ['quality_issue', 'return_to_supplier'].includes((r as any).reason_code) && (!item.evidenceFiles || item.evidenceFiles.length === 0)
       })
 
-      // Refresh inventory
-      await checkCurrentInventory()
+      if (missingEvidenceItems.length > 0) {
+        toast({
+          title: 'Missing Evidence',
+          description: `There are ${missingEvidenceItems.length} adjustments that require evidence but have none attached. Please attach images before processing.`,
+          variant: 'destructive'
+        })
+        return
+      }
+      setLoading(true)
+      let successCount = 0
+      let failCount = 0
 
-      // Reset form (keep product/variant/warehouse selected for convenience)
-      setPhysicalCount('')
-      setSelectedReason('')
-      setNotes('')
+      for (const item of pendingAdjustments) {
+        try {
+          // Upload evidence images if any
+          let evidenceUrls: string[] = []
+          if (item.evidenceFiles && item.evidenceFiles.length > 0) {
+            evidenceUrls = await uploadEvidenceFiles(item.evidenceFiles)
+          }
+
+          const payload: any = {
+            p_movement_type: 'adjustment',
+            p_variant_id: item.variantId,
+            p_organization_id: item.warehouseId,
+            p_quantity_change: item.adjustment,
+            p_unit_cost: item.unitCost,
+            p_manufacturer_id: null,
+            p_warehouse_location: item.warehouseLocation,
+            p_reason: item.reasonName,
+            p_notes: item.notes || `Physical count: ${item.physicalCount}, System count: ${item.systemCount}, Adjustment: ${item.adjustment}`,
+            p_reference_type: 'adjustment',
+            p_reference_id: null,
+            p_reference_no: null,
+            p_company_id: userProfile.organizations.id,
+            p_created_by: userProfile.id
+          }
+
+          // Add evidence URLs to payload
+          payload.p_evidence_urls = evidenceUrls.length > 0 ? evidenceUrls : null
+
+          console.log('Processing item payload:', payload)
+
+          // Call the record_stock_movement function via RPC
+          const { error } = await supabase.rpc('record_stock_movement', payload as any)
+
+          if (error) {
+            console.error('RPC Error for item:', item.variantName, JSON.stringify(error, null, 2))
+            throw error
+          }
+          successCount++
+        } catch (error: any) {
+          console.error('Error processing item:', item.variantName, error)
+          failCount++
+          
+          toast({
+            title: 'Error Processing Item',
+            description: `Failed to adjust ${item.variantName}: ${error.message || JSON.stringify(error) || 'Unknown error'}`,
+            variant: 'destructive'
+          })
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: 'Batch Processing Complete',
+          description: `Successfully processed ${successCount} adjustments.${failCount > 0 ? ` Failed: ${failCount}` : ''}`,
+          variant: failCount > 0 ? 'destructive' : 'default'
+        })
+        setPendingAdjustments([])
+        // Refresh inventory if the currently selected item was adjusted
+        if (selectedVariant && selectedWarehouse) {
+          checkCurrentInventory()
+        }
+      } else if (failCount > 0) {
+        toast({
+          title: 'Processing Failed',
+          description: 'Failed to process adjustments. Please try again.',
+          variant: 'destructive'
+        })
+      }
 
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: `Failed to adjust stock: ${error.message}`,
+        description: `Failed to process adjustments: ${error.message}`,
         variant: 'destructive'
       })
     } finally {
@@ -373,6 +656,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const selectedVariantData = variants.find(v => v.id === selectedVariant)
   const selectedProductData = products.find(p => p.id === selectedProduct)
   const selectedReasonData = reasons.find(r => r.id === selectedReason)
+
+  // Count pending items that require evidence but have none
+  const missingEvidenceCount = pendingAdjustments.reduce((acc, item) => {
+    const r = reasons.find(rr => rr.id === item.reasonId)
+    if (!r) return acc
+    const rc = (r as any).reason_code
+    if (['quality_issue', 'return_to_supplier'].includes(rc) && (!item.evidenceFiles || item.evidenceFiles.length === 0)) return acc + 1
+    return acc
+  }, 0)
 
   return (
     <div className="space-y-6">
@@ -407,7 +699,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       </Card>
 
       {/* Main Form */}
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleAddToQueue}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Product & Location Selection */}
           <div className="lg:col-span-2 space-y-6">
@@ -447,10 +739,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                   <Select 
                     value={selectedProduct} 
                     onValueChange={setSelectedProduct}
-                    disabled={productsLoading}
+                    disabled={productsLoading || !selectedWarehouse}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={productsLoading ? "Loading products..." : "Select product"} />
+                      <SelectValue placeholder={
+                        !selectedWarehouse ? "Select a warehouse first" :
+                        productsLoading ? "Loading products..." : 
+                        products.length === 0 ? "No products found in this warehouse" :
+                        "Select product"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
                       {products.map(product => (
@@ -631,9 +928,24 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                         System: {currentInventory.quantity_on_hand} → Physical: {physicalCount}
                       </p>
                       {adjustment !== 0 && (
-                        <p className="text-xs text-gray-600 mt-1">
-                          {adjustment > 0 ? '✅ Stock will be increased' : '⚠️ Stock will be decreased'}
-                        </p>
+                        <div>
+                          <p className="text-xs text-gray-600 mt-1">
+                            {adjustment > 0 ? '✅ Stock will be increased' : '⚠️ Stock will be decreased'}
+                          </p>
+                          {selectedReasonData && (() => {
+                             const reasonName = selectedReasonData.reason_name;
+                             const decreaseOnlyReasons = ["Damaged Goods", "Expired Goods", "Quality Issue", "Return to Supplier"];
+                             const increaseOnlyReasons = ["Found Stock"];
+                             
+                             if (decreaseOnlyReasons.some(r => reasonName.includes(r)) && adjustment > 0) {
+                               return <p className="text-xs text-red-600 mt-1 font-bold">Error: For &quot;{reasonName}&quot;, stock must be decreased.</p>
+                             }
+                             if (increaseOnlyReasons.some(r => reasonName.includes(r)) && adjustment < 0) {
+                               return <p className="text-xs text-red-600 mt-1 font-bold">Error: For &quot;{reasonName}&quot;, stock must be increased.</p>
+                             }
+                             return null;
+                          })()}
+                        </div>
                       )}
                     </div>
                   )}
@@ -691,6 +1003,61 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
             <Card>
               <CardHeader>
+                <CardTitle>Evidence {(['quality_issue','return_to_supplier'].includes((selectedReasonData as any)?.reason_code) ? '(Required)' : '(Optional)')}</CardTitle>
+                <CardDescription>Attach images to prove the adjustment{(['quality_issue','return_to_supplier'].includes((selectedReasonData as any)?.reason_code) ? ' — Required for this reason' : '')}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition-colors relative">
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      disabled={uploadingImages}
+                    />
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600 font-medium">
+                      Click to upload or drag and drop
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      PNG, JPG up to 5MB
+                    </p>
+                  </div>
+
+                  {evidenceFiles.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {evidenceFiles.map((file, index) => (
+                        <div key={index} className="relative group border rounded-lg p-2 flex items-center gap-2 bg-white">
+                          <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            <img 
+                              src={URL.createObjectURL(file)} 
+                              alt="Preview" 
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{file.name}</p>
+                            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(0)} KB</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(index)}
+                            className="p-1 hover:bg-red-100 rounded-full text-gray-400 hover:text-red-600 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle>Additional Notes</CardTitle>
               </CardHeader>
               <CardContent>
@@ -736,21 +1103,82 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           )}
           <Button 
             type="submit" 
-            disabled={loading || !currentInventory || !physicalCount || !selectedReason || adjustment === 0}
-            className={
-              adjustment > 0 ? 'bg-green-600 hover:bg-green-700' :
-              adjustment < 0 ? 'bg-red-600 hover:bg-red-700' :
-              'bg-gray-600 hover:bg-gray-700'
-            }
+            disabled={loading || !currentInventory || !physicalCount || !selectedReason || adjustment === 0 || (selectedReasonData && ['quality_issue','return_to_supplier'].includes((selectedReasonData as any).reason_code) && evidenceFiles.length === 0)}
+            className="bg-blue-600 hover:bg-blue-700"
           >
             <Save className="w-4 h-4 mr-2" />
-            {loading ? 'Adjusting Stock...' : 
-             adjustment > 0 ? `Add ${adjustment} Units` :
-             adjustment < 0 ? `Remove ${Math.abs(adjustment)} Units` :
-             'Adjust Stock'}
+            Add to Queue
           </Button>
         </div>
       </form>
+
+      {/* Pending Adjustments Queue */}
+      {pendingAdjustments.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Pending Adjustments ({pendingAdjustments.length})</span>
+              <div className="flex items-center gap-3">
+              <Button 
+                onClick={handleProcessAll}
+                disabled={loading || missingEvidenceCount > 0}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {loading ? 'Processing...' : 'Process All Adjustments'}
+              </Button>
+              {missingEvidenceCount > 0 && (
+                <div className="text-sm text-red-600">{missingEvidenceCount} item(s) require evidence</div>
+              )}
+              </div>
+            </CardTitle>
+            <CardDescription>Review items before finalizing adjustments</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {pendingAdjustments.map((item) => (
+                <div key={item.id} className="bg-white p-4 rounded-lg border shadow-sm flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-900">{item.productName}</span>
+                      <Badge variant="secondary">{item.variantName}</Badge>
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                      <div>{item.warehouseName} • {item.reasonName}</div>
+                      {/* show warning when evidence required but missing */}
+                      {(() => {
+                        const r = reasons.find(rr => rr.id === item.reasonId)
+                        const rc = (r as any)?.reason_code
+                        if (r && ['quality_issue','return_to_supplier'].includes(rc) && (!item.evidenceFiles || item.evidenceFiles.length === 0)) {
+                          return (
+                            <div className="text-xs text-red-600 font-semibold">Missing evidence</div>
+                          )
+                        }
+                        return null
+                      })()}
+                    </div>
+                    <div className="text-sm mt-1">
+                      System: {item.systemCount} → Physical: {item.physicalCount} 
+                      <span className={`ml-2 font-bold ${
+                        item.adjustment > 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        ({item.adjustment > 0 ? '+' : ''}{item.adjustment})
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemovePending(item.id)}
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* No Inventory Warning */}
       {selectedVariant && selectedWarehouse && !currentInventory && !checkingInventory && (

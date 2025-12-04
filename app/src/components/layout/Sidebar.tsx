@@ -298,9 +298,30 @@ const navigationItems: MenuItem[] = [
         icon: ListTree,
         access: {
           allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-          maxRoleLevel: 50
+          maxRoleLevel: 40
         }
-      },
+      }
+    ]
+  },
+  {
+    id: 'quality-issues',
+    label: 'Quality Issues',
+    icon: ShieldCheck,
+    description: 'Manage quality and returns',
+    access: {
+      allowedOrgTypes: ['HQ', 'MFG', 'MANU'],
+      maxRoleLevel: 40
+    },
+    submenu: [
+      {
+        id: 'manufacturer-quality-issues',
+        label: 'Quality & Return Issues',
+        icon: ShieldCheck,
+        access: {
+          allowedOrgTypes: ['HQ', 'MFG', 'MANU'],
+          maxRoleLevel: 40
+        }
+      }
     ]
   },
   {
