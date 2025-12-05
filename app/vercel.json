@@ -10,6 +10,10 @@
     {
       "path": "/api/cron/qr-reverse-worker",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/qr-generation-worker",
+      "schedule": "*/1 * * * *"
     }
   ]
 }

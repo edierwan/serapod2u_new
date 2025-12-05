@@ -63,7 +63,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
-  const [typeFilter, setTypeFilter] = useState<OrderType | 'all'>('all')
+  const [typeFilter, setTypeFilter] = useState<OrderType | 'all'>('H2M')
   const [sellerFilter, setSellerFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')

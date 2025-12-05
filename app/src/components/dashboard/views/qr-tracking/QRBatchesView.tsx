@@ -49,6 +49,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
   const [selectedOrderId, setSelectedOrderId] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [workerRunning, setWorkerRunning] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const { toast } = useToast()
@@ -61,6 +62,20 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Poll for updates when batches are processing
+  useEffect(() => {
+    const hasActiveBatches = batches.some(b => ['queued', 'processing'].includes(b.status))
+    
+    if (hasActiveBatches) {
+      const intervalId = setInterval(() => {
+        loadBatches(true)
+      }, 2000) // Poll every 2 seconds
+
+      return () => clearInterval(intervalId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batches])
 
   const loadApprovedOrders = async () => {
     try {
@@ -99,9 +114,9 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     }
   }
 
-  const loadBatches = async () => {
+  const loadBatches = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const { data, error } = await supabase
         .from('qr_batches')
         .select(`
@@ -148,9 +163,75 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         variant: 'destructive'
       })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
+
+  const runWorker = async (showToast = true) => {
+    if (workerRunning) return
+    
+    try {
+      setWorkerRunning(true)
+      if (showToast) {
+        toast({
+          title: 'Starting Worker',
+          description: 'Triggering background worker...'
+        })
+      }
+
+      let keepRunning = true
+      let runCount = 0
+      
+      while (keepRunning) {
+        runCount++
+        const response = await fetch('/api/cron/qr-generation-worker')
+        const result = await response.json()
+        
+        console.log(`Worker run #${runCount} result:`, result)
+        
+        if (result.message === 'No batches to process') {
+          if (showToast && runCount === 1) {
+            toast({
+              title: 'Worker Idle',
+              description: 'No queued batches found to process.'
+            })
+          }
+          keepRunning = false
+        } else {
+          // If we processed something, refresh the list
+          await loadBatches(true)
+          
+          // Check if we should continue
+          // The worker returns hasMore: true if it yielded
+          if (result.hasMore) {
+             // Add a small delay to prevent hammering
+             await new Promise(resolve => setTimeout(resolve, 1000))
+          } else {
+             keepRunning = false
+             if (showToast) {
+               toast({
+                 title: 'Worker Run Complete',
+                 description: 'Batch processing completed.'
+               })
+             }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Worker trigger error:', error)
+      if (showToast) {
+        toast({
+          title: 'Worker Error',
+          description: 'Failed to trigger worker manually.',
+          variant: 'destructive'
+        })
+      }
+    } finally {
+      setWorkerRunning(false)
+    }
+  }
+
+  const handleTriggerWorker = () => runWorker(true)
 
   const handleOrderSelect = (orderId: string) => {
     setSelectedOrderId(orderId)
@@ -184,11 +265,14 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       const result = await response.json()
       toast({
         title: 'Success',
-        description: `Generated ${result.total_unique_codes} QR codes in ${result.total_master_codes} cases`
+        description: result.message || 'Batch queued for generation'
       })
       
       await loadBatches()
       await loadApprovedOrders() // Refresh approved orders list
+      
+      // Automatically start the worker
+      runWorker(true)
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -330,8 +414,27 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvedOrders])
 
+  const getDuration = (batch: any) => {
+    if (!batch.processing_started_at || !batch.processing_finished_at) return null
+    
+    const start = new Date(batch.processing_started_at).getTime()
+    const end = new Date(batch.processing_finished_at).getTime()
+    const diff = end - start
+    
+    if (diff < 0) return null
+    
+    const minutes = Math.floor(diff / 60000)
+    const seconds = Math.floor((diff % 60000) / 1000)
+    
+    if (minutes === 0) return `${seconds}s`
+    return `${minutes}m ${seconds}s`
+  }
+
   const getStatusBadge = (status: string) => {
     const statusConfig: any = {
+      queued: { label: 'Queued', variant: 'secondary', icon: Clock },
+      processing: { label: 'Processing', variant: 'default', icon: RefreshCw, className: 'animate-spin' },
+      failed: { label: 'Failed', variant: 'destructive', icon: AlertCircle },
       pending: { label: 'Pending', variant: 'secondary', icon: Clock },
       generated: { label: 'Generated', variant: 'default', icon: CheckCircle },
       printing: { label: 'Printing', variant: 'default', icon: Clock },
@@ -344,7 +447,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     
     return (
       <Badge variant={config.variant} className="flex items-center gap-1">
-        <Icon className="h-3 w-3" />
+        <Icon className={`h-3 w-3 ${config.className || ''}`} />
         {config.label}
       </Badge>
     )
@@ -360,6 +463,8 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     return matchesSearch && matchesStatus
   })
 
+
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -370,10 +475,23 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             Manage QR code generation for approved H2M orders
           </p>
         </div>
-        <Button onClick={handleRefresh} variant="outline">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          {/* Debug Button for Manual Worker Trigger */}
+          <Button 
+            onClick={handleTriggerWorker} 
+            disabled={workerRunning}
+            variant="secondary" 
+            className="bg-gray-100 hover:bg-gray-200 text-gray-700"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${workerRunning ? 'animate-spin' : ''}`} />
+            {workerRunning ? 'Running...' : 'Run Worker (Debug)'}
+          </Button>
+          
+          <Button onClick={handleRefresh} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -591,7 +709,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Master Codes</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unique Codes</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Generated</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -640,16 +758,35 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                         {formatNumber(batch.total_unique_codes)}
                       </td>
                       <td className="px-4 py-3">
-                        {getStatusBadge(batch.status)}
+                        {batch.status === 'processing' || batch.status === 'queued' ? (
+                          <div className="flex flex-col gap-1 min-w-[120px]">
+                            <div className="flex items-center justify-between text-xs text-gray-500">
+                              <span>{batch.status === 'queued' ? 'Queued' : 'Generating...'}</span>
+                              <span>{batch.total_unique_codes > 0 ? Math.round(((batch.qr_inserted_count || 0) / batch.total_unique_codes) * 100) : 0}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5">
+                              <div 
+                                className="bg-blue-600 h-1.5 rounded-full transition-all duration-500" 
+                                style={{ width: `${batch.total_unique_codes > 0 ? Math.round(((batch.qr_inserted_count || 0) / batch.total_unique_codes) * 100) : 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-start gap-1">
+                            {getStatusBadge(batch.status)}
+                            {batch.status === 'completed' && getDuration(batch) && (
+                              <span className="text-[10px] text-blue-600 font-medium px-2">
+                                {getDuration(batch)}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {batch.excel_generated_at 
-                          ? new Date(batch.excel_generated_at).toLocaleDateString()
-                          : 'Not generated'
-                        }
+                        {new Date(batch.excel_generated_at || batch.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-3 text-right space-x-2">
-                        {batch.excel_file_url && (
+                        {batch.excel_file_url && batch.status !== 'processing' && batch.status !== 'queued' && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -659,7 +796,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                             Excel
                           </Button>
                         )}
-                        {batch.status === 'pending' && (
+                        {(batch.status === 'pending' || batch.status === 'failed') && (
                           <Button
                             size="sm"
                             onClick={() => handleGenerateBatch(batch.order_id)}
@@ -673,7 +810,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                             ) : (
                               <>
                                 <QrCode className="h-4 w-4 mr-1" />
-                                Generate
+                                {batch.status === 'failed' ? 'Retry' : 'Generate'}
                               </>
                             )}
                           </Button>
