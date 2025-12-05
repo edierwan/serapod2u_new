@@ -114,6 +114,118 @@ export async function validateOrderDeletion(supabase: SupabaseClient, orderId: s
   }
 }
 
+async function deleteInBatches(
+  supabase: SupabaseClient,
+  table: string,
+  column: string,
+  value: string,
+  batchSize: number = 500,
+  additionalFilter?: (query: any) => any,
+  onBatchDelete?: (ids: string[], items: any[]) => Promise<void>,
+  selectColumns: string = 'id'
+) {
+  let totalDeleted = 0
+  let hasMore = true
+
+  console.log(`Starting batch deletion for ${table} where ${column}=${value}`)
+
+  while (hasMore) {
+    // Select IDs to delete
+    let query = supabase
+      .from(table)
+      .select(selectColumns)
+      .eq(column, value)
+      .limit(batchSize)
+    
+    if (additionalFilter) {
+      query = additionalFilter(query)
+    }
+
+    const { data: items, error: fetchError } = await query
+
+    if (fetchError) {
+      console.error(`Error fetching items for batch deletion from ${table}:`, fetchError)
+      throw fetchError
+    }
+
+    if (!items || items.length === 0) {
+      hasMore = false
+      break
+    }
+
+    const ids = items.map(item => item.id)
+    
+    if (onBatchDelete) {
+      try {
+        await onBatchDelete(ids, items)
+      } catch (err) {
+        console.error(`Error in onBatchDelete callback for ${table}:`, err)
+        // Continue to try to delete the main items, or throw?
+        // If dependencies aren't deleted, main delete might fail.
+        throw err
+      }
+    }
+
+    // Delete by IDs
+    // If batch size is small (e.g. < 100), delete one by one to isolate problematic rows
+    if (batchSize < 100) {
+      let deletedInBatch = 0
+      for (const id of ids) {
+        // Add a small delay between deletes to let DB breathe
+        if (deletedInBatch > 0) await new Promise(r => setTimeout(r, 50))
+        
+        const { error: singleDeleteError } = await supabase
+          .from(table)
+          .delete()
+          .eq('id', id)
+        
+        if (singleDeleteError) {
+          console.error(`Error deleting single item ${id} from ${table}:`, singleDeleteError)
+          // Don't throw, try to continue deleting others
+        } else {
+          deletedInBatch++
+        }
+      }
+      // Mock count for total
+      const count = deletedInBatch
+      
+      if ((count === 0) && items.length > 0) {
+         console.warn(`⚠️ Batch delete (one-by-one) returned 0 count but found ${items.length} items in ${table}.`)
+         // If we couldn't delete ANY in this batch, we might be stuck.
+         // But maybe some failed and some succeeded.
+         // If ALL failed, we should probably break to avoid infinite loop.
+         if (deletedInBatch === 0) break
+      }
+      totalDeleted += count
+      console.log(`Deleted batch of ${count} from ${table} (one-by-one mode)`)
+    } else {
+      const { error: deleteError, count } = await supabase
+        .from(table)
+        .delete()
+        .in('id', ids)
+
+      if (deleteError) {
+        console.error(`Error deleting batch from ${table}:`, deleteError)
+        throw deleteError
+      }
+      
+      if ((count === 0 || count === null) && items.length > 0) {
+        console.warn(`⚠️ Batch delete returned 0 count but found ${items.length} items in ${table}. Potential infinite loop detected. Aborting batch deletion.`)
+        break
+      }
+      
+      totalDeleted += count || 0
+      console.log(`Deleted batch of ${count} from ${table}`)
+    }
+    
+    // If we fetched fewer than batchSize, we are done
+    if (items.length < batchSize) {
+      hasMore = false
+    }
+  }
+  return totalDeleted
+}
+
 /**
  * Cascade delete an order and all related records
  * ONLY call this after validateOrderDeletion returns canDelete = true
@@ -126,45 +238,51 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     // Delete in correct order (child tables first)
     
     // 1. Delete QR codes (all if forceDelete, otherwise only pending)
-    const qrQuery = supabase
-      .from('qr_codes')
-      .delete()
-      .eq('order_id', orderId)
-    
-    if (!forceDelete) {
-      qrQuery.eq('status', 'pending')
-    }
-    
-    const { error: qrError, count: qrCount } = await qrQuery
+    const qrCount = await deleteInBatches(
+      supabase, 
+      'qr_codes', 
+      'order_id', 
+      orderId, 
+      500, 
+      !forceDelete ? (q) => q.eq('status', 'pending') : undefined,
+      async (ids, items) => {
+        // Delete dependencies for these QR codes
+        // scratch_card_plays
+        const { error: scError } = await supabase.from('scratch_card_plays').delete().in('qr_code_id', ids)
+        if (scError) console.warn('Warning deleting scratch_card_plays:', scError)
+        
+        // consumer_qr_scans
+        const { error: scanError } = await supabase.from('consumer_qr_scans').delete().in('qr_code_id', ids)
+        if (scanError) console.warn('Warning deleting consumer_qr_scans:', scanError)
 
-    if (qrError) {
-      console.error('❌ Error deleting QR codes:', qrError)
-      throw qrError
-    }
+        // Reset redeem_gifts if any
+        const redeemGiftIds = items
+          .filter(item => item.redeem_gift_id)
+          .map(item => item.redeem_gift_id)
+        
+        if (redeemGiftIds.length > 0) {
+          const { error: redeemError } = await supabase
+            .from('redeem_gifts')
+            .update({ is_redeemed: false, redeemed_at: null })
+            .in('id', redeemGiftIds)
+          
+          if (redeemError) console.warn('Warning resetting redeem_gifts:', redeemError)
+        }
+      },
+      'id, redeem_gift_id'
+    )
     console.log(`✅ Deleted ${qrCount || 0} QR codes`)
 
-    // 1b. Delete QR master codes
-    const { error: masterError, count: masterCount } = await supabase
-      .from('qr_master_codes')
-      .delete()
-      .eq('shipment_order_id', orderId)
+    // 1a. Delete Lucky Draw Entries
+    const luckyDrawCount = await deleteInBatches(supabase, 'lucky_draw_entries', 'order_id', orderId)
+    console.log(`✅ Deleted ${luckyDrawCount || 0} lucky draw entries`)
 
-    if (masterError) {
-      console.error('❌ Error deleting QR master codes:', masterError)
-      throw masterError
-    }
+    // 1b. Delete QR master codes
+    const masterCount = await deleteInBatches(supabase, 'qr_master_codes', 'shipment_order_id', orderId)
     console.log(`✅ Deleted ${masterCount || 0} QR master codes`)
 
     // 2. Delete QR batches
-    const { error: batchError, count: batchCount } = await supabase
-      .from('qr_batches')
-      .delete()
-      .eq('order_id', orderId)
-
-    if (batchError) {
-      console.error('❌ Error deleting QR batches:', batchError)
-      throw batchError
-    }
+    const batchCount = await deleteInBatches(supabase, 'qr_batches', 'order_id', orderId)
     console.log(`✅ Deleted ${batchCount || 0} QR batches`)
 
     // 3. Delete document files first (they reference documents)
@@ -278,31 +396,14 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     })
 
     // First attempt: Delete by reference_id (UUID)
-    const { error: movementsError1, count: movementsCount1 } = await supabase
-      .from('stock_movements')
-      .delete()
-      .eq('reference_id', orderId)
-    
-    if (movementsError1) {
-      console.error('❌ Error deleting stock movements by reference_id:', movementsError1)
-    } else {
-      console.log(`✅ Deleted ${movementsCount1 || 0} stock movements by reference_id`)
-    }
+    const movementsCount1 = await deleteInBatches(supabase, 'stock_movements', 'reference_id', orderId)
+    console.log(`✅ Deleted ${movementsCount1 || 0} stock movements by reference_id`)
     
     // Second attempt: Delete by reference_no (order number)
     let movementsCount2 = 0
     if (orderNo) {
-      const { error: movementsError2, count: count2 } = await supabase
-        .from('stock_movements')
-        .delete()
-        .eq('reference_no', orderNo)
-      
-      if (movementsError2) {
-        console.error('❌ Error deleting stock movements by reference_no:', movementsError2)
-      } else {
-        movementsCount2 = count2 || 0
-        console.log(`✅ Deleted ${movementsCount2} stock movements by reference_no`)
-      }
+      movementsCount2 = await deleteInBatches(supabase, 'stock_movements', 'reference_no', orderNo)
+      console.log(`✅ Deleted ${movementsCount2} stock movements by reference_no`)
     }
     
     const totalMovements = (movementsCount1 || 0) + movementsCount2
@@ -511,15 +612,9 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     }
 
     // 7. Delete order items
-    const { error: itemsError, count: itemsCount } = await supabase
-      .from('order_items')
-      .delete()
-      .eq('order_id', orderId)
-
-    if (itemsError) {
-      console.error('❌ Error deleting order items:', itemsError)
-      throw itemsError
-    }
+    // Reduce batch size for order items as they might have heavy triggers or constraints
+    // Use extremely small batch size (10) to force one-by-one deletion logic if needed
+    const itemsCount = await deleteInBatches(supabase, 'order_items', 'order_id', orderId, 10)
     console.log(`✅ Deleted ${itemsCount || 0} order items`)
 
     // 8. Finally, delete the order

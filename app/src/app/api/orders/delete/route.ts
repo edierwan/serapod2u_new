@@ -82,3 +82,4 @@ export async function POST(request: NextRequest) {
 }
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300 // Allow up to 5 minutes for large deletions
