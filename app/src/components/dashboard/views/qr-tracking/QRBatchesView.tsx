@@ -342,7 +342,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         })
 
         if (rpcError) {
-          console.error('Failed to update batch status via RPC:', rpcError)
+          console.error('Failed to update batch status via RPC:', JSON.stringify(rpcError))
           
           // Fallback to individual updates if RPC fails (legacy method)
           // Update batch status
@@ -370,16 +370,37 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
           // Update unique codes
           if (batch.total_unique_codes > 0) {
-            const { error: uniqueError } = await supabase
-              .from('qr_codes')
-              .update({ 
-                status: 'printed',
-                updated_at: new Date().toISOString()
-              })
-              .eq('batch_id', batch.id)
-              .eq('status', 'generated')
+            // Try chunked update to avoid timeouts with large datasets
+            // We iterate through cases to break down the update
+            const totalCases = batch.total_master_codes || Math.ceil(batch.total_unique_codes / 100)
+            const CHUNK_SIZE = 50 // Update 50 cases at a time (approx 5000-6000 codes)
+            let hasError = false
 
-            if (uniqueError) console.error('Fallback: Failed to update unique codes:', uniqueError)
+            console.log(`Fallback: Updating unique codes in chunks (Total cases: ${totalCases})...`)
+
+            for (let i = 1; i <= totalCases; i += CHUNK_SIZE) {
+              const { error: chunkError } = await supabase
+                .from('qr_codes')
+                .update({ 
+                  status: 'printed',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('batch_id', batch.id)
+                .eq('status', 'generated')
+                .gte('case_number', i)
+                .lt('case_number', i + CHUNK_SIZE)
+
+              if (chunkError) {
+                console.error(`Fallback: Failed to update unique codes chunk ${i}-${i + CHUNK_SIZE}:`, chunkError)
+                hasError = true
+              }
+            }
+
+            if (hasError) {
+               console.error('Fallback: Some chunks failed to update')
+            } else {
+               console.log('✅ Unique codes updated in chunks')
+            }
           }
         } else {
           console.log('✅ Batch and codes updated to "printed" via RPC')
