@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
 
     // 8. Insert Individual QR codes (in batches to avoid timeout)
     // Increased batch size for better performance with large datasets
-    const BATCH_SIZE = 1000
+    const BATCH_SIZE = 5000
     console.log(`⏳ Inserting ${qrBatch.individualCodes.length} QR codes in batches of ${BATCH_SIZE}...`)
 
     // Add master_code_id to individual codes for non-buffer codes
@@ -387,44 +387,57 @@ async function insertQRCodesInBatches(
 ): Promise<number> {
   let totalInserted = 0
   const totalBatches = Math.ceil(codes.length / batchSize)
-
+  
+  // Process in chunks to control concurrency
+  const CONCURRENCY_LIMIT = 5
+  const chunks = []
+  
   for (let i = 0; i < codes.length; i += batchSize) {
-    const chunk = codes.slice(i, i + batchSize)
-    const currentBatch = Math.floor(i / batchSize) + 1
+    chunks.push(codes.slice(i, i + batchSize))
+  }
 
-    const inserts = chunk.map(code => ({
-      batch_id: batchId,
-      company_id: companyId,
-      order_id: orderId,
-      product_id: code.product_id,
-      variant_id: code.variant_id,
-      code: code.code,
-      qr_hash: code.hash, // Store security hash
-      sequence_number: code.sequence_number,
-      case_number: code.case_number,  // NEW: Case assignment
-      variant_key: code.variant_key,  // NEW: Variant grouping key
-      is_buffer: code.is_buffer,  // NEW: Buffer flag
-      status: code.is_buffer ? 'buffer_available' : 'generated',  // Start as 'generated', change to 'printed' after Excel download
-      is_active: true,
-      master_code_id: code.master_code_id || null  // Link to master during generation
-    }))
+  // Process chunks with concurrency limit
+  for (let i = 0; i < chunks.length; i += CONCURRENCY_LIMIT) {
+    const activeChunks = chunks.slice(i, i + CONCURRENCY_LIMIT)
+    const promises = activeChunks.map(async (chunk, index) => {
+      const currentBatchIndex = i + index
+      const currentBatchNum = currentBatchIndex + 1
+      
+      const inserts = chunk.map(code => ({
+        batch_id: batchId,
+        company_id: companyId,
+        order_id: orderId,
+        product_id: code.product_id,
+        variant_id: code.variant_id,
+        code: code.code,
+        qr_hash: code.hash, // Store security hash
+        sequence_number: code.sequence_number,
+        case_number: code.case_number,  // NEW: Case assignment
+        variant_key: code.variant_key,  // NEW: Variant grouping key
+        is_buffer: code.is_buffer,  // NEW: Buffer flag
+        status: code.is_buffer ? 'buffer_available' : 'generated',  // Start as 'generated', change to 'printed' after Excel download
+        is_active: true,
+        master_code_id: code.master_code_id || null  // Link to master during generation
+      }))
 
-    const { error } = await supabase
-      .from('qr_codes')
-      .insert(inserts)
+      const { error } = await supabase
+        .from('qr_codes')
+        .insert(inserts)
 
-    if (error) {
-      console.error(`❌ Error inserting batch ${currentBatch}/${totalBatches}:`, error)
-      throw error
-    }
+      if (error) {
+        console.error(`❌ Error inserting batch ${currentBatchNum}/${totalBatches}:`, error)
+        throw error
+      }
+      
+      return inserts.length
+    })
 
-    totalInserted += inserts.length
-
-    // Log progress every 10 batches or 10,000 codes
-    if (currentBatch % 10 === 0 || totalInserted >= codes.length) {
-      const progress = ((totalInserted / codes.length) * 100).toFixed(1)
-      console.log(`  ⏳ Progress: ${totalInserted}/${codes.length} codes (${progress}%) - Batch ${currentBatch}/${totalBatches}`)
-    }
+    const results = await Promise.all(promises)
+    const insertedInThisGroup = results.reduce((a, b) => a + b, 0)
+    totalInserted += insertedInThisGroup
+    
+    const progress = ((totalInserted / codes.length) * 100).toFixed(1)
+    console.log(`  ⏳ Progress: ${totalInserted}/${codes.length} codes (${progress}%) - Batch group ${Math.min(i + CONCURRENCY_LIMIT, totalBatches)}/${totalBatches}`)
   }
 
   return totalInserted
