@@ -7,6 +7,8 @@ type StockMovementSnapshot = {
   quantity_change: number | null
   to_organization_id: string | null
   from_organization_id: string | null
+  movement_type: string | null
+  notes: string | null
 }
 
 /**
@@ -196,28 +198,57 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     }
     console.log(`✅ Deleted ${docCount || 0} documents`)
 
-    // 5. Delete stock movements related to this order
-    // Get order number for reference_no matching
+    // 5. Release inventory allocation if order has allocated inventory (D2H/S2D orders)
     const { data: orderData } = await supabase
       .from('orders')
-      .select('order_no')
+      .select('order_no, order_type, status')
       .eq('id', orderId)
       .single()
     
     const orderNo = orderData?.order_no
+    
+    // If it's a D2H or S2D order that was submitted (not yet approved), release allocation
+    if (orderData && ['D2H', 'S2D'].includes(orderData.order_type)) {
+      // Check status case-insensitively and allow 'submitted' or similar statuses
+      const status = orderData.status?.toLowerCase()
+      const shouldRelease = status === 'draft' || status === 'submitted' || status === 'pending' || status === 'processing'
+      
+      if (shouldRelease) {
+        console.log(`🔓 Releasing inventory allocation for ${orderData.order_type} order: ${orderNo} (status: ${orderData.status})`)
+        try {
+          const { error: releaseError } = await supabase
+            .rpc('release_allocation_for_order', { p_order_id: orderId })
+          
+          if (releaseError) {
+            console.warn('⚠️ Warning: Could not release allocation:', releaseError)
+            // Continue anyway - deletion should still proceed
+          } else {
+            console.log('✅ Allocation released successfully')
+          }
+        } catch (err) {
+          console.warn('⚠️ Warning: Error releasing allocation:', err)
+          // Continue anyway
+        }
+      }
+    }
+    
+    // 6. Delete stock movements related to this order
     console.log(`🗑️ Deleting stock movements for order_id: ${orderId}, order_no: ${orderNo}`)
 
     // Capture movement snapshots before deletion so we can roll back inventory balances
     const movementSnapshotMap = new Map<string, StockMovementSnapshot>()
 
+    console.log(`🔍 Fetching stock movements for snapshot. OrderId: ${orderId}, OrderNo: ${orderNo}`)
+
     const { data: movementsById, error: snapshotError1 } = await supabase
       .from('stock_movements')
-      .select('id, variant_id, quantity_change, to_organization_id, from_organization_id')
+      .select('id, variant_id, quantity_change, to_organization_id, from_organization_id, movement_type, notes')
       .eq('reference_id', orderId)
 
     if (snapshotError1) {
       console.error('❌ Error fetching stock movements by reference_id:', snapshotError1)
     } else {
+      console.log(`Found ${movementsById?.length || 0} movements by reference_id`)
       movementsById?.forEach(row => {
         if (row?.id) movementSnapshotMap.set(row.id, row as StockMovementSnapshot)
       })
@@ -226,12 +257,13 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     if (orderNo) {
       const { data: movementsByNo, error: snapshotError2 } = await supabase
         .from('stock_movements')
-        .select('id, variant_id, quantity_change, to_organization_id, from_organization_id')
+        .select('id, variant_id, quantity_change, to_organization_id, from_organization_id, movement_type, notes')
         .eq('reference_no', orderNo)
 
       if (snapshotError2) {
         console.error('❌ Error fetching stock movements by reference_no:', snapshotError2)
       } else {
+        console.log(`Found ${movementsByNo?.length || 0} movements by reference_no`)
         movementsByNo?.forEach(row => {
           if (row?.id && !movementSnapshotMap.has(row.id)) {
             movementSnapshotMap.set(row.id, row as StockMovementSnapshot)
@@ -239,6 +271,11 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
         })
       }
     }
+    
+    console.log(`📸 Total unique movements captured for rollback: ${movementSnapshotMap.size}`)
+    movementSnapshotMap.forEach((m, id) => {
+      console.log(`  - Movement ${id}: Type=${m.movement_type}, Qty=${m.quantity_change}, Notes=${m.notes}`)
+    })
 
     // First attempt: Delete by reference_id (UUID)
     const { error: movementsError1, count: movementsCount1 } = await supabase
@@ -273,29 +310,68 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
 
     // Apply inverse adjustments to product_inventory
     const inventoryAdjustments = new Map<string, { variantId: string; orgId: string; delta: number }>()
+    const allocationAdjustments = new Map<string, { variantId: string; orgId: string; delta: number }>()
 
     movementSnapshotMap.forEach(snapshot => {
       if (!snapshot?.variant_id || typeof snapshot.quantity_change !== 'number') {
         return
       }
-      const targetOrg = snapshot.quantity_change >= 0
+      // Resolve targetOrg with fallback for allocation
+      let targetOrg = snapshot.quantity_change >= 0
         ? snapshot.to_organization_id
         : snapshot.from_organization_id
 
+      const isAllocation = 
+        snapshot.movement_type?.toLowerCase() === 'allocation' || 
+        snapshot.movement_type?.toLowerCase() === 'deallocation' ||
+        (snapshot.notes && snapshot.notes.toLowerCase().includes('allocation'))
+
+      if (isAllocation && !targetOrg) {
+        targetOrg = snapshot.from_organization_id || snapshot.to_organization_id
+      }
+
       if (!targetOrg) {
+        console.warn(`⚠️ Skipping movement ${snapshot.id}: No target organization found.`)
         return
       }
 
       const key = `${snapshot.variant_id}:${targetOrg}`
-      const existing = inventoryAdjustments.get(key)
-      const newDelta = (existing?.delta ?? 0) + snapshot.quantity_change
-      inventoryAdjustments.set(key, {
-        variantId: snapshot.variant_id,
-        orgId: targetOrg,
-        delta: newDelta
-      })
+      
+      if (isAllocation) {
+        // Normalize delta to ensure consistent sign convention (New Logic: Allocation is negative, Deallocation is positive)
+        let normalizedDelta = snapshot.quantity_change
+        const type = snapshot.movement_type?.toLowerCase()
+
+        if (type === 'allocation' && normalizedDelta > 0) {
+          console.log(`  -> Normalizing positive allocation to negative: ${normalizedDelta} -> ${-normalizedDelta}`)
+          normalizedDelta = -normalizedDelta
+        } else if (type === 'deallocation' && normalizedDelta < 0) {
+          console.log(`  -> Normalizing negative deallocation to positive: ${normalizedDelta} -> ${-normalizedDelta}`)
+          normalizedDelta = -normalizedDelta
+        }
+
+        const existing = allocationAdjustments.get(key)
+        const newDelta = (existing?.delta ?? 0) + normalizedDelta
+        allocationAdjustments.set(key, {
+          variantId: snapshot.variant_id,
+          orgId: targetOrg,
+          delta: newDelta
+        })
+        console.log(`  -> Identified as ALLOCATION adjustment. Key=${key}, RawDelta=${snapshot.quantity_change}, NormDelta=${normalizedDelta}, NewTotal=${newDelta}`)
+      } else {
+        // Other movements affect quantity_on_hand
+        const existing = inventoryAdjustments.get(key)
+        const newDelta = (existing?.delta ?? 0) + snapshot.quantity_change
+        inventoryAdjustments.set(key, {
+          variantId: snapshot.variant_id,
+          orgId: targetOrg,
+          delta: newDelta
+        })
+        console.log(`  -> Identified as ON-HAND adjustment. Key=${key}, Delta=${snapshot.quantity_change}, NewTotal=${newDelta}`)
+      }
     })
 
+    // Process On-Hand Adjustments
     for (const adjustment of inventoryAdjustments.values()) {
       const { variantId, orgId, delta } = adjustment
       try {
@@ -348,9 +424,10 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
           updated_at: new Date().toISOString()
         }
 
-        if (newQuantityAvailable !== null) {
-          updatePayload.quantity_available = newQuantityAvailable
-        }
+        // quantity_available is a generated column, do not update it manually
+        // if (newQuantityAvailable !== null) {
+        //   updatePayload.quantity_available = newQuantityAvailable
+        // }
 
         if (newUnitsOnHand !== null) {
           updatePayload.units_on_hand = newUnitsOnHand
@@ -375,7 +452,65 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
       }
     }
 
-    // 6. Delete order items
+    // Process Allocation Adjustments
+    for (const adjustment of allocationAdjustments.values()) {
+      const { variantId, orgId, delta } = adjustment
+      console.log(`Processing Allocation Adjustment: Variant=${variantId}, Org=${orgId}, Delta=${delta}`)
+      if (delta === 0) {
+        console.log('  -> Delta is 0, skipping.')
+        continue // No net change
+      }
+
+      try {
+        const { data: inventoryRow, error: inventoryFetchError } = await supabase
+          .from('product_inventory')
+          .select('id, quantity_allocated, quantity_available')
+          .eq('variant_id', variantId)
+          .eq('organization_id', orgId)
+          .maybeSingle()
+
+        if (inventoryFetchError || !inventoryRow) {
+          console.warn(`⚠️ Could not fetch inventory for allocation rollback: ${variantId} @ ${orgId}`)
+          continue
+        }
+
+        console.log(`  -> Current Inventory: Allocated=${inventoryRow.quantity_allocated}, Available=${inventoryRow.quantity_available}`)
+
+        // Allocation movements are negative (reducing available).
+        // Deallocation movements are positive (increasing available).
+        // delta is the sum of quantity_change of deleted movements.
+        
+        // If we delete an allocation (negative change), delta is negative.
+        // We want to REVERT the allocation:
+        // 1. Decrease quantity_allocated. (allocated + delta, since delta is negative)
+        // 2. Increase quantity_available. (available - delta, since delta is negative)
+        
+        const newAllocated = Math.max(0, (inventoryRow.quantity_allocated ?? 0) + delta)
+        const newAvailable = (inventoryRow.quantity_available ?? 0) - delta
+
+        console.log(`  -> New Values: Allocated=${newAllocated}, Available=${newAvailable}`)
+
+        const { error: updateError } = await supabase
+          .from('product_inventory')
+          .update({
+            quantity_allocated: newAllocated,
+            // quantity_available: newAvailable, // Generated column, do not update
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', inventoryRow.id)
+
+        if (updateError) {
+          console.error(`❌ Failed to update allocation for variant ${variantId} org ${orgId}`, updateError)
+        } else {
+          console.log(`🔄 Adjusted allocation for variant ${variantId} org ${orgId} by delta ${delta}`)
+        }
+
+      } catch (err) {
+        console.error(`❌ Exception adjusting allocation for variant ${variantId} org ${orgId}`, err)
+      }
+    }
+
+    // 7. Delete order items
     const { error: itemsError, count: itemsCount } = await supabase
       .from('order_items')
       .delete()
@@ -387,7 +522,7 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     }
     console.log(`✅ Deleted ${itemsCount || 0} order items`)
 
-    // 7. Finally, delete the order
+    // 8. Finally, delete the order
     const { error: orderError, count: orderCount } = await supabase
       .from('orders')
       .delete()

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -409,6 +410,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       // Fetch related data separately when not already provided by the view
       const variantIds = Array.from(new Set(data.map((item: any) => item.variant_id).filter(Boolean)))
       const orgIds = Array.from(new Set([
+        ...data.map((item: any) => item.from_organization_id),
         ...data.map((item: any) => item.to_organization_id),
         ...data.map((item: any) => item.manufacturer_id)
       ].filter(Boolean)))
@@ -426,6 +428,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       const needsOrgLookup = data.some(
         (item: any) =>
           (item.to_organization_id && !item.organization_name && !item.to_organization_name) ||
+          (item.from_organization_id && !item.organization_name) ||
           (item.manufacturer_id && !item.manufacturer_name && !item.manufacturer_org_name)
       )
       const needsUserLookup = data.some(
@@ -486,6 +489,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       // Transform the data with fetched relations
       const transformedData: StockMovement[] = (data || []).map((item: any) => {
         const variant = variantsMap.get(item.variant_id)
+        const fromOrg = orgsMap.get(item.from_organization_id)
         const toOrg = orgsMap.get(item.to_organization_id)
         const mfgOrg = orgsMap.get(item.manufacturer_id)
         const user = usersMap.get(item.created_by)
@@ -547,9 +551,21 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           return null
         })()
 
+        const quantityChange = Number(item.quantity_change ?? 0)
+
         const viewOrgName = item.organization_name || item.to_organization_name || null
         const viewOrgCode = item.organization_code || item.to_organization_code || null
         const organizations = (() => {
+          // Logic to determine which organization to display as "Location"
+          // If quantity is negative (outgoing), show FROM org
+          // If quantity is positive (incoming), show TO org
+          
+          if (quantityChange < 0) {
+             if (fromOrg) return fromOrg
+          } else {
+             if (toOrg) return toOrg
+          }
+
           if (viewOrgName || viewOrgCode) {
             return {
               org_name: viewOrgName ?? toOrg?.org_name ?? '',
@@ -559,6 +575,10 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
           if (toOrg) {
             return toOrg
+          }
+          
+          if (fromOrg) {
+            return fromOrg
           }
 
           return null
@@ -590,7 +610,6 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           return null
         })()
 
-        const quantityChange = Number(item.quantity_change ?? 0)
         const resolvedUnitCost = (() => {
           if (variantBaseCost !== null) return variantBaseCost
           const directCost = typeof item.unit_cost === 'number' && !Number.isNaN(item.unit_cost)
@@ -778,11 +797,22 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
   const getReasonText = (movement: StockMovement) => {
     if (movement.movement_type === 'order_fulfillment') {
-      const destination = movement.organizations?.org_name
-      if (destination) {
-        return `Shipment to ${destination}`
-      }
-      return 'Shipment to distributor'
+      // If quantity is negative, it's outgoing (from Warehouse). We want to show destination.
+      // But movement.organizations now reflects the "Location" column, which is the Source (Warehouse) for negative qty.
+      // So we can't use movement.organizations.org_name here if we want to show destination.
+      
+      // However, the original logic was:
+      // const destination = movement.organizations?.org_name
+      // return `Order Fulfillment to ${destination}`
+      
+      // Since we changed movement.organizations to be the Source for negative qty, 
+      // we need another way to get the destination name if we want to display "to Destination".
+      // But we don't have the destination org name easily available in the transformed object unless we add it.
+      
+      // For now, let's just say "Order Fulfillment". 
+      // Or if we really want, we can try to use the distributor_order_no or similar context.
+      
+      return 'Order Fulfillment'
     }
 
     return movement.reason || ''

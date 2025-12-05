@@ -35,7 +35,9 @@ import ManufacturerScanViewV2 from '@/components/dashboard/views/qr-tracking/Man
 import WarehouseReceiveView from '@/components/dashboard/views/qr-tracking/WarehouseReceiveView'
 import WarehouseShipV2 from '@/components/dashboard/views/qr-tracking/WarehouseShipV2'
 import ConsumerScanView from '@/components/dashboard/views/qr-tracking/ConsumerScanView'
-import QRValidationView from '@/components/dashboard/views/qr-tracking/QRValidationView'
+
+import DistributorOrderView from '@/components/orders/DistributorOrderView'
+import ShopOrderView from '@/components/orders/ShopOrderView'
 // Consumer Engagement Components
 import LuckyDrawView from '@/components/dashboard/views/consumer-engagement/LuckyDrawView'
 import ConsumerActivationsView from '@/components/dashboard/views/consumer-engagement/ConsumerActivationsView'
@@ -143,8 +145,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <WarehouseReceiveView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'warehouse-ship-v2':
         return <WarehouseShipV2 userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'qr-validation':
-        return <QRValidationView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'distributor-order':
+        return <DistributorOrderView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'shop-order':
+        return <ShopOrderView userProfile={userProfile} onViewChange={handleViewChange} />
+
 
       // Consumer Engagement Views
       case 'journey-builder':

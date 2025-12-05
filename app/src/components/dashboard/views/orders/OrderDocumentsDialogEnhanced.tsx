@@ -288,6 +288,8 @@ export default function OrderDocumentsDialogEnhanced({
           .from('document_files')
           .select('file_url')
           .eq('document_id', docs.depositPayment.id)
+          .order('uploaded_at', { ascending: false })
+          .limit(1)
           .maybeSingle()
 
         if (depositFileError) {
@@ -305,6 +307,8 @@ export default function OrderDocumentsDialogEnhanced({
             .from('document_files')
             .select('file_url')
             .eq('document_id', docs.payment.id)
+            .order('uploaded_at', { ascending: false })
+            .limit(1)
             .maybeSingle()
 
           if (paymentFileError) {
@@ -328,6 +332,8 @@ export default function OrderDocumentsDialogEnhanced({
           .from('document_files')
           .select('file_url')
           .eq('document_id', docs.balancePaymentRequest.id)
+          .order('uploaded_at', { ascending: false })
+          .limit(1)
           .maybeSingle()
 
         if (balanceFileError) {
@@ -799,6 +805,7 @@ export default function OrderDocumentsDialogEnhanced({
               onTabChange={handleTabChange}
               use50_50Split={is50_50Split}
               depositPercentage={depositPercentage}
+              orderType={orderData?.order_type}
             />
 
             {/* Document Tabs */}
@@ -883,7 +890,7 @@ export default function OrderDocumentsDialogEnhanced({
                         ) : (
                           <>
                             <Download className="w-4 h-4 mr-2" />
-                            Download PDF
+                            Download PO PDF
                           </>
                         )}
                       </Button>
@@ -891,7 +898,8 @@ export default function OrderDocumentsDialogEnhanced({
 
                     {/* Show manufacturer document upload for seller (manufacturer) before acknowledgment */}
                     {documents.po.status === 'pending' && 
-                     documents.po.issued_to_org_id === userProfile.organization_id && (
+                     documents.po.issued_to_org_id === userProfile.organization_id && 
+                     orderData?.order_type === 'H2M' && (
                       <ManufacturerDocumentUpload
                         documentId={documents.po.id}
                         orderId={orderId}
@@ -955,7 +963,7 @@ export default function OrderDocumentsDialogEnhanced({
                       ) : (
                         <>
                           <Download className="w-4 h-4 mr-2" />
-                          Download PDF
+                          Download Invoice PDF
                         </>
                       )}
                     </Button>
@@ -1165,7 +1173,7 @@ export default function OrderDocumentsDialogEnhanced({
                         ) : (
                           <>
                             <Download className="w-4 h-4 mr-2" />
-                            Download PDF
+                            Download Deposit Invoice PDF
                           </>
                         )}
                       </Button>
@@ -1232,13 +1240,29 @@ export default function OrderDocumentsDialogEnhanced({
                     )}
 
                     {requiresPaymentProof && documents.depositInvoice.status === 'pending' && (
-                      <PaymentProofUpload
-                        documentId={documents.depositInvoice.id}
-                        orderId={orderId}
-                        companyId={orderData?.company_id}
-                        onUploadComplete={setPaymentProofUrl}
-                        existingFileUrl={paymentProofUrl}
-                      />
+                      userProfile.organization_id === orderData?.buyer_org_id ? (
+                        <PaymentProofUpload
+                          documentId={documents.depositInvoice.id}
+                          orderId={orderId}
+                          companyId={orderData?.company_id}
+                          onUploadComplete={setPaymentProofUrl}
+                          existingFileUrl={paymentProofUrl}
+                        />
+                      ) : (
+                        paymentProofUrl ? (
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <p className="text-sm text-green-800 font-medium">
+                              ✓ Payment proof has been uploaded by the Buyer.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                            <p className="text-sm text-amber-800 font-medium">
+                              ⏳ Waiting for Buyer (HQ) to upload payment proof.
+                            </p>
+                          </div>
+                        )
+                      )
                     )}
 
                     <AcknowledgeButton
@@ -1363,7 +1387,7 @@ export default function OrderDocumentsDialogEnhanced({
                         ) : (
                           <>
                             <Download className="w-4 h-4 mr-2" />
-                            Download PDF
+                            Download Deposit Payment PDF
                           </>
                         )}
                       </Button>
@@ -1432,7 +1456,7 @@ export default function OrderDocumentsDialogEnhanced({
                         ) : (
                           <>
                             <Download className="w-4 h-4 mr-2" />
-                            Download PDF
+                            Download Balance Request PDF
                           </>
                         )}
                       </Button>
@@ -1481,7 +1505,9 @@ export default function OrderDocumentsDialogEnhanced({
                   </div>
                 ) : (
                   <div className="text-center py-12 text-gray-500">
-                    Balance Payment Request will be auto-generated when production is completed
+                    {orderData?.order_type === 'D2H'
+                      ? 'Balance Payment Request will be auto-generated when the order is ready for final payment'
+                      : 'Balance Payment Request will be auto-generated when production is completed'}
                   </div>
                 )}
               </TabsContent>
@@ -1561,7 +1587,7 @@ export default function OrderDocumentsDialogEnhanced({
                         ) : (
                           <>
                             <Download className="w-4 h-4 mr-2" />
-                            Download PDF
+                            Download Balance Payment PDF
                           </>
                         )}
                       </Button>

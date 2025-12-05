@@ -18,6 +18,7 @@ import {
   User,
   Menu,
   X,
+  Store,
   ChevronDown,
   QrCode,
   Scan,
@@ -108,6 +109,26 @@ const navigationItems: MenuItem[] = [
           allowedOrgTypes: ['HQ', 'MANU', 'MFG', 'DIST', 'SHOP'],
           maxRoleLevel: 60
         }
+      },
+      {
+        id: 'distributor-order',
+        label: 'Distributor Order',
+        icon: ShoppingCart,
+        access: {
+          // Distributors, Warehouses, and HQ
+          allowedOrgTypes: ['DIST', 'WH', 'HQ'],
+          maxRoleLevel: 40
+        }
+      },
+      {
+        id: 'shop-order',
+        label: 'Shop Order',
+        icon: Store,
+        access: {
+          // HQ, Warehouses, and Distributors can create Shop orders
+          allowedOrgTypes: ['HQ', 'WH', 'DIST'],
+          maxRoleLevel: 40
+        }
       }
     ]
   },
@@ -155,16 +176,6 @@ const navigationItems: MenuItem[] = [
           // Warehouses and Distributors
           allowedOrgTypes: ['WH', 'DIST', 'HQ'],
           maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'qr-validation',
-        label: 'Validation Reports',
-        icon: ShieldCheck,
-        access: {
-          // HQ and admins only
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 20
         }
       }
     ]

@@ -249,51 +249,56 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       // Update batch status to 'printing' after download
       // AND update all QR codes (master + unique) to 'printed' status
       if (batch.status === 'generated') {
-        // Update batch status
-        const { error: updateError } = await supabase
-          .from('qr_batches')
-          .update({ 
-            status: 'printing',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', batch.id)
+        console.log('🔄 Updating batch status via RPC...')
+        
+        // Use RPC function to update everything in one transaction
+        // This is much faster and avoids timeouts with large datasets (e.g. 165k codes)
+        const { error: rpcError } = await supabase.rpc('mark_batch_as_printed', {
+          p_batch_id: batch.id
+        })
 
-        if (updateError) {
-          console.error('Failed to update batch status:', updateError)
+        if (rpcError) {
+          console.error('Failed to update batch status via RPC:', rpcError)
+          
+          // Fallback to individual updates if RPC fails (legacy method)
+          // Update batch status
+          const { error: updateError } = await supabase
+            .from('qr_batches')
+            .update({ 
+              status: 'printing',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', batch.id)
+
+          if (updateError) console.error('Fallback: Failed to update batch:', updateError)
+
+          // Update master codes
+          const { error: masterError } = await supabase
+            .from('qr_master_codes')
+            .update({ 
+              status: 'printed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('batch_id', batch.id)
+            .eq('status', 'generated')
+
+          if (masterError) console.error('Fallback: Failed to update master codes:', masterError)
+
+          // Update unique codes
+          if (batch.total_unique_codes > 0) {
+            const { error: uniqueError } = await supabase
+              .from('qr_codes')
+              .update({ 
+                status: 'printed',
+                updated_at: new Date().toISOString()
+              })
+              .eq('batch_id', batch.id)
+              .eq('status', 'generated')
+
+            if (uniqueError) console.error('Fallback: Failed to update unique codes:', uniqueError)
+          }
         } else {
-          console.log('✅ Batch status updated to "printing"')
-        }
-
-        // Update master codes to 'printed' status
-        const { error: masterError } = await supabase
-          .from('qr_master_codes')
-          .update({ 
-            status: 'printed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('batch_id', batch.id)
-          .eq('status', 'generated')
-
-        if (masterError) {
-          console.error('Failed to update master codes status:', masterError)
-        } else {
-          console.log('✅ Master codes updated to "printed"')
-        }
-
-        // Update unique codes to 'printed' status
-        const { error: uniqueError } = await supabase
-          .from('qr_codes')
-          .update({ 
-            status: 'printed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('batch_id', batch.id)
-          .eq('status', 'generated')
-
-        if (uniqueError) {
-          console.error('Failed to update unique codes status:', uniqueError)
-        } else {
-          console.log('✅ Unique codes updated to "printed"')
+          console.log('✅ Batch and codes updated to "printed" via RPC')
         }
 
         await loadBatches() // Refresh the batches list

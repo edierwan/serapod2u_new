@@ -67,13 +67,15 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const [sellerFilter, setSellerFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+  const [showOrderTypeDialog, setShowOrderTypeDialog] = useState(false)
   const supabase = createClient()
   const { toast } = useToast()
 
   // Extract unique sellers from orders
   const uniqueSellers = orders.reduce((acc, order) => {
-    if (order.seller_org && !acc.find(s => s.id === order.seller_org.id)) {
-      acc.push(order.seller_org)
+    const seller = order.seller_org
+    if (seller && !acc.find(s => s.id === seller.id)) {
+      acc.push(seller)
     }
     return acc
   }, [] as Array<{ id: string; org_name: string }>)
@@ -225,7 +227,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         description: scannedCount > 0
           ? `Order ${orderNo} and ALL related records (including ${scannedCount} scanned QR codes) have been permanently deleted.`
           : `Order ${orderNo} and all related records have been permanently deleted.`,
-        duration: 5000
       })
 
       // Reload orders
@@ -294,6 +295,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       if (error) throw error
 
+      // Inventory deduction is now handled by the orders_approve RPC for both D2H and S2D
+      
       toast({
         title: 'Order Approved',
         description: `Order ${orderNo} has been approved successfully. PO document has been generated.`,
@@ -342,8 +345,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // H2M: HQ Power Users can approve
     if (order.order_type === 'H2M' && userOrgType === 'HQ') return true
 
-    // D2H: HQ Power Users can approve
-    if (order.order_type === 'D2H' && userOrgType === 'HQ') return true
+    // D2H: HQ Power Users or Seller (Warehouse) can approve
+    if (order.order_type === 'D2H' && (userOrgType === 'HQ' || order.seller_org_id === userProfile.organization_id)) return true
 
     // S2D: Distributor (seller) Power Users can approve
     if (order.order_type === 'S2D' && order.seller_org_id === userProfile.organization_id) return true
@@ -367,8 +370,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   }
 
   const canCopyOrder = (order: Order): boolean => {
-    // Can copy orders from any status (excluding cancelled)
-    if (order.status === 'cancelled') return false
+    // Can copy orders from any status (excluding closed)
+    if (order.status === 'closed') return false
     
     // User must be from the buyer organization
     return order.buyer_org_id === userProfile.organization_id
@@ -415,7 +418,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       toast({
         title: 'Order Copied',
         description: `${orderNo} copied. You can now edit and submit as a new order.`,
-        duration: 3000,
       })
 
       // Navigate to create order view
@@ -428,7 +430,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         title: 'Copy Failed',
         description: error.message || 'Failed to copy order',
         variant: 'destructive',
-        duration: 5000,
       })
     } finally {
       setLoading(false)
@@ -444,9 +445,59 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   }, [statusFilter, searchQuery])
 
   const handleCreateOrder = () => {
-    // Navigate to create order view
+    // If H2M filter is selected, go directly to H2M order creation
+    if (typeFilter === 'H2M') {
+      if (onViewChange) {
+        onViewChange('create-order')
+      }
+      return
+    }
+
+    // If D2H filter is selected, go directly to D2H order creation
+    if (typeFilter === 'D2H') {
+      if (onViewChange) {
+        onViewChange('distributor-order')
+      }
+      return
+    }
+
+    // If S2D filter is selected, go directly to S2D order creation
+    if (typeFilter === 'S2D') {
+      if (onViewChange) {
+        onViewChange('shop-order')
+      }
+      return
+    }
+
+    // For distributors, warehouses, and HQ, show order type selection dialog
+    if (userProfile.organizations.org_type_code === 'DIST' || 
+        userProfile.organizations.org_type_code === 'WH' ||
+        userProfile.organizations.org_type_code === 'HQ') {
+      setShowOrderTypeDialog(true)
+      return
+    }
+    
+    // Navigate to create order view (regular flow)
     if (onViewChange) {
       onViewChange('create-order')
+    }
+  }
+
+  const handleOrderTypeSelection = (orderType: 'regular' | 'd2h' | 's2d') => {
+    setShowOrderTypeDialog(false)
+    
+    if (orderType === 'd2h') {
+      if (onViewChange) {
+        onViewChange('distributor-order')
+      }
+    } else if (orderType === 's2d') {
+      if (onViewChange) {
+        onViewChange('shop-order')
+      }
+    } else {
+      if (onViewChange) {
+        onViewChange('create-order')
+      }
     }
   }
 
@@ -1217,6 +1268,74 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           </div>
         )}
       </div>
+
+      {/* Order Type Selection Dialog */}
+      {showOrderTypeDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Select Order Type</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Choose the type of order you want to create:
+            </p>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => handleOrderTypeSelection('regular')}
+                className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <Store className="w-5 h-5 text-gray-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900">HQ Order to Manufacture (H2M)</h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Create a standard order (based on your organization type)
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleOrderTypeSelection('d2h')}
+                className="w-full p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <Building2 className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900">Order to HQ (D2H)</h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Order products from headquarters using distributor pricing (only products with available stock)
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleOrderTypeSelection('s2d')}
+                className="w-full p-4 border-2 border-green-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <ShoppingCart className="w-5 h-5 text-green-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900">Shop Order (S2D)</h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Create order for Shop from Distributor using retailer pricing (deducts from Distributor inventory)
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <Button
+                variant="ghost"
+                onClick={() => setShowOrderTypeDialog(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

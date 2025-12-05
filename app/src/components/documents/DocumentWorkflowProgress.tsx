@@ -21,9 +21,16 @@ interface DocumentWorkflowProgressProps {
   onTabChange?: (tab: string) => void
   use50_50Split?: boolean
   depositPercentage?: number
+  orderType?: string
 }
 
-export default function DocumentWorkflowProgress({ documents, onTabChange, use50_50Split = false, depositPercentage = 50 }: DocumentWorkflowProgressProps) {
+export default function DocumentWorkflowProgress({ 
+  documents, 
+  onTabChange, 
+  use50_50Split = false, 
+  depositPercentage = 50,
+  orderType
+}: DocumentWorkflowProgressProps) {
   const balancePercentage = 100 - depositPercentage
   // Define steps based on workflow type
   type Step = {
@@ -263,7 +270,9 @@ export default function DocumentWorkflowProgress({ documents, onTabChange, use50
       <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
         <p className="text-sm text-blue-900">
           <strong>Workflow:</strong> {use50_50Split 
-            ? `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Production Complete → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.` 
+            ? (orderType === 'D2H'
+                ? `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.`
+                : `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Production Complete → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.`)
             : 'Each document is automatically created when the previous one is acknowledged. The Receipt marks the completion of the order.'}
         </p>
       </div>

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import LoginForm from '@/components/auth/LoginForm'
 import { Package } from 'lucide-react'
@@ -63,24 +64,47 @@ export default async function LoginPage() {
     }
   }
 
-  const logError = (label: string, err: unknown) => {
-    if (err instanceof Error) {
-      console.error(label, { message: err.message, stack: err.stack })
-    } else {
-      console.error(label, err)
-    }
-  }
-
   try {
-    const { data: brandingData, error: brandingError } = await supabase.rpc('get_public_branding')
+    // Try to load branding using admin client to bypass RLS
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-    if (brandingError) {
-      throw brandingError
+    if (supabaseUrl && supabaseServiceKey) {
+      const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceKey)
+      
+      const { data: orgData, error: orgError } = await supabaseAdmin
+        .from('organizations')
+        .select('logo_url, settings, updated_at')
+        .eq('org_type_code', 'HQ')
+        .maybeSingle()
+
+      if (orgError) {
+        throw orgError
+      }
+      
+      if (orgData) {
+        const settings = (orgData.settings as any) || {}
+        applyBranding({
+          logoUrl: orgData.logo_url,
+          loginTitle: settings.loginTitle,
+          loginSubtitle: settings.loginSubtitle,
+          copyrightText: settings.copyrightText,
+          updatedAt: orgData.updated_at
+        })
+      }
+    } else {
+      // Fallback to RPC if service key is not available
+      const { data: brandingData, error: brandingError } = await supabase.rpc('get_public_branding')
+
+      if (brandingError) {
+        throw brandingError
+      }
+
+      applyBranding(brandingData)
     }
-
-    applyBranding(brandingData)
   } catch (error) {
-    logError('Failed to load branding settings', error)
+    // Log error but don't crash the page
+    console.warn('Failed to load branding settings, using defaults:', error instanceof Error ? error.message : 'Unknown error')
   }
 
   return (

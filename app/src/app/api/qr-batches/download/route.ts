@@ -71,14 +71,42 @@ export async function POST(request: NextRequest) {
   const downloadName = `QR_Batch_${orderNo || batch.id}.xlsx`
 
     // Increase timeout to 300 seconds (5 minutes) for Vercel/slower networks
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-      .from(BUCKET_NAME)
-      .createSignedUrl(storagePath, 300, {
-        download: downloadName
-      })
+    // Add retry logic for network stability
+    let signedUrlData = null
+    let signedUrlError = null
+    let attempts = 0
+    const maxAttempts = 3
+
+    while (attempts < maxAttempts) {
+      try {
+        const result = await supabase.storage
+          .from(BUCKET_NAME)
+          .createSignedUrl(storagePath, 300, {
+            download: downloadName
+          })
+        
+        signedUrlData = result.data
+        signedUrlError = result.error
+
+        if (!signedUrlError && signedUrlData?.signedUrl) {
+          break // Success
+        }
+        
+        // If we got an error object but no exception, log it and retry
+        console.warn(`Attempt ${attempts + 1} failed to create signed URL (error returned):`, signedUrlError)
+      } catch (e) {
+        console.warn(`Attempt ${attempts + 1} failed to create signed URL (exception):`, e)
+        // Only throw on the last attempt if we haven't succeeded
+      }
+      
+      attempts++
+      if (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts)) // Exponential backoff: 1s, 2s
+      }
+    }
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
-      console.error('Failed to create signed URL:', signedUrlError)
+      console.error('Failed to create signed URL after retries:', signedUrlError)
       return NextResponse.json({ error: 'Unable to create download link' }, { status: 500 })
     }
 

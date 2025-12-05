@@ -360,10 +360,12 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
               <label className="text-sm font-medium text-gray-700">Units Per Case</label>
               <p className="text-sm">{orderData.units_per_case || 100}</p>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">QR Buffer</label>
-              <p className="text-sm">{orderData.qr_buffer_percent || 10}%</p>
-            </div>
+            {orderData.order_type !== 'D2H' && (
+              <div>
+                <label className="text-sm font-medium text-gray-700">QR Buffer</label>
+                <p className="text-sm">{orderData.qr_buffer_percent || 10}%</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -454,14 +456,22 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                     <td className="px-4 py-3 text-sm text-right font-medium">{formatCurrency(item.line_total)}</td>
                   </tr>
                 ))}
+                {/* Grand Total Row */}
+                <tr className="bg-gray-50 font-bold">
+                  <td colSpan={3} className="px-4 py-3 text-right text-sm text-gray-900">Grand Total</td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-900">{formatNumber(totalQuantity)}</td>
+                  <td className="px-4 py-3 text-sm text-right"></td>
+                  <td className="px-4 py-3 text-sm text-right text-blue-600">{formatCurrency(subtotal)}</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </CardContent>
       </Card>
 
-      {/* QR Code Requirements - Full Width */}
-      <Card>
+      {/* QR Code Requirements - Full Width - Only for non-D2H orders */}
+      {orderData.order_type !== 'D2H' && (
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <QrCode className="w-5 h-5" />
@@ -571,6 +581,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
             </div>
           </CardContent>
         </Card>
+      )}
 
       {/* Order Documents Dialog */}
       {orderData && (

@@ -2058,11 +2058,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               Quantity
                             </label>
                             <Input
-                              type="number"
-                              value={item.qty}
-                              onChange={(e) => handleUpdateQuantity(item.variant_id, parseInt(e.target.value) || 0)}
-                              min="1"
+                              type="text"
+                              value={item.qty ? item.qty.toLocaleString() : ''}
+                              onChange={(e) => {
+                                // Remove commas and non-numeric characters
+                                const rawValue = e.target.value.replace(/,/g, '').replace(/\D/g, '')
+                                handleUpdateQuantity(item.variant_id, parseInt(rawValue) || 0)
+                              }}
                               className="text-sm"
+                              placeholder="0"
                             />
                             {useIndividualCases && item.qty > 0 && item.qty % (item.units_per_case || unitsPerCase) !== 0 && (() => {
                               const itemUnitsPerCase = item.units_per_case || unitsPerCase
@@ -2102,8 +2106,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             {useIndividualCases && item.qty % (item.units_per_case || unitsPerCase) !== 0 ? (
                               <>
                                 <span className="font-semibold">
-                                  {Math.floor(item.qty / (item.units_per_case || unitsPerCase))} full + 
-                                  {item.qty % (item.units_per_case || unitsPerCase)} units
+                                  {Math.floor(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} full + 
+                                  {(item.qty % (item.units_per_case || unitsPerCase)).toLocaleString()} units
                                 </span>
                                 {useIndividualCases && (
                                   <span className="text-xs text-amber-600 block mt-0.5">⚠ Will mix with other remainders</span>
@@ -2111,7 +2115,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               </>
                             ) : (
                               <>
-                                <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} cases</span>
+                                <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} cases</span>
                                 {useIndividualCases && (
                                   <span className="text-xs text-blue-600 block mt-0.5">({item.units_per_case || unitsPerCase}/case)</span>
                                 )}
@@ -2120,7 +2124,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           </div>
                           <div>
                             <span className="text-gray-500 block">Unique Units (with {qrBuffer}% buffer):</span>
-                            <span className="font-semibold">{Math.round(item.qty + (item.qty * qrBuffer / 100))} units</span>
+                            <span className="font-semibold">{Math.round(item.qty + (item.qty * qrBuffer / 100)).toLocaleString()} units</span>
                           </div>
                           <div>
                             <span className="text-gray-500 block">Line Total:</span>
@@ -2290,7 +2294,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           <span>{item.variant_name}</span>
                         </div>
                         <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>{item.qty} units • {Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} cases</span>
+                          <span>{item.qty.toLocaleString()} units • {Math.ceil(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} cases</span>
                           <span className="font-medium text-gray-700">
                             RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}
                           </span>
@@ -2313,7 +2317,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Unique QR:</span>
-                  <span className="font-medium">{totals.uniqueQR}</span>
+                  <span className="font-medium">{totals.uniqueQR.toLocaleString()}</span>
                 </div>
                 {enableRFID && (
                   <div className="flex justify-between">

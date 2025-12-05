@@ -47,6 +47,7 @@ interface InventoryItem {
   total_value: number | null
   manual_balance_qty?: number | null
   warehouse_location: string | null
+  updated_at?: string | null
 }
 
 interface InventoryViewProps {
@@ -67,8 +68,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [locations, setLocations] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [variants, setVariants] = useState<any[]>([])
-  const [sortColumn, setSortColumn] = useState<string | null>(null)
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [sortColumn, setSortColumn] = useState<string | null>('updated_at')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   
@@ -195,6 +196,10 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           aValue = a.total_value ?? 0
           bValue = b.total_value ?? 0
           break
+        case 'updated_at':
+          aValue = a.updated_at ? new Date(a.updated_at).getTime() : 0
+          bValue = b.updated_at ? new Date(b.updated_at).getTime() : 0
+          break
         default:
           return 0
       }
@@ -282,6 +287,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             average_cost,
             total_value,
             warehouse_location,
+            updated_at,
             product_variants (
               id,
               variant_code,
@@ -448,7 +454,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             item.manual_balance_qty !== undefined && item.manual_balance_qty !== null
               ? Number(item.manual_balance_qty)
               : null,
-          warehouse_location: item.warehouse_location ?? null
+          warehouse_location: item.warehouse_location ?? null,
+          updated_at: item.updated_at ?? null
         }
       })
 

@@ -396,7 +396,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
           transfer_no: transferNo,
           from_organization_id: fromWarehouse,
           to_organization_id: toWarehouse,
-          status: 'pending',
+          status: 'completed',
           items: transferItems.map(item => ({
             variant_id: item.variant_id,
             variant_name: item.variant_name,
@@ -417,9 +417,10 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
 
       const transferRecord: any = transfer
 
-      // Create stock movements for each item (transfer out from source)
+      // Create stock movements for each item
       for (const item of transferItems) {
-        const { error: movementError } = await supabase.rpc('record_stock_movement', {
+        // 1. Transfer Out (Source)
+        const { error: outError } = await supabase.rpc('record_stock_movement', {
           p_movement_type: 'transfer_out',
           p_variant_id: item.variant_id,
           p_organization_id: fromWarehouse,
@@ -436,9 +437,27 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
           p_created_by: userProfile.id
         } as any)
 
-        if (movementError) {
-          throw movementError
-        }
+        if (outError) throw outError
+
+        // 2. Transfer In (Destination)
+        const { error: inError } = await supabase.rpc('record_stock_movement', {
+          p_movement_type: 'transfer_in',
+          p_variant_id: item.variant_id,
+          p_organization_id: toWarehouse,
+          p_quantity_change: item.quantity,
+          p_unit_cost: item.unit_cost,
+          p_manufacturer_id: null,
+          p_warehouse_location: null,
+          p_reason: `Transfer from ${warehouses.find(w => w.id === fromWarehouse)?.org_name}`,
+          p_notes: `Transfer ${transferNo}`,
+          p_reference_type: 'transfer',
+          p_reference_id: transferRecord.id,
+          p_reference_no: transferNo,
+          p_company_id: userProfile.organizations.id,
+          p_created_by: userProfile.id
+        } as any)
+
+        if (inError) throw inError
       }
 
       toast({

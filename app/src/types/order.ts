@@ -6,7 +6,8 @@ export type OrderStatus =
   | 'draft' 
   | 'submitted' 
   | 'approved' 
-  | 'closed';
+  | 'closed'
+  | 'cancelled';
 
 export type OrderType = 
   | 'H2M' 

@@ -75,8 +75,10 @@ export async function GET(request: NextRequest) {
 
     // Generate new PDF
     console.log('📄 Generating new PDF...')
+    // Skip internal upload in generation function, we handle it here with service role
     const { buffer, filename } = await generatePdfForOrderDocument(orderId, type, {
-      documentId
+      documentId,
+      skipUpload: true 
     })
 
     // Cache the generated PDF if documentId is provided
@@ -86,6 +88,15 @@ export async function GET(request: NextRequest) {
         const { createClient: createServiceClient } = await import('@supabase/supabase-js')
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
+
+        // Fetch company_id from order
+        const { data: orderData } = await supabase
+          .from('orders')
+          .select('company_id')
+          .eq('id', orderId)
+          .single()
+
+        const companyId = orderData?.company_id
 
         // Use service role client for storage operations (bypasses RLS)
         const serviceSupabase = createServiceClient(
@@ -121,7 +132,7 @@ export async function GET(request: NextRequest) {
               file_name: filename,
               file_size: buffer.length,
               mime_type: 'application/pdf',
-              company_id: null,
+              company_id: companyId,
               uploaded_by: user?.id
             })
           

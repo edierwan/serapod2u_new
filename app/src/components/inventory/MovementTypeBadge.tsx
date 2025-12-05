@@ -19,7 +19,7 @@ export default function MovementTypeBadge({ type }: MovementTypeBadgeProps) {
     'transfer_in': { label: 'Xfer↓', title: 'Transfer In' },
     'allocation': { label: 'Alloc', title: 'Allocated' },
     'deallocation': { label: 'Dealloc', title: 'Deallocated' },
-    'order_fulfillment': { label: 'Ship', title: 'Shipment' },
+    'order_fulfillment': { label: 'Order', title: 'Order Fulfillment' },
     'order_cancelled': { label: 'Cxl', title: 'Cancelled' },
     'manual_in': { label: 'M-In', title: 'Manual In' },
     'manual_out': { label: 'M-Out', title: 'Manual Out' },

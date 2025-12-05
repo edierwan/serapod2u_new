@@ -693,7 +693,8 @@ export class PDFGenerator {
       if (typeof window === 'undefined') {
         const fs = await import('fs/promises')
         const path = await import('path')
-        const logoPath = path.join(process.cwd(), 'docs', 'serapodlogo.png')
+        // Correct path: public/images/seralogo.png (relative to process.cwd())
+        const logoPath = path.join(process.cwd(), 'public', 'images', 'seralogo.png')
 
         try {
           const imageBuffer = await fs.readFile(logoPath)
@@ -703,10 +704,17 @@ export class PDFGenerator {
         } catch (fsError) {
           console.warn('Logo file missing or unreadable at', logoPath, fsError)
         }
+        // Do not fallback to fetch on server side with relative URL
+        // Fallback to text if image fails to load
+        this.doc.setFontSize(20)
+        this.doc.setFont('helvetica', 'bold')
+        this.doc.setTextColor(0, 0, 0)
+        this.doc.text('serapod', this.pageWidth / 2, yPosition, { align: 'center' })
+        return yPosition + 10
       }
 
       // Fallback to fetching via browser if needed (e.g., client-side rendering)
-      const response = await fetch('/docs/serapodlogo.png', { cache: 'no-store' })
+      const response = await fetch('/images/seralogo.png', { cache: 'no-store' })
       if (response.ok) {
         const blob = await response.blob()
         const reader = new FileReader()
@@ -887,23 +895,23 @@ export class PDFGenerator {
 
     // Prepare table data
     const tableData = orderData.order_items.map((item, index) => {
-      // Combine product name with variant name
-      let description = item.product?.product_name || 'Product'
-      if (item.variant?.variant_name) {
-        description += ` ${item.variant.variant_name}`
-      }
+      // Column 2: Product Name
+      const productName = item.product?.product_name || 'Product'
+      
+      // Column 3: Variant Name
+      const variantName = item.variant?.variant_name || ''
 
-      const qtyUnits = `${item.qty || 0} units`
+      const qtyUnits = Number(item.qty || 0).toLocaleString()
       const qtyCases = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
       
       return [
         (index + 1).toString(),
-        item.product?.product_code || 'N/A',
-        description,
+        productName,
+        variantName,
         qtyUnits,
         qtyCases.toString(),
         this.formatCurrency(item.unit_price || 0),
-        this.formatCurrency(item.line_total || 0)
+        (item.line_total || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       ]
     })
 
@@ -911,12 +919,12 @@ export class PDFGenerator {
       startY: y,
       head: [[
         '#',
-        'Product Code',
+        'Product Name',
         'Description',
         'Qty Units',
         'Qty Cases',
         'Unit (RM)',
-        'Line Total (RM)'
+        'Total (RM)'
       ]],
       body: tableData,
       theme: 'grid',
@@ -941,7 +949,7 @@ export class PDFGenerator {
         3: { cellWidth: 26, halign: 'right' },
         4: { cellWidth: 20, halign: 'right' },
         5: { cellWidth: 19, halign: 'right' },
-        6: { cellWidth: 19, halign: 'right' }
+        6: { cellWidth: 19, halign: 'right', fontSize: 7 }
       },
       margin: { left: this.margin, right: this.margin },
       tableWidth: this.pageWidth - 2 * this.margin
@@ -1420,11 +1428,11 @@ export class PDFGenerator {
 
     // PO Information Table
     const poInfo = [
-      { label: 'PO Number', value: orderData.order_no },
-      { label: 'PO Date', value: this.formatDate(orderData.created_at) },
-      { label: 'Status', value: orderData.status.toUpperCase() },
-      { label: 'Estimated ETA', value: orderData.estimated_eta || 'TBD' },
-      { label: 'Payment Terms', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
+      { label: 'PO Number', value: `   ${orderData.order_no}` },
+      { label: 'PO Date', value: `   ${this.formatDate(orderData.created_at)}` },
+      { label: 'Status', value: `   ${orderData.status.toUpperCase()}` },
+      { label: 'Estimated ETA', value: `   ${orderData.estimated_eta || 'TBD'}` },
+      { label: 'Payment Terms', value: `   ${this.formatPaymentTermsLabel(orderData.payment_terms)}` },
       { label: '', value: '' }
     ]
     y = this.addInfoTable(poInfo, y, 2)
@@ -1434,9 +1442,6 @@ export class PDFGenerator {
 
     // Order Lines Section
     y = this.addOrderLinesSection(orderData, y)
-
-    // Notes Section
-    y = this.addNotesSection(y)
 
     // Summary Section
     y = this.addSummarySection(orderData, y)
@@ -1460,11 +1465,11 @@ export class PDFGenerator {
 
     // PO Information Table
     const poInfo = [
-      { label: 'PO Number', value: documentData.doc_no },
-      { label: 'PO Date', value: this.formatDate(documentData.created_at) },
-      { label: 'Status', value: documentData.status.toUpperCase() },
-      { label: 'Estimated ETA', value: documentData.estimated_eta || '30 Oct 2025' },
-      { label: 'Payment Terms', value: documentData.payment_terms || '50% upfront, 50% upon delivery' },
+      { label: 'PO Number', value: `   ${documentData.doc_no}` },
+      { label: 'PO Date', value: `   ${this.formatDate(documentData.created_at)}` },
+      { label: 'Status', value: `   ${documentData.status.toUpperCase()}` },
+      { label: 'Estimated ETA', value: `   ${documentData.estimated_eta || '30 Oct 2025'}` },
+      { label: 'Payment Terms', value: `   ${this.formatPaymentTermsLabel(orderData.payment_terms)}` },
       { label: '', value: '' }
     ]
     y = this.addInfoTable(poInfo, y, 2)
@@ -1474,9 +1479,6 @@ export class PDFGenerator {
 
     // Order Lines Section
     y = this.addOrderLinesSection(orderData, y)
-
-    // Notes Section
-    y = this.addNotesSection(y)
 
     // Summary Section
     y = this.addSummarySection(orderData, y)
