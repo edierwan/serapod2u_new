@@ -283,7 +283,7 @@ export async function GET(request: NextRequest) {
         await supabase
           .from('qr_batches')
           .update({ 
-            status: 'completed',
+            status: 'generated',
             processing_finished_at: new Date().toISOString()
           })
           .eq('id', batch.id)
@@ -299,7 +299,7 @@ export async function GET(request: NextRequest) {
       await supabase
         .from('qr_batches')
         .update({ 
-          status: 'completed',
+          status: 'generated',
           processing_finished_at: new Date().toISOString()
         })
         .eq('id', batch.id)
