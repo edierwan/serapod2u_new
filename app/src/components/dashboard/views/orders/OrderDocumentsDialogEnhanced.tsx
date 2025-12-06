@@ -120,11 +120,11 @@ export default function OrderDocumentsDialogEnhanced({
   }, [initialTab])
 
   useEffect(() => {
-    loadData()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId])
+    // Only load data when dialog is open
+    if (open && orderId) {
+      loadData()
+    }
+  }, [orderId, open])
 
   async function loadData() {
     try {
@@ -769,6 +769,8 @@ export default function OrderDocumentsDialogEnhanced({
     }).format(amount)
   }
 
+  if (!open) return null
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -779,8 +781,6 @@ export default function OrderDocumentsDialogEnhanced({
       </div>
     )
   }
-
-  if (!open) return null
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
@@ -1438,7 +1438,7 @@ export default function OrderDocumentsDialogEnhanced({
 
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <p className="text-sm text-blue-900">
-                        <strong>ℹ️ Auto-Generated:</strong> This balance payment request was automatically created when products were received at the warehouse.
+                        <strong>ℹ️ Auto-Generated:</strong> This balance payment request was automatically created when production was marked as complete.
                       </p>
                     </div>
 

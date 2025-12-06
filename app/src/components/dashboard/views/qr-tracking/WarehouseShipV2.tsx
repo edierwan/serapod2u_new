@@ -624,22 +624,22 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             )
           )
         `)
-        .eq('order_type', 'D2H')
+        .in('order_type', ['D2H', 'S2D'])
         .eq('buyer_org_id', distributorId)
         .eq('seller_org_id', userProfile.organization_id)
-        .in('status', ['approved', 'closed'])
+        .in('status', ['warehouse_packed', 'approved', 'closed'])
         .order('created_at', { ascending: false })
         .limit(5)
 
       if (orderError) {
-        console.warn('⚠️  Could not check for D2H orders:', orderError)
+        console.warn('⚠️  Could not check for D2H/S2D orders:', orderError)
       }
 
-      console.log(`📊 Found ${d2hOrders?.length || 0} D2H orders`)
+      console.log(`📊 Found ${d2hOrders?.length || 0} D2H/S2D orders`)
 
       if (d2hOrders && d2hOrders.length > 0) {
-        // SCENARIO 2: D2H Order exists - calculate expected quantities from order
-        console.log('✅ SCENARIO 2: D2H Order flow - System knows expected quantities')
+        // SCENARIO 2: D2H/S2D Order exists - calculate expected quantities from order
+        console.log('✅ SCENARIO 2: Order flow - System knows expected quantities')
         
         // Use the most recent approved order
         const sourceOrder = d2hOrders[0]
@@ -1784,13 +1784,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         console.log('✅ Manual stock shipment processed', manualResult)
       }
 
-      // Step 2: Confirm QR shipment via dedicated API (handles movement + inventory)
-      if (qrCodes.length > 0) {
+      // Step 2: Confirm shipment via dedicated API (handles QR movement + session closure + order status)
+      // We call this if we have QR codes OR if we have a session that needs closing (e.g. manual only linked to order)
+      if (qrCodes.length > 0 || (sessionId && manualQty > 0)) {
         if (!sessionId) {
           throw new Error('Active shipment session not found. Please reselect the distributor and try again.')
         }
 
-        console.log('📦 Confirming QR shipment via API…', { sessionId, qrCount: qrCodes.length })
+        console.log('📦 Confirming shipment via API…', { sessionId, qrCount: qrCodes.length, manualQty })
 
         const response = await fetch('/api/warehouse/confirm-shipment', {
           method: 'POST',
@@ -1804,14 +1805,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         const result = await response.json()
 
         if (!response.ok) {
-          throw new Error(result.error || 'Failed to confirm QR shipment')
+          throw new Error(result.error || 'Failed to confirm shipment')
         }
 
         qrShippedCount = result.details?.unique_codes_shipped ?? qrCodes.length
         masterCasesShipped = result.details?.master_cases_shipped ?? 0
 
-        console.log('✅ QR shipment confirmed via API', result.details)
-        // Manual succeeded and QR succeeded, no rollback needed
+        console.log('✅ Shipment confirmed via API', result.details)
+        // Manual succeeded and API succeeded, no rollback needed
         manualMovementId = null
       }
 

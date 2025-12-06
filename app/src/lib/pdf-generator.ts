@@ -463,7 +463,9 @@ export class PDFGenerator {
     const normalized = mode.toString().toLowerCase()
     switch (normalized) {
       case 'on_first_receive':
-        return 'Auto-triggered on first warehouse receive scan'
+        return 'Auto-triggered when production complete'
+      case 'on_production_complete':
+        return 'Auto-triggered when production complete'
       case 'on_all_receive':
         return 'Triggered after all warehouse receives are completed'
       case 'manual':

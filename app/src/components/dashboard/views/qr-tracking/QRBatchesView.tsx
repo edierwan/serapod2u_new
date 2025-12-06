@@ -335,17 +335,24 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       if (batch.status === 'generated') {
         console.log('🔄 Updating batch status via RPC...')
         
-        // Use RPC function to update everything in one transaction
-        // This is much faster and avoids timeouts with large datasets (e.g. 165k codes)
-        const { error: rpcError } = await supabase.rpc('mark_batch_as_printed', {
+        // Use RPC function to update everything in chunks
+        // This handles large datasets efficiently with internal batching
+        const { data: rpcData, error: rpcError } = await supabase.rpc('mark_batch_as_printed', {
           p_batch_id: batch.id
         })
 
         if (rpcError) {
-          console.error('Failed to update batch status via RPC:', JSON.stringify(rpcError))
+          console.error('Failed to update batch status via RPC:', {
+            message: rpcError.message,
+            code: rpcError.code,
+            details: rpcError.details,
+            hint: rpcError.hint
+          })
           
-          // Fallback to individual updates if RPC fails (legacy method)
-          // Update batch status
+          // Fallback to client-side chunked updates if RPC fails
+          console.warn('⚠️ Falling back to client-side chunked updates...')
+          
+          // Update batch status first (fast operation)
           const { error: updateError } = await supabase
             .from('qr_batches')
             .update({ 
@@ -354,9 +361,13 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             })
             .eq('id', batch.id)
 
-          if (updateError) console.error('Fallback: Failed to update batch:', updateError)
+          if (updateError) {
+            console.error('Fallback: Failed to update batch:', updateError)
+          } else {
+            console.log('✅ Batch status updated')
+          }
 
-          // Update master codes
+          // Update master codes (typically small number, can do in one go)
           const { error: masterError } = await supabase
             .from('qr_master_codes')
             .update({ 
@@ -366,44 +377,87 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             .eq('batch_id', batch.id)
             .eq('status', 'generated')
 
-          if (masterError) console.error('Fallback: Failed to update master codes:', masterError)
+          if (masterError) {
+            console.error('Fallback: Failed to update master codes:', masterError)
+          } else {
+            console.log('✅ Master codes updated')
+          }
 
-          // Update unique codes
+          // Update unique codes with optimized chunking
           if (batch.total_unique_codes > 0) {
-            // Try chunked update to avoid timeouts with large datasets
-            // We iterate through cases to break down the update
-            const totalCases = batch.total_master_codes || Math.ceil(batch.total_unique_codes / 100)
-            const CHUNK_SIZE = 50 // Update 50 cases at a time (approx 5000-6000 codes)
-            let hasError = false
+            const CHUNK_SIZE = 500 // Update 500 codes at a time (safe batch size)
+            let totalUpdated = 0
+            let chunkIndex = 0
+            
+            console.log(`Fallback: Updating ${batch.total_unique_codes} unique codes in chunks of ${CHUNK_SIZE}...`)
 
-            console.log(`Fallback: Updating unique codes in chunks (Total cases: ${totalCases})...`)
+            // Use limit-offset pagination for reliable chunking
+            while (true) {
+              const offset = chunkIndex * CHUNK_SIZE
+              
+              // First, get the IDs of codes to update in this chunk
+              const { data: codesToUpdate, error: fetchError } = await supabase
+                .from('qr_codes')
+                .select('id')
+                .eq('batch_id', batch.id)
+                .eq('status', 'generated')
+                .range(offset, offset + CHUNK_SIZE - 1)
 
-            for (let i = 1; i <= totalCases; i += CHUNK_SIZE) {
-              const { error: chunkError } = await supabase
+              if (fetchError) {
+                console.error(`Fallback: Failed to fetch chunk ${chunkIndex + 1}:`, fetchError)
+                break
+              }
+
+              if (!codesToUpdate || codesToUpdate.length === 0) {
+                console.log(`✅ All unique codes updated (${totalUpdated} total)`)
+                break
+              }
+
+              // Update this chunk by IDs
+              const { error: chunkError, count } = await supabase
                 .from('qr_codes')
                 .update({ 
                   status: 'printed',
                   updated_at: new Date().toISOString()
                 })
-                .eq('batch_id', batch.id)
-                .eq('status', 'generated')
-                .gte('case_number', i)
-                .lt('case_number', i + CHUNK_SIZE)
+                .in('id', codesToUpdate.map(c => c.id))
+                .eq('status', 'generated') // Double-check status to avoid race conditions
 
               if (chunkError) {
-                console.error(`Fallback: Failed to update unique codes chunk ${i}-${i + CHUNK_SIZE}:`, chunkError)
-                hasError = true
+                console.error(`Fallback: Failed to update chunk ${chunkIndex + 1} (offset ${offset}):`, chunkError)
+                // Continue with next chunk despite error
+              } else {
+                totalUpdated += codesToUpdate.length
+                console.log(`Chunk ${chunkIndex + 1}: Updated ${codesToUpdate.length} codes (${totalUpdated}/${batch.total_unique_codes})`)
               }
-            }
 
-            if (hasError) {
-               console.error('Fallback: Some chunks failed to update')
-            } else {
-               console.log('✅ Unique codes updated in chunks')
+              chunkIndex++
+              
+              // Safety limit: max 1000 chunks (500k codes)
+              if (chunkIndex >= 1000) {
+                console.warn('Reached maximum chunk limit, stopping updates')
+                break
+              }
             }
           }
         } else {
-          console.log('✅ Batch and codes updated to "printed" via RPC')
+          // RPC succeeded, check the response
+          if (rpcData?.success) {
+            console.log('✅ Batch and codes updated via RPC:', {
+              batchUpdated: rpcData.batch_updated,
+              masterCodes: rpcData.master_codes_updated,
+              uniqueCodes: rpcData.unique_codes_updated
+            })
+          } else if (rpcData?.error) {
+            console.error('RPC returned error:', rpcData.error)
+            console.warn('Partial update occurred:', {
+              batchUpdated: rpcData.batch_updated,
+              masterCodes: rpcData.master_codes_updated,
+              uniqueCodes: rpcData.unique_codes_updated
+            })
+          } else {
+            console.log('✅ Batch and codes updated to "printed" via RPC')
+          }
         }
 
         await loadBatches() // Refresh the batches list

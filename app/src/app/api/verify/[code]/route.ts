@@ -364,20 +364,7 @@ async function handleProductCodeVerification(
     return buildInvalidResponse('This QR code has been deactivated by the manufacturer.')
   }
 
-  const status = qrCode.status as string | null
-
-  console.log('🔍 Status check:', status, 'Valid statuses:', Array.from(PRODUCT_CONSUMER_READY_STATUSES))
-
-  if (!status || !PRODUCT_CONSUMER_READY_STATUSES.has(status)) {
-    console.log('❌ Status not in valid set')
-    return buildInvalidResponse(
-      'This QR code has not been activated yet. The product is still in the manufacturing or warehouse stage.',
-      status
-    )
-  }
-
-  console.log('✅ Status is valid!')
-  
+  // Resolve order info first to check organization settings
   let order = qrCode.order as OrderInfo | null
 
   if (!order && qrCode.order_id) {
@@ -395,6 +382,40 @@ async function handleProductCodeVerification(
       order = orderRow as OrderInfo
     }
   }
+
+  // Fetch organization settings to determine activation trigger
+  let activationTrigger = 'shipped_distributor' // Default
+  
+  if (order?.company_id) {
+     const { data: orgData } = await supabaseAdmin
+       .from('organizations')
+       .select('settings')
+       .eq('id', order.company_id)
+       .single()
+     
+     if (orgData?.settings?.journey_builder_activation) {
+       activationTrigger = orgData.settings.journey_builder_activation
+     }
+  }
+
+  const validStatuses = new Set(PRODUCT_CONSUMER_READY_STATUSES)
+  if (activationTrigger === 'shipped_distributor') {
+     validStatuses.delete('received_warehouse')
+  }
+
+  const status = qrCode.status as string | null
+
+  console.log('🔍 Status check:', status, 'Valid statuses:', Array.from(validStatuses))
+
+  if (!status || !validStatuses.has(status)) {
+    console.log('❌ Status not in valid set')
+    return buildInvalidResponse(
+      'This QR code has not been activated yet. The product is still in the manufacturing or warehouse stage.',
+      status
+    )
+  }
+
+  console.log('✅ Status is valid!')
 
   if (!order) {
     console.warn('QR code missing order linkage:', code)

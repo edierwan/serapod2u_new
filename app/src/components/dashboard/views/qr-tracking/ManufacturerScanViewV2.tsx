@@ -534,13 +534,20 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       return
     }
 
-    // Stop polling if batch is 100% complete
+    // Stop polling if batch is 100% complete or status is completed
     const isComplete = currentBatchProgress.is_complete || 
+                       currentBatchProgress.batch_status === 'completed' ||
                        (currentBatchProgress.master_progress_percentage >= 100 && 
                         currentBatchProgress.unique_progress_percentage >= 100)
     
     if (isComplete) {
       console.log('✅ Batch is complete - stopping auto-refresh')
+      return
+    }
+
+    // Only start polling if auto-refresh is enabled
+    if (!autoRefreshEnabled) {
+      console.log('⏸️ Auto-refresh is paused by user')
       return
     }
 
@@ -550,7 +557,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       // Double-check conditions before each refresh
       const currentTimeSinceActivity = Date.now() - lastActivityTime
       if (currentTimeSinceActivity > INACTIVITY_TIMEOUT) {
-        console.log('� [POLLING TICK] User inactive - skipping refresh')
+        console.log('💤 [POLLING TICK] User inactive - skipping refresh')
         return
       }
 
@@ -570,7 +577,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       console.log('🛑 [POLLING CLEANUP] Stopping batch progress auto-refresh, clearing interval:', intervalId)
       clearInterval(intervalId)
     }
-  }, [selectedOrder, isPageVisible, lastActivityTime, currentBatchProgress?.is_complete]) // Smart dependencies
+  }, [selectedOrder, isPageVisible, autoRefreshEnabled]) // Fixed dependencies - removed lastActivityTime and currentBatchProgress to prevent constant restarts
 
   const loadOrders = async () => {
     try {

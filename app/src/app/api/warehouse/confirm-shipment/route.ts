@@ -774,6 +774,27 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Session updated to approved status')
 
+    // Update linked order status if exists
+    if (session.source_order_id) {
+      console.log('🔄 Updating linked order status:', session.source_order_id)
+      const { error: orderUpdateError } = await supabase
+        .from('orders')
+        .update({ 
+          status: 'shipped_distributor',
+          updated_at: shippedAt,
+          updated_by: user_id
+        })
+        .eq('id', session.source_order_id)
+        .eq('status', 'warehouse_packed') // Only update if currently warehouse_packed
+
+      if (orderUpdateError) {
+        console.error('❌ Error updating linked order status:', orderUpdateError)
+        // Don't fail the whole request, just log it
+      } else {
+        console.log('✅ Linked order updated to shipped_distributor')
+      }
+    }
+
     // ===== INVENTORY FLOW =====
     // 1. WMS function called FIRST with ALL QR codes → creates ONE consolidated movement
     // 2. QR status updated AFTER → triggers fire but dedup prevents duplicate movements

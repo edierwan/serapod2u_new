@@ -565,10 +565,10 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         throw new Error(`Failed to add products to order: ${itemsError.message}`)
       }
 
-      // Update order status to submitted
+      // Update order status to warehouse_packed
       const { error: updateError } = await supabase
         .from('orders')
-        .update({ status: 'submitted' })
+        .update({ status: 'warehouse_packed' })
         .eq('id', order.id)
 
       if (updateError) {

@@ -89,6 +89,7 @@ interface OrganizationSettings {
   country_code: string
   require_payment_proof: boolean
   logo_url: string | null
+  journey_builder_activation: 'shipped_distributor' | 'received_warehouse'
 }
 
 export default function SettingsView({ userProfile }: SettingsViewProps) {
@@ -99,6 +100,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [rawSettings, setRawSettings] = useState<any>({})
   const [userSettings, setUserSettings] = useState<UserSettings>({
     full_name: '',
     phone_number: '',
@@ -122,7 +124,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     postal_code: '',
     country_code: 'MY',
     require_payment_proof: true,
-    logo_url: null
+    logo_url: null,
+    journey_builder_activation: 'shipped_distributor'
   })
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -184,6 +187,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
       if (orgError) throw orgError
 
+      setRawSettings(orgData.settings || {})
+
       setOrgSettings({
         org_name: orgData.org_name || '',
         org_name_short: orgData.org_code || userProfile.organizations.org_code,
@@ -198,7 +203,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         postal_code: orgData.postal_code || '',
         country_code: orgData.country_code || 'MY',
         require_payment_proof: orgData.settings?.require_payment_proof ?? true,
-        logo_url: orgData.logo_url || null
+        logo_url: orgData.logo_url || null,
+        journey_builder_activation: orgData.settings?.journey_builder_activation || 'shipped_distributor'
       })
       
       // Set initial logo preview
@@ -259,7 +265,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
           .from('organizations')
           .update({
             settings: {
-              require_payment_proof: orgSettings.require_payment_proof
+              ...rawSettings,
+              require_payment_proof: orgSettings.require_payment_proof,
+              journey_builder_activation: orgSettings.journey_builder_activation
             },
             updated_at: new Date().toISOString()
           })
@@ -326,7 +334,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
           country_code: orgSettings.country_code || null,
           logo_url: logoUrl,
           settings: {
-            require_payment_proof: orgSettings.require_payment_proof
+            ...rawSettings,
+            require_payment_proof: orgSettings.require_payment_proof,
+            journey_builder_activation: orgSettings.journey_builder_activation
           },
           is_active: true,
           updated_at: new Date().toISOString()
@@ -1566,76 +1576,125 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
         {/* Preferences Settings */}
         {activeTab === 'preferences' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>System Preferences</CardTitle>
-              <CardDescription>
-                Customize your system experience and regional settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="timezone">Timezone</Label>
-                  <Select 
-                    value={userSettings.timezone} 
-                    onValueChange={(value) => setUserSettings({...userSettings, timezone: value})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur (GMT+8)</SelectItem>
-                      <SelectItem value="Asia/Singapore">Asia/Singapore (GMT+8)</SelectItem>
-                      <SelectItem value="Asia/Jakarta">Asia/Jakarta (GMT+7)</SelectItem>
-                      <SelectItem value="Asia/Bangkok">Asia/Bangkok (GMT+7)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="language">Language</Label>
-                  <Select 
-                    value={userSettings.language} 
-                    onValueChange={(value) => setUserSettings({...userSettings, language: value})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="en">English</SelectItem>
-                      <SelectItem value="ms">Bahasa Malaysia</SelectItem>
-                      <SelectItem value="zh">中文</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="theme">Theme</Label>
-                  <Select 
-                    value={theme} 
-                    onValueChange={(value) => {
-                      setTheme(value as 'light' | 'dark' | 'system')
-                      setUserSettings({...userSettings, theme: value})
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
-                      <SelectItem value="system">System</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button onClick={handleSaveProfile} disabled={loading}>
-                  <Save className="w-4 h-4 mr-2" />
-                  {loading ? 'Saving...' : 'Save Preferences'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <TabsComponent defaultValue="system" className="w-full">
+            <TabsList2 className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger2 value="system">System Preferences</TabsTrigger2>
+              <TabsTrigger2 value="journey">Journey Builder</TabsTrigger2>
+            </TabsList2>
+            
+            <TabsContent2 value="system">
+              <Card>
+                <CardHeader>
+                  <CardTitle>System Preferences</CardTitle>
+                  <CardDescription>
+                    Customize your system experience and regional settings
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="timezone">Timezone</Label>
+                      <Select 
+                        value={userSettings.timezone} 
+                        onValueChange={(value) => setUserSettings({...userSettings, timezone: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur (GMT+8)</SelectItem>
+                          <SelectItem value="Asia/Singapore">Asia/Singapore (GMT+8)</SelectItem>
+                          <SelectItem value="Asia/Jakarta">Asia/Jakarta (GMT+7)</SelectItem>
+                          <SelectItem value="Asia/Bangkok">Asia/Bangkok (GMT+7)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="language">Language</Label>
+                      <Select 
+                        value={userSettings.language} 
+                        onValueChange={(value) => setUserSettings({...userSettings, language: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en">English</SelectItem>
+                          <SelectItem value="ms">Bahasa Malaysia</SelectItem>
+                          <SelectItem value="zh">中文</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="theme">Theme</Label>
+                      <Select 
+                        value={theme} 
+                        onValueChange={(value) => {
+                          setTheme(value as 'light' | 'dark' | 'system')
+                          setUserSettings({...userSettings, theme: value})
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="light">Light</SelectItem>
+                          <SelectItem value="dark">Dark</SelectItem>
+                          <SelectItem value="system">System</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveNotifications} disabled={loading}>
+                      <Save className="w-4 h-4 mr-2" />
+                      {loading ? 'Saving...' : 'Save Preferences'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent2>
+
+            <TabsContent2 value="journey">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Journey Builder Settings</CardTitle>
+                  <CardDescription>
+                    Configure when customer journeys become active
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="journey-activation">Journey Activation Trigger</Label>
+                      <Select 
+                        value={orgSettings.journey_builder_activation} 
+                        onValueChange={(value: any) => setOrgSettings({...orgSettings, journey_builder_activation: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="shipped_distributor">Shipped to Distributor (Default)</SelectItem>
+                          <SelectItem value="received_warehouse">Received at Warehouse</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-gray-500">
+                        Determines the earliest status at which a product's journey becomes active for consumers.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveNotifications} disabled={loading}>
+                      <Save className="w-4 h-4 mr-2" />
+                      {loading ? 'Saving...' : 'Save Settings'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent2>
+          </TabsComponent>
         )}
 
         {/* Data Migration Tab - HQ Admin Only */}

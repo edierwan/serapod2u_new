@@ -31,7 +31,8 @@ import {
     Zap,
     Trophy,
     Heart,
-    ShoppingBag
+    ShoppingBag,
+    Building2
 } from 'lucide-react'
 import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
 import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
@@ -193,6 +194,23 @@ export default function JourneyDesignerV2({
     const headerRef = useRef<HTMLDivElement | null>(null)
     const [previewMetrics, setPreviewMetrics] = useState({ top: 104, maxHeight: 640 })
     const { toast } = useToast()
+    const [activationTrigger, setActivationTrigger] = useState<'shipped_distributor' | 'received_warehouse'>('shipped_distributor')
+
+    useEffect(() => {
+        const fetchOrgSettings = async () => {
+            const supabase = createClient()
+            const { data, error } = await supabase
+                .from('organizations')
+                .select('settings')
+                .eq('id', userProfile.organization_id)
+                .single()
+            
+            if (data?.settings?.journey_builder_activation) {
+                setActivationTrigger(data.settings.journey_builder_activation)
+            }
+        }
+        fetchOrgSettings()
+    }, [userProfile.organization_id])
 
     const [config, setConfig] = useState<JourneyConfig>({
         id: journey?.id,
@@ -275,6 +293,16 @@ export default function JourneyDesignerV2({
         async function checkShipmentStatus() {
             try {
                 setCheckingShipment(true)
+
+                // Determine valid statuses based on activation trigger
+                const validProductStatuses = [...PRODUCT_CONSUMER_READY_STATUSES] as string[]
+                const validMasterStatuses = [...MASTER_CONSUMER_READY_STATUSES] as string[]
+                
+                if (activationTrigger === 'received_warehouse') {
+                    validProductStatuses.push('received_warehouse')
+                    validMasterStatuses.push('received_warehouse')
+                }
+
                 const [masterResult, uniqueByOrderResult] = await Promise.all([
                     supabase
                         .from('qr_master_codes')
@@ -286,13 +314,13 @@ export default function JourneyDesignerV2({
                             )
                         `)
                         .eq('qr_batches.order_id', order.id)
-                        .in('status', MASTER_CONSUMER_READY_STATUSES)
+                        .in('status', validMasterStatuses)
                         .limit(1),
                     supabase
                         .from('qr_codes')
                         .select('id')
                         .eq('order_id', order.id)
-                        .in('status', PRODUCT_CONSUMER_READY_STATUSES)
+                        .in('status', validProductStatuses)
                         .limit(1)
                 ])
 
@@ -321,7 +349,7 @@ export default function JourneyDesignerV2({
                                 order_id
                             )
                         `)
-                        .in('status', PRODUCT_CONSUMER_READY_STATUSES)
+                        .in('status', validProductStatuses)
                         .eq('qr_batches.order_id', order.id)
                         .limit(1)
 
@@ -343,7 +371,7 @@ export default function JourneyDesignerV2({
         }
         
         checkShipmentStatus()
-    }, [order.id, order.order_no, supabase])
+    }, [order.id, order.order_no, supabase, activationTrigger])
 
     // Check for feature configuration existence
     useEffect(() => {
@@ -821,13 +849,13 @@ export default function JourneyDesignerV2({
                                             {!productsShipped && !checkingShipment && (
                                                 <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
                                                     <Clock className="w-3 h-3 mr-1" />
-                                                    Pending Shipment
+                                                    {activationTrigger === 'received_warehouse' ? 'Pending Warehouse Receipt' : 'Pending Shipment'}
                                                 </Badge>
                                             )}
                                             {productsShipped && (
                                                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
-                                                    <Truck className="w-3 h-3 mr-1" />
-                                                    Products Shipped
+                                                    {activationTrigger === 'received_warehouse' ? <Building2 className="w-3 h-3 mr-1" /> : <Truck className="w-3 h-3 mr-1" />}
+                                                    {activationTrigger === 'received_warehouse' ? 'Received at Warehouse' : 'Products Shipped'}
                                                 </Badge>
                                             )}
                                         </div>
@@ -839,9 +867,10 @@ export default function JourneyDesignerV2({
                                         onCheckedChange={(checked) => {
                                             if (checked && !productsShipped) {
                                                 // User is trying to activate before products ship
+                                                const statusText = activationTrigger === 'received_warehouse' ? 'Received at Warehouse' : 'Shipped to Distributor'
                                                 toast({
                                                     title: "Cannot activate journey yet",
-                                                    description: `Products from order ${order.order_no} must be shipped to distributor first. The journey will auto-activate once products ship.`,
+                                                    description: `Products from order ${order.order_no} must reach "${statusText}" status first. The journey will auto-activate once products reach this status.`,
                                                     variant: "default",
                                                 })
                                                 return
@@ -855,9 +884,9 @@ export default function JourneyDesignerV2({
                                     <Alert className="bg-blue-50 border-blue-200">
                                         <Info className="h-4 w-4 text-blue-600" />
                                         <AlertDescription className="text-sm text-blue-800">
-                                            <strong>Journey will auto-activate when products ship to distributor.</strong>
+                                            <strong>Journey will auto-activate when products {activationTrigger === 'received_warehouse' ? 'are received at warehouse' : 'ship to distributor'}.</strong>
                                             <br />
-                                            You can create this journey now, but it will remain inactive until at least one product from order <strong>{order.order_no}</strong> reaches &quot;Shipped to Distributor&quot; status. Once shipped, the journey will automatically become active.
+                                            You can create this journey now, but it will remain inactive until at least one product from order <strong>{order.order_no}</strong> reaches &quot;{activationTrigger === 'received_warehouse' ? 'Received at Warehouse' : 'Shipped to Distributor'}&quot; status. Once reached, the journey will automatically become active.
                                         </AlertDescription>
                                     </Alert>
                                 )}
