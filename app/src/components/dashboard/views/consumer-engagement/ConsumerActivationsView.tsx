@@ -6,16 +6,27 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy, MessageSquare, Clock, CheckCircle2, Eye } from 'lucide-react'
+import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy, MessageSquare, Clock, CheckCircle2, Eye, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface UserProfile {
   id: string
   organization_id: string
   organizations: { id: string; org_name: string }
+  roles?: { role_name: string; role_level: number }
 }
 
 interface ConsumerActivationsViewProps {
@@ -54,6 +65,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [feedbackTotal, setFeedbackTotal] = useState(0)
   const [selectedFeedback, setSelectedFeedback] = useState<any>(null)
   const [updatingFeedback, setUpdatingFeedback] = useState(false)
+  const [feedbackToDelete, setFeedbackToDelete] = useState<any>(null)
+  const [deletingFeedback, setDeletingFeedback] = useState(false)
+  
+  // Check if user is super admin (role_level = 1)
+  const isSuperAdmin = userProfile.roles?.role_level === 1
 
   const [stats, setStats] = useState({
     total_scans: 0,
@@ -409,6 +425,46 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       console.error('Error loading feedback:', error)
     } finally {
       setFeedbackLoading(false)
+    }
+  }
+
+  // Delete feedback (Super Admin only)
+  const handleDeleteFeedback = async (feedbackId: string) => {
+    if (!isSuperAdmin) {
+      toast({
+        title: 'Permission Denied',
+        description: 'Only Super Admin can delete feedback.',
+        variant: 'destructive'
+      })
+      return
+    }
+    
+    setDeletingFeedback(true)
+    try {
+      const { error } = await supabase
+        .from('consumer_feedback')
+        .delete()
+        .eq('id', feedbackId)
+      
+      if (error) throw error
+      
+      // Remove from local state
+      setFeedback(prev => prev.filter(f => f.id !== feedbackId))
+      setFeedbackToDelete(null)
+      
+      toast({
+        title: 'Feedback Deleted',
+        description: 'The feedback has been successfully deleted.',
+      })
+    } catch (error: any) {
+      console.error('Error deleting feedback:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to delete feedback. Please try again.',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeletingFeedback(false)
     }
   }
 
@@ -774,6 +830,17 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                           <span className="text-xs text-gray-500">
                             {new Date(item.created_at).toLocaleDateString()}
                           </span>
+                          {isSuperAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => setFeedbackToDelete(item)}
+                              title="Delete Feedback (Super Admin Only)"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                       <p className="text-gray-700 whitespace-pre-wrap">{item.message}</p>
@@ -785,6 +852,32 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Delete Feedback Confirmation Dialog */}
+      <AlertDialog open={!!feedbackToDelete} onOpenChange={(open) => !open && setFeedbackToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Feedback</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this feedback? This action cannot be undone.
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <p className="font-medium text-gray-900">{feedbackToDelete?.title}</p>
+                <p className="text-sm text-gray-600 mt-1">{feedbackToDelete?.message?.substring(0, 100)}{feedbackToDelete?.message?.length > 100 ? '...' : ''}</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingFeedback}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => feedbackToDelete && handleDeleteFeedback(feedbackToDelete.id)}
+              disabled={deletingFeedback}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deletingFeedback ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

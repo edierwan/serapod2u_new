@@ -727,14 +727,13 @@ export default function PremiumLoyaltyTemplate({
     const executeAction = (action: string) => {
         switch (action) {
             case 'collect-points':
-                // If user is already authenticated, try to collect points with session
-                // The API will validate if they're a shop user and return requiresLogin if not
-                if (isAuthenticated) {
-                    console.log('🔐 User authenticated, attempting session-based points collection', { isShopUser })
+                // If user is authenticated AND is a shop user, collect points with session
+                if (isAuthenticated && isShopUser) {
+                    console.log('🔐 Shop user authenticated, collecting points with session')
                     handleCollectPointsWithSession()
                 } else {
-                    // Not authenticated - show shop login modal for points collection
-                    console.log('🔐 User not authenticated, showing shop login modal')
+                    // Not authenticated OR not a shop user - show shop login modal
+                    console.log('🔐 User not authenticated or not a shop user, showing shop login modal', { isAuthenticated, isShopUser })
                     setPointsError('')
                     setShowPointsLoginModal(true)
                 }
@@ -835,6 +834,7 @@ export default function PremiumLoyaltyTemplate({
             const response = await fetch('/api/consumer/collect-points-auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
                     qr_code: qrCode
                 })
@@ -2822,7 +2822,7 @@ export default function PremiumLoyaltyTemplate({
                                         Title <span className="text-red-500">*</span>
                                     </label>
                                     <Input 
-                                        placeholder="e.g. Great product quality!"
+                                        placeholder="e.g. Feedback title"
                                         value={feedbackTitle}
                                         onChange={(e) => setFeedbackTitle(e.target.value)}
                                         className="h-11"
@@ -2835,7 +2835,7 @@ export default function PremiumLoyaltyTemplate({
                                         Message <span className="text-red-500">*</span>
                                     </label>
                                     <textarea
-                                        placeholder="Share your experience or suggestions..."
+                                        placeholder="Describe your issue / feedback or suggestion…"
                                         value={feedbackMessage}
                                         onChange={(e) => setFeedbackMessage(e.target.value)}
                                         className="w-full min-h-[120px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
