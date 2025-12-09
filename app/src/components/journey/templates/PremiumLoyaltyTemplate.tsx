@@ -13,6 +13,7 @@ import {
     Gamepad2, 
     User,
     ChevronRight,
+    ChevronLeft,
     Coins,
     Trophy,
     Sparkles,
@@ -40,7 +41,9 @@ import {
     Check,
     MessageSquare,
     Send,
-    TrendingUp
+    TrendingUp,
+    Grid3x3,
+    List
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { extractTokenFromQRCode } from '@/utils/qrSecurity'
@@ -248,6 +251,13 @@ export default function PremiumLoyaltyTemplate({
     const [loadingRedemptionHistory, setLoadingRedemptionHistory] = useState(false)
     const [loadingPointsHistory, setLoadingPointsHistory] = useState(false)
     const [loadingScannedProducts, setLoadingScannedProducts] = useState(false)
+    
+    // Pagination states
+    const [redemptionPage, setRedemptionPage] = useState(1)
+    const [pointsPage, setPointsPage] = useState(1)
+    const [scannedPage, setScannedPage] = useState(1)
+    const [scannedViewMode, setScannedViewMode] = useState<'grid' | 'list'>('list')
+    const itemsPerPage = 10
 
     // Feedback states
     const [showFeedbackModal, setShowFeedbackModal] = useState(false)
@@ -1711,44 +1721,132 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
                             </div>
                         ) : scannedProducts.length > 0 ? (
-                            scannedProducts.map((scan) => (
-                                <div key={scan.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                                    <div className="flex gap-3">
-                                        <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                            {scan.product?.image_url ? (
-                                                <Image 
-                                                    src={scan.product.image_url} 
-                                                    alt={scan.product?.name || 'Product'}
-                                                    width={64}
-                                                    height={64}
-                                                    className="object-cover"
-                                                />
-                                            ) : (
-                                                <Package className="w-8 h-8 text-gray-400" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                {scan.product?.name || 'Unknown Product'}
-                                            </p>
-                                            <p className="text-xs text-gray-500 mt-0.5">
-                                                Code: {scan.qr_code || 'N/A'}
-                                            </p>
-                                            <p className="text-xs text-gray-400 mt-1">
-                                                Scanned: {formatDate(scan.scanned_at)}
-                                            </p>
-                                            <div className="flex gap-2 mt-2">
-                                                {scan.collected_points && (
-                                                    <Badge className="bg-green-100 text-green-700 text-[10px]">Points Collected</Badge>
-                                                )}
-                                                {scan.entered_lucky_draw && (
-                                                    <Badge className="bg-amber-100 text-amber-700 text-[10px]">Lucky Draw</Badge>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
+                            <>
+                                {/* View Toggle */}
+                                <div className="flex justify-end gap-2 mb-3">
+                                    <button
+                                        onClick={() => setScannedViewMode('list')}
+                                        className={`p-2 rounded-lg transition-colors ${
+                                            scannedViewMode === 'list'
+                                                ? 'bg-gray-900 text-white'
+                                                : 'bg-white text-gray-600 border border-gray-200'
+                                        }`}
+                                    >
+                                        <List className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => setScannedViewMode('grid')}
+                                        className={`p-2 rounded-lg transition-colors ${
+                                            scannedViewMode === 'grid'
+                                                ? 'bg-gray-900 text-white'
+                                                : 'bg-white text-gray-600 border border-gray-200'
+                                        }`}
+                                    >
+                                        <Grid3x3 className="w-4 h-4" />
+                                    </button>
                                 </div>
-                            ))
+
+                                {/* List View */}
+                                {scannedViewMode === 'list' ? (
+                                    <div className="space-y-3">
+                                        {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan) => (
+                                            <div key={scan.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                                <div className="flex gap-3">
+                                                    <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                        {scan.product?.image_url ? (
+                                                            <Image 
+                                                                src={scan.product.image_url} 
+                                                                alt={scan.product?.name || 'Product'}
+                                                                width={64}
+                                                                height={64}
+                                                                className="object-cover"
+                                                            />
+                                                        ) : (
+                                                            <Package className="w-8 h-8 text-gray-400" />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                            {scan.product?.name || 'Unknown Product'}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 mt-0.5">
+                                                            Code: {scan.qr_code || 'N/A'}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400 mt-1">
+                                                            Scanned: {formatDate(scan.scanned_at)}
+                                                        </p>
+                                                        <div className="flex gap-2 mt-2">
+                                                            {scan.collected_points && (
+                                                                <Badge className="bg-green-100 text-green-700 text-[10px]">Points Collected</Badge>
+                                                            )}
+                                                            {scan.entered_lucky_draw && (
+                                                                <Badge className="bg-amber-100 text-amber-700 text-[10px]">Lucky Draw</Badge>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    /* Grid View */
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan) => (
+                                            <div key={scan.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                                                <div className="h-32 bg-gray-100 flex items-center justify-center overflow-hidden">
+                                                    {scan.product?.image_url ? (
+                                                        <Image 
+                                                            src={scan.product.image_url} 
+                                                            alt={scan.product?.name || 'Product'}
+                                                            width={128}
+                                                            height={128}
+                                                            className="object-cover w-full h-full"
+                                                        />
+                                                    ) : (
+                                                        <Package className="w-12 h-12 text-gray-400" />
+                                                    )}
+                                                </div>
+                                                <div className="p-3">
+                                                    <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                        {scan.product?.name || 'Unknown Product'}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                                                        {scan.qr_code || 'N/A'}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        {formatDate(scan.scanned_at)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Pagination */}
+                                {scannedProducts.length > itemsPerPage && (
+                                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                                        <button
+                                            onClick={() => setScannedPage(Math.max(1, scannedPage - 1))}
+                                            disabled={scannedPage === 1}
+                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" />
+                                            Previous
+                                        </button>
+                                        <span className="text-sm text-gray-600">
+                                            Page {scannedPage} of {Math.ceil(scannedProducts.length / itemsPerPage)}
+                                        </span>
+                                        <button
+                                            onClick={() => setScannedPage(Math.min(Math.ceil(scannedProducts.length / itemsPerPage), scannedPage + 1))}
+                                            disabled={scannedPage >= Math.ceil(scannedProducts.length / itemsPerPage)}
+                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Next
+                                            <ChevronRight className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+                            </>
                         ) : (
                             <div className="text-center py-12 text-gray-500">
                                 <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
@@ -1772,39 +1870,66 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
                             </div>
                         ) : pointsHistory.length > 0 ? (
-                            pointsHistory.map((txn) => (
-                                <div key={txn.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                            txn.points > 0 ? 'bg-green-100' : 'bg-purple-100'
-                                        }`}>
-                                            {txn.points > 0 ? (
-                                                <TrendingUp className="w-5 h-5 text-green-600" />
-                                            ) : (
-                                                <Gift className="w-5 h-5 text-purple-600" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                {txn.description || (txn.points > 0 ? 'Points Earned' : 'Points Redeemed')}
-                                            </p>
-                                            <p className="text-xs text-gray-500 mt-0.5">
-                                                {formatDate(txn.date)}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className={`text-sm font-bold ${
-                                                txn.points > 0 ? 'text-green-600' : 'text-purple-600'
+                            <>
+                                {pointsHistory.slice((pointsPage - 1) * itemsPerPage, pointsPage * itemsPerPage).map((txn) => (
+                                    <div key={txn.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                                txn.points > 0 ? 'bg-green-100' : 'bg-purple-100'
                                             }`}>
-                                                {txn.points > 0 ? '+' : ''}{txn.points} pts
-                                            </p>
-                                            <p className="text-xs text-gray-400">
-                                                Balance: {txn.balance_after}
-                                            </p>
+                                                {txn.points > 0 ? (
+                                                    <TrendingUp className="w-5 h-5 text-green-600" />
+                                                ) : (
+                                                    <Gift className="w-5 h-5 text-purple-600" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                    {txn.description || (txn.points > 0 ? 'Points Earned' : 'Points Redeemed')}
+                                                </p>
+                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                    {formatDate(txn.date)}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className={`text-sm font-bold ${
+                                                    txn.points > 0 ? 'text-green-600' : 'text-purple-600'
+                                                }`}>
+                                                    {txn.points > 0 ? '+' : ''}{txn.points} pts
+                                                </p>
+                                                <p className="text-xs text-gray-400">
+                                                    Balance: {txn.balance_after}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))
+                                ))}
+
+                                {/* Pagination */}
+                                {pointsHistory.length > itemsPerPage && (
+                                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                                        <button
+                                            onClick={() => setPointsPage(Math.max(1, pointsPage - 1))}
+                                            disabled={pointsPage === 1}
+                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" />
+                                            Previous
+                                        </button>
+                                        <span className="text-sm text-gray-600">
+                                            Page {pointsPage} of {Math.ceil(pointsHistory.length / itemsPerPage)}
+                                        </span>
+                                        <button
+                                            onClick={() => setPointsPage(Math.min(Math.ceil(pointsHistory.length / itemsPerPage), pointsPage + 1))}
+                                            disabled={pointsPage >= Math.ceil(pointsHistory.length / itemsPerPage)}
+                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Next
+                                            <ChevronRight className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+                            </>
                         ) : (
                             <div className="text-center py-12 text-gray-500">
                                 <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
@@ -1828,51 +1953,78 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
                             </div>
                         ) : redemptionHistory.length > 0 ? (
-                            redemptionHistory.map((redemption) => {
-                                const statusColors = getStatusColor(redemption.status)
-                                return (
-                                    <div key={redemption.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                                        <div className="flex gap-3">
-                                            <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                                {redemption.reward?.image_url ? (
-                                                    <Image 
-                                                        src={redemption.reward.image_url} 
-                                                        alt={redemption.reward?.name || 'Reward'}
-                                                        width={64}
-                                                        height={64}
-                                                        className="object-cover"
-                                                    />
-                                                ) : (
-                                                    <Gift className="w-8 h-8 text-gray-400" />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                    {redemption.reward?.name || redemption.description || 'Reward Redeemed'}
-                                                </p>
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    {formatDate(redemption.date)}
-                                                </p>
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <Badge className={`${statusColors.bg} ${statusColors.text} text-[10px] capitalize`}>
-                                                        {redemption.status}
-                                                    </Badge>
-                                                    {redemption.redemption_code && (
-                                                        <span className="text-xs text-gray-500 font-mono">
-                                                            {redemption.redemption_code}
-                                                        </span>
+                            <>
+                                {redemptionHistory.slice((redemptionPage - 1) * itemsPerPage, redemptionPage * itemsPerPage).map((redemption) => {
+                                    const statusColors = getStatusColor(redemption.status)
+                                    return (
+                                        <div key={redemption.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                            <div className="flex gap-3">
+                                                <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                    {redemption.reward?.image_url ? (
+                                                        <Image 
+                                                            src={redemption.reward.image_url} 
+                                                            alt={redemption.reward?.name || 'Reward'}
+                                                            width={64}
+                                                            height={64}
+                                                            className="object-cover"
+                                                        />
+                                                    ) : (
+                                                        <Gift className="w-8 h-8 text-gray-400" />
                                                     )}
                                                 </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm font-bold text-purple-600">
-                                                    -{redemption.points_deducted} pts
-                                                </p>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                        {redemption.reward?.name || redemption.description || 'Reward Redeemed'}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                        {formatDate(redemption.date)}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <Badge className={`${statusColors.bg} ${statusColors.text} text-[10px] capitalize`}>
+                                                            {redemption.status}
+                                                        </Badge>
+                                                        {redemption.redemption_code && (
+                                                            <span className="text-xs text-gray-500 font-mono">
+                                                                {redemption.redemption_code}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-sm font-bold text-purple-600">
+                                                        -{redemption.points_deducted} pts
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
+                                    )
+                                })}
+
+                                {/* Pagination */}
+                                {redemptionHistory.length > itemsPerPage && (
+                                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                                        <button
+                                            onClick={() => setRedemptionPage(Math.max(1, redemptionPage - 1))}
+                                            disabled={redemptionPage === 1}
+                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" />
+                                            Previous
+                                        </button>
+                                        <span className="text-sm text-gray-600">
+                                            Page {redemptionPage} of {Math.ceil(redemptionHistory.length / itemsPerPage)}
+                                        </span>
+                                        <button
+                                            onClick={() => setRedemptionPage(Math.min(Math.ceil(redemptionHistory.length / itemsPerPage), redemptionPage + 1))}
+                                            disabled={redemptionPage >= Math.ceil(redemptionHistory.length / itemsPerPage)}
+                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Next
+                                            <ChevronRight className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                )
-                            })
+                                )}
+                            </>
                         ) : (
                             <div className="text-center py-12 text-gray-500">
                                 <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
