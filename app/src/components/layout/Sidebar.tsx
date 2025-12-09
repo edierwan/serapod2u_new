@@ -203,7 +203,7 @@ const navigationItems: MenuItem[] = [
   },
   {
     id: 'consumer-engagement',
-    label: 'Consumer Engagement',
+    label: 'Loyalty',
     icon: Gift,
     description: 'Rewards & campaigns',
     access: {
