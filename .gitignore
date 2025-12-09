@@ -234,10 +234,15 @@ VERIFY_*.md
 VISUAL_*.md
 WHICH_*.md
 
+# ========================================
+# LOCAL-ONLY / DEV-ONLY FILES
+# ========================================
+
 # SQL files (development/reference only - keep local, don't commit)
 *.sql
 # Exception: Allow SQL in production Supabase migrations only
 !supabase/migrations/**/*.sql
+!supabase/seed/**/*.sql
 
 # Shell scripts (development only - DO NOT COMMIT)
 apply-*.sh
@@ -261,11 +266,29 @@ test_*.js
 !package.txt
 !robots.txt
 
+# Log files (DO NOT COMMIT)
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
 # Local CSV/Excel data files (DO NOT COMMIT)
 *.csv
 *.xlsx
+*.xls
 !supabase/seed/**/*.csv
 # Exception: Allow specific seed data if needed
+
+# Playground & Experimental folders (DO NOT COMMIT)
+/playground/
+/local_test/
+/sql_backup/
+/experimental/
+/tmp/
+/temp/
+/z_*
 
 # Root-level package files (use app/package.json instead)
 /package.json
@@ -278,12 +301,16 @@ test_*.js
 # Docs folder at root (keep app/docs or specific system docs only)
 /docs/
 
-# Test files (DO NOT COMMIT)
+# ========================================
+# TEST FILES (DO NOT COMMIT)
+# ========================================
 *.test.ts
 *.test.js
 *.spec.ts
 *.spec.js
 **/__tests__/**
+**/tests/**
+**/__mocks__/**
 
 # macOS
 .DS_Store
