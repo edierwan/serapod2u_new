@@ -236,22 +236,54 @@ WHICH_*.md
 
 # SQL files (development/reference only - keep local, don't commit)
 *.sql
+# Exception: Allow SQL in production Supabase migrations only
+!supabase/migrations/**/*.sql
 
-# Exception: Only allow SQL in specific production migration folders if needed
-# !database/migrations/**/*.sql
-
-# Shell scripts (development only)
+# Shell scripts (development only - DO NOT COMMIT)
+apply-*.sh
+fix-*.sh
 run_*.sh
 restart-clean.sh
-diagnose-db.js
-test-supabase.js
-generate-*.js
-run-*.js
+check_*.sh
+diagnose*.sh
+
+# Development/debug JS files (DO NOT COMMIT)
+apply-*.js
+diagnose*.js
+check_*.js
+find_*.js
+fix_*.js
+test-*.js
+test_*.js
 
 # Text files (internal notes)
 *.txt
 !package.txt
 !robots.txt
+
+# Local CSV/Excel data files (DO NOT COMMIT)
+*.csv
+*.xlsx
+!supabase/seed/**/*.csv
+# Exception: Allow specific seed data if needed
+
+# Root-level package files (use app/package.json instead)
+/package.json
+/package-lock.json
+/vercel.json
+
+# Scripts folder at root (keep app-specific only)
+/scripts/
+
+# Docs folder at root (keep app/docs or specific system docs only)
+/docs/
+
+# Test files (DO NOT COMMIT)
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+**/__tests__/**
 
 # macOS
 .DS_Store
