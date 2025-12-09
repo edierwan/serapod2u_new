@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolveQrCodeRecord } from '@/lib/utils/qr-resolver'
 
 /**
  * GET /api/consumer/check-lucky-draw-status
- * Check if a QR code has already been used for lucky draw
+ * Check if a QR code has already been used for lucky draw or points collection
  * 
  * Query params:
  *   qr_code: string - The QR code to check
@@ -20,6 +21,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    console.log('🔍 Checking QR status for:', qrCode)
+
     // Use service role for consumer operations (no auth required)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,30 +35,11 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    // Try to find QR code with exact match first
-    let { data: qrData, error: qrError } = await supabase
-      .from('qr_codes')
-      .select('id, code, is_lucky_draw_entered, is_points_collected')
-      .eq('code', qrCode)
-      .maybeSingle()
+    // Use the proper QR code resolver (handles hash suffix, base code, pattern matching)
+    const qrCodeData = await resolveQrCodeRecord(supabase, qrCode)
 
-    // If not found, try base code (remove hash suffix)
-    if (!qrData) {
-      const baseCode = qrCode.replace(/-[^-]+$/, '')
-      if (baseCode !== qrCode) {
-        const { data: baseData } = await supabase
-          .from('qr_codes')
-          .select('id, code, is_lucky_draw_entered, is_points_collected')
-          .eq('code', baseCode)
-          .maybeSingle()
-        
-        if (baseData) {
-          qrData = baseData
-        }
-      }
-    }
-
-    if (!qrData) {
+    if (!qrCodeData) {
+      console.log('❌ QR code not found:', qrCode)
       return NextResponse.json({
         success: true,
         is_lucky_draw_entered: false,
@@ -63,6 +47,30 @@ export async function GET(request: NextRequest) {
         message: 'QR code not found'
       })
     }
+
+    console.log('✅ Found QR code:', qrCodeData.code, 'ID:', qrCodeData.id)
+
+    // Fetch the full QR code data with lucky draw and points status
+    const { data: qrData, error: qrError } = await supabase
+      .from('qr_codes')
+      .select('id, code, is_lucky_draw_entered, is_points_collected')
+      .eq('id', qrCodeData.id)
+      .single()
+
+    if (qrError || !qrData) {
+      console.error('Error fetching QR details:', qrError)
+      return NextResponse.json({
+        success: true,
+        is_lucky_draw_entered: false,
+        is_points_collected: false,
+        message: 'Error fetching QR details'
+      })
+    }
+
+    console.log('📊 QR Status:', {
+      is_lucky_draw_entered: qrData.is_lucky_draw_entered,
+      is_points_collected: qrData.is_points_collected
+    })
 
     // If lucky draw was entered, get the entry details
     let entryDetails = null

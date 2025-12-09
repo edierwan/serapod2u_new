@@ -21,11 +21,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch rewards for the organization
+    // Only show active rewards with stock > 0 (or unlimited stock when stock_quantity is null)
     const { data: rewards, error } = await supabaseAdmin
       .from('redeem_items')
       .select('*')
       .eq('company_id', orgId)
       .eq('is_active', true)
+      .or('stock_quantity.is.null,stock_quantity.gt.0')
       .order('points_required', { ascending: true })
 
     if (error) {

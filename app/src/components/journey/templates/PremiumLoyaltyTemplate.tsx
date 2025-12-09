@@ -808,6 +808,31 @@ export default function PremiumLoyaltyTemplate({
             setShowPointsLoginModal(false)
             setShowPointsSuccessModal(true)
             
+            // IMPORTANT: Establish client-side session so next time user doesn't need to login again
+            if (data.email && shopPassword) {
+                console.log('🔐 Establishing persistent session for shop user...')
+                try {
+                    const { error: signInError } = await supabase.auth.signInWithPassword({
+                        email: data.email,
+                        password: shopPassword
+                    })
+                    
+                    if (!signInError) {
+                        console.log('✅ Session established successfully')
+                        // Update auth state so next point collection won't require login
+                        setIsAuthenticated(true)
+                        setIsShopUser(true)
+                        setUserEmail(data.email)
+                        setShopName(data.shop_name || '')
+                    } else {
+                        console.warn('⚠️ Could not establish session:', signInError.message)
+                    }
+                } catch (sessionError) {
+                    console.warn('⚠️ Error establishing session:', sessionError)
+                    // Don't fail the point collection just because session couldn't be established
+                }
+            }
+            
             // Clear form
             setShopId('')
             setShopPassword('')
