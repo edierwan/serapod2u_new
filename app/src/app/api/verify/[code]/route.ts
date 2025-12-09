@@ -393,8 +393,9 @@ async function handleProductCodeVerification(
        .eq('id', order.company_id)
        .single()
      
-     if (orgData?.settings?.journey_builder_activation) {
-       activationTrigger = orgData.settings.journey_builder_activation
+     const settings = orgData?.settings as any
+     if (settings?.journey_builder_activation) {
+       activationTrigger = settings.journey_builder_activation
      }
   }
 
@@ -433,7 +434,7 @@ async function handleProductCodeVerification(
       status,
       journey_config: {
         ...journeyConfig,
-        variant_image_url: qrCode.variant?.image_url ?? null
+        variant_image_url: (qrCode.variant as any)?.image_url ?? null
       },
       product_info: {
         product_name: qrCode.product?.product_name ?? undefined,

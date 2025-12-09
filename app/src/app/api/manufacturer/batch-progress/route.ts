@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
         total_unique_codes,
         buffer_percent,
         status,
+        packing_status,
         created_at,
         orders (
           id,

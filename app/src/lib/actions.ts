@@ -102,7 +102,6 @@ export async function updateUserWithAuth(userId: string, userData: {
 }) {
   try {
     const adminClient = createAdminClient()
-    if (!adminClient) return { success: false, error: 'Admin client not available' }
 
     const supabase = await createClient()
     
@@ -110,33 +109,87 @@ export async function updateUserWithAuth(userId: string, userData: {
     const { data: { user: currentUser } } = await supabase.auth.getUser()
     if (!currentUser) return { success: false, error: 'Not authenticated' }
 
-    // Fetch current user role to check if admin
-    const { data: currentUserProfile } = await supabase.from('users').select('role_code').eq('id', currentUser.id).single()
+    // Fetch current user role to check if admin (include roles relation for role_level)
+    const { data: currentUserProfile } = await supabase
+      .from('users')
+      .select('role_code, roles(role_level)')
+      .eq('id', currentUser.id)
+      .single()
     
     const isSelfUpdate = currentUser.id === userId
-    const isAdmin = currentUserProfile?.role_code === 'SUPER' || currentUserProfile?.role_code === 'HQ_ADMIN'
+    // Check by role_code OR role_level (level 1 = superadmin, level 10 = HQ_ADMIN)
+    const roleCode = currentUserProfile?.role_code
+    const roleLevel = (currentUserProfile?.roles as any)?.role_level
+    const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
     
     if (!isSelfUpdate && !isAdmin) {
        return { success: false, error: 'Unauthorized' }
     }
 
-    // Update Auth User (Phone)
+    // Update Auth User (Phone) - handle both setting and clearing phone
+    // We make this BLOCKING to ensure consistency between Auth and Database
     if (userData.phone !== undefined) {
-        const phone = userData.phone ? normalizePhone(userData.phone) : null
-        
-        const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
-            phone: phone || '', 
-            phone_confirm: true
-        })
-        
-        if (authError) {
-             return { success: false, error: `Failed to update auth user: ${authError.message}` }
+        try {
+          if (userData.phone && userData.phone.trim()) {
+            // Setting/updating phone number
+            const phone = normalizePhone(userData.phone) // Returns E.164 with + prefix
+            
+            const { data: authData, error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+                phone: phone,
+                phone_confirm: true
+            })
+            
+            if (authError) {
+                console.error('Auth phone update failed:', authError.message)
+                return { success: false, error: `Failed to update phone in Auth: ${authError.message}` }
+            }
+            
+            // Verify the update actually happened
+            if (authData?.user?.phone !== phone) {
+                console.warn(`Auth phone mismatch after update. Expected: ${phone}, Got: ${authData?.user?.phone}`)
+                
+                // Check if digits match (ignoring formatting differences)
+                const expectedDigits = phone.replace(/\D/g, '')
+                const gotDigits = (authData?.user?.phone || '').replace(/\D/g, '')
+                
+                if (expectedDigits !== gotDigits) {
+                     console.error('Auth phone update failed silently (digits mismatch)')
+                     return { success: false, error: 'Failed to update phone in Auth (Silent Failure). Please try again.' }
+                }
+            }
+            
+            console.log('✅ Auth phone updated to:', phone)
+          } else {
+            // Clearing/removing phone number - set to empty string or null
+            const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+                phone: '',
+                phone_confirm: false
+            })
+            
+            if (authError) {
+                console.error('Auth phone clear failed:', authError.message)
+                return { success: false, error: `Failed to clear phone in Auth: ${authError.message}` }
+            } else {
+                console.log('✅ Auth phone cleared')
+            }
+          }
+        } catch (authErr) {
+          console.error('Auth phone update exception:', authErr)
+          return { success: false, error: `Auth phone update exception: ${authErr}` }
         }
     }
 
-    // Update Public User
+    // Update Public User - prepare data for database update
+    // Phone is normalized to E.164 format with + prefix for consistency, or null if cleared
     const updateData: any = { ...userData }
-    if (updateData.phone) updateData.phone = normalizePhone(updateData.phone)
+    if (updateData.phone && updateData.phone.trim()) {
+      updateData.phone = normalizePhone(updateData.phone)
+      // Also update phone_verified_at since we confirmed it in Auth
+      updateData.phone_verified_at = new Date().toISOString()
+    } else if (updateData.phone !== undefined) {
+      updateData.phone = null // Explicitly set to null when cleared
+      updateData.phone_verified_at = null
+    }
     
     // Use adminClient to ensure update happens even if RLS is tricky (though RLS should allow self update)
     const { error: dbError } = await adminClient
@@ -145,6 +198,7 @@ export async function updateUserWithAuth(userId: string, userData: {
         .eq('id', userId)
 
     if (dbError) {
+        console.error('Database update error:', dbError)
         return { success: false, error: `Failed to update database user: ${dbError.message}` }
     }
 

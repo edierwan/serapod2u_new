@@ -53,7 +53,7 @@ export async function resolveQrCodeRecord(
   // Step 1: Try exact match with full code (including hash if present)
   const { data: fullCodeMatch, error: fullCodeError } = await supabase
     .from('qr_codes')
-    .select('id, code, company_id, order_id, product_id, variant_id, status')
+    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
     .eq('code', qr_code)
     .maybeSingle()
   
@@ -80,7 +80,7 @@ export async function resolveQrCodeRecord(
   
   const { data: baseCodeMatch, error: baseCodeError } = await supabase
     .from('qr_codes')
-    .select('id, code, company_id, order_id, product_id, variant_id, status')
+    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
     .eq('code', baseCode)
     .maybeSingle()
   
@@ -95,7 +95,27 @@ export async function resolveQrCodeRecord(
     return baseCodeMatch
   }
   
-  // Step 3: Not found in either format
+  // Step 3: Try pattern match for truncated URLs (missing last 2 characters)
+  // This handles cases where security truncation removed characters
+  console.log('⚠️ No match with base code, trying pattern match for truncated URL...')
+  
+  const { data: patternMatch, error: patternError } = await supabase
+    .from('qr_codes')
+    .select('id, code, company_id, order_id, product_id, variant_id, status')
+    .like('code', `${qr_code}__`)
+    .maybeSingle()
+  
+  if (patternError && patternError.code !== 'PGRST116') {
+    console.error('❌ Unexpected database error on pattern lookup:', patternError)
+    // Don't throw here, just log - we'll return null
+  }
+  
+  if (patternMatch) {
+    console.log('✅ Found match with pattern (truncated URL):', patternMatch.code)
+    return patternMatch
+  }
+  
+  // Step 4: Not found in any format
   console.log('❌ QR code not found in database')
   return null
 }

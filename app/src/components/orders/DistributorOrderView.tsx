@@ -150,6 +150,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           .eq('parent_org_id', userOrgData.id)
           .eq('org_type_code', 'WH')
           .eq('is_active', true)
+          .order('created_at', { ascending: true })
+          .limit(1)
           .maybeSingle()
         
         if (whData) {
@@ -239,7 +241,14 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     // Check if we are HQ
     const { data: userOrg } = await supabase.from('organizations').select('org_type_code').eq('id', userProfile.organization_id).single()
     if (userOrg?.org_type_code === 'HQ') {
-       const { data: wh } = await supabase.from('organizations').select('id').eq('parent_org_id', userProfile.organization_id).eq('org_type_code', 'WH').maybeSingle()
+       const { data: wh } = await supabase
+         .from('organizations')
+         .select('id')
+         .eq('parent_org_id', userProfile.organization_id)
+         .eq('org_type_code', 'WH')
+         .order('created_at', { ascending: true })
+         .limit(1)
+         .maybeSingle()
        if (wh) inventoryOrgId = wh.id
     }
 
@@ -562,10 +571,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         throw new Error(`Failed to add products to order: ${itemsError.message}`)
       }
 
-      // Update order status to warehouse_packed
+      // Update order status to submitted (Pending Approval)
       const { error: updateError } = await supabase
         .from('orders')
-        .update({ status: 'warehouse_packed' })
+        .update({ status: 'submitted' })
         .eq('id', order.id)
 
       if (updateError) {
@@ -573,24 +582,23 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         throw new Error(`Failed to submit order: ${updateError.message}`)
       }
 
-      // Allocate inventory for the order (reserves stock)
-      const { data: allocateData, error: allocateError } = await supabase
+      // Allocate inventory immediately upon submission (reserve stock)
+      console.log('🔒 Allocating inventory for order:', order.order_no)
+      const { error: allocateError } = await supabase
         .rpc('allocate_inventory_for_order', { p_order_id: order.id })
 
       if (allocateError) {
         console.error('Error allocating inventory:', allocateError)
-        console.error('Allocation error details:', JSON.stringify(allocateError, null, 2))
-        // Try to delete the order if allocation failed
+        // Rollback order creation if allocation fails
         await supabase.from('orders').delete().eq('id', order.id)
-        const errorMsg = allocateError.message || allocateError.hint || allocateError.details || 'Unknown allocation error'
-        throw new Error(`Failed to allocate inventory: ${errorMsg}`)
+        throw new Error(`Failed to allocate inventory: ${allocateError.message}`)
       }
-
-      console.log('✅ Inventory allocated successfully for order:', order.order_no)
+      
+      console.log('✅ Order submitted and inventory allocated:', order.order_no)
 
       toast({
         title: 'Success',
-        description: 'Distributor order created and inventory allocated successfully',
+        description: 'Order created and inventory allocated successfully. Awaiting approval.',
       })
 
       // Navigate back to orders list

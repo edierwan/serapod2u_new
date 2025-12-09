@@ -79,50 +79,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('👤 User data updated')
       }
 
-      // Handle session errors
+      // Handle session errors - but only redirect if user is on dashboard
       if (event === 'SIGNED_OUT' && session === null) {
-        // Check if this was an automatic signout due to token expiry
-        const { data: { session: currentSession } } = await supabase.auth.getSession()
-        if (!currentSession && typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard')) {
-          console.error('⚠️ Session expired unexpectedly - redirecting to login')
-          router.push('/login')
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard')) {
+          // Add a small delay to prevent race conditions with manual signouts
+          setTimeout(() => {
+            const currentPath = window.location.pathname
+            if (currentPath.startsWith('/dashboard')) {
+              console.error('⚠️ Session expired unexpectedly - redirecting to login')
+              router.push('/login')
+            }
+          }, 100)
         }
       }
     })
 
-    // Set up automatic session refresh check every 5 minutes
+    // Set up automatic session refresh check every 15 minutes
     // This prevents token expiry causing unexpected logouts
+    // Note: Supabase already handles automatic refresh internally, this is just a safety net
     refreshInterval = setInterval(async () => {
       try {
+        // Only check if we're on a dashboard page
+        if (typeof window === 'undefined' || !window.location.pathname.startsWith('/dashboard')) {
+          return
+        }
+
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
           console.error('⚠️ Session check error:', error.message)
+          // Only logout on critical auth errors, not rate limits or network issues
           if (error.message?.includes('refresh_token_not_found') || 
-              error.message?.includes('Invalid Refresh Token')) {
+              error.message?.includes('Invalid Refresh Token') ||
+              error.message?.includes('JWT expired')) {
             console.error('❌ Invalid session detected - clearing and redirecting')
             await supabase.auth.signOut()
-            if (typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard')) {
-              router.push('/login')
-            }
+            router.push('/login')
           }
           return
         }
 
         if (!session) {
           console.warn('⚠️ No session found during refresh check')
-          if (typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard')) {
-            console.error('❌ Session lost - redirecting to login')
+          // Double-check before logging out - could be a temporary network issue
+          const { data: { session: doubleCheck } } = await supabase.auth.getSession()
+          if (!doubleCheck) {
+            console.error('❌ Session confirmed lost - redirecting to login')
             router.push('/login')
           }
         } else {
-          // Check if token is close to expiry (within 5 minutes)
+          // Check if token is close to expiry (within 10 minutes)
           const expiresAt = session.expires_at
           if (expiresAt) {
             const now = Math.floor(Date.now() / 1000)
             const timeUntilExpiry = expiresAt - now
             
-            if (timeUntilExpiry < 300) { // Less than 5 minutes
+            if (timeUntilExpiry < 600) { // Less than 10 minutes
               console.log('⏰ Token expiring soon, forcing refresh...')
               const { error: refreshError } = await supabase.auth.refreshSession()
               if (refreshError) {
@@ -135,8 +147,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error('❌ Session refresh check failed:', error)
+        // Don't logout on errors - could be network issues
       }
-    }, 5 * 60 * 1000) // Check every 5 minutes
+    }, 15 * 60 * 1000) // Check every 15 minutes
 
     // Cleanup
     return () => {

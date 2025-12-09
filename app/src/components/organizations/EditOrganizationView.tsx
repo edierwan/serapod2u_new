@@ -428,6 +428,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (formData.website !== undefined) updatePayload.website = formData.website || null
       if (logo_url !== undefined) updatePayload.logo_url = logo_url
       if (formData.payment_term_id !== undefined) updatePayload.payment_term_id = formData.payment_term_id || null
+      if (formData.warranty_bonus !== undefined) updatePayload.warranty_bonus = formData.warranty_bonus
 
       // Handle parent_org_id - include if changed OR if org type requires parent and it's missing
       const needsParent = isParentRequired(organization?.org_type_code as OrgType)
@@ -901,45 +902,68 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         </Card>
       )}
 
-      {/* Payment Terms - Only show for manufacturers, distributors, and shops */}
+      {/* Payment Terms & Warranty Bonus - Only show for manufacturers, distributors, and shops */}
       {(formData.org_type_code === 'MFG' || formData.org_type_code === 'DIST' || formData.org_type_code === 'SHOP') && (
         <Card>
           <CardHeader>
-            <CardTitle>Payment Terms</CardTitle>
-            <CardDescription>Default payment terms for orders with this organization as seller</CardDescription>
+            <CardTitle>Payment Terms & Warranty Bonus</CardTitle>
+            <CardDescription>Configure financial terms for orders</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="payment_term_id">Payment Terms</Label>
-              <Select
-                value={formData.payment_term_id || undefined}
-                onValueChange={(value) => handleInputChange('payment_term_id', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select payment terms" />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentTerms.map((term) => (
-                    <SelectItem key={term.id} value={term.id}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{term.term_name}</span>
-                        {term.is_default && (
-                          <span className="text-xs text-blue-600">(Default)</span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {formData.payment_term_id && (
-                <p className="text-sm text-gray-600 mt-2">
-                  {paymentTerms.find(t => t.id === formData.payment_term_id)?.description}
-                </p>
-              )}
-              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-800">
-                  <strong>Note:</strong> This payment term will be automatically applied when creating orders with this organization as the seller.
-                  It determines the deposit and balance payment split in the document workflow.
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <Label htmlFor="payment_term_id">Payment Terms</Label>
+                <Select
+                  value={formData.payment_term_id || undefined}
+                  onValueChange={(value) => handleInputChange('payment_term_id', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment terms" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentTerms.map((term) => (
+                      <SelectItem key={term.id} value={term.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{term.term_name}</span>
+                          {term.is_default && (
+                            <span className="text-xs text-blue-600">(Default)</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formData.payment_term_id && (
+                  <p className="text-sm text-gray-600 mt-2">
+                    {paymentTerms.find(t => t.id === formData.payment_term_id)?.description}
+                  </p>
+                )}
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-800">
+                    <strong>Note:</strong> This payment term will be automatically applied when creating orders with this organization as the seller.
+                    It determines the deposit and balance payment split in the document workflow.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="warranty_bonus">Warranty Bonus</Label>
+                <div className="relative mt-1">
+                  <Input
+                    id="warranty_bonus"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={formData.warranty_bonus || ''}
+                    onChange={(e) => handleInputChange('warranty_bonus', e.target.value ? parseFloat(e.target.value) : null)}
+                    placeholder="0"
+                    className="pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-2">
+                  Set the warranty bonus percentage for this organization. This will be used for future calculations.
                 </p>
               </div>
             </div>

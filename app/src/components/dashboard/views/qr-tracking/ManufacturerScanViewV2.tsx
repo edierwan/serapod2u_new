@@ -2751,7 +2751,7 @@ export default function ManufacturerScanView({ userProfile }: ManufacturerScanVi
       )}
 
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Manufacturer Scan</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Smart Scan</h1>
         <p className="text-gray-600 mt-1">
           Scan unique QR codes and link them to master case codes
         </p>

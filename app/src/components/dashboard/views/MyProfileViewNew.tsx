@@ -17,7 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import SignatureUpload from '@/components/profile/SignatureUpload'
 import ChangePasswordCard from '@/components/profile/ChangePasswordCard'
 import { updateUserWithAuth } from '@/lib/actions'
-import { normalizePhone } from '@/lib/utils'
+import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
 
 interface UserProfile {
   id: string
@@ -262,7 +262,21 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      // Validate phone number if changed
+      // Validate phone number format if provided
+      if (formData.phone && formData.phone.trim()) {
+        const phoneValidation = validatePhoneNumber(formData.phone)
+        if (!phoneValidation.isValid) {
+          toast({
+            title: "Invalid Phone Number",
+            description: phoneValidation.error || "Please enter a valid Malaysian (+60) or Chinese (+86) phone number.",
+            variant: "destructive",
+          })
+          setIsSaving(false)
+          return
+        }
+      }
+      
+      // Check if phone is already in use if changed
       if (formData.phone && formData.phone !== userProfile.phone) {
         const normalizedPhone = normalizePhone(formData.phone)
         const { data: exists, error: checkError } = await supabase

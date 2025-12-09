@@ -790,7 +790,12 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                             <div className="text-gray-900 truncate font-medium">
                               {user.full_name || 'No Name'}
                             </div>
-                            <div className="text-sm text-gray-500 truncate">{user.email}</div>
+                            <div className="text-xs text-gray-500 truncate">
+                              {user.email}
+                              {user.phone && (
+                                <span className="text-gray-400"> | {user.phone}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </TableCell>

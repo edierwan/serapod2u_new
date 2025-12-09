@@ -19,7 +19,8 @@ async function getJourneyData(code: string) {
 
     console.log('🔍 getJourneyData - Verifying code:', code)
 
-    const { data: qrCode, error: qrError } = await supabase
+    // First try exact match
+    let { data: qrCode, error: qrError } = await supabase
       .from('qr_codes')
       .select(`
         id,
@@ -34,7 +35,37 @@ async function getJourneyData(code: string) {
         company_id
       `)
       .eq('code', code)
-      .single()
+      .maybeSingle()
+
+    // If not found, try pattern match for security-truncated URLs
+    // The truncated code is missing last 2 characters, so we search with pattern
+    if (!qrCode && !qrError) {
+      console.log('🔍 Trying pattern match for truncated code:', code)
+      const { data: patternMatch, error: patternError } = await supabase
+        .from('qr_codes')
+        .select(`
+          id,
+          code,
+          order_id,
+          product_id,
+          variant_id,
+          points_value,
+          has_lucky_draw,
+          has_redeem,
+          status,
+          company_id
+        `)
+        .like('code', `${code}__`)
+        .maybeSingle()
+
+      if (patternMatch) {
+        console.log('✅ Found via pattern match:', patternMatch.code)
+        qrCode = patternMatch
+      }
+      if (patternError) {
+        qrError = patternError
+      }
+    }
 
     if (qrError) {
       console.error('❌ QR Code query error:', qrError)
@@ -48,19 +79,51 @@ async function getJourneyData(code: string) {
 
     console.log('✅ QR Code found:', qrCode.id)
 
-    const { data: journeyConfig, error: journeyError } = await supabase
-      .from('journey_configurations')
-      .select('*')
-      .eq('org_id', qrCode.company_id)
-      .eq('is_active', true)
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
+    // Resolve journey config using same logic as verify API:
+    // 1. First check journey_order_links for order-specific journey
+    // 2. Then check for default/any active journey
+    let journeyConfig = null;
+    let journeyError = null;
 
-    if (journeyError) {
-      console.error('❌ Journey config query error:', journeyError)
-      console.log('🔍 QR Code company_id:', qrCode.company_id)
+    if (qrCode.order_id) {
+      // Check order-specific journey first
+      const { data: linkedJourneys, error: linkError } = await supabase
+        .from('journey_order_links')
+        .select('journey_configurations(*)')
+        .eq('order_id', qrCode.order_id)
+        .order('created_at', { ascending: false })
+
+      if (!linkError && linkedJourneys && linkedJourneys.length > 0) {
+        for (const link of linkedJourneys) {
+          const config = (link as any).journey_configurations;
+          if (config?.is_active) {
+            journeyConfig = config;
+            console.log('✅ Found order-specific journey:', config.id);
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback to default/any active journey
+    if (!journeyConfig) {
+      const { data: fallbackConfig, error: fallbackError } = await supabase
+        .from('journey_configurations')
+        .select('*')
+        .eq('org_id', qrCode.company_id)
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (fallbackError) {
+        console.error('❌ Journey config query error:', fallbackError)
+        console.log('🔍 QR Code company_id:', qrCode.company_id)
+        journeyError = fallbackError;
+      } else {
+        journeyConfig = fallbackConfig;
+      }
     }
 
     let variant = null
@@ -174,9 +237,12 @@ async function getJourneyData(code: string) {
       success: true,
       data: {
         is_valid: true,
-        status: qrCode.status,
+        status: qrCode.status || undefined,
+        org_id: qrCode.company_id,
+        resolved_code: qrCode.code, // The actual full code from database (important for points collection)
         journey_config: {
           id: journeyConfig.id,
+          template_type: (journeyConfig as any).template_type || 'classic',
           welcome_title: journeyConfig.welcome_title,
           welcome_message: journeyConfig.welcome_message,
           thank_you_message: journeyConfig.thank_you_message,
@@ -185,31 +251,37 @@ async function getJourneyData(code: string) {
           points_enabled: journeyConfig.points_enabled,
           lucky_draw_enabled: journeyConfig.lucky_draw_enabled,
           redemption_enabled: journeyConfig.redemption_enabled,
-          enable_scratch_card_game: journeyConfig.enable_scratch_card_game,
-          scratch_card_require_otp: journeyConfig.scratch_card_require_otp,
+          enable_scratch_card_game: (journeyConfig as any).enable_scratch_card_game,
+          scratch_card_require_otp: (journeyConfig as any).scratch_card_require_otp,
+          require_security_code: (journeyConfig as any).require_security_code || false,
+          // Per-feature security code bypass
+          skip_security_code_for_points: (journeyConfig as any).skip_security_code_for_points || false,
+          skip_security_code_for_lucky_draw: (journeyConfig as any).skip_security_code_for_lucky_draw || false,
+          skip_security_code_for_redemption: (journeyConfig as any).skip_security_code_for_redemption || false,
+          skip_security_code_for_scratch_card: (journeyConfig as any).skip_security_code_for_scratch_card || false,
           
           // Feature Customization
-          points_title: journeyConfig.points_title,
-          points_description: journeyConfig.points_description,
-          points_icon: journeyConfig.points_icon,
+          points_title: (journeyConfig as any).points_title,
+          points_description: (journeyConfig as any).points_description,
+          points_icon: (journeyConfig as any).points_icon,
           
-          lucky_draw_title: journeyConfig.lucky_draw_title,
-          lucky_draw_description: journeyConfig.lucky_draw_description,
-          lucky_draw_icon: journeyConfig.lucky_draw_icon,
+          lucky_draw_title: (journeyConfig as any).lucky_draw_title,
+          lucky_draw_description: (journeyConfig as any).lucky_draw_description,
+          lucky_draw_icon: (journeyConfig as any).lucky_draw_icon,
           
-          redemption_title: journeyConfig.redemption_title,
-          redemption_description: journeyConfig.redemption_description,
-          redemption_icon: journeyConfig.redemption_icon,
+          redemption_title: (journeyConfig as any).redemption_title,
+          redemption_description: (journeyConfig as any).redemption_description,
+          redemption_icon: (journeyConfig as any).redemption_icon,
           
-          scratch_card_title: journeyConfig.scratch_card_title,
-          scratch_card_description: journeyConfig.scratch_card_description,
-          scratch_card_icon: journeyConfig.scratch_card_icon,
+          scratch_card_title: (journeyConfig as any).scratch_card_title,
+          scratch_card_description: (journeyConfig as any).scratch_card_description,
+          scratch_card_icon: (journeyConfig as any).scratch_card_icon,
 
           show_product_image: journeyConfig.show_product_image,
           product_image_source: journeyConfig.product_image_source || 'variant',
           custom_image_url: journeyConfig.custom_image_url,
           genuine_badge_style: journeyConfig.genuine_badge_style,
-          redemption_requires_login: journeyConfig.redemption_requires_login || false,
+          redemption_requires_login: (journeyConfig as any).redemption_requires_login || false,
           variant_image_url: variant?.image_url || fallbackImage || null,
           lucky_draw_image_url: luckyDrawCampaign?.campaign_image_url || null,
           lucky_draw_campaign_name: luckyDrawCampaign?.campaign_name || null,
@@ -241,11 +313,15 @@ export default async function TrackProductPage({ params }: PageProps) {
   console.log('🔍 Track Product Page - Code:', code)
   console.log('🔍 Track Product Page - API Result:', JSON.stringify(result, null, 2))
 
+  // Use the resolved code from DB (handles truncated URLs) or fallback to URL code
+  const resolvedCode = result.success && result.data?.resolved_code ? result.data.resolved_code : code
+  console.log('🔍 Track Product Page - Resolved Code:', resolvedCode)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PublicJourneyView 
-        code={code}
-        verificationResult={result}
+        code={resolvedCode}
+        verificationResult={result as any}
       />
     </div>
   )

@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'This QR code is not yet active in the system. This is a preview/demo code.',
+          error: 'This QR code is not registered in our system. It may be a preview code or hasn\'t been activated yet. Please scan a QR code from an actual product.',
           preview: true
         },
         { status: 404 }
@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
     // First, try to get rule from order's company (HQ organization)
     const { data: rule1, error: error1 } = await supabaseAdmin
       .from('points_rules')
-      .select('points_per_scan, rule_name, id, org_id, is_active')
+      .select('points_per_scan, name, id, org_id, is_active')
       .eq('org_id', orderData.company_id)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
@@ -289,10 +289,12 @@ export async function POST(request: NextRequest) {
     
     if (rule1) {
       pointRule = rule1
-      console.log('✅ Found point rule from order company:', orderData.company_id)
+      console.log('✅ Found point rule from order company:', orderData.company_id, 'Points:', rule1.points_per_scan)
     } else if (error1) {
       console.error('⚠️ Error fetching point rule from order company:', error1)
       ruleError = error1
+    } else {
+      console.log('⚠️ No point rule found for order company:', orderData.company_id)
     }
     
     // Fallback: Try shop's parent organization (if shop is under HQ)
@@ -300,7 +302,7 @@ export async function POST(request: NextRequest) {
       console.log('🔍 Trying shop parent org:', organization.parent_org_id)
       const { data: rule2, error: error2 } = await supabaseAdmin
         .from('points_rules')
-        .select('points_per_scan, rule_name, id, org_id, is_active')
+        .select('points_per_scan, name, id, org_id, is_active')
         .eq('org_id', organization.parent_org_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -309,9 +311,52 @@ export async function POST(request: NextRequest) {
       
       if (rule2) {
         pointRule = rule2
-        console.log('✅ Found point rule from shop parent org:', organization.parent_org_id)
+        console.log('✅ Found point rule from shop parent org:', organization.parent_org_id, 'Points:', rule2.points_per_scan)
       } else if (error2) {
         console.error('⚠️ Error fetching point rule from shop parent:', error2)
+      } else {
+        console.log('⚠️ No point rule found for shop parent org:', organization.parent_org_id)
+      }
+    }
+
+    // Fallback: Try order company's parent organization (if order org has parent)
+    if (!pointRule && orderOrganization.parent_org_id) {
+      console.log('🔍 Trying order company parent org:', orderOrganization.parent_org_id)
+      const { data: rule3, error: error3 } = await supabaseAdmin
+        .from('points_rules')
+        .select('points_per_scan, name, id, org_id, is_active')
+        .eq('org_id', orderOrganization.parent_org_id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      if (rule3) {
+        pointRule = rule3
+        console.log('✅ Found point rule from order company parent:', orderOrganization.parent_org_id, 'Points:', rule3.points_per_scan)
+      } else if (error3) {
+        console.error('⚠️ Error fetching point rule from order company parent:', error3)
+      }
+    }
+
+    // Final fallback: Try to get ANY active rule (in case org structure is different)
+    if (!pointRule) {
+      console.log('🔍 Final fallback: Looking for any active rule associated with order or shop orgs')
+      const orgIds = [orderData.company_id, organization.id, organization.parent_org_id, orderOrganization.parent_org_id].filter(Boolean)
+      const { data: anyRule, error: anyError } = await supabaseAdmin
+        .from('points_rules')
+        .select('points_per_scan, name, id, org_id, is_active')
+        .in('org_id', orgIds)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      if (anyRule) {
+        pointRule = anyRule
+        console.log('✅ Found point rule via fallback search:', anyRule.org_id, 'Points:', anyRule.points_per_scan)
+      } else {
+        console.log('⚠️ No active point rule found in any related organization')
       }
     }
 
@@ -324,11 +369,16 @@ export async function POST(request: NextRequest) {
     
     console.log('💰 Points configuration:', {
       rule_id: pointRule?.id,
-      rule_name: pointRule?.rule_name,
+      rule_name: pointRule?.name,
       org_id: pointRule?.org_id,
       is_active: pointRule?.is_active,
       points_per_scan: pointRule?.points_per_scan,
       points_to_award: pointsToAward
+    })
+    console.log('⚠️ PASSING TO RPC:', {
+      p_raw_qr_code: qr_code,
+      p_shop_id: authData.user.id,
+      p_points_amount: pointsToAward
     })
 
     // 5. Call RPC to collect points securely
@@ -337,6 +387,8 @@ export async function POST(request: NextRequest) {
       p_shop_id: authData.user.id, // Pass user ID, RPC will look up org
       p_points_amount: pointsToAward
     })
+    
+    console.log('⚠️ RPC RESULT:', result)
 
     if (rpcError) {
       console.error('RPC Error:', rpcError)

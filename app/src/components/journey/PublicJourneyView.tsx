@@ -13,9 +13,11 @@ import {
   XCircle
 } from 'lucide-react'
 import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
+import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
 
 interface JourneyConfig {
   id?: string
+  template_type?: 'classic' | 'premium'
   welcome_title: string
   welcome_message: string
   thank_you_message: string
@@ -26,6 +28,7 @@ interface JourneyConfig {
   redemption_enabled: boolean
   enable_scratch_card_game?: boolean
   scratch_card_require_otp?: boolean
+  require_security_code?: boolean
   
   // Feature Customization
   points_title?: string | null
@@ -59,6 +62,7 @@ interface VerificationData {
   is_valid: boolean
   is_blocked?: boolean // Optional - not in current DB schema
   status?: string
+  org_id?: string
   journey_config?: JourneyConfig
   product_info?: {
     product_name?: string
@@ -237,6 +241,19 @@ export default function PublicJourneyView({
   const welcomeMessage = journeyConfig.welcome_message || 'Thank you for scanning our QR code'
 
   // Always show full-screen mobile view for consumers (eliminates flash/flicker)
+  // Use Premium template if configured, otherwise use Classic
+  if (journeyConfig.template_type === 'premium') {
+    return (
+      <PremiumLoyaltyTemplate 
+        config={journeyConfig}
+        qrCode={code}
+        orgId={data?.org_id}
+        isLive={true}
+        productInfo={data?.product_info}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <InteractiveMobilePreviewV2 

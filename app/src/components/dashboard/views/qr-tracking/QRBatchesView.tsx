@@ -330,6 +330,18 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         document.body.removeChild(anchor)
       }
 
+      // Check status again to ensure it hasn't changed
+      const { data: currentBatch } = await supabase
+        .from('qr_batches')
+        .select('status')
+        .eq('id', batch.id)
+        .single()
+      
+      if (currentBatch?.status !== 'generated') {
+        console.warn('Batch status changed, skipping update:', currentBatch?.status)
+        return
+      }
+
       // Update batch status to 'printing' after download
       // AND update all QR codes (master + unique) to 'printed' status
       if (batch.status === 'generated') {

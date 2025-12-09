@@ -325,11 +325,18 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     
     const orderNo = orderData?.order_no
     
-    // If it's a D2H or S2D order that was submitted (not yet approved), release allocation
+    // Check if order was fulfilled (approved or later)
+    const wasFulfilled = orderData?.status && ['approved', 'warehouse_packed', 'shipped_distributor', 'fulfilled', 'completed'].includes(orderData.status.toLowerCase())
+    
+    // If it's a D2H or S2D order, check if we need to release allocation
     if (orderData && ['D2H', 'S2D'].includes(orderData.order_type)) {
-      // Check status case-insensitively and allow 'submitted' or similar statuses
       const status = orderData.status?.toLowerCase()
-      const shouldRelease = status === 'draft' || status === 'submitted' || status === 'pending' || status === 'processing'
+      
+      // Only release allocation if:
+      // 1. Order is NOT cancelled (trigger already handled it)
+      // 2. Order is NOT fulfilled (allocation already released during fulfillment)
+      const shouldRelease = status !== 'cancelled' && !wasFulfilled && 
+                           (status === 'draft' || status === 'submitted' || status === 'pending' || status === 'processing')
       
       if (shouldRelease) {
         console.log(`🔓 Releasing inventory allocation for ${orderData.order_type} order: ${orderNo} (status: ${orderData.status})`)
@@ -347,14 +354,24 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
           console.warn('⚠️ Warning: Error releasing allocation:', err)
           // Continue anyway
         }
+      } else if (status === 'cancelled') {
+        console.log(`ℹ️ Order ${orderNo} was already cancelled. Deallocation already created by trigger.`)
+      } else if (wasFulfilled) {
+        console.log(`⚠️ Order ${orderNo} was already fulfilled (status: ${orderData.status}). Stock movements will not be reverted.`)
       }
     }
     
-    // 6. Delete stock movements related to this order
-    console.log(`🗑️ Deleting stock movements for order_id: ${orderId}, order_no: ${orderNo}`)
+    // 6. Handle stock movements for this order
+    // For D2H/S2D orders: Don't delete movements (preserve audit trail)
+    // Instead, the release_allocation_for_order call above already created deallocation movements
+    console.log(`📋 Handling stock movements for order_id: ${orderId}, order_no: ${orderNo}`)
 
-    // Capture movement snapshots before deletion so we can roll back inventory balances
-    const movementSnapshotMap = new Map<string, StockMovementSnapshot>()
+    // Skip movement deletion for D2H/S2D orders - movements are the audit trail
+    if (orderData && ['D2H', 'S2D'].includes(orderData.order_type)) {
+      console.log(`✅ Preserved stock movements for ${orderData.order_type} order (audit trail maintained)`)
+    } else {
+      // For other order types, capture movement snapshots before deletion so we can roll back inventory balances
+      const movementSnapshotMap = new Map<string, StockMovementSnapshot>()
 
     console.log(`🔍 Fetching stock movements for snapshot. OrderId: ${orderId}, OrderNo: ${orderNo}`)
 
@@ -410,10 +427,14 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     console.log(`✅ Total stock movements deleted: ${totalMovements}`)
 
     // Apply inverse adjustments to product_inventory
-    const inventoryAdjustments = new Map<string, { variantId: string; orgId: string; delta: number }>()
-    const allocationAdjustments = new Map<string, { variantId: string; orgId: string; delta: number }>()
+    // BUT: Skip if order was already fulfilled to avoid double-reverting
+    if (wasFulfilled) {
+      console.log(`⚠️ Skipping inventory rollback for fulfilled order ${orderNo}. Inventory changes are permanent.`)
+    } else {
+      const inventoryAdjustments = new Map<string, { variantId: string; orgId: string; delta: number }>()
+      const allocationAdjustments = new Map<string, { variantId: string; orgId: string; delta: number }>()
 
-    movementSnapshotMap.forEach(snapshot => {
+      movementSnapshotMap.forEach(snapshot => {
       if (!snapshot?.variant_id || typeof snapshot.quantity_change !== 'number') {
         return
       }
@@ -610,6 +631,8 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
         console.error(`❌ Exception adjusting allocation for variant ${variantId} org ${orgId}`, err)
       }
     }
+    } // End of inventory rollback conditional
+    } // End of D2H/S2D movement preservation check
 
     // 7. Delete order items
     // Reduce batch size for order items as they might have heavy triggers or constraints

@@ -90,6 +90,17 @@ interface OrganizationSettings {
   require_payment_proof: boolean
   logo_url: string | null
   journey_builder_activation: 'shipped_distributor' | 'received_warehouse'
+  qr_tracking_visibility: {
+    manufacturer: {
+      scan: boolean
+      scan2: boolean
+    }
+    warehouse: {
+      receive: boolean
+      receive2: boolean
+      ship: boolean
+    }
+  }
 }
 
 export default function SettingsView({ userProfile }: SettingsViewProps) {
@@ -125,7 +136,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     country_code: 'MY',
     require_payment_proof: true,
     logo_url: null,
-    journey_builder_activation: 'shipped_distributor'
+    journey_builder_activation: 'shipped_distributor',
+    qr_tracking_visibility: {
+      manufacturer: { scan: true, scan2: true },
+      warehouse: { receive: true, receive2: true, ship: true }
+    }
   })
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -187,7 +202,37 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
       if (orgError) throw orgError
 
-      setRawSettings(orgData.settings || {})
+      let settings = orgData.settings || {}
+      if (typeof settings === 'string') {
+        try {
+          settings = JSON.parse(settings)
+        } catch (e) {
+          console.error('Failed to parse settings JSON:', e)
+          settings = {}
+        }
+      }
+
+      setRawSettings(settings)
+
+      // Load system preferences
+      const { data: prefs } = await supabase
+        .schema('core')
+        .from('system_preferences')
+        .select('*')
+        .eq('company_id', userProfile.organizations.id)
+        .eq('module', 'qr_tracking')
+
+      const qrVisibility = {
+        manufacturer: {
+          scan: prefs?.find((p: any) => p.key === 'manufacturer_scan')?.value?.visible ?? true,
+          scan2: prefs?.find((p: any) => p.key === 'manufacturer_scan_2')?.value?.visible ?? true,
+        },
+        warehouse: {
+          receive: prefs?.find((p: any) => p.key === 'warehouse_receive')?.value?.visible ?? true,
+          receive2: prefs?.find((p: any) => p.key === 'warehouse_receive_2')?.value?.visible ?? true,
+          ship: prefs?.find((p: any) => p.key === 'warehouse_ship')?.value?.visible ?? true,
+        }
+      }
 
       setOrgSettings({
         org_name: orgData.org_name || '',
@@ -202,28 +247,29 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         district_id: orgData.district_id || null,
         postal_code: orgData.postal_code || '',
         country_code: orgData.country_code || 'MY',
-        require_payment_proof: orgData.settings?.require_payment_proof ?? true,
+        require_payment_proof: settings.require_payment_proof ?? true,
         logo_url: orgData.logo_url || null,
-        journey_builder_activation: orgData.settings?.journey_builder_activation || 'shipped_distributor'
+        journey_builder_activation: settings.journey_builder_activation || 'shipped_distributor',
+        qr_tracking_visibility: qrVisibility
       })
       
       // Set initial logo preview
       setLogoPreview(orgData.logo_url || null)
       
       // Load branding settings from database
-      if (orgData.settings?.branding) {
+      if (settings.branding) {
         setBrandingSettings({
-          appName: orgData.settings.branding.appName || 'Serapod2U',
-          appTagline: orgData.settings.branding.appTagline || 'Supply Chain',
-          loginTitle: orgData.settings.branding.loginTitle || 'Welcome to Serapod2U',
-          loginSubtitle: orgData.settings.branding.loginSubtitle || 'Supply Chain Management System',
-          copyrightYear: orgData.settings.branding.copyrightYear || '2025',
-          companyName: orgData.settings.branding.companyName || 'Serapod2U',
-          copyrightText: orgData.settings.branding.copyrightText || '© 2025 Serapod2U. All rights reserved.'
+          appName: settings.branding.appName || 'Serapod2U',
+          appTagline: settings.branding.appTagline || 'Supply Chain',
+          loginTitle: settings.branding.loginTitle || 'Welcome to Serapod2U',
+          loginSubtitle: settings.branding.loginSubtitle || 'Supply Chain Management System',
+          copyrightYear: settings.branding.copyrightYear || '2025',
+          companyName: settings.branding.companyName || 'Serapod2U',
+          copyrightText: settings.branding.copyrightText || '© 2025 Serapod2U. All rights reserved.'
         })
         
         // Set branding logo preview from database
-        const logoUrl = orgData.settings.branding.logoUrl || orgData.logo_url
+        const logoUrl = settings.branding.logoUrl || orgData.logo_url
         if (logoUrl) {
           setBrandingLogoPreview(logoUrl)
         }
@@ -259,24 +305,63 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
       console.log('Saving notification settings:', userSettings)
       await new Promise(resolve => setTimeout(resolve, 500))
       
-      // Save organization payment proof setting if HQ user
-      if (userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && isReady) {
+      // Save organization settings if user has permission (Admin/Manager)
+      if (userProfile.roles.role_level <= 20 && isReady) {
+        // Try to save to system_preferences (new way) - wrap in try/catch to not block legacy save
+        try {
+          const updates = [
+            { key: 'manufacturer_scan', value: { visible: orgSettings.qr_tracking_visibility.manufacturer.scan } },
+            { key: 'manufacturer_scan_2', value: { visible: orgSettings.qr_tracking_visibility.manufacturer.scan2 } },
+            { key: 'warehouse_receive', value: { visible: orgSettings.qr_tracking_visibility.warehouse.receive } },
+            { key: 'warehouse_receive_2', value: { visible: orgSettings.qr_tracking_visibility.warehouse.receive2 } },
+            { key: 'warehouse_ship', value: { visible: orgSettings.qr_tracking_visibility.warehouse.ship } },
+          ]
+
+          for (const update of updates) {
+            const { error: prefError } = await supabase.schema('core').from('system_preferences').upsert({
+              company_id: userProfile.organizations.id,
+              module: 'qr_tracking',
+              key: update.key,
+              value: update.value,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'company_id, module, key' })
+            
+            if (prefError) {
+              console.warn('Warning: Failed to save to system_preferences (migration might be missing):', prefError)
+            }
+          }
+        } catch (err) {
+          console.warn('Warning: Error saving system preferences:', err)
+        }
+
+        // Always save legacy settings for backward compatibility
         const { error } = await (supabase as any)
           .from('organizations')
           .update({
             settings: {
               ...rawSettings,
               require_payment_proof: orgSettings.require_payment_proof,
-              journey_builder_activation: orgSettings.journey_builder_activation
+              journey_builder_activation: orgSettings.journey_builder_activation,
+              qr_tracking_visibility: orgSettings.qr_tracking_visibility // Keeping as fallback
             },
             updated_at: new Date().toISOString()
           })
           .eq('id', userProfile.organizations.id)
 
         if (error) throw error
+        
+        // Dispatch event to update sidebar
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('settingsUpdated'))
+        }
       }
 
-      alert('Notification preferences saved successfully!')
+      alert('Settings saved successfully!')
+      
+      // Reload page to ensure changes are reflected
+      setTimeout(() => {
+        window.location.reload()
+      }, 500)
     } catch (error: any) {
       console.error('Error saving notifications:', error)
       alert(`Error saving preferences: ${error.message}`)
@@ -1577,9 +1662,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         {/* Preferences Settings */}
         {activeTab === 'preferences' && (
           <TabsComponent defaultValue="system" className="w-full">
-            <TabsList2 className="grid w-full grid-cols-2 mb-4">
+            <TabsList2 className="grid w-full grid-cols-3 mb-4">
               <TabsTrigger2 value="system">System Preferences</TabsTrigger2>
               <TabsTrigger2 value="journey">Journey Builder</TabsTrigger2>
+              <TabsTrigger2 value="qr-tracking">QR Tracking</TabsTrigger2>
             </TabsList2>
             
             <TabsContent2 value="system">
@@ -1682,6 +1768,120 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       <p className="text-sm text-gray-500">
                         Determines the earliest status at which a product's journey becomes active for consumers.
                       </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveNotifications} disabled={loading}>
+                      <Save className="w-4 h-4 mr-2" />
+                      {loading ? 'Saving...' : 'Save Settings'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent2>
+
+            <TabsContent2 value="qr-tracking">
+              <Card>
+                <CardHeader>
+                  <CardTitle>QR Tracking Visibility</CardTitle>
+                  <CardDescription>
+                    Manage visibility of QR Tracking submenus for Manufacturer and Warehouse.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Manufacturer Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Manufacturer</h3>
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <Label htmlFor="manu-scan" className="cursor-pointer">Smart Scan</Label>
+                      <Switch
+                        id="manu-scan"
+                        checked={orgSettings.qr_tracking_visibility.manufacturer.scan}
+                        onCheckedChange={(checked) => setOrgSettings({
+                          ...orgSettings,
+                          qr_tracking_visibility: {
+                            ...orgSettings.qr_tracking_visibility,
+                            manufacturer: {
+                              ...orgSettings.qr_tracking_visibility.manufacturer,
+                              scan: checked
+                            }
+                          }
+                        })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <Label htmlFor="manu-scan2" className="cursor-pointer">Manufacturer Scan</Label>
+                      <Switch
+                        id="manu-scan2"
+                        checked={orgSettings.qr_tracking_visibility.manufacturer.scan2}
+                        onCheckedChange={(checked) => setOrgSettings({
+                          ...orgSettings,
+                          qr_tracking_visibility: {
+                            ...orgSettings.qr_tracking_visibility,
+                            manufacturer: {
+                              ...orgSettings.qr_tracking_visibility.manufacturer,
+                              scan2: checked
+                            }
+                          }
+                        })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Warehouse Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Warehouse</h3>
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <Label htmlFor="ware-receive" className="cursor-pointer">Warehouse ReceiveOld</Label>
+                      <Switch
+                        id="ware-receive"
+                        checked={orgSettings.qr_tracking_visibility.warehouse.receive}
+                        onCheckedChange={(checked) => setOrgSettings({
+                          ...orgSettings,
+                          qr_tracking_visibility: {
+                            ...orgSettings.qr_tracking_visibility,
+                            warehouse: {
+                              ...orgSettings.qr_tracking_visibility.warehouse,
+                              receive: checked
+                            }
+                          }
+                        })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <Label htmlFor="ware-receive2" className="cursor-pointer">Warehouse Receive</Label>
+                      <Switch
+                        id="ware-receive2"
+                        checked={orgSettings.qr_tracking_visibility.warehouse.receive2}
+                        onCheckedChange={(checked) => setOrgSettings({
+                          ...orgSettings,
+                          qr_tracking_visibility: {
+                            ...orgSettings.qr_tracking_visibility,
+                            warehouse: {
+                              ...orgSettings.qr_tracking_visibility.warehouse,
+                              receive2: checked
+                            }
+                          }
+                        })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <Label htmlFor="ware-ship" className="cursor-pointer">Warehouse Ship</Label>
+                      <Switch
+                        id="ware-ship"
+                        checked={orgSettings.qr_tracking_visibility.warehouse.ship}
+                        onCheckedChange={(checked) => setOrgSettings({
+                          ...orgSettings,
+                          qr_tracking_visibility: {
+                            ...orgSettings.qr_tracking_visibility,
+                            warehouse: {
+                              ...orgSettings.qr_tracking_visibility.warehouse,
+                              ship: checked
+                            }
+                          }
+                        })}
+                      />
                     </div>
                   </div>
 

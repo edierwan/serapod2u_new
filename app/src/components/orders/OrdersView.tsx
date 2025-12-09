@@ -63,7 +63,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
-  const [typeFilter, setTypeFilter] = useState<OrderType | 'all'>('H2M')
+  const [typeFilter, setTypeFilter] = useState<OrderType | 'all'>('all')
   const [sellerFilter, setSellerFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
@@ -275,15 +275,15 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       if (orderData.created_by === userProfile.id) {
         toast({
-          title: 'Cannot Approve Own Order',
-          description: 'You cannot approve an order that you created. Another HQ admin must approve this order.',
+          title: 'Action Not Allowed',
+          description: 'For security reasons, you cannot approve an order you created. Please ask another admin to approve it.',
           variant: 'destructive'
         })
         return
       }
 
       // 3. Show confirmation dialog
-      if (!confirm(`Approve order ${orderNo}?\n\nThis will:\n• Change status to "Approved"\n• Generate Purchase Order document\n• Allow production to begin\n\nThis action cannot be undone.`)) {
+      if (!confirm(`Approve order ${orderNo}?\n\nThis will:\n• Change status to "Approved"\n• Reserve Inventory (Allocate)\n• Generate Purchase Order document\n\nThis action cannot be undone.`)) {
         return
       }
 
@@ -308,22 +308,70 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     } catch (error: any) {
       console.error('Error approving order:', error)
       
-      // User-friendly error messages
-      let errorMessage = error.message || 'Failed to approve order'
-      
-      if (error.message?.includes('Order must be in submitted')) {
-        errorMessage = 'Only submitted orders can be approved'
-      } else if (error.message?.includes('User lacks permission')) {
-        errorMessage = 'You do not have permission to approve this order type'
-      } else if (error.message?.includes('Parent order must be approved')) {
-        errorMessage = 'Parent order must be approved before approving this order'
-      } else if (error.message?.includes('Order not found')) {
-        errorMessage = 'Order not found'
+      let title = 'Approval Failed'
+      let description = 'An unexpected error occurred. Please try again.'
+
+      if (error) {
+        // Handle Supabase errors
+        if (error.message) {
+            description = error.message
+            
+            // Map technical errors to friendly messages
+            if (description.includes('Order must be in submitted')) {
+                description = 'Only submitted orders can be approved.'
+            } else if (description.includes('User lacks permission')) {
+                description = 'You do not have permission to approve this order.'
+            } else if (description.includes('Parent order must be approved')) {
+                description = 'The parent order must be approved first.'
+            } else if (description.includes('Order not found')) {
+                description = 'Order not found.'
+            }
+        } else if (typeof error === 'object' && Object.keys(error).length === 0) {
+            // Empty error object usually means network or unknown error
+            description = 'Unable to connect to the server. Please check your internet connection.'
+        }
       }
 
       toast({
-        title: 'Approval Failed',
-        description: errorMessage,
+        title,
+        description,
+        variant: 'destructive'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancelOrder = async (orderId: string, orderNo: string) => {
+    try {
+      if (!confirm(`Cancel order ${orderNo}?\n\nThis will:\n• Change status to "Cancelled"\n• Release allocated inventory\n\nThis action cannot be undone.`)) {
+        return
+      }
+
+      setLoading(true)
+
+      // Update order status to cancelled
+      // The trigger 'on_order_status_change' will handle inventory deallocation
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled' })
+        .eq('id', orderId)
+
+      if (error) throw error
+
+      toast({
+        title: 'Order Cancelled',
+        description: `Order ${orderNo} has been cancelled and inventory released.`,
+      })
+
+      // Reload orders
+      await loadOrders()
+      await loadSummary()
+    } catch (error: any) {
+      console.error('Error cancelling order:', error)
+      toast({
+        title: 'Cancellation Failed',
+        description: error.message || 'Failed to cancel order',
         variant: 'destructive'
       })
     } finally {
@@ -346,11 +394,43 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     if (order.order_type === 'H2M' && userOrgType === 'HQ') return true
 
     // D2H: HQ Power Users or Seller (Warehouse) can approve
-    if (order.order_type === 'D2H' && (userOrgType === 'HQ' || order.seller_org_id === userProfile.organization_id)) return true
+    // Also allow if user is HQ and order is D2H (Distributor -> HQ)
+    if (order.order_type === 'D2H') {
+        if (userOrgType === 'HQ') return true;
+        // If user is the seller (e.g. Warehouse admin if that exists, though usually HQ manages WH)
+        if (order.seller_org_id === userProfile.organization_id) return true;
+    }
 
     // S2D: Distributor (seller) Power Users can approve
     if (order.order_type === 'S2D' && order.seller_org_id === userProfile.organization_id) return true
 
+    return false
+  }
+
+  // Helper function to check if user can cancel orders
+  const canCancelOrder = (order: Order): boolean => {
+    // Can cancel Submitted, Approved or Processing orders
+    // Submitted: No stock allocated yet, but can be cancelled
+    // Approved/Processing: Stock allocated, will be released
+    if (!['submitted', 'approved', 'processing'].includes(order.status)) return false
+    
+    // Check permissions:
+    // 1. Buyer can cancel? Usually yes if not shipped.
+    // 2. Seller can cancel? Yes.
+    // 3. HQ can cancel? Yes.
+    
+    const userOrgId = userProfile.organization_id
+    const userOrgType = userProfile.organizations.org_type_code
+    
+    // HQ can cancel any order
+    if (userOrgType === 'HQ') return true
+    
+    // Seller can cancel
+    if (order.seller_org_id === userOrgId) return true
+    
+    // Buyer can cancel (maybe restrict if processing?)
+    if (order.buyer_org_id === userOrgId) return true
+    
     return false
   }
 
@@ -1061,6 +1141,17 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             Approve
                           </Button>
                         )}
+                        {canCancelOrder(order) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleCancelOrder(order.id, order.order_no)}
+                            title="Cancel Order"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button 
                           variant="ghost" 
                           size="sm" 
@@ -1247,6 +1338,17 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         >
                           <CheckCircle className="w-3 h-3" />
                           Approve
+                        </Button>
+                      )}
+                      {canCancelOrder(order) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleCancelOrder(order.id, order.order_no)}
+                          title="Cancel Order"
+                        >
+                          <XCircle className="w-4 h-4" />
                         </Button>
                       )}
                       {canDeleteOrder() && (

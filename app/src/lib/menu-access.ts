@@ -6,6 +6,7 @@ export interface MenuAccessRule {
   allowedOrgTypes?: string[]  // Organization types that can access this menu
   minRoleLevel?: number  // Minimum role level required (lower number = higher access)
   maxRoleLevel?: number  // Maximum role level allowed
+  allowedEmails?: string[]  // Specific email addresses that can access this menu
 }
 
 export interface MenuItem {
@@ -51,6 +52,7 @@ export interface SubMenuItem {
 export function hasMenuAccess(
   userProfile: {
     role_code: string
+    email?: string
     organizations: {
       org_type_code: string
     }
@@ -64,10 +66,18 @@ export function hasMenuAccess(
   if (!access) return true
 
   const userRoleCode = userProfile.role_code
+  const userEmail = userProfile.email
   const userOrgType = userProfile.organizations?.org_type_code
   const userRoleLevel = userProfile.roles?.role_level
 
-  // Check role-based access
+  // Check if user's email is in the allowed emails list (bypass other checks)
+  if (access.allowedEmails && access.allowedEmails.length > 0) {
+    if (userEmail && access.allowedEmails.includes(userEmail)) {
+      return true
+    }
+  }
+
+  // Check role-based access (if not already granted via email)
   if (access.allowedRoles && access.allowedRoles.length > 0) {
     if (!access.allowedRoles.includes(userRoleCode)) {
       return false

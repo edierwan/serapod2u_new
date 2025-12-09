@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Smartphone, Coins, Star, Gift, CheckCircle2, ArrowLeft, X, Users, Zap, Trophy, Heart, ShoppingBag, XCircle, Check } from 'lucide-react'
 import ScratchCanvas from './ScratchCanvas'
+import { SecurityCodeModal } from './SecurityCodeModal'
+import { extractTokenFromQRCode } from '@/utils/qrSecurity'
 
 interface JourneyConfig {
     id?: string
@@ -22,6 +24,12 @@ interface JourneyConfig {
     points_enabled: boolean
     lucky_draw_enabled: boolean
     redemption_enabled: boolean
+    require_security_code?: boolean
+    // Per-feature security code bypass
+    skip_security_code_for_points?: boolean
+    skip_security_code_for_lucky_draw?: boolean
+    skip_security_code_for_redemption?: boolean
+    skip_security_code_for_scratch_card?: boolean
     show_product_image?: boolean
     product_image_source?: 'variant' | 'custom' | 'genuine_badge'
     custom_image_url?: string
@@ -97,6 +105,11 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
     const [claimedGiftDetails, setClaimedGiftDetails] = useState<any>(null)
     const [selectedGiftId, setSelectedGiftId] = useState<string | null>(null)
 
+    // Security code modal states
+    const [showSecurityModal, setShowSecurityModal] = useState(false)
+    const [securityVerified, setSecurityVerified] = useState(false)
+    const [pendingPage, setPendingPage] = useState<PageType | null>(null)
+
     // Form states
     const [userId, setUserId] = useState('')
     const [password, setPassword] = useState('')
@@ -164,6 +177,63 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
             setGameError(error.message)
         } finally {
             setIsClaiming(false)
+        }
+    }
+
+    // Check if security code is required for a specific feature
+    const isSecurityCodeRequiredForFeature = (page: PageType): boolean => {
+        // If main security code is OFF, no security code required for anything
+        if (!config.require_security_code) return false
+        
+        // If already verified, no need to check again
+        if (securityVerified) return false
+        
+        // Check per-feature bypass settings
+        switch (page) {
+            case 'collect-points':
+                return !config.skip_security_code_for_points
+            case 'lucky-draw':
+                return !config.skip_security_code_for_lucky_draw
+            case 'redeem-gift':
+                return !config.skip_security_code_for_redemption
+            case 'scratch-card-game':
+                return !config.skip_security_code_for_scratch_card
+            default:
+                return true // Default: require security code
+        }
+    }
+
+    // Handle navigation with security check
+    const handleFeatureClick = (page: PageType) => {
+        console.log('🔐 handleFeatureClick:', { 
+            page, 
+            require_security_code: config.require_security_code, 
+            securityVerified,
+            qrCode 
+        })
+        // If security code is required for this specific feature and not yet verified, show modal
+        if (isSecurityCodeRequiredForFeature(page)) {
+            console.log('🔐 Showing security modal')
+            setPendingPage(page)
+            setShowSecurityModal(true)
+        } else {
+            // Proceed directly to the page
+            setCurrentPage(page)
+            if (page === 'redeem-gift') {
+                fetchRedeemGifts()
+            }
+        }
+    }
+
+    // Handle successful security verification
+    const handleSecuritySuccess = () => {
+        setSecurityVerified(true)
+        if (pendingPage) {
+            setCurrentPage(pendingPage)
+            if (pendingPage === 'redeem-gift') {
+                fetchRedeemGifts()
+            }
+            setPendingPage(null)
         }
     }
 
@@ -666,7 +736,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     {/* Lucky Draw */}
                     {config.lucky_draw_enabled && (
                         <button
-                            onClick={() => setCurrentPage('lucky-draw')}
+                            onClick={() => handleFeatureClick('lucky-draw')}
                             className="w-full bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:border-purple-300 transition-colors text-left"
                         >
                             <div className="flex items-center gap-3">
@@ -690,10 +760,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     {/* Redemption */}
                     {config.redemption_enabled && (
                         <button
-                            onClick={() => {
-                                setCurrentPage('redeem-gift')
-                                fetchRedeemGifts()
-                            }}
+                            onClick={() => handleFeatureClick('redeem-gift')}
                             className="w-full bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:border-green-300 transition-colors text-left"
                         >
                             <div className="flex items-center gap-3">
@@ -717,7 +784,7 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     {/* Scratch Card Game */}
                     {config.enable_scratch_card_game && (
                         <button
-                            onClick={() => setCurrentPage('scratch-card-game')}
+                            onClick={() => handleFeatureClick('scratch-card-game')}
                             className="w-full bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:border-purple-300 transition-colors text-left"
                         >
                             <div className="flex items-center gap-3">
@@ -1910,6 +1977,19 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
         return (
             <div className="min-h-screen bg-gray-50 overflow-y-auto">
                 {renderCurrentPage()}
+                
+                {/* Security Code Modal */}
+                {qrCode && (
+                    <SecurityCodeModal
+                        isOpen={showSecurityModal}
+                        onClose={() => {
+                            setShowSecurityModal(false)
+                            setPendingPage(null)
+                        }}
+                        onSuccess={handleSecuritySuccess}
+                        publicToken={extractTokenFromQRCode(qrCode)}
+                    />
+                )}
             </div>
         )
     }
@@ -1958,6 +2038,19 @@ export default function InteractiveMobilePreviewV2({ config, fullScreen = false,
                     </p>
                 </div>
             </CardContent>
+
+            {/* Security Code Modal */}
+            {qrCode && (
+                <SecurityCodeModal
+                    isOpen={showSecurityModal}
+                    onClose={() => {
+                        setShowSecurityModal(false)
+                        setPendingPage(null)
+                    }}
+                    onSuccess={handleSecuritySuccess}
+                    publicToken={extractTokenFromQRCode(qrCode)}
+                />
+            )}
         </Card>
     )
 }

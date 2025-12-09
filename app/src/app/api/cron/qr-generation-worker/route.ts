@@ -368,7 +368,10 @@ async function insertQRCodesInBatches(
 
       const { error } = await supabase
         .from('qr_codes')
-        .insert(inserts)
+        .upsert(inserts, { 
+          onConflict: 'batch_id, sequence_number',
+          ignoreDuplicates: true 
+        })
 
       if (error) {
         console.error(`❌ Error inserting batch:`, error)

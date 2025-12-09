@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 interface MovementTypeBadgeProps {
   type: string
+  reason?: string | null
 }
 
 /**
@@ -11,7 +12,7 @@ interface MovementTypeBadgeProps {
  * Always renders a neutral/secondary badge (light grey pill) and only changes the label text.
  * Matches existing Adj badge typography and padding exactly.
  */
-export default function MovementTypeBadge({ type }: MovementTypeBadgeProps) {
+export default function MovementTypeBadge({ type, reason }: MovementTypeBadgeProps) {
   const labelMap: Record<string, { label: string; title: string }> = {
     'addition': { label: 'Add', title: 'Addition' },
     'adjustment': { label: 'Adj', title: 'Adjustment' },
@@ -24,10 +25,16 @@ export default function MovementTypeBadge({ type }: MovementTypeBadgeProps) {
     'manual_in': { label: 'M-In', title: 'Manual In' },
     'manual_out': { label: 'M-Out', title: 'Manual Out' },
     'scratch_game_out': { label: 'SG-', title: 'Scratch Game Out' },
-    'scratch_game_in': { label: 'SG+', title: 'Scratch Game In' }
+    'scratch_game_in': { label: 'SG+', title: 'Scratch Game In' },
+    'warranty_bonus': { label: 'Bonus', title: 'Warranty Bonus' }
   }
 
-  const resolved = labelMap[type] || { label: type, title: type }
+  let resolved = labelMap[type] || { label: type, title: type }
+
+  // Override for manual_in with extra_allocation reason (Warranty Buffer)
+  if (type === 'manual_in' && reason === 'extra_allocation') {
+    resolved = labelMap['allocation']
+  }
 
   // NOTE: Always use a neutral / secondary badge style so all movement types look identical
   return (

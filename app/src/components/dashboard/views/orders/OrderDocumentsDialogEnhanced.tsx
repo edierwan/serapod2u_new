@@ -1461,7 +1461,7 @@ export default function OrderDocumentsDialogEnhanced({
                         )}
                       </Button>
 
-                      {documents.balancePaymentRequest.status === 'pending' && (
+                      {isHQAdmin && documents.balancePaymentRequest.status === 'pending' && (
                         <PaymentProofUpload
                           documentId={documents.balancePaymentRequest.id}
                           orderId={orderId}

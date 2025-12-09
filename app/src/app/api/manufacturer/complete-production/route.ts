@@ -81,18 +81,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if all master codes are packed
-    const { data: masterCodes, error: masterError } = await supabase
+    // We use count: 'exact' to avoid 1000 row limit issues
+    const { count: totalMasters, error: totalError } = await supabase
       .from('qr_master_codes')
-      .select('id, status, actual_unit_count, expected_unit_count')
+      .select('*', { count: 'exact', head: true })
       .eq('batch_id', batch_id)
 
-    if (masterError) {
-      throw masterError
+    if (totalError) {
+      throw totalError
     }
 
-    const totalMasters = masterCodes?.length || 0
-    const packedMasters = masterCodes?.filter(m => m.status === 'packed').length || 0
-    const progressPercentage = totalMasters > 0 ? Math.round((packedMasters / totalMasters) * 100) : 0
+    const { count: packedMasters, error: packedError } = await supabase
+      .from('qr_master_codes')
+      .select('*', { count: 'exact', head: true })
+      .eq('batch_id', batch_id)
+      .eq('status', 'packed')
+
+    if (packedError) {
+      throw packedError
+    }
+
+    const progressPercentage = (totalMasters || 0) > 0 ? Math.round(((packedMasters || 0) / (totalMasters || 0)) * 100) : 0
 
     console.log('📊 Production progress:', {
       batch_id,
@@ -154,9 +163,11 @@ export async function POST(request: NextRequest) {
 
     // ============================================================================
     // Update all master codes from 'packed' to 'ready_to_ship'
+    // NOTE: Worker now sets them to 'ready_to_ship' directly, but we keep this
+    // as a safety net to ensure everything is consistent.
     // ============================================================================
 
-    console.log('📝 Updating master codes status: packed → ready_to_ship')
+    console.log('📝 Ensuring master codes status is ready_to_ship')
     
     const { error: masterUpdateError, count: masterUpdatedCount } = await supabase
       .from('qr_master_codes')
@@ -165,53 +176,38 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       })
       .eq('batch_id', batch_id)
-      .eq('status', 'packed')
+      .in('status', ['packed', 'printed']) // Catch any stragglers
 
     if (masterUpdateError) {
       console.error('❌ Failed to update master codes status:', masterUpdateError)
       throw masterUpdateError
     }
 
-    console.log(`✅ ${masterUpdatedCount || 0} master codes updated to 'ready_to_ship' status`)
+    console.log(`✅ ${masterUpdatedCount || 0} master codes ensured as 'ready_to_ship' status`)
 
     // ============================================================================
     // Update all unique codes from 'packed' to 'ready_to_ship'
     // ============================================================================
 
-    console.log('📝 Updating unique codes status: packed → ready_to_ship')
+    console.log('📝 Ensuring unique codes status is ready_to_ship')
     
-    // Get all master code IDs for this batch to find their unique codes
-    const { data: masterCodeIds, error: masterIdsError } = await supabase
-      .from('qr_master_codes')
-      .select('id')
+    // Update using batch_id directly instead of fetching master IDs first
+    // This avoids the 1000 row limit on fetching master IDs
+    const { error: uniqueUpdateError, count: uniqueUpdatedCount } = await supabase
+      .from('qr_codes')
+      .update({
+        status: 'ready_to_ship',
+        updated_at: new Date().toISOString()
+      })
       .eq('batch_id', batch_id)
+      .in('status', ['packed', 'printed']) // Catch any stragglers
 
-    if (masterIdsError) {
-      console.error('❌ Failed to get master code IDs:', masterIdsError)
-      throw masterIdsError
+    if (uniqueUpdateError) {
+      console.error('❌ Failed to update unique codes status:', uniqueUpdateError)
+      throw uniqueUpdateError
     }
 
-    const masterIds = masterCodeIds?.map(m => m.id) || []
-    
-    if (masterIds.length > 0) {
-      const { error: uniqueUpdateError, count: uniqueUpdatedCount } = await supabase
-        .from('qr_codes')
-        .update({
-          status: 'ready_to_ship',
-          updated_at: new Date().toISOString()
-        })
-        .in('master_code_id', masterIds)
-        .eq('status', 'packed')
-
-      if (uniqueUpdateError) {
-        console.error('❌ Failed to update unique codes status:', uniqueUpdateError)
-        throw uniqueUpdateError
-      }
-
-      console.log(`✅ ${uniqueUpdatedCount || 0} unique codes updated to 'ready_to_ship' status`)
-    } else {
-      console.log('⚠️  No master codes found for this batch, skipping unique code update')
-    }
+    console.log(`✅ ${uniqueUpdatedCount || 0} unique codes ensured as 'ready_to_ship' status`)
 
     // ============================================================================
     // NOW mark batch as completed (only after successful propagation)

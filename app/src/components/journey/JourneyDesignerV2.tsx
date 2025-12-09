@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
 import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
+import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
 
 const PRODUCT_CONSUMER_READY_STATUSES = ['shipped_distributor', 'activated', 'redeemed'] as const
 const MASTER_CONSUMER_READY_STATUSES = ['shipped_distributor', 'opened'] as const
@@ -58,6 +59,7 @@ interface UserProfile {
 interface JourneyConfig {
     id?: string
     name: string
+    template_type?: 'classic' | 'premium'  // Template selection
     is_active: boolean
     is_default: boolean
     points_enabled: boolean
@@ -66,6 +68,14 @@ interface JourneyConfig {
     require_staff_otp_for_points: boolean
     require_customer_otp_for_lucky_draw: boolean
     require_customer_otp_for_redemption: boolean
+    require_security_code: boolean
+    require_two_digit_code_for_features?: boolean
+    require_security_code_for_features?: boolean
+    // Per-feature security code bypass (when main security code is ON)
+    skip_security_code_for_points?: boolean
+    skip_security_code_for_lucky_draw?: boolean
+    skip_security_code_for_redemption?: boolean
+    skip_security_code_for_scratch_card?: boolean
     enable_scratch_card_game: boolean
     scratch_card_require_otp: boolean
     
@@ -178,10 +188,17 @@ export default function JourneyDesignerV2({
 }: {
     order: Order
     userProfile: UserProfile
-    journey?: any
+    journey?: JourneyConfig
     onBack: () => void
     onSuccess: () => void
 }) {
+    // Debug: Log on component mount
+    useEffect(() => {
+        console.log('=== [JourneyDesigner] COMPONENT MOUNTED ===')
+        console.log('Journey ID:', journey?.id)
+        console.log('Journey require_security_code:', journey?.require_security_code)
+    }, [])
+    
     const [saving, setSaving] = useState(false)
     const [showPreview, setShowPreview] = useState(true)
     const [uploadingImage, setUploadingImage] = useState(false)
@@ -223,6 +240,12 @@ export default function JourneyDesignerV2({
         require_staff_otp_for_points: journey?.require_staff_otp_for_points ?? false,
         require_customer_otp_for_lucky_draw: journey?.require_customer_otp_for_lucky_draw ?? false,
         require_customer_otp_for_redemption: journey?.require_customer_otp_for_redemption ?? false,
+        require_security_code: journey?.require_security_code ?? false,
+        // Per-feature security code bypass
+        skip_security_code_for_points: (journey as any)?.skip_security_code_for_points ?? false,
+        skip_security_code_for_lucky_draw: (journey as any)?.skip_security_code_for_lucky_draw ?? false,
+        skip_security_code_for_redemption: (journey as any)?.skip_security_code_for_redemption ?? false,
+        skip_security_code_for_scratch_card: (journey as any)?.skip_security_code_for_scratch_card ?? false,
         enable_scratch_card_game: journey?.enable_scratch_card_game ?? false,
         scratch_card_require_otp: journey?.scratch_card_require_otp ?? false,
         
@@ -257,6 +280,69 @@ export default function JourneyDesignerV2({
     })
 
     const supabase = createClient()
+
+    // Update config when journey prop changes (e.g., after save and re-edit)
+    useEffect(() => {
+        if (journey) {
+            console.log('[JourneyDesigner] Journey prop received:', {
+                id: journey.id,
+                require_security_code: journey.require_security_code
+            })
+            
+            setConfig({
+                id: journey.id,
+                name: journey.name || `Journey for ${order.order_no}`,
+                template_type: (journey as any).template_type || 'classic',
+                is_active: journey.is_active ?? true,
+                is_default: journey.is_default ?? false,
+                points_enabled: journey.points_enabled ?? true,
+                lucky_draw_enabled: journey.lucky_draw_enabled ?? order.has_lucky_draw,
+                redemption_enabled: journey.redemption_enabled ?? order.has_redeem,
+                require_staff_otp_for_points: journey.require_staff_otp_for_points ?? false,
+                require_customer_otp_for_lucky_draw: journey.require_customer_otp_for_lucky_draw ?? false,
+                require_customer_otp_for_redemption: journey.require_customer_otp_for_redemption ?? false,
+                require_security_code: journey.require_security_code ?? false,
+                // Per-feature security code bypass
+                skip_security_code_for_points: (journey as any).skip_security_code_for_points ?? false,
+                skip_security_code_for_lucky_draw: (journey as any).skip_security_code_for_lucky_draw ?? false,
+                skip_security_code_for_redemption: (journey as any).skip_security_code_for_redemption ?? false,
+                skip_security_code_for_scratch_card: (journey as any).skip_security_code_for_scratch_card ?? false,
+                enable_scratch_card_game: journey.enable_scratch_card_game ?? false,
+                scratch_card_require_otp: journey.scratch_card_require_otp ?? false,
+                
+                // Feature Customization
+                points_title: journey.points_title || 'Collect Points',
+                points_description: journey.points_description || 'Earn rewards with every scan',
+                points_icon: journey.points_icon || 'Coins',
+                
+                lucky_draw_title: journey.lucky_draw_title || 'Lucky Draw',
+                lucky_draw_description: journey.lucky_draw_description || 'Try your luck and win prizes!',
+                lucky_draw_icon: journey.lucky_draw_icon || 'Star',
+                
+                redemption_title: journey.redemption_title || 'Claim Free Gift',
+                redemption_description: journey.redemption_description || 'Get your free gift at the shop',
+                redemption_icon: journey.redemption_icon || 'Gift',
+                
+                scratch_card_title: journey.scratch_card_title || 'Scratch Card Game',
+                scratch_card_description: journey.scratch_card_description || 'Scratch & win surprise rewards',
+                scratch_card_icon: journey.scratch_card_icon || 'Gift',
+
+                start_at: journey.start_at ? journey.start_at.split('T')[0] : new Date().toISOString().split('T')[0],
+                end_at: journey.end_at ? journey.end_at.split('T')[0] : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                welcome_title: journey.welcome_title || 'Welcome!',
+                welcome_message: journey.welcome_message || 'Thank you for scanning our QR code. Enjoy exclusive rewards and benefits!',
+                thank_you_message: journey.thank_you_message || 'Thank you for your participation!',
+                primary_color: journey.primary_color || '#3B82F6',
+                button_color: journey.button_color || '#10B981',
+                show_product_image: journey.show_product_image ?? false,
+                product_image_source: journey.product_image_source ?? 'variant',
+                custom_image_url: journey.custom_image_url ?? '',
+                genuine_badge_style: journey.genuine_badge_style ?? 'gold'
+            })
+            
+            console.log('[JourneyDesigner] Config state updated with require_security_code:', journey.require_security_code ?? false)
+        }
+    }, [journey])
 
     const updatePreviewMetrics = useCallback(() => {
         if (typeof window === 'undefined') return
@@ -295,12 +381,33 @@ export default function JourneyDesignerV2({
                 setCheckingShipment(true)
 
                 // Determine valid statuses based on activation trigger
-                const validProductStatuses = [...PRODUCT_CONSUMER_READY_STATUSES] as string[]
-                const validMasterStatuses = [...MASTER_CONSUMER_READY_STATUSES] as string[]
+                // Always include 'received_warehouse' because if it's received, it's definitely shipped/ready
+                const validProductStatuses = [...PRODUCT_CONSUMER_READY_STATUSES, 'received_warehouse'] as string[]
+                const validMasterStatuses = [...MASTER_CONSUMER_READY_STATUSES, 'received_warehouse'] as string[]
+                
+                // If activation trigger is strictly 'received_warehouse', we might want to exclude 'shipped_distributor'
+                // But for now, the main issue is that 'received_warehouse' was missing from the default list.
                 
                 if (activationTrigger === 'received_warehouse') {
-                    validProductStatuses.push('received_warehouse')
-                    validMasterStatuses.push('received_warehouse')
+                    // If we wanted to be strict:
+                    // validProductStatuses = validProductStatuses.filter(s => s !== 'shipped_distributor')
+                    // validMasterStatuses = validMasterStatuses.filter(s => s !== 'shipped_distributor')
+                }
+
+                // FAST PATH: If order status already meets the criteria, we can skip the expensive/restricted QR check
+                // This also helps when RLS policies might block access to QR tables but Order is visible
+                if (activationTrigger === 'received_warehouse' && order.status === 'received_warehouse') {
+                    setProductsShipped(true)
+                    setCheckingShipment(false)
+                    console.log(`[Journey] Shipment check for order ${order.order_no}: Products shipped ✅ (via order status)`)
+                    return
+                }
+
+                if (activationTrigger === 'shipped_distributor' && (order.status === 'shipped_distributor' || order.status === 'completed')) {
+                    setProductsShipped(true)
+                    setCheckingShipment(false)
+                    console.log(`[Journey] Shipment check for order ${order.order_no}: Products shipped ✅ (via order status)`)
+                    return
                 }
 
                 const [masterResult, uniqueByOrderResult] = await Promise.all([
@@ -635,6 +742,12 @@ export default function JourneyDesignerV2({
                 require_staff_otp_for_points: config.require_staff_otp_for_points,
                 require_customer_otp_for_lucky_draw: config.require_customer_otp_for_lucky_draw,
                 require_customer_otp_for_redemption: config.require_customer_otp_for_redemption,
+                require_security_code: config.require_security_code,
+                // Per-feature security code bypass
+                skip_security_code_for_points: config.skip_security_code_for_points ?? false,
+                skip_security_code_for_lucky_draw: config.skip_security_code_for_lucky_draw ?? false,
+                skip_security_code_for_redemption: config.skip_security_code_for_redemption ?? false,
+                skip_security_code_for_scratch_card: config.skip_security_code_for_scratch_card ?? false,
                 enable_scratch_card_game: config.enable_scratch_card_game,
                 scratch_card_require_otp: config.scratch_card_require_otp,
                 start_at: config.start_at || null,
@@ -672,10 +785,15 @@ export default function JourneyDesignerV2({
             if (config.scratch_card_description !== undefined) journeyData.scratch_card_description = config.scratch_card_description
             if (config.scratch_card_icon !== undefined) journeyData.scratch_card_icon = config.scratch_card_icon
 
+            // Template selection
+            if (config.template_type !== undefined) journeyData.template_type = config.template_type
+
             let journeyId = config.id
 
             if (config.id) {
                 // Update existing journey
+                console.log('[JourneyDesigner] Saving journey with require_security_code:', journeyData.require_security_code)
+                
                 const { error } = await supabase
                     .from('journey_configurations')
                     .update(journeyData)
@@ -685,6 +803,8 @@ export default function JourneyDesignerV2({
                     console.error('Supabase update error:', error)
                     throw new Error(error.message || 'Failed to update journey')
                 }
+                
+                console.log('[JourneyDesigner] Journey saved successfully')
             } else {
                 // Create new journey
                 const { data, error } = await supabase
@@ -911,6 +1031,95 @@ export default function JourneyDesignerV2({
                                     onCheckedChange={(checked) => setConfig({ ...config, is_default: checked })}
                                 />
                             </div>
+
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label className="flex items-center gap-2">
+                                        Require Security Code 🔒 <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">Anti-Fraud</span>
+                                    </Label>
+                                    <p className="text-sm text-gray-600">Require 2-digit code from product box for Lucky Draw, Redemption & Games</p>
+                                </div>
+                                <Switch
+                                    checked={config.require_security_code}
+                                    onCheckedChange={(checked) => setConfig({ ...config, require_security_code: checked })}
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Template Selection */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Palette className="w-5 h-5" />
+                                Template Style
+                            </CardTitle>
+                            <CardDescription>
+                                Choose a design template for your loyalty program
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Classic Template */}
+                                <button
+                                    type="button"
+                                    onClick={() => setConfig({ ...config, template_type: 'classic' })}
+                                    className={`relative p-4 rounded-xl border-2 transition-all text-left ${
+                                        config.template_type !== 'premium' 
+                                            ? 'border-blue-500 bg-blue-50' 
+                                            : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                                >
+                                    {config.template_type !== 'premium' && (
+                                        <div className="absolute top-2 right-2">
+                                            <CheckCircle2 className="w-5 h-5 text-blue-500" />
+                                        </div>
+                                    )}
+                                    <div className="w-full h-24 bg-gradient-to-b from-blue-400 to-blue-500 rounded-lg mb-3 flex items-center justify-center">
+                                        <div className="text-white text-center">
+                                            <CheckCircle2 className="w-6 h-6 mx-auto mb-1" />
+                                            <span className="text-xs font-medium">Welcome!</span>
+                                        </div>
+                                    </div>
+                                    <h3 className="font-semibold text-gray-900">Classic</h3>
+                                    <p className="text-xs text-gray-500 mt-1">Simple welcome page with feature buttons</p>
+                                </button>
+
+                                {/* Premium Template */}
+                                <button
+                                    type="button"
+                                    onClick={() => setConfig({ ...config, template_type: 'premium' })}
+                                    className={`relative p-4 rounded-xl border-2 transition-all text-left ${
+                                        config.template_type === 'premium' 
+                                            ? 'border-blue-500 bg-blue-50' 
+                                            : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                                >
+                                    {config.template_type === 'premium' && (
+                                        <div className="absolute top-2 right-2">
+                                            <CheckCircle2 className="w-5 h-5 text-blue-500" />
+                                        </div>
+                                    )}
+                                    <div className="w-full h-24 bg-gradient-to-b from-emerald-600 to-emerald-700 rounded-lg mb-3 relative overflow-hidden">
+                                        <div className="absolute bottom-0 left-0 right-0 bg-white h-6 flex items-center justify-around px-2">
+                                            <div className="w-3 h-3 rounded bg-gray-200" />
+                                            <div className="w-3 h-3 rounded bg-gray-200" />
+                                            <div className="w-3 h-3 rounded bg-emerald-500" />
+                                            <div className="w-3 h-3 rounded bg-gray-200" />
+                                            <div className="w-3 h-3 rounded bg-gray-200" />
+                                        </div>
+                                        <div className="text-white text-center pt-3">
+                                            <Star className="w-5 h-5 mx-auto mb-1 fill-yellow-400 text-yellow-400" />
+                                            <span className="text-xs font-medium">175 pts</span>
+                                        </div>
+                                    </div>
+                                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                                        Premium 
+                                        <span className="text-[10px] bg-gradient-to-r from-amber-500 to-orange-500 text-white px-1.5 py-0.5 rounded">NEW</span>
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mt-1">Modern app-like interface with bottom navigation</p>
+                                </button>
+                            </div>
                         </CardContent>
                     </Card>
 
@@ -944,17 +1153,33 @@ export default function JourneyDesignerV2({
                                             Reward consumers with points for scanning
                                         </p>
                                         {config.points_enabled && (
-                                            <div className="mt-3 flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    id="require_staff_otp_for_points"
-                                                    checked={config.require_staff_otp_for_points}
-                                                    onChange={(e) => setConfig({ ...config, require_staff_otp_for_points: e.target.checked })}
-                                                    className="rounded"
-                                                />
-                                                <Label htmlFor="require_staff_otp_for_points" className="text-sm font-normal cursor-pointer">
-                                                    Require staff OTP verification
-                                                </Label>
+                                            <div className="mt-3 space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="require_staff_otp_for_points"
+                                                        checked={config.require_staff_otp_for_points}
+                                                        onChange={(e) => setConfig({ ...config, require_staff_otp_for_points: e.target.checked })}
+                                                        className="rounded"
+                                                    />
+                                                    <Label htmlFor="require_staff_otp_for_points" className="text-sm font-normal cursor-pointer">
+                                                        Require staff OTP verification
+                                                    </Label>
+                                                </div>
+                                                {config.require_security_code && (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="skip_security_code_for_points"
+                                                            checked={config.skip_security_code_for_points}
+                                                            onChange={(e) => setConfig({ ...config, skip_security_code_for_points: e.target.checked })}
+                                                            className="rounded border-orange-300"
+                                                        />
+                                                        <Label htmlFor="skip_security_code_for_points" className="text-sm font-normal cursor-pointer text-orange-700">
+                                                            Skip security code for this feature
+                                                        </Label>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         <FeatureCustomizer 
@@ -1024,17 +1249,33 @@ export default function JourneyDesignerV2({
                                         )}
 
                                         {order.has_lucky_draw && config.lucky_draw_enabled && (
-                                            <div className="mt-3 flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    id="require_customer_otp_for_lucky_draw"
-                                                    checked={config.require_customer_otp_for_lucky_draw}
-                                                    onChange={(e) => setConfig({ ...config, require_customer_otp_for_lucky_draw: e.target.checked })}
-                                                    className="rounded"
-                                                />
-                                                <Label htmlFor="require_customer_otp_for_lucky_draw" className="text-sm font-normal cursor-pointer">
-                                                    Require customer OTP verification
-                                                </Label>
+                                            <div className="mt-3 space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="require_customer_otp_for_lucky_draw"
+                                                        checked={config.require_customer_otp_for_lucky_draw}
+                                                        onChange={(e) => setConfig({ ...config, require_customer_otp_for_lucky_draw: e.target.checked })}
+                                                        className="rounded"
+                                                    />
+                                                    <Label htmlFor="require_customer_otp_for_lucky_draw" className="text-sm font-normal cursor-pointer">
+                                                        Require customer OTP verification
+                                                    </Label>
+                                                </div>
+                                                {config.require_security_code && (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="skip_security_code_for_lucky_draw"
+                                                            checked={config.skip_security_code_for_lucky_draw}
+                                                            onChange={(e) => setConfig({ ...config, skip_security_code_for_lucky_draw: e.target.checked })}
+                                                            className="rounded border-orange-300"
+                                                        />
+                                                        <Label htmlFor="skip_security_code_for_lucky_draw" className="text-sm font-normal cursor-pointer text-orange-700">
+                                                            Skip security code for this feature
+                                                        </Label>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         <FeatureCustomizer 
@@ -1104,17 +1345,33 @@ export default function JourneyDesignerV2({
                                         )}
 
                                         {order.has_redeem && config.redemption_enabled && (
-                                            <div className="mt-3 flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    id="require_customer_otp_for_redemption"
-                                                    checked={config.require_customer_otp_for_redemption}
-                                                    onChange={(e) => setConfig({ ...config, require_customer_otp_for_redemption: e.target.checked })}
-                                                    className="rounded"
-                                                />
-                                                <Label htmlFor="require_customer_otp_for_redemption" className="text-sm font-normal cursor-pointer">
-                                                    Require customer OTP verification
-                                                </Label>
+                                            <div className="mt-3 space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="require_customer_otp_for_redemption"
+                                                        checked={config.require_customer_otp_for_redemption}
+                                                        onChange={(e) => setConfig({ ...config, require_customer_otp_for_redemption: e.target.checked })}
+                                                        className="rounded"
+                                                    />
+                                                    <Label htmlFor="require_customer_otp_for_redemption" className="text-sm font-normal cursor-pointer">
+                                                        Require customer OTP verification
+                                                    </Label>
+                                                </div>
+                                                {config.require_security_code && (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="skip_security_code_for_redemption"
+                                                            checked={config.skip_security_code_for_redemption}
+                                                            onChange={(e) => setConfig({ ...config, skip_security_code_for_redemption: e.target.checked })}
+                                                            className="rounded border-orange-300"
+                                                        />
+                                                        <Label htmlFor="skip_security_code_for_redemption" className="text-sm font-normal cursor-pointer text-orange-700">
+                                                            Skip security code for this feature
+                                                        </Label>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         <FeatureCustomizer 
@@ -1150,17 +1407,33 @@ export default function JourneyDesignerV2({
                                             Let consumers scratch to reveal random gifts
                                         </p>
                                         {config.enable_scratch_card_game && (
-                                            <div className="mt-3 flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    id="scratch_card_require_otp"
-                                                    checked={config.scratch_card_require_otp}
-                                                    onChange={(e) => setConfig({ ...config, scratch_card_require_otp: e.target.checked })}
-                                                    className="rounded"
-                                                />
-                                                <Label htmlFor="scratch_card_require_otp" className="text-sm font-normal cursor-pointer">
-                                                    Require customer OTP verification
-                                                </Label>
+                                            <div className="mt-3 space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="scratch_card_require_otp"
+                                                        checked={config.scratch_card_require_otp}
+                                                        onChange={(e) => setConfig({ ...config, scratch_card_require_otp: e.target.checked })}
+                                                        className="rounded"
+                                                    />
+                                                    <Label htmlFor="scratch_card_require_otp" className="text-sm font-normal cursor-pointer">
+                                                        Require customer OTP verification
+                                                    </Label>
+                                                </div>
+                                                {config.require_security_code && (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="skip_security_code_for_scratch_card"
+                                                            checked={config.skip_security_code_for_scratch_card}
+                                                            onChange={(e) => setConfig({ ...config, skip_security_code_for_scratch_card: e.target.checked })}
+                                                            className="rounded border-orange-300"
+                                                        />
+                                                        <Label htmlFor="skip_security_code_for_scratch_card" className="text-sm font-normal cursor-pointer text-orange-700">
+                                                            Skip security code for this feature
+                                                        </Label>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         <FeatureCustomizer 
@@ -1385,7 +1658,26 @@ export default function JourneyDesignerV2({
                                     maxHeight: `${Math.max(previewMetrics.maxHeight - 24, 360)}px`
                                 }}
                             >
-                                <InteractiveMobilePreviewV2 config={config} />
+                                {config.template_type === 'premium' ? (
+                                    <div className="relative mx-auto" style={{ width: '300px', height: '600px' }}>
+                                        <div className="absolute inset-0 border-8 border-gray-800 rounded-[40px] bg-white shadow-2xl overflow-hidden">
+                                            <div className="h-6 bg-gray-800 flex items-center justify-between px-4 relative z-10">
+                                                <span className="text-white text-xs">9:41</span>
+                                                <div className="flex gap-1">
+                                                    <div className="w-4 h-3 bg-white rounded-sm"></div>
+                                                    <div className="w-1 h-3 bg-white rounded-sm"></div>
+                                                </div>
+                                            </div>
+                                            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-gray-800 rounded-b-3xl z-20"></div>
+                                            <div className="h-[calc(100%-24px)] overflow-hidden">
+                                                <PremiumLoyaltyTemplate config={config} isLive={false} />
+                                            </div>
+                                            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-gray-800 rounded-full"></div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <InteractiveMobilePreviewV2 config={config} />
+                                )}
                             </div>
                         </div>
                     </div>

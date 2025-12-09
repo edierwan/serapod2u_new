@@ -23,6 +23,7 @@ export interface Organization {
   settings?: Record<string, any> | null
   company_id?: string | null
   state?: string | null
+  warranty_bonus?: number | null
 }
 
 export type OrganizationFormData = Partial<Organization>

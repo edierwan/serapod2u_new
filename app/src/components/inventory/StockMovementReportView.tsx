@@ -611,6 +611,12 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         })()
 
         const resolvedUnitCost = (() => {
+          // Force warranty_bonus movements to have 0 cost
+          const movementType = item.movement_type ? item.movement_type.toLowerCase().trim() : ''
+          if (movementType === 'warranty_bonus') {
+            return 0
+          }
+          
           if (variantBaseCost !== null) return variantBaseCost
           const directCost = typeof item.unit_cost === 'number' && !Number.isNaN(item.unit_cost)
             ? Number(item.unit_cost)
@@ -975,6 +981,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                     <SelectItem value="manual_out">Manual Out</SelectItem>
                     <SelectItem value="scratch_game_out">Scratch Game Out</SelectItem>
                     <SelectItem value="scratch_game_in">Scratch Game In</SelectItem>
+                    <SelectItem value="warranty_bonus">Warranty Bonus</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1262,7 +1269,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                         {formatDate(movement.created_at)}
                       </TableCell>
                       <TableCell>
-                        <MovementTypeBadge type={movement.movement_type} />
+                        <MovementTypeBadge type={movement.movement_type} reason={movement.reason} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">

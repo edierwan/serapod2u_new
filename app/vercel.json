@@ -3,6 +3,11 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "outputDirectory": ".next",
+  "build": {
+    "env": {
+      "NODE_VERSION": "24.x"
+    }
+  },
   "git": {
     "deploymentEnabled": true
   },
@@ -13,6 +18,10 @@
     },
     {
       "path": "/api/cron/qr-generation-worker",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/manufacturer-packing-worker",
       "schedule": "*/1 * * * *"
     }
   ]

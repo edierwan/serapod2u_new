@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ArrowLeft, User, Package, CheckSquare, Loader2, Trash2 } from 'lucide-react'
-import { useToast } from '@/components/ui/use-toast'
 
 interface UserProfile {
   id: string
@@ -152,7 +151,6 @@ const getDefaultCaseSize = (family: string): number => {
 
 export default function CreateOrderView({ userProfile, onViewChange }: CreateOrderViewProps) {
   const supabase = createClient()
-  const { toast } = useToast()
   
   // Determine order type based on user's organization type
   const [orderType, setOrderType] = useState<'H2M' | 'D2H' | 'S2D'>('H2M')
@@ -306,11 +304,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       
     } catch (error) {
       console.error('Error initializing order:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to initialize order form',
-        variant: 'destructive'
-      })
     } finally {
       setLoading(false)
     }
@@ -398,19 +391,9 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         setShowDistributorSelector(true)
       } else {
         // No distributors linked
-        toast({
-          title: 'No Distributors Linked',
-          description: 'This shop has no linked distributors. Please contact your administrator.',
-          variant: 'destructive'
-        })
       }
     } catch (error) {
       console.error('Error loading shop distributors:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load available distributors',
-        variant: 'destructive'
-      })
     }
   }
 
@@ -498,11 +481,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       
       if (error) {
         console.error('❌ Error loading variants:', error)
-        toast({
-          title: 'Database Error',
-          description: `Failed to load product variants: ${error.message}`,
-          variant: 'destructive'
-        })
         throw error
       }
       
@@ -541,20 +519,9 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           'S2D': 'No active product variants available. Please contact your administrator to ensure products are properly configured.',
           'D2H': 'No active product variants available from HQ. Please contact your administrator.'
         }
-        
-        toast({
-          title: 'No Products',
-          description: errorMessages[orderType as keyof typeof errorMessages] || 'No active product variants available.',
-          variant: 'destructive'
-        })
       }
     } catch (error) {
       console.error('Error loading product variants:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load product variants',
-        variant: 'destructive'
-      })
     }
   }
 
@@ -574,11 +541,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
   const handleAddProduct = async () => {
     if (!selectedVariantId) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please select a product variant',
-        variant: 'destructive'
-      })
       return
     }
 
@@ -587,21 +549,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
     // Check if variant already added
     if (orderItems.find(item => item.variant_id === selectedVariantId)) {
-      toast({
-        title: 'Product Already Added',
-        description: 'This product variant is already in the order',
-        variant: 'destructive'
-      })
       return
     }
 
     // Validate manufacturer - all products in an order must be from the same manufacturer
     if (!variant.manufacturer_id) {
-      toast({
-        title: 'Invalid Product',
-        description: 'This product has no manufacturer assigned',
-        variant: 'destructive'
-      })
       return
     }
 
@@ -614,11 +566,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         .eq('id', lockedManufacturerId)
         .single()
       
-      toast({
-        title: 'Mixed Manufacturers Not Allowed',
-        description: `Each order can only contain products from one manufacturer. This order is currently for ${lockedManufacturer?.org_name || 'another manufacturer'}.`,
-        variant: 'destructive'
-      })
       return
     }
 
@@ -656,11 +603,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         .select('org_name')
         .eq('id', variant.manufacturer_id)
         .single()
-      
-      toast({
-        title: 'Manufacturer Locked',
-        description: `This order is now locked to ${manufacturer?.org_name || 'this manufacturer'}. Only products from this manufacturer can be added.`
-      })
     }
 
     // Auto-logic for case size configuration
@@ -751,14 +693,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
     setOrderItems([...orderItems, newItem])
     setSelectedVariantId('')
-    
-    // Show notification with auto-logic message if applicable
-    toast({
-      title: 'Product Added',
-      description: autoMessage 
-        ? `${variant.product_name} - ${variant.variant_name} added. ${autoMessage}`
-        : `${variant.product_name} - ${variant.variant_name} has been added to the order`,
-    })
   }
 
   const handleRemoveProduct = async (variantId: string) => {
@@ -772,17 +706,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       // Reload products without manufacturer filter (pass null explicitly)
       await loadAvailableProducts(sellerOrg?.id || '', null)
       
-      toast({
-        title: 'Manufacturer Unlocked',
-        description: 'All products removed. You can now select from any manufacturer.'
-      })
       return // Exit early to avoid the generic "Product Removed" toast
     }
-    
-    toast({
-      title: 'Product Removed',
-      description: 'Product has been removed from the order',
-    })
   }
 
   const handleUpdateQuantity = (variantId: string, qty: number) => {
@@ -795,10 +720,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       if (availableUnitsPerCase.includes(qty)) {
         // Automatically adjust units per case to match the quantity
         setUnitsPerCase(qty)
-        toast({
-          title: 'Units Per Case Adjusted',
-          description: `Units per case automatically changed to ${qty} to match your quantity.`,
-        })
       } else {
         // Quantity doesn't match any standard case size
         // Find if it's a multiple of any available units per case
@@ -806,10 +727,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         
         if (validOption) {
           // It's a valid multiple - suggest or auto-adjust
-          toast({
-            title: 'Quantity Accepted',
-            description: `Quantity ${qty} is valid (${qty / validOption} cases of ${validOption} units each).`,
-          })
         }
         // If not divisible by any option, we'll show validation error in UI
       }
@@ -849,11 +766,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           line_total: newUnitsPerCase * item.unit_price
         }
       }))
-      
-      toast({
-        title: 'Quantity Auto-Updated',
-        description: `All quantities set to ${newUnitsPerCase} units (minimum for ${newUnitsPerCase} units/case)`,
-      })
     }
   }
 
@@ -1025,18 +937,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         await loadAvailableProducts(orderData.seller_org_id)
       }
 
-      toast({
-        title: 'Order Loaded',
-        description: `Editing order ${orderData.order_no}`,
-      })
-
     } catch (error) {
       console.error('Error loading order:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load order for editing',
-        variant: 'destructive'
-      })
     } finally {
       setLoading(false)
     }
@@ -1145,18 +1047,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         await loadAvailableProducts(orderData.seller_org_id)
       }
 
-      toast({
-        title: 'Order Copied',
-        description: `Order copied successfully. Update details and submit as a new order.`,
-      } as any)
-
     } catch (error) {
       console.error('Error loading copied order:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load copied order',
-        variant: 'destructive'
-      })
     } finally {
       setLoading(false)
     }
@@ -1214,20 +1106,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     try {
       // Validation
       if (!sellerOrg) {
-        toast({
-          title: 'Validation Error',
-          description: 'Please select a seller organization',
-          variant: 'destructive'
-        })
         return
       }
 
       if (!customerName || !deliveryAddress) {
-        toast({
-          title: 'Validation Error',
-          description: 'Customer name and delivery address are required',
-          variant: 'destructive'
-        })
         return
       }
 
@@ -1237,11 +1119,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         
         if (packingPlan.hasIssue) {
           const problem = packingPlan.productsWithRemainders[0]
-          toast({
-            title: '⚠️ Incomplete Case Packing',
-            description: `${problem.productName} has ${problem.remainder} units left over from ${problem.qty} units. Cannot pack into ${problem.unitsPerCase}/case. Add another product with a remainder to create a mixed case, or adjust the quantity to a multiple of ${problem.unitsPerCase}.`,
-            variant: 'destructive',
-          } as any)
           return
         }
         
@@ -1250,20 +1127,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           const remainderProducts = packingPlan.productsWithRemainders
             .map(p => `${p.productName}: ${p.remainder} units`)
             .join(', ')
-          
-          toast({
-            title: '✅ Mixed Cases Will Be Created',
-            description: `${packingPlan.mixedCasesNeeded} mixed case(s) will contain remainders: ${remainderProducts}`,
-          } as any)
         }
       }
 
       if (orderItems.length === 0) {
-        toast({
-          title: 'Validation Error',
-          description: 'Please add at least one product to the order',
-          variant: 'destructive'
-        })
         return
       }
 
@@ -1286,21 +1153,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
         if (hqError) {
           console.error('Error fetching HQ default warehouse:', hqError)
-          toast({
-            title: 'Error',
-            description: 'Failed to determine destination warehouse',
-            variant: 'destructive'
-          })
           setSaving(false)
           return
         }
 
         if (!hqData?.default_warehouse_org_id) {
-          toast({
-            title: 'No Default Warehouse',
-            description: 'Please set a default warehouse for your HQ before creating orders.',
-            variant: 'destructive'
-          })
           setSaving(false)
           return
         }
@@ -1447,11 +1304,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         }
       }
 
-      toast({
-        title: 'Success',
-        description: `Order ${status === 'draft' ? 'saved as draft' : 'created and submitted'} successfully`,
-      })
-
       // Navigate back to orders list
       if (onViewChange) {
         onViewChange('orders')
@@ -1459,11 +1311,6 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
     } catch (error: any) {
       console.error('Error saving order:', error)
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to save order',
-        variant: 'destructive'
-      })
     } finally {
       setSaving(false)
     }

@@ -58,6 +58,9 @@ interface JourneyConfig {
     require_staff_otp_for_points: boolean
     require_customer_otp_for_lucky_draw: boolean
     require_customer_otp_for_redemption: boolean
+    require_security_code: boolean
+    require_two_digit_code_for_features?: boolean
+    require_security_code_for_features?: boolean
     start_at: string | null
     end_at: string | null
     created_at: string
@@ -188,6 +191,23 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
 
     async function handleEditJourney(journey: JourneyConfig) {
         try {
+            // Fetch fresh journey data from database to ensure we have latest values
+            const { data: freshJourney, error: journeyError } = await supabase
+                .from('journey_configurations')
+                .select('*')
+                .eq('id', journey.id)
+                .single()
+
+            if (journeyError) {
+                console.error('Error fetching fresh journey data:', journeyError)
+                throw journeyError
+            }
+            
+            console.log('[JourneyBuilder] Fresh journey data fetched:', {
+                id: freshJourney.id,
+                require_security_code: freshJourney.require_security_code
+            })
+
             // Get the order linked to this journey
             const { data: link } = await supabase
                 .from('journey_order_links')
@@ -208,7 +228,8 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                 }
             }
 
-            setSelectedJourney(journey)
+            // Use fresh journey data instead of stale data from list
+            setSelectedJourney(freshJourney as JourneyConfig)
             setStep('design-journey')
         } catch (error) {
             console.error('Error loading order for journey:', error)
@@ -282,6 +303,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
     if (step === 'design-journey' && selectedOrder) {
         return (
             <JourneyDesignerV2
+                key={selectedJourney?.id || 'new'}
                 order={selectedOrder}
                 userProfile={userProfile}
                 journey={selectedJourney}

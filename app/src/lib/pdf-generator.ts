@@ -437,22 +437,31 @@ export class PDFGenerator {
       .join(' ')
   }
 
-  private formatRequestReason(reason?: string | null): string {
-    if (!reason) {
-      return 'Balance 50% payment'
+  private formatRequestReason(reason?: string | null, paymentTerms?: OrderData['payment_terms']): string {
+    // If reason is provided, use it
+    if (reason) {
+      const normalized = reason.toString().toUpperCase()
+      switch (normalized) {
+        case 'BALANCE_50_AFTER_RECEIVE':
+          return 'Balance 50% payment'
+        case 'MANUAL_REQUEST':
+          return 'Manual balance payment request'
+        case 'ADJUSTMENT_REQUEST':
+          return 'Balance payment adjustment requested by HQ'
+        default:
+          return this.toTitleCase(reason.toString().replace(/[_-]+/g, ' '))
+      }
     }
 
-    const normalized = reason.toString().toUpperCase()
-    switch (normalized) {
-      case 'BALANCE_50_AFTER_RECEIVE':
-        return 'Balance 50% payment'
-      case 'MANUAL_REQUEST':
-        return 'Manual balance payment request'
-      case 'ADJUSTMENT_REQUEST':
-        return 'Balance payment adjustment requested by HQ'
-      default:
-        return this.toTitleCase(reason.toString().replace(/[_-]+/g, ' '))
+    // If no reason provided, derive from payment terms
+    if (paymentTerms) {
+      const normalized = this.normalizePaymentTerms(paymentTerms)
+      if (normalized.balancePercentage) {
+        return `Balance ${Math.round(normalized.balancePercentage)}% payment`
+      }
     }
+
+    return 'Balance payment'
   }
 
   private formatTriggerMode(mode?: string | null): string {
@@ -1960,7 +1969,7 @@ export class PDFGenerator {
       { label: 'Status', value: documentData.status?.toUpperCase?.() || documentData.status },
       {
         label: 'Requested Amount',
-        value: `     ${requestedAmountDisplay}`
+        value: `   ${requestedAmountDisplay}`
       },
       balancePercentage !== undefined
         ? { label: 'Balance Percentage', value: `${Math.round(balancePercentage)}% of order total` }
@@ -1968,7 +1977,7 @@ export class PDFGenerator {
       { label: 'Payment Terms', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
       payload.po_no ? { label: 'PO Reference', value: payload.po_no } : { label: 'PO Reference', value: orderData.order_no },
       { label: 'Trigger Mode', value: this.formatTriggerMode(payload.trigger_mode as string | undefined) },
-      { label: 'Reason', value: this.formatRequestReason(payload.reason as string | undefined) },
+      { label: 'Reason', value: this.formatRequestReason(payload.reason as string | undefined, orderData.payment_terms) },
       { label: 'Currency', value: currency }
     ].filter((row): row is { label: string; value: string } => Boolean(row?.value))
 

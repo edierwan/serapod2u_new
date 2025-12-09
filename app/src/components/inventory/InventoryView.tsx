@@ -377,6 +377,39 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         }
       }
 
+      // Fetch warranty_bonus quantities to exclude from inventory value calculations
+      const warrantyBonusMap = new Map<string, number>()
+      const organizationIds = Array.from(
+        new Set(
+          (data || [])
+            .map((record: any) => record?.organization_id)
+            .filter(Boolean)
+        )
+      )
+
+      if (collectedVariantIds.length > 0 && organizationIds.length > 0) {
+        try {
+          const { data: warrantyMovements, error: warrantyError } = await supabase
+            .from('stock_movements')
+            .select('variant_id, to_organization_id, quantity_change, movement_type')
+            .in('variant_id', collectedVariantIds as string[])
+            .in('to_organization_id', organizationIds as string[])
+            .ilike('movement_type', 'warranty_bonus')
+
+          if (!warrantyError && warrantyMovements) {
+            warrantyMovements.forEach((movement: any) => {
+              if (movement.to_organization_id && movement.variant_id) {
+                const key = `${movement.to_organization_id}:${movement.variant_id}`
+                const qty = Number(movement.quantity_change ?? 0)
+                warrantyBonusMap.set(key, (warrantyBonusMap.get(key) ?? 0) + qty)
+              }
+            })
+          }
+        } catch (warrantyFetchError) {
+          console.warn('Failed to fetch warranty_bonus quantities for inventory value calculation', warrantyFetchError)
+        }
+      }
+
       let normalized: InventoryItem[] = (data || []).map((item: any, index: number) => {
         const rawVariant = Array.isArray(item.product_variants)
           ? item.product_variants[0]
@@ -418,7 +451,11 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
         const resolvedTotalValue = (() => {
           if (resolvedUnitCost !== null) {
-            return Number((quantityOnHand * resolvedUnitCost).toFixed(2))
+            // Exclude warranty_bonus quantities from value calculation
+            const key = organizationId && variantId ? `${organizationId}:${variantId}` : null
+            const warrantyBonusQty = key ? (warrantyBonusMap.get(key) ?? 0) : 0
+            const valuableQty = quantityOnHand - warrantyBonusQty
+            return Number((valuableQty * resolvedUnitCost).toFixed(2))
           }
           const directTotal = parseNumber(item.total_value)
           if (directTotal !== null) return directTotal
@@ -529,10 +566,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           }
 
           const movementTotalsMap = new Map<string, number>()
+          // Track warranty_bonus quantities separately (they should not add to inventory value)
+          const warrantyBonusMap = new Map<string, number>()
           try {
             const { data: movementTotalsData, error: movementTotalsError } = await supabase
               .from('stock_movements')
-              .select('variant_id, quantity_change, from_organization_id, to_organization_id')
+              .select('variant_id, quantity_change, from_organization_id, to_organization_id, movement_type')
               .in('variant_id', variantIds)
               .or(`from_organization_id.in.(${organizationIds.join(',')}),to_organization_id.in.(${organizationIds.join(',')})`)
 
@@ -552,6 +591,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 if (toOrg && organizationIdSet.has(toOrg)) {
                   const key = `${toOrg}:${variantId}`
                   movementTotalsMap.set(key, (movementTotalsMap.get(key) ?? 0) + qty)
+                  
+                  // Track warranty_bonus quantities
+                  const movementType = movement.movement_type ? movement.movement_type.toLowerCase().trim() : ''
+                  if (movementType === 'warranty_bonus') {
+                    warrantyBonusMap.set(key, (warrantyBonusMap.get(key) ?? 0) + qty)
+                  }
                 }
 
                 const fromOrg = movement.from_organization_id
@@ -591,15 +636,19 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 ? item.total_value
                 : null
               const previousOnHand = Number(item.quantity_on_hand ?? 0)
+              
+              // Exclude warranty_bonus quantities from value calculation
+              const warrantyBonusQty = warrantyBonusMap.get(key) ?? 0
+              const valuableQty = recalculatedOnHand - warrantyBonusQty
 
               let recalculatedTotal = existingTotal
 
               if (hasUnitCost) {
-                recalculatedTotal = Number((recalculatedOnHand * (item.unit_cost as number)).toFixed(2))
+                recalculatedTotal = Number((valuableQty * (item.unit_cost as number)).toFixed(2))
               } else if (existingTotal !== null && previousOnHand > 0 && previousOnHand !== recalculatedOnHand) {
                 const derivedUnitCost = existingTotal / previousOnHand
                 if (Number.isFinite(derivedUnitCost)) {
-                  recalculatedTotal = Number((recalculatedOnHand * derivedUnitCost).toFixed(2))
+                  recalculatedTotal = Number((valuableQty * derivedUnitCost).toFixed(2))
                 }
               }
 

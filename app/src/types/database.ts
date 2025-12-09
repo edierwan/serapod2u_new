@@ -3778,6 +3778,8 @@ export type Database = {
           total_master_codes: number
           total_unique_codes: number
           updated_at: string | null
+          packing_status: string | null
+          receiving_status: string | null
         }
         Insert: {
           buffer_percent?: number | null
@@ -3795,6 +3797,8 @@ export type Database = {
           total_master_codes?: number
           total_unique_codes?: number
           updated_at?: string | null
+          packing_status?: string | null
+          receiving_status?: string | null
         }
         Update: {
           buffer_percent?: number | null
@@ -3812,6 +3816,8 @@ export type Database = {
           total_master_codes?: number
           total_unique_codes?: number
           updated_at?: string | null
+          packing_status?: string | null
+          receiving_status?: string | null
         }
         Relationships: [
           {

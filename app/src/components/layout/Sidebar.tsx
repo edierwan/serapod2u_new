@@ -150,6 +150,17 @@ const navigationItems: MenuItem[] = [
       },
       {
         id: 'manufacturer-scan-v2',
+        label: 'Smart Scan',
+        icon: Factory,
+        access: {
+          // Only super admin or super@dev.com
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 10,
+          allowedEmails: ['super@dev.com']
+        }
+      },
+      {
+        id: 'manufacturer-scan-2',
         label: 'Manufacturer Scan',
         icon: Factory,
         access: {
@@ -159,17 +170,17 @@ const navigationItems: MenuItem[] = [
         }
       },
       {
-        id: 'manufacturer-scan-2',
-        label: 'Manufacturer Scan 2',
-        icon: Factory,
+        id: 'warehouse-receive',
+        label: 'Warehouse ReceiveOld',
+        icon: Warehouse,
         access: {
-          // Only manufacturers
-          allowedOrgTypes: ['MANU', 'MFG'],
-          maxRoleLevel: 40
+          // Only super admin
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 10
         }
       },
       {
-        id: 'warehouse-receive',
+        id: 'warehouse-receive-2',
         label: 'Warehouse Receive',
         icon: Warehouse,
         access: {
@@ -183,9 +194,9 @@ const navigationItems: MenuItem[] = [
         label: 'Warehouse Ship',
         icon: Truck,
         access: {
-          // Warehouses and Distributors
-          allowedOrgTypes: ['WH', 'DIST', 'HQ'],
-          maxRoleLevel: 40
+          // Only super admin
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 10
         }
       }
     ]
@@ -398,6 +409,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [isMounted, setIsMounted] = useState(false)
   const [brandingSettings, setBrandingSettings] = useState<any>(null)
+  const [qrTrackingVisibility, setQrTrackingVisibility] = useState({
+    manufacturer: { scan: true, scan2: true },
+    warehouse: { receive: true, receive2: true, ship: true }
+  })
   const router = useRouter()
   const supabase = createClient()
 
@@ -409,6 +424,8 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   // Load branding settings from organization
   useEffect(() => {
     const loadBranding = async () => {
+      if (!userProfile?.organization_id) return
+
       try {
         const { data, error } = await supabase
           .from('organizations')
@@ -417,7 +434,20 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           .single()
         
         if (!error && data) {
-          const settings = typeof data.settings === 'object' && data.settings !== null ? data.settings as any : null
+          let settings = data.settings
+          
+          // Handle case where settings is a string (JSON)
+          if (typeof settings === 'string') {
+            try {
+              settings = JSON.parse(settings)
+            } catch (e) {
+              console.error('Failed to parse settings JSON in Sidebar:', e)
+              settings = {}
+            }
+          } else if (typeof settings !== 'object' || settings === null) {
+            settings = {}
+          }
+
           const branding = settings?.branding
           const logoUrl = branding?.logoUrl || data.logo_url
           setBrandingSettings({
@@ -425,6 +455,53 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
             appTagline: branding?.appTagline || 'Supply Chain',
             logoUrl: logoUrl ? `${logoUrl.split('?')[0]}?t=${new Date(data.updated_at || Date.now()).getTime()}` : null
           })
+
+          // Load QR Tracking visibility from system_preferences
+          // We wrap this in a try-catch because if the migration hasn't run, this might fail
+          let loadedFromPrefs = false
+          try {
+            const { data: prefs, error: prefsError } = await supabase
+              .schema('core')
+              .from('system_preferences')
+              .select('*')
+              .eq('company_id', userProfile.organization_id)
+              .eq('module', 'qr_tracking')
+
+            if (prefsError) {
+              // Log warning but don't crash - likely migration missing
+              console.warn('System preferences load warning (using fallback):', prefsError)
+            } else if (prefs && prefs.length > 0) {
+              setQrTrackingVisibility({
+                manufacturer: {
+                  scan: prefs.find((p: any) => p.key === 'manufacturer_scan')?.value?.visible ?? true,
+                  scan2: prefs.find((p: any) => p.key === 'manufacturer_scan_2')?.value?.visible ?? true,
+                },
+                warehouse: {
+                  receive: prefs.find((p: any) => p.key === 'warehouse_receive')?.value?.visible ?? true,
+                  receive2: prefs.find((p: any) => p.key === 'warehouse_receive_2')?.value?.visible ?? true,
+                  ship: prefs.find((p: any) => p.key === 'warehouse_ship')?.value?.visible ?? true,
+                }
+              })
+              loadedFromPrefs = true
+            }
+          } catch (err) {
+            console.warn('System preferences fetch error:', err)
+          }
+
+          // Fallback to legacy settings if system preferences failed or returned no data
+          if (!loadedFromPrefs && settings?.qr_tracking_visibility) {
+            console.log('Loading QR visibility from legacy settings:', settings.qr_tracking_visibility)
+            setQrTrackingVisibility(prev => ({
+              manufacturer: {
+                ...prev.manufacturer,
+                ...(settings.qr_tracking_visibility.manufacturer || {})
+              },
+              warehouse: {
+                ...prev.warehouse,
+                ...(settings.qr_tracking_visibility.warehouse || {})
+              }
+            }))
+          }
         }
       } catch (error) {
         console.error('Failed to load branding:', error)
@@ -432,6 +509,21 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
     }
     
     loadBranding()
+
+    // Listen for settings updates
+    const handleSettingsUpdate = () => {
+      loadBranding()
+    }
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('settingsUpdated', handleSettingsUpdate)
+    }
+    
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('settingsUpdated', handleSettingsUpdate)
+      }
+    }
   }, [supabase, userProfile.organization_id])
 
   // Persist expanded menu state to session storage whenever it changes
@@ -489,7 +581,29 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
 
   // Filter menu items based on user role and organization
   const filteredNavigationItems = useMemo(() => {
-    const items = filterMenuItems(navigationItems, userProfile)
+    let items = filterMenuItems(navigationItems, userProfile)
+
+    // Filter QR Tracking submenus based on visibility settings
+    items = items.map(item => {
+      if (item.id === 'qr-tracking' && item.submenu) {
+        const filteredSubmenu = item.submenu.filter(sub => {
+          // Always show QR Batches if user has access (it's not controlled by visibility settings)
+          if (sub.id === 'qr-batches') return true
+          
+          // Check visibility settings for other items
+          if (sub.id === 'manufacturer-scan-v2') return qrTrackingVisibility.manufacturer.scan
+          if (sub.id === 'manufacturer-scan-2') return qrTrackingVisibility.manufacturer.scan2
+          if (sub.id === 'warehouse-receive') return qrTrackingVisibility.warehouse.receive
+          if (sub.id === 'warehouse-receive-2') return qrTrackingVisibility.warehouse.receive2
+          if (sub.id === 'warehouse-ship-v2') return qrTrackingVisibility.warehouse.ship
+          
+          // Default to true for any other items in this submenu
+          return true
+        })
+        return { ...item, submenu: filteredSubmenu }
+      }
+      return item
+    })
 
     // Special handling for Product Catalog visibility
     // Only show Product Catalog to SHOP users if they are super@dev.com
@@ -506,14 +620,25 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
     }
 
     return items
-  }, [userProfile])
+  }, [userProfile, qrTrackingVisibility])
 
   const filteredSecondaryItems = useMemo(() =>
     filterMenuItems(secondaryItems, userProfile),
     [userProfile]
   )
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (e?: React.MouseEvent) => {
+    // Prevent accidental clicks
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    
+    // Confirm before logging out to prevent accidental logouts
+    if (!confirm('Are you sure you want to sign out?')) {
+      return
+    }
+    
     setIsSigningOut(true)
     try {
       // Use server action to properly clear cookies and session

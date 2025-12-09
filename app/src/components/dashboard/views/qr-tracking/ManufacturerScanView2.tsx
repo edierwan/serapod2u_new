@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -35,6 +35,7 @@ interface BatchProgress {
   batch_id: string
   batch_code: string
   batch_status?: string
+  packing_status?: string
   order_id: string
   order_no: string
   buyer_org_name: string
@@ -44,6 +45,44 @@ interface BatchProgress {
   packed_unique_codes: number
   master_progress_percentage: number
   unique_progress_percentage: number
+}
+
+function CountUp({ value }: { value: number }) {
+  const [count, setCount] = useState(value)
+  const countRef = useRef(count)
+
+  // Sync ref with state
+  useEffect(() => {
+    countRef.current = count
+  }, [count])
+
+  useEffect(() => {
+    const start = countRef.current
+    const end = value
+    if (start === end) return
+
+    const duration = 1500 // 1.5s animation
+    const startTime = Date.now()
+
+    const timer = setInterval(() => {
+      const timePassed = Date.now() - startTime
+      let progress = timePassed / duration
+
+      if (progress > 1) progress = 1
+
+      // Linear interpolation for "running number" effect
+      const current = Math.floor(start + (end - start) * progress)
+      setCount(current)
+
+      if (progress === 1) {
+        clearInterval(timer)
+      }
+    }, 20) // 50fps
+
+    return () => clearInterval(timer)
+  }, [value])
+
+  return <>{count.toLocaleString()}</>
 }
 
 export default function ManufacturerScanView2({ userProfile }: ManufacturerScanView2Props) {
@@ -81,6 +120,26 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
       }
     }
   }, [processing, startTime])
+
+  // Auto-trigger worker in development or if stuck
+  useEffect(() => {
+    let workerInterval: NodeJS.Timeout | undefined
+    if (processing && (currentBatch?.packing_status === 'queued' || currentBatch?.packing_status === 'processing')) {
+      // Trigger worker every 5 seconds if queued or processing
+      // This ensures that even if the cron is not running (local dev), the process continues
+      workerInterval = setInterval(async () => {
+        try {
+          console.log('Triggering packing worker...')
+          await fetch('/api/cron/manufacturer-packing-worker')
+        } catch (e) {
+          console.error('Failed to trigger worker:', e)
+        }
+      }, 5000)
+    }
+    return () => {
+      if (workerInterval) clearInterval(workerInterval)
+    }
+  }, [processing, currentBatch?.packing_status])
 
   const fetchOrders = async () => {
     console.log('Fetching orders for Manufacturer Scan 2...')
@@ -149,6 +208,10 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
 
   const handleOrderSelect = async (orderId: string) => {
     setSelectedOrder(orderId)
+    setCurrentBatch(null)
+    setProgressStep('idle')
+    setProcessing(false)
+
     const order = orders.find(o => o.id === orderId)
     if (order) {
       const batches = order.qr_batches as any
@@ -169,12 +232,13 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
     // Get latest batch status first
     const { data: batchInfo } = await supabase
       .from('qr_batches')
-      .select('status')
+      .select('status, packing_status')
       .eq('id', batchId)
       .single()
       
     const batchStatus = batchInfo?.status || 'unknown'
-    const isCompleted = batchStatus === 'completed'
+    const packingStatus = batchInfo?.packing_status || 'idle'
+    const isCompleted = batchStatus === 'completed' || packingStatus === 'completed'
 
     // Get counts
     const { count: totalMaster } = await supabase
@@ -190,7 +254,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
         .from('qr_master_codes')
         .select('*', { count: 'exact', head: true })
         .eq('batch_id', batchId)
-        .eq('status', 'packed')
+        .in('status', ['packed', 'ready_to_ship'])
       packedMaster = count || 0
     }
 
@@ -207,7 +271,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
         .from('qr_codes')
         .select('*', { count: 'exact', head: true })
         .eq('batch_id', batchId)
-        .eq('status', 'packed')
+        .in('status', ['packed', 'ready_to_ship'])
       packedUnique = count || 0
     }
 
@@ -215,6 +279,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
       batch_id: batchId,
       batch_code: `BATCH-${order.order_no}`,
       batch_status: batchStatus,
+      packing_status: packingStatus,
       order_id: order.id,
       order_no: order.order_no,
       buyer_org_name: order.buyer_org?.org_name || 'Unknown',
@@ -231,9 +296,13 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
     // Check if already completed
     if (batchData.batch_status === 'completed') {
         setProgressStep('completed')
-    } else if (batchData.master_progress_percentage === 100 && batchData.unique_progress_percentage === 100) {
-        // Ready to ship but not marked completed
-        setProgressStep('idle') 
+    } else if (batchData.packing_status === 'processing' || batchData.packing_status === 'queued') {
+        setProgressStep('packing')
+        setProcessing(true)
+        setStartTime(prev => prev || Date.now())
+    } else {
+        setProgressStep('idle')
+        setProcessing(false)
     }
   }
 
@@ -245,26 +314,40 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
     setProgressStep('packing')
 
     try {
-      // Step 1: Bulk Pack (Printed -> Packed)
-      let hasMore = true
-      while (hasMore) {
-        const response = await fetch('/api/manufacturer/bulk-pack', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ batch_id: currentBatch.batch_id, limit: 2000 })
-        })
-        
-        if (!response.ok) throw new Error('Failed to pack codes')
-        
-        const result = await response.json()
-        hasMore = result.hasMore
+      // Step 1: Start Packing Worker
+      const startResponse = await fetch('/api/manufacturer/start-packing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: currentBatch.batch_id })
+      })
 
-        // Update progress locally for smoother UI
-        // In a real app, we might want to re-fetch counts occasionally to be accurate
-        // For now, let's just re-fetch counts every few iterations or just rely on the loop
-        // Re-fetching counts is safer
+      if (!startResponse.ok) {
+         const errorData = await startResponse.json()
+         // If already packing, we can continue to poll
+         if (startResponse.status !== 400 && errorData.message !== 'Packing already in progress') {
+             throw new Error(errorData.error || 'Failed to start packing')
+         }
+      }
+
+      // Poll for completion
+      let isPacking = true
+      while (isPacking) {
+        await new Promise(resolve => setTimeout(resolve, 2000)) // Poll every 2s
+        
         const order = orders.find(o => o.id === selectedOrder)
         await fetchBatchProgress(currentBatch.batch_id, order)
+        
+        const { data: checkBatch } = await supabase
+            .from('qr_batches')
+            .select('packing_status')
+            .eq('id', currentBatch.batch_id)
+            .single()
+            
+        if (checkBatch?.packing_status === 'completed') {
+            isPacking = false
+        } else if (checkBatch?.packing_status === 'failed') {
+            throw new Error('Packing failed')
+        }
       }
 
       // Step 2: Ready to Ship & Notify (Complete Production)
@@ -326,7 +409,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
     <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Manufacturer Scan 2</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Manufacturer Scan</h1>
           <p className="text-gray-500 mt-1">Simplified bulk processing for manufacturing</p>
         </div>
       </div>
@@ -355,7 +438,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
       {currentBatch && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex justify-between items-center">
+            <CardTitle className="flex justify-between items-center text-base">
               <span>Batch Progress: {currentBatch.batch_code}</span>
               {processing && (
                 <Badge variant="secondary" className="animate-pulse">
@@ -369,25 +452,35 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
             {/* Status Overview */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <p className="text-sm text-blue-600 font-medium">Master Cases</p>
-                <p className="text-2xl font-bold text-blue-900">
-                  {currentBatch.packed_master_codes} / {currentBatch.total_master_codes}
+                <p className="text-xs text-blue-600 font-medium">Master Cases</p>
+                <p className="text-lg font-bold text-blue-900">
+                  <CountUp value={currentBatch.packed_master_codes} /> / {currentBatch.total_master_codes.toLocaleString()}
                 </p>
-                <Progress value={currentBatch.master_progress_percentage} className="h-2 mt-2" />
+                <div className="flex items-center gap-2 mt-2">
+                  <Progress value={currentBatch.master_progress_percentage} className="h-1.5 flex-1" />
+                  <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
+                    {Math.round(currentBatch.master_progress_percentage)}%
+                  </span>
+                </div>
               </div>
               <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                <p className="text-sm text-purple-600 font-medium">Unique Codes</p>
-                <p className="text-2xl font-bold text-purple-900">
-                  {currentBatch.packed_unique_codes} / {currentBatch.total_unique_codes}
+                <p className="text-xs text-purple-600 font-medium">Unique Codes</p>
+                <p className="text-lg font-bold text-purple-900">
+                  <CountUp value={currentBatch.packed_unique_codes} /> / {currentBatch.total_unique_codes.toLocaleString()}
                 </p>
-                <Progress value={currentBatch.unique_progress_percentage} className="h-2 mt-2" />
+                <div className="flex items-center gap-2 mt-2">
+                  <Progress value={currentBatch.unique_progress_percentage} className="h-1.5 flex-1" />
+                  <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
+                    {Math.round(currentBatch.unique_progress_percentage)}%
+                  </span>
+                </div>
               </div>
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 flex flex-col justify-center items-center">
-                 <p className="text-sm text-gray-600 font-medium mb-2">Current Status</p>
+                 <p className="text-xs text-gray-600 font-medium mb-2">Current Status</p>
                  {progressStep === 'completed' || currentBatch.batch_status === 'completed' ? (
-                     <Badge className="bg-green-600 text-lg py-1 px-3">Completed</Badge>
+                     <Badge className="bg-green-600 text-sm py-1 px-3">Completed</Badge>
                  ) : (
-                     <Badge variant="outline" className="text-lg py-1 px-3">{currentBatch.batch_status || 'Pending'}</Badge>
+                     <Badge variant="outline" className="text-sm py-1 px-3">{currentBatch.batch_status || 'Pending'}</Badge>
                  )}
               </div>
             </div>
@@ -400,12 +493,12 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
                   
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>1. Packing Codes (Printed → Packed)</span>
+                      <span>1. Packing Codes (Printed → Ready to Ship)</span>
                       {progressStep === 'packing' && <Loader2 className="h-4 w-4 animate-spin" />}
                       {(progressStep === 'shipping' || progressStep === 'completed') && <CheckCircle className="h-4 w-4 text-green-600" />}
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>2. Finalizing Batch (Packed → Ready to Ship)</span>
+                      <span>2. Finalizing Batch (Ready to Ship)</span>
                       {progressStep === 'shipping' && <Loader2 className="h-4 w-4 animate-spin" />}
                       {progressStep === 'completed' && <CheckCircle className="h-4 w-4 text-green-600" />}
                     </div>
@@ -419,11 +512,10 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
                 <div className="flex flex-col items-center gap-4">
                   {currentBatch.batch_status !== 'completed' && progressStep !== 'completed' ? (
                     <Button 
-                        size="lg" 
-                        className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg text-lg py-6"
+                        className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md text-sm py-2 px-4"
                         onClick={handleCompleteProcess}
                     >
-                        <Play className="mr-2 h-5 w-5" />
+                        <Play className="mr-2 h-4 w-4" />
                         Completed Manufacture Process
                     </Button>
                   ) : (

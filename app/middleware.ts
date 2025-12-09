@@ -1,7 +1,148 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { 
+  extractQRCodeFromPath, 
+  extractTokenFromQRCode, 
+  replaceTokenInQRCode,
+  splitSecurityToken,
+  writeSecurityMappingCookie
+} from './src/utils/qrSecurity'
+
+const QR_TRACK_PREFIX = "/track/product/";
+
+/**
+ * Handle QR security redirect for journeys that require security codes
+ * Only redirects if journey has require_security_code = true
+ * Keeps existing journeys unaffected (NON-BREAKING)
+ */
+async function handleQRSecurityRedirect(
+  request: NextRequest
+): Promise<NextResponse | null> {
+  const pathname = request.nextUrl.pathname;
+
+  const qrCode = extractQRCodeFromPath(pathname);
+  if (!qrCode) return null; // not QR route
+
+  const fullToken = extractTokenFromQRCode(qrCode);
+
+  // 1) Lookup QR + journey to see if this order uses security
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { 
+      cookies: { 
+        get: () => undefined, 
+        set: () => undefined, 
+        remove: () => undefined 
+      } 
+    }
+  );
+
+  // Query qr_codes table with order relationship to find journey
+  const { data: qrRow, error } = await supabase
+    .from("qr_codes")
+    .select("id, code, order_id, company_id")
+    .eq("code", qrCode)
+    .maybeSingle();
+
+  if (error || !qrRow) {
+    // Not a known QR / or DB problem → don't touch, let existing flow handle
+    return null;
+  }
+
+  // Get the company_id from QR code directly (if available) or from order
+  let companyId = qrRow.company_id;
+  
+  if (!companyId && qrRow.order_id) {
+    const { data: orderRow } = await supabase
+      .from("orders")
+      .select("company_id")
+      .eq("id", qrRow.order_id)
+      .maybeSingle();
+    
+    companyId = orderRow?.company_id;
+  }
+
+  if (!companyId) {
+    return null; // Can't determine company, skip security check
+  }
+
+  // Resolve journey using same logic as verify API:
+  // 1. First check journey_order_links for order-specific journey
+  // 2. Then check for default journey
+  // 3. Finally any active journey
+  let requireSecurity = false;
+
+  if (qrRow.order_id) {
+    // Check order-specific journey first
+    const { data: linkedJourneys } = await supabase
+      .from("journey_order_links")
+      .select("journey_configurations(id, require_security_code, is_active)")
+      .eq("order_id", qrRow.order_id)
+      .order("created_at", { ascending: false });
+
+    if (linkedJourneys && linkedJourneys.length > 0) {
+      for (const link of linkedJourneys) {
+        const config = (link as any).journey_configurations;
+        if (config?.is_active) {
+          requireSecurity = config.require_security_code === true;
+          break;
+        }
+      }
+    }
+  }
+
+  // Fallback to default/any active journey if no order-specific found
+  if (!requireSecurity) {
+    const { data: journeyRow } = await supabase
+      .from("journey_configurations")
+      .select("id, require_security_code")
+      .eq("org_id", companyId)
+      .eq("is_active", true)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    requireSecurity = journeyRow?.require_security_code === true;
+  }
+
+  // If journey does NOT require security → do nothing, keep existing behaviour
+  if (!requireSecurity) {
+    return null;
+  }
+
+  // Already short? (no security code)
+  const { publicToken, secretCode, hasSecurityCode } = splitSecurityToken(fullToken);
+  if (!hasSecurityCode) {
+    return null; // nothing to hide
+  }
+
+  // Build short QR code (same format, last segment replaced)
+  const shortQRCode = replaceTokenInQRCode(qrCode, publicToken);
+
+  // If already short (user came direct to short URL), no redirect needed
+  if (shortQRCode === qrCode) {
+    return null;
+  }
+
+  // Prepare redirect response
+  const url = request.nextUrl.clone();
+  url.pathname = QR_TRACK_PREFIX + encodeURIComponent(shortQRCode);
+
+  const response = NextResponse.redirect(url, 302);
+
+  // Save secretCode in cookie mapping for later Lucky Draw / Redeem checks
+  writeSecurityMappingCookie(request, response, publicToken, secretCode);
+
+  return response;
+}
 
 export async function middleware(request: NextRequest) {
+  // 1) QR security redirect – may return a redirect response
+  const qrRedirect = await handleQRSecurityRedirect(request);
+  if (qrRedirect) return qrRedirect;
+
   // Public paths that don't require authentication
   const PUBLIC_PATHS = ['/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card']
   
@@ -143,7 +284,7 @@ export async function middleware(request: NextRequest) {
         if (updateError) {
           console.error('🔍 Failed to update last_login_at:', updateError)
         }
-      }).catch((error) => {
+      }, (error: unknown) => {
         console.error('🔍 Exception updating last_login_at:', error)
       })
     }
