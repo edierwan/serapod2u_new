@@ -248,6 +248,7 @@ export default function PremiumLoyaltyTemplate({
     const [redemptionHistory, setRedemptionHistory] = useState<any[]>([])
     const [pointsHistory, setPointsHistory] = useState<any[]>([])
     const [scannedProducts, setScannedProducts] = useState<any[]>([])
+    const [scannedSummary, setScannedSummary] = useState<any[]>([])
     const [loadingRedemptionHistory, setLoadingRedemptionHistory] = useState(false)
     const [loadingPointsHistory, setLoadingPointsHistory] = useState(false)
     const [loadingScannedProducts, setLoadingScannedProducts] = useState(false)
@@ -256,7 +257,7 @@ export default function PremiumLoyaltyTemplate({
     const [redemptionPage, setRedemptionPage] = useState(1)
     const [pointsPage, setPointsPage] = useState(1)
     const [scannedPage, setScannedPage] = useState(1)
-    const [scannedViewMode, setScannedViewMode] = useState<'grid' | 'list'>('list')
+    const [scannedViewMode, setScannedViewMode] = useState<'summary' | 'list'>('summary')
     const itemsPerPage = 10
 
     // Feedback states
@@ -555,13 +556,16 @@ export default function PremiumLoyaltyTemplate({
             
             if (result.success) {
                 setScannedProducts(result.scans || [])
+                setScannedSummary(result.summary || [])
             } else {
                 console.error('Error fetching scanned products:', result.error)
                 setScannedProducts([])
+                setScannedSummary([])
             }
         } catch (error) {
             console.error('Error fetching scanned products:', error)
             setScannedProducts([])
+            setScannedSummary([])
         } finally {
             setLoadingScannedProducts(false)
         }
@@ -1708,7 +1712,7 @@ export default function PremiumLoyaltyTemplate({
                     </div>
                 )}
 
-                {/* SCANNED - Show scanned products */}
+                {/* SCANNED - Show scanned products summary */}
                 {rewardCategory === 'Scanned' && (
                     <div className="space-y-3">
                         {!isAuthenticated || !isShopUser ? (
@@ -1720,110 +1724,53 @@ export default function PremiumLoyaltyTemplate({
                             <div className="text-center py-12">
                                 <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
                             </div>
-                        ) : scannedProducts.length > 0 ? (
+                        ) : scannedSummary.length > 0 ? (
                             <>
-                                {/* View Toggle */}
-                                <div className="flex justify-end gap-2 mb-3">
-                                    <button
-                                        onClick={() => setScannedViewMode('list')}
-                                        className={`p-2 rounded-lg transition-colors ${
-                                            scannedViewMode === 'list'
-                                                ? 'bg-gray-900 text-white'
-                                                : 'bg-white text-gray-600 border border-gray-200'
-                                        }`}
-                                    >
-                                        <List className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => setScannedViewMode('grid')}
-                                        className={`p-2 rounded-lg transition-colors ${
-                                            scannedViewMode === 'grid'
-                                                ? 'bg-gray-900 text-white'
-                                                : 'bg-white text-gray-600 border border-gray-200'
-                                        }`}
-                                    >
-                                        <Grid3x3 className="w-4 h-4" />
-                                    </button>
-                                </div>
-
-                                {/* List View */}
-                                {scannedViewMode === 'list' ? (
-                                    <div className="space-y-3">
-                                        {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan) => (
-                                            <div key={scan.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                                                <div className="flex gap-3">
-                                                    <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                                        {scan.product?.image_url ? (
-                                                            <Image 
-                                                                src={scan.product.image_url} 
-                                                                alt={scan.product?.name || 'Product'}
-                                                                width={64}
-                                                                height={64}
-                                                                className="object-cover"
-                                                            />
-                                                        ) : (
-                                                            <Package className="w-8 h-8 text-gray-400" />
-                                                        )}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                            {scan.product?.name || 'Unknown Product'}
-                                                        </p>
+                                {/* Summary View - Grouped by product */}
+                                <div className="space-y-3">
+                                    {scannedSummary.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((product, index) => (
+                                        <div key={product.product_id || index} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                            <div className="flex gap-3">
+                                                <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                    {product.image_url ? (
+                                                        <Image 
+                                                            src={product.image_url} 
+                                                            alt={product.product_name || 'Product'}
+                                                            width={64}
+                                                            height={64}
+                                                            className="object-cover w-full h-full"
+                                                        />
+                                                    ) : (
+                                                        <Package className="w-8 h-8 text-gray-400" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                        {product.product_name || 'Unknown Product'}
+                                                    </p>
+                                                    {product.variant && (
                                                         <p className="text-xs text-gray-500 mt-0.5">
-                                                            Code: {scan.qr_code || 'N/A'}
+                                                            {product.variant}
                                                         </p>
-                                                        <p className="text-xs text-gray-400 mt-1">
-                                                            Scanned: {formatDate(scan.scanned_at)}
-                                                        </p>
-                                                        <div className="flex gap-2 mt-2">
-                                                            {scan.collected_points && (
-                                                                <Badge className="bg-green-100 text-green-700 text-[10px]">Points Collected</Badge>
-                                                            )}
-                                                            {scan.entered_lucky_draw && (
-                                                                <Badge className="bg-amber-100 text-amber-700 text-[10px]">Lucky Draw</Badge>
-                                                            )}
+                                                    )}
+                                                    <div className="flex items-center justify-between mt-2">
+                                                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                                                            <Package className="w-3 h-3" />
+                                                            <span>{product.scan_count} scan{product.scan_count > 1 ? 's' : ''}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 text-sm font-semibold text-green-600">
+                                                            <Star className="w-3.5 h-3.5 fill-current" />
+                                                            <span>+{product.total_points} pts</span>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    /* Grid View */
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan) => (
-                                            <div key={scan.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                                                <div className="h-32 bg-gray-100 flex items-center justify-center overflow-hidden">
-                                                    {scan.product?.image_url ? (
-                                                        <Image 
-                                                            src={scan.product.image_url} 
-                                                            alt={scan.product?.name || 'Product'}
-                                                            width={128}
-                                                            height={128}
-                                                            className="object-cover w-full h-full"
-                                                        />
-                                                    ) : (
-                                                        <Package className="w-12 h-12 text-gray-400" />
-                                                    )}
-                                                </div>
-                                                <div className="p-3">
-                                                    <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                        {scan.product?.name || 'Unknown Product'}
-                                                    </p>
-                                                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
-                                                        {scan.qr_code || 'N/A'}
-                                                    </p>
-                                                    <p className="text-xs text-gray-400 mt-1">
-                                                        {formatDate(scan.scanned_at)}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                        </div>
+                                    ))}
+                                </div>
 
                                 {/* Pagination */}
-                                {scannedProducts.length > itemsPerPage && (
+                                {scannedSummary.length > itemsPerPage && (
                                     <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                                         <button
                                             onClick={() => setScannedPage(Math.max(1, scannedPage - 1))}
@@ -1834,11 +1781,11 @@ export default function PremiumLoyaltyTemplate({
                                             Previous
                                         </button>
                                         <span className="text-sm text-gray-600">
-                                            Page {scannedPage} of {Math.ceil(scannedProducts.length / itemsPerPage)}
+                                            Page {scannedPage} of {Math.ceil(scannedSummary.length / itemsPerPage)}
                                         </span>
                                         <button
-                                            onClick={() => setScannedPage(Math.min(Math.ceil(scannedProducts.length / itemsPerPage), scannedPage + 1))}
-                                            disabled={scannedPage >= Math.ceil(scannedProducts.length / itemsPerPage)}
+                                            onClick={() => setScannedPage(Math.min(Math.ceil(scannedSummary.length / itemsPerPage), scannedPage + 1))}
+                                            disabled={scannedPage >= Math.ceil(scannedSummary.length / itemsPerPage)}
                                             className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             Next
@@ -1874,31 +1821,46 @@ export default function PremiumLoyaltyTemplate({
                                 {pointsHistory.slice((pointsPage - 1) * itemsPerPage, pointsPage * itemsPerPage).map((txn) => (
                                     <div key={txn.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                                txn.points > 0 ? 'bg-green-100' : 'bg-purple-100'
-                                            }`}>
-                                                {txn.points > 0 ? (
-                                                    <TrendingUp className="w-5 h-5 text-green-600" />
+                                            {/* Product/Reward Image */}
+                                            <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                {txn.image_url ? (
+                                                    <Image 
+                                                        src={txn.image_url} 
+                                                        alt={txn.description || 'Product'}
+                                                        width={48}
+                                                        height={48}
+                                                        className="object-cover w-full h-full"
+                                                    />
+                                                ) : txn.points > 0 ? (
+                                                    <Package className="w-6 h-6 text-gray-400" />
                                                 ) : (
-                                                    <Gift className="w-5 h-5 text-purple-600" />
+                                                    <Gift className="w-6 h-6 text-purple-400" />
                                                 )}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                    {txn.description || (txn.points > 0 ? 'Points Earned' : 'Points Redeemed')}
+                                                    {txn.description || (txn.points > 0 ? 'Points Earned' : 'Redemption')}
                                                 </p>
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    {formatDate(txn.date)}
+                                                {txn.variant_name && (
+                                                    <p className="text-xs text-gray-500 line-clamp-1">
+                                                        {txn.variant_name}
+                                                    </p>
+                                                )}
+                                                <p className="text-xs text-gray-400 mt-0.5">
+                                                    {txn.type === 'earn' ? 'Scan' : 'Redemption'} • {formatDate(txn.date)}
                                                 </p>
                                             </div>
                                             <div className="text-right">
                                                 <p className={`text-sm font-bold ${
                                                     txn.points > 0 ? 'text-green-600' : 'text-purple-600'
                                                 }`}>
-                                                    {txn.points > 0 ? '+' : ''}{txn.points} pts
+                                                    {txn.points > 0 ? '+' : ''}{txn.points}
                                                 </p>
-                                                <p className="text-xs text-gray-400">
-                                                    Balance: {txn.balance_after}
+                                                <p className="text-xs text-gray-400 uppercase">
+                                                    Balance
+                                                </p>
+                                                <p className="text-xs text-gray-600">
+                                                    {txn.balance_after}
                                                 </p>
                                             </div>
                                         </div>
