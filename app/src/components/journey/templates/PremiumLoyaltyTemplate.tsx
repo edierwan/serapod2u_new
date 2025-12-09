@@ -39,7 +39,8 @@ import {
     Save,
     Check,
     MessageSquare,
-    Send
+    Send,
+    TrendingUp
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { extractTokenFromQRCode } from '@/utils/qrSecurity'
@@ -232,6 +233,21 @@ export default function PremiumLoyaltyTemplate({
         newBalance: number
         redemptionCode: string
     } | null>(null)
+    // Track last redeemed reward for Recent Activity display
+    const [lastRedeemedReward, setLastRedeemedReward] = useState<{
+        rewardName: string
+        pointsDeducted: number
+    } | null>(null)
+
+    // Rewards tab category states
+    type RewardCategoryType = 'All' | 'Scanned' | 'Point History' | 'History'
+    const [rewardCategory, setRewardCategory] = useState<RewardCategoryType>('All')
+    const [redemptionHistory, setRedemptionHistory] = useState<any[]>([])
+    const [pointsHistory, setPointsHistory] = useState<any[]>([])
+    const [scannedProducts, setScannedProducts] = useState<any[]>([])
+    const [loadingRedemptionHistory, setLoadingRedemptionHistory] = useState(false)
+    const [loadingPointsHistory, setLoadingPointsHistory] = useState(false)
+    const [loadingScannedProducts, setLoadingScannedProducts] = useState(false)
 
     // Feedback states
     const [showFeedbackModal, setShowFeedbackModal] = useState(false)
@@ -472,6 +488,72 @@ export default function PremiumLoyaltyTemplate({
             setProducts([])
         } finally {
             setLoadingProducts(false)
+        }
+    }
+
+    // Fetch redemption history
+    const fetchRedemptionHistory = async () => {
+        if (!isAuthenticated) return
+        setLoadingRedemptionHistory(true)
+        try {
+            const response = await fetch('/api/consumer/redemption-history')
+            const result = await response.json()
+            
+            if (result.success) {
+                setRedemptionHistory(result.redemptions || [])
+            } else {
+                console.error('Error fetching redemption history:', result.error)
+                setRedemptionHistory([])
+            }
+        } catch (error) {
+            console.error('Error fetching redemption history:', error)
+            setRedemptionHistory([])
+        } finally {
+            setLoadingRedemptionHistory(false)
+        }
+    }
+
+    // Fetch points history
+    const fetchPointsHistory = async () => {
+        if (!isAuthenticated) return
+        setLoadingPointsHistory(true)
+        try {
+            const response = await fetch('/api/consumer/points-history')
+            const result = await response.json()
+            
+            if (result.success) {
+                setPointsHistory(result.transactions || [])
+            } else {
+                console.error('Error fetching points history:', result.error)
+                setPointsHistory([])
+            }
+        } catch (error) {
+            console.error('Error fetching points history:', error)
+            setPointsHistory([])
+        } finally {
+            setLoadingPointsHistory(false)
+        }
+    }
+
+    // Fetch scanned products
+    const fetchScannedProducts = async () => {
+        if (!isAuthenticated) return
+        setLoadingScannedProducts(true)
+        try {
+            const response = await fetch('/api/consumer/scanned-products')
+            const result = await response.json()
+            
+            if (result.success) {
+                setScannedProducts(result.scans || [])
+            } else {
+                console.error('Error fetching scanned products:', result.error)
+                setScannedProducts([])
+            }
+        } catch (error) {
+            console.error('Error fetching scanned products:', error)
+            setScannedProducts([])
+        } finally {
+            setLoadingScannedProducts(false)
         }
     }
 
@@ -1074,6 +1156,12 @@ export default function PremiumLoyaltyTemplate({
                     redemptionCode: data.redemption_code
                 })
 
+                // Track last redeemed reward for Recent Activity display
+                setLastRedeemedReward({
+                    rewardName: data.reward_name,
+                    pointsDeducted: data.points_deducted
+                })
+
                 // Update local points balance
                 setUserPoints(data.new_balance)
 
@@ -1429,6 +1517,19 @@ export default function PremiumLoyaltyTemplate({
                             <span className="text-sm font-bold text-green-600">+{lastEarnedPoints} pts</span>
                         </div>
                     )}
+
+                    {lastRedeemedReward && (
+                        <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl border border-purple-100">
+                            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                                <Gift className="w-5 h-5 text-purple-600" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900">Reward Redeemed</p>
+                                <p className="text-xs text-gray-500">{lastRedeemedReward.rewardName}</p>
+                            </div>
+                            <span className="text-sm font-bold text-purple-600">-{lastRedeemedReward.pointsDeducted} pts</span>
+                        </div>
+                    )}
                     
                     {luckyDrawEntered && (
                         <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
@@ -1443,7 +1544,7 @@ export default function PremiumLoyaltyTemplate({
                         </div>
                     )}
                     
-                    {!pointsCollected && !luckyDrawEntered && (
+                    {!pointsCollected && !luckyDrawEntered && !lastRedeemedReward && (
                         <div className="text-center py-8 text-gray-500">
                             <Zap className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                             <p className="text-sm">No recent activity</p>
@@ -1456,7 +1557,48 @@ export default function PremiumLoyaltyTemplate({
     )
 
     // Render Rewards Tab
-    const renderRewardsTab = () => (
+    const renderRewardsTab = () => {
+        // Handler for category tab change
+        const handleCategoryChange = (cat: RewardCategoryType) => {
+            setRewardCategory(cat)
+            // Fetch data for the selected tab if authenticated
+            if (isAuthenticated && isShopUser) {
+                if (cat === 'History' && redemptionHistory.length === 0) {
+                    fetchRedemptionHistory()
+                } else if (cat === 'Point History' && pointsHistory.length === 0) {
+                    fetchPointsHistory()
+                } else if (cat === 'Scanned' && scannedProducts.length === 0) {
+                    fetchScannedProducts()
+                }
+            }
+        }
+
+        // Format date helper
+        const formatDate = (dateStr: string) => {
+            const date = new Date(dateStr)
+            return date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            })
+        }
+
+        // Get status color
+        const getStatusColor = (status: string) => {
+            switch (status) {
+                case 'fulfilled':
+                    return { bg: 'bg-green-100', text: 'text-green-700' }
+                case 'processing':
+                    return { bg: 'bg-blue-100', text: 'text-blue-700' }
+                case 'pending':
+                default:
+                    return { bg: 'bg-amber-100', text: 'text-amber-700' }
+            }
+        }
+
+        return (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
             {/* Header */}
             <div 
@@ -1473,18 +1615,19 @@ export default function PremiumLoyaltyTemplate({
                 </div>
             </div>
 
-            {/* Category Tabs */}
+            {/* Category Tabs - Renamed: All, Scanned, Point History, History */}
             <div className="px-5 -mt-4">
                 <div className="bg-white rounded-xl shadow-sm p-1 flex gap-1">
-                    {['All', 'Vouchers', 'Products', 'Experiences'].map((cat) => (
+                    {(['All', 'Scanned', 'Point History', 'History'] as RewardCategoryType[]).map((cat) => (
                         <button 
                             key={cat}
-                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
-                                cat === 'All' 
+                            onClick={() => handleCategoryChange(cat)}
+                            className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors ${
+                                rewardCategory === cat 
                                     ? 'text-white' 
                                     : 'text-gray-600 hover:bg-gray-50'
                             }`}
-                            style={cat === 'All' ? { backgroundColor: config.primary_color } : {}}
+                            style={rewardCategory === cat ? { backgroundColor: config.primary_color } : {}}
                         >
                             {cat}
                         </button>
@@ -1492,91 +1635,256 @@ export default function PremiumLoyaltyTemplate({
                 </div>
             </div>
 
-            {/* Rewards Grid */}
-            <div className="px-5 mt-4 grid grid-cols-2 gap-3">
-                {loadingRewards ? (
-                    <div className="col-span-2 text-center py-12">
-                        <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+            {/* Tab Content */}
+            <div className="px-5 mt-4">
+                {/* ALL - Show rewards grid */}
+                {rewardCategory === 'All' && (
+                    <div className="grid grid-cols-2 gap-3">
+                        {loadingRewards ? (
+                            <div className="col-span-2 text-center py-12">
+                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                            </div>
+                        ) : rewards.length > 0 ? (
+                            rewards.map((reward) => (
+                                <div key={reward.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                                    <div className="h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative">
+                                        {reward.item_image_url ? (
+                                            <Image 
+                                                src={reward.item_image_url} 
+                                                alt={reward.item_name}
+                                                fill
+                                                className="object-cover"
+                                            />
+                                        ) : (
+                                            <Gift className="w-12 h-12 text-gray-400" />
+                                        )}
+                                        {reward.stock_quantity !== null && reward.stock_quantity < 10 && (
+                                            <Badge className="absolute top-2 right-2 bg-red-500 text-white text-[10px]">
+                                                {reward.stock_quantity} left
+                                            </Badge>
+                                        )}
+                                    </div>
+                                    <div className="p-3">
+                                        <p className="text-sm font-medium text-gray-900 line-clamp-1">{reward.item_name}</p>
+                                        <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{reward.item_description || 'Redeem your points'}</p>
+                                        <div className="flex items-center justify-between mt-2">
+                                            <div className="flex items-center gap-1">
+                                                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                                                <span className="text-sm font-bold" style={{ color: config.primary_color }}>
+                                                    {reward.points_required}
+                                                </span>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleRedeemReward(reward)}
+                                                disabled={!isAuthenticated || !isShopUser || userPoints < reward.points_required}
+                                                className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                style={{ 
+                                                    backgroundColor: `${config.button_color}15`,
+                                                    color: config.button_color
+                                                }}
+                                            >
+                                                {userPoints < reward.points_required ? 'Need more' : 'Redeem'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="col-span-2 text-center py-12 text-gray-500">
+                                <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">No rewards available</p>
+                            </div>
+                        )}
                     </div>
-                ) : rewards.length > 0 ? (
-                    rewards.map((reward) => (
-                        <div key={reward.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                            <div className="h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative">
-                                {reward.item_image_url ? (
-                                    <Image 
-                                        src={reward.item_image_url} 
-                                        alt={reward.item_name}
-                                        fill
-                                        className="object-cover"
-                                    />
-                                ) : (
-                                    <Gift className="w-12 h-12 text-gray-400" />
-                                )}
-                                {reward.stock_quantity !== null && reward.stock_quantity < 10 && (
-                                    <Badge className="absolute top-2 right-2 bg-red-500 text-white text-[10px]">
-                                        {reward.stock_quantity} left
-                                    </Badge>
-                                )}
+                )}
+
+                {/* SCANNED - Show scanned products */}
+                {rewardCategory === 'Scanned' && (
+                    <div className="space-y-3">
+                        {!isAuthenticated || !isShopUser ? (
+                            <div className="text-center py-12 text-gray-500">
+                                <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">Please login to view scanned products</p>
                             </div>
-                            <div className="p-3">
-                                <p className="text-sm font-medium text-gray-900 line-clamp-1">{reward.item_name}</p>
-                                <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{reward.item_description || 'Redeem your points'}</p>
-                                <div className="flex items-center justify-between mt-2">
-                                    <div className="flex items-center gap-1">
-                                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                        <span className="text-sm font-bold" style={{ color: config.primary_color }}>
-                                            {reward.points_required}
-                                        </span>
+                        ) : loadingScannedProducts ? (
+                            <div className="text-center py-12">
+                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                            </div>
+                        ) : scannedProducts.length > 0 ? (
+                            scannedProducts.map((scan) => (
+                                <div key={scan.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                    <div className="flex gap-3">
+                                        <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                            {scan.product?.image_url ? (
+                                                <Image 
+                                                    src={scan.product.image_url} 
+                                                    alt={scan.product?.name || 'Product'}
+                                                    width={64}
+                                                    height={64}
+                                                    className="object-cover"
+                                                />
+                                            ) : (
+                                                <Package className="w-8 h-8 text-gray-400" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                {scan.product?.name || 'Unknown Product'}
+                                            </p>
+                                            <p className="text-xs text-gray-500 mt-0.5">
+                                                Code: {scan.qr_code || 'N/A'}
+                                            </p>
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                Scanned: {formatDate(scan.scanned_at)}
+                                            </p>
+                                            <div className="flex gap-2 mt-2">
+                                                {scan.collected_points && (
+                                                    <Badge className="bg-green-100 text-green-700 text-[10px]">Points Collected</Badge>
+                                                )}
+                                                {scan.entered_lucky_draw && (
+                                                    <Badge className="bg-amber-100 text-amber-700 text-[10px]">Lucky Draw</Badge>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <button 
-                                        onClick={() => handleRedeemReward(reward)}
-                                        disabled={!isAuthenticated || !isShopUser || userPoints < reward.points_required}
-                                        className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                        style={{ 
-                                            backgroundColor: `${config.button_color}15`,
-                                            color: config.button_color
-                                        }}
-                                    >
-                                        {userPoints < reward.points_required ? 'Need more' : 'Redeem'}
-                                    </button>
                                 </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-12 text-gray-500">
+                                <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">No scanned products yet</p>
+                                <p className="text-xs mt-1">Scan QR codes to see them here</p>
                             </div>
-                        </div>
-                    ))
-                ) : (
-                    // Demo rewards when no real data
-                    [1, 2, 3, 4].map((i) => (
-                        <div key={i} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                            <div className="h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                                <Gift className="w-12 h-12 text-gray-400" />
+                        )}
+                    </div>
+                )}
+
+                {/* POINT HISTORY - Show points transactions */}
+                {rewardCategory === 'Point History' && (
+                    <div className="space-y-3">
+                        {!isAuthenticated || !isShopUser ? (
+                            <div className="text-center py-12 text-gray-500">
+                                <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">Please login to view points history</p>
                             </div>
-                            <div className="p-3">
-                                <p className="text-sm font-medium text-gray-900">Reward Item {i}</p>
-                                <p className="text-xs text-gray-500 mt-0.5">Amazing reward</p>
-                                <div className="flex items-center justify-between mt-2">
-                                    <div className="flex items-center gap-1">
-                                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                        <span className="text-sm font-bold" style={{ color: config.primary_color }}>
-                                            {100 * i}
-                                        </span>
+                        ) : loadingPointsHistory ? (
+                            <div className="text-center py-12">
+                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                            </div>
+                        ) : pointsHistory.length > 0 ? (
+                            pointsHistory.map((txn) => (
+                                <div key={txn.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                            txn.points > 0 ? 'bg-green-100' : 'bg-purple-100'
+                                        }`}>
+                                            {txn.points > 0 ? (
+                                                <TrendingUp className="w-5 h-5 text-green-600" />
+                                            ) : (
+                                                <Gift className="w-5 h-5 text-purple-600" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                {txn.description || (txn.points > 0 ? 'Points Earned' : 'Points Redeemed')}
+                                            </p>
+                                            <p className="text-xs text-gray-500 mt-0.5">
+                                                {formatDate(txn.date)}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className={`text-sm font-bold ${
+                                                txn.points > 0 ? 'text-green-600' : 'text-purple-600'
+                                            }`}>
+                                                {txn.points > 0 ? '+' : ''}{txn.points} pts
+                                            </p>
+                                            <p className="text-xs text-gray-400">
+                                                Balance: {txn.balance_after}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <button 
-                                        className="text-xs font-medium px-2 py-1 rounded-lg"
-                                        style={{ 
-                                            backgroundColor: `${config.button_color}15`,
-                                            color: config.button_color
-                                        }}
-                                    >
-                                        Redeem
-                                    </button>
                                 </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-12 text-gray-500">
+                                <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">No points history yet</p>
+                                <p className="text-xs mt-1">Collect points to see them here</p>
                             </div>
-                        </div>
-                    ))
+                        )}
+                    </div>
+                )}
+
+                {/* HISTORY - Show redemption history */}
+                {rewardCategory === 'History' && (
+                    <div className="space-y-3">
+                        {!isAuthenticated || !isShopUser ? (
+                            <div className="text-center py-12 text-gray-500">
+                                <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">Please login to view redemption history</p>
+                            </div>
+                        ) : loadingRedemptionHistory ? (
+                            <div className="text-center py-12">
+                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                            </div>
+                        ) : redemptionHistory.length > 0 ? (
+                            redemptionHistory.map((redemption) => {
+                                const statusColors = getStatusColor(redemption.status)
+                                return (
+                                    <div key={redemption.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                        <div className="flex gap-3">
+                                            <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                {redemption.reward?.image_url ? (
+                                                    <Image 
+                                                        src={redemption.reward.image_url} 
+                                                        alt={redemption.reward?.name || 'Reward'}
+                                                        width={64}
+                                                        height={64}
+                                                        className="object-cover"
+                                                    />
+                                                ) : (
+                                                    <Gift className="w-8 h-8 text-gray-400" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                    {redemption.reward?.name || redemption.description || 'Reward Redeemed'}
+                                                </p>
+                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                    {formatDate(redemption.date)}
+                                                </p>
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <Badge className={`${statusColors.bg} ${statusColors.text} text-[10px] capitalize`}>
+                                                        {redemption.status}
+                                                    </Badge>
+                                                    {redemption.redemption_code && (
+                                                        <span className="text-xs text-gray-500 font-mono">
+                                                            {redemption.redemption_code}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold text-purple-600">
+                                                    -{redemption.points_deducted} pts
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })
+                        ) : (
+                            <div className="text-center py-12 text-gray-500">
+                                <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                <p className="text-sm">No redemptions yet</p>
+                                <p className="text-xs mt-1">Redeem rewards to see them here</p>
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
         </div>
-    )
+    )}
 
     // Render Lucky Draw Tab
     const renderLuckyDrawTab = () => (
