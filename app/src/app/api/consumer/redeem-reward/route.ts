@@ -156,12 +156,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 7. Record the redemption transaction
-    // Note: We DON'T set company_id here so the shop_points_ledger view
-    // can use the subquery to find the shop by consumer_phone
+    // IMPORTANT: Use shopId (the shop's organization ID) as company_id
+    // so the shop_points_ledger view can properly filter by shop_id
     const consumerPhone = userProfile.phone || ''
     const newBalance = currentBalance - reward.points_required
     
     console.log('📝 Recording redemption:', {
+      shop_id: shopId,
       consumer_phone: consumerPhone,
       points_amount: -reward.points_required,
       balance_after: newBalance,
@@ -171,7 +172,7 @@ export async function POST(request: NextRequest) {
     const { data: transaction, error: txnError } = await supabase
       .from('points_transactions')
       .insert({
-        company_id: reward.company_id, // Keep for reference
+        company_id: shopId, // Use shop's org ID so shop_points_ledger view can find it
         consumer_phone: consumerPhone,
         consumer_email: consumer_email || userProfile.email || null,
         transaction_type: 'redeem',
