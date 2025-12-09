@@ -285,12 +285,7 @@ export async function PATCH(request: NextRequest) {
       .select(`
         id,
         full_name,
-<<<<<<< HEAD
-        organization_id,
-        organizations!inner(org_type_code)
-=======
         organization_id
->>>>>>> develop
       `)
       .eq('id', user.id)
       .single()
@@ -302,9 +297,6 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-<<<<<<< HEAD
-    const orgType = (userProfile.organizations as any)?.org_type_code
-=======
     if (!userProfile.organization_id) {
       return NextResponse.json(
         { success: false, error: 'User has no organization assigned' },
@@ -327,7 +319,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     const orgType = org.org_type_code
->>>>>>> develop
     if (orgType !== 'HQ' && orgType !== 'MANUFACTURER') {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
