@@ -161,6 +161,9 @@ export async function POST(request: NextRequest) {
     const consumerPhone = userProfile.phone || ''
     const newBalance = currentBalance - reward.points_required
     
+    // Generate redemption code (will be finalized after insert with transaction ID)
+    const tempRedemptionCode = `RED-${Date.now().toString(36).toUpperCase()}`
+    
     console.log('📝 Recording redemption:', {
       shop_id: shopId,
       consumer_phone: consumerPhone,
@@ -180,8 +183,10 @@ export async function POST(request: NextRequest) {
         balance_after: newBalance,
         redeem_item_id: reward_id,
         description: `Redeemed: ${reward.item_name}`,
-        transaction_date: new Date().toISOString()
-      })
+        transaction_date: new Date().toISOString(),
+        fulfillment_status: 'pending',
+        redemption_code: tempRedemptionCode
+      } as any)
       .select()
       .single()
 
@@ -194,6 +199,15 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ Transaction recorded:', transaction.id)
+
+    // Generate final redemption code using transaction ID
+    const redemptionCode = `RED-${transaction.id.split('-')[0].toUpperCase()}`
+    
+    // Update the transaction with the final redemption code
+    await supabase
+      .from('points_transactions')
+      .update({ redemption_code: redemptionCode } as any)
+      .eq('id', transaction.id)
 
     // 8. Update stock quantity (if applicable)
     if (typeof reward.stock_quantity === 'number' && reward.stock_quantity > 0) {
@@ -220,7 +234,7 @@ export async function POST(request: NextRequest) {
       reward_name: reward.item_name,
       points_deducted: reward.points_required,
       new_balance: newBalance,
-      redemption_code: `RED-${transaction.id.split('-')[0].toUpperCase()}`,
+      redemption_code: redemptionCode,
       instructions: 'Your redemption is being processed. Please show this confirmation to redeem your reward.'
     })
 
