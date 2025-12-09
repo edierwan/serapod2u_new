@@ -280,7 +280,18 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
           phone: userData.phone || undefined
         })
         
-        if (!result.success) throw new Error(result.error || 'Failed to create user')
+        if (!result.success) {
+          // Provide friendly error messages for common errors
+          let errorMessage = result.error || 'Failed to create user'
+          
+          if (errorMessage.toLowerCase().includes('already been registered') || 
+              errorMessage.toLowerCase().includes('already exists') ||
+              errorMessage.toLowerCase().includes('duplicate')) {
+            errorMessage = `The email address "${userData.email}" is already registered in the system. Please use a different email address.`
+          }
+          
+          throw new Error(errorMessage)
+        }
         
         // Upload avatar if provided
         if (avatarFile) {

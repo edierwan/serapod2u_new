@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
+import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy, MessageSquare, Clock, CheckCircle2, Eye } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface UserProfile {
   id: string
@@ -23,6 +24,8 @@ interface ConsumerActivationsViewProps {
 }
 
 export default function ConsumerActivationsView({ userProfile, onViewChange }: ConsumerActivationsViewProps) {
+  const organizationId = userProfile.organization_id
+  const [activeTab, setActiveTab] = useState<'activations' | 'feedback'>('activations')
   const [activations, setActivations] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
@@ -41,6 +44,16 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [totalCount, setTotalCount] = useState(0)
+
+  // Feedback state
+  const [feedback, setFeedback] = useState<any[]>([])
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [feedbackSummary, setFeedbackSummary] = useState({ total: 0, pending: 0, reviewed: 0, resolved: 0 })
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<string>('all')
+  const [feedbackPage, setFeedbackPage] = useState(1)
+  const [feedbackTotal, setFeedbackTotal] = useState(0)
+  const [selectedFeedback, setSelectedFeedback] = useState<any>(null)
+  const [updatingFeedback, setUpdatingFeedback] = useState(false)
 
   const [stats, setStats] = useState({
     total_scans: 0,
@@ -379,6 +392,33 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
     }
   }
 
+  const loadFeedback = async () => {
+    if (!organizationId) return
+    setFeedbackLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('consumer_feedback')
+        .select('*')
+        .eq('org_id', organizationId)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      
+      if (error) throw error
+      setFeedback(data || [])
+    } catch (error: any) {
+      console.error('Error loading feedback:', error)
+    } finally {
+      setFeedbackLoading(false)
+    }
+  }
+
+  // Load feedback when switching to feedback tab
+  useEffect(() => {
+    if (activeTab === 'feedback' && feedback.length === 0 && !feedbackLoading) {
+      loadFeedback()
+    }
+  }, [activeTab])
+
   return (
     <div className="space-y-6">
       <div>
@@ -479,8 +519,19 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         </Card>
       </div>
 
-      {/* Recent Activations */}
-      <Card>
+      {/* Tabs for Activations and Feedback */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="activations">Recent Activations</TabsTrigger>
+          <TabsTrigger value="feedback" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Consumer Feedback
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="activations">
+          {/* Recent Activations */}
+          <Card>
         <CardHeader>
           <CardTitle>Recent Activations</CardTitle>
           {/* Filters Row */}
@@ -683,6 +734,57 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="feedback">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Consumer Feedback
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {feedbackLoading ? (
+                <div className="text-center py-8 text-gray-500">Loading feedback...</div>
+              ) : feedback.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No feedback received yet</div>
+              ) : (
+                <div className="space-y-4">
+                  {feedback.map((item: any) => (
+                    <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{item.title}</h4>
+                          <p className="text-sm text-gray-600">
+                            From: {item.consumer_name || 'Anonymous'} 
+                            {item.consumer_phone && ` • ${item.consumer_phone}`}
+                            {item.consumer_email && ` • ${item.consumer_email}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            item.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                            item.status === 'reviewed' ? 'bg-yellow-100 text-yellow-800' :
+                            item.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {item.status || 'new'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(item.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-gray-700 whitespace-pre-wrap">{item.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -37,7 +37,9 @@ import {
     Shield,
     MapPin,
     Save,
-    Check
+    Check,
+    MessageSquare,
+    Send
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { extractTokenFromQRCode } from '@/utils/qrSecurity'
@@ -45,7 +47,7 @@ import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimati
 import { LuckyDrawSuccessAnimation } from '@/components/animations/LuckyDrawSuccessAnimation'
 import { GenuineProductAnimation } from '@/components/animations/GenuineProductAnimation'
 import { RewardRedemptionAnimation } from '@/components/animations/RewardRedemptionAnimation'
-import { validatePhoneNumber } from '@/lib/utils'
+import { validatePhoneNumber, normalizePhone } from '@/lib/utils'
 
 // Types
 interface JourneyConfig {
@@ -230,6 +232,14 @@ export default function PremiumLoyaltyTemplate({
         newBalance: number
         redemptionCode: string
     } | null>(null)
+
+    // Feedback states
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false)
+    const [feedbackTitle, setFeedbackTitle] = useState('')
+    const [feedbackMessage, setFeedbackMessage] = useState('')
+    const [submittingFeedback, setSubmittingFeedback] = useState(false)
+    const [feedbackError, setFeedbackError] = useState('')
+    const [feedbackSuccess, setFeedbackSuccess] = useState(false)
 
     // Helper function to check if user is from SHOP organization (uses API to bypass RLS)
     const checkUserOrganization = async (userId: string) => {
@@ -476,9 +486,35 @@ export default function PremiumLoyaltyTemplate({
         setLoginError('')
         
         try {
+            let emailToUse = loginEmail
+            
+            // Check if input looks like a phone number (doesn't contain @)
+            if (!loginEmail.includes('@')) {
+                // Normalize and lookup email by phone
+                const normalizedPhone = normalizePhone(loginEmail)
+                
+                const { data: userEmail, error: lookupError } = await supabase
+                    .rpc('get_email_by_phone', { p_phone: normalizedPhone })
+                
+                if (lookupError) {
+                    console.error('Phone lookup error:', lookupError)
+                    setLoginError('Error verifying phone number. Please try again.')
+                    setLoginLoading(false)
+                    return
+                }
+                
+                if (!userEmail) {
+                    setLoginError('Phone number not found. Please check your number or use email to login.')
+                    setLoginLoading(false)
+                    return
+                }
+                
+                emailToUse = userEmail
+            }
+            
             if (isSignUp) {
                 const { error } = await supabase.auth.signUp({
-                    email: loginEmail,
+                    email: emailToUse,
                     password: loginPassword,
                 })
                 if (error) throw error
@@ -486,14 +522,18 @@ export default function PremiumLoyaltyTemplate({
                 setShowLoginForm(false)
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
-                    email: loginEmail,
+                    email: emailToUse,
                     password: loginPassword,
                 })
                 if (error) throw error
                 setShowLoginForm(false)
             }
         } catch (error: any) {
-            setLoginError(error.message || 'Login failed')
+            if (error.message?.includes('Invalid login credentials')) {
+                setLoginError('Invalid email/phone or password. Please check your credentials.')
+            } else {
+                setLoginError(error.message || 'Login failed')
+            }
         } finally {
             setLoginLoading(false)
         }
@@ -687,11 +727,14 @@ export default function PremiumLoyaltyTemplate({
     const executeAction = (action: string) => {
         switch (action) {
             case 'collect-points':
-                // If user is already authenticated as a shop user, collect points directly
-                if (isAuthenticated && isShopUser) {
+                // If user is already authenticated, try to collect points with session
+                // The API will validate if they're a shop user and return requiresLogin if not
+                if (isAuthenticated) {
+                    console.log('🔐 User authenticated, attempting session-based points collection', { isShopUser })
                     handleCollectPointsWithSession()
                 } else {
-                    // Show shop login modal for points collection
+                    // Not authenticated - show shop login modal for points collection
+                    console.log('🔐 User not authenticated, showing shop login modal')
                     setPointsError('')
                     setShowPointsLoginModal(true)
                 }
@@ -1031,6 +1074,59 @@ export default function PremiumLoyaltyTemplate({
         setShowRedeemSuccess(false)
         setSelectedReward(null)
         setRedemptionDetails(null)
+    }
+
+    // Handle feedback submission
+    const handleSubmitFeedback = async () => {
+        if (!feedbackTitle.trim()) {
+            setFeedbackError('Please enter a title for your feedback')
+            return
+        }
+        if (!feedbackMessage.trim()) {
+            setFeedbackError('Please enter your feedback message')
+            return
+        }
+
+        setSubmittingFeedback(true)
+        setFeedbackError('')
+
+        try {
+            const response = await fetch('/api/consumer/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: feedbackTitle.trim(),
+                    message: feedbackMessage.trim(),
+                    qr_code: qrCode,
+                    org_id: orgId,
+                    consumer_name: userName || undefined,
+                    consumer_phone: userPhone || consumerPhone || undefined,
+                    consumer_email: userEmail || undefined,
+                    product_name: productInfo?.product_name || undefined,
+                    variant_name: productInfo?.variant_name || undefined
+                })
+            })
+
+            const data = await response.json()
+
+            if (response.ok && data.success) {
+                setFeedbackSuccess(true)
+                setFeedbackTitle('')
+                setFeedbackMessage('')
+                // Auto close after 3 seconds
+                setTimeout(() => {
+                    setShowFeedbackModal(false)
+                    setFeedbackSuccess(false)
+                }, 3000)
+            } else {
+                setFeedbackError(data.error || 'Failed to submit feedback. Please try again.')
+            }
+        } catch (error) {
+            console.error('Error submitting feedback:', error)
+            setFeedbackError('Network error. Please try again.')
+        } finally {
+            setSubmittingFeedback(false)
+        }
     }
 
     // Render Home Tab
@@ -1918,18 +2014,19 @@ export default function PremiumLoyaltyTemplate({
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Email
+                                        Email or Phone Number
                                     </label>
                                     <div className="relative">
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                                         <Input 
-                                            type="email"
-                                            placeholder="Enter your email"
+                                            type="text"
+                                            placeholder="Enter email or phone number"
                                             value={loginEmail}
                                             onChange={(e) => setLoginEmail(e.target.value)}
                                             className="h-11 pl-10"
                                         />
                                     </div>
+                                    <p className="text-xs text-gray-500 mt-1">You can log in using your email or phone number.</p>
                                 </div>
                                 
                                 <div>
@@ -2027,6 +2124,27 @@ export default function PremiumLoyaltyTemplate({
                         </div>
                         <span className="font-bold">{luckyDrawEntered ? 1 : 0}</span>
                     </div>
+                </div>
+
+                {/* Feedback Section */}
+                <div className="bg-white rounded-2xl shadow-lg p-4">
+                    <button 
+                        onClick={() => {
+                            setShowFeedbackModal(true)
+                            setFeedbackError('')
+                            setFeedbackSuccess(false)
+                        }}
+                        className="w-full flex items-center justify-between"
+                    >
+                        <div className="flex items-center gap-3">
+                            <MessageSquare className="w-5 h-5 text-blue-500" />
+                            <div className="text-left">
+                                <span className="font-medium block">Send Feedback</span>
+                                <span className="text-xs text-gray-500">Share your thoughts with us</span>
+                            </div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </button>
                 </div>
             </div>
         </div>
@@ -2654,6 +2772,114 @@ export default function PremiumLoyaltyTemplate({
                     redemptionCode={redemptionDetails.redemptionCode}
                     onClose={handleRedeemSuccessClose}
                 />
+            )}
+
+            {/* Feedback Modal */}
+            {showFeedbackModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <MessageSquare className="w-5 h-5" style={{ color: config.primary_color }} />
+                                <h3 className="text-lg font-bold text-gray-900">Send Feedback</h3>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    setShowFeedbackModal(false)
+                                    setFeedbackTitle('')
+                                    setFeedbackMessage('')
+                                    setFeedbackError('')
+                                    setFeedbackSuccess(false)
+                                }}
+                                className="p-1 rounded-full hover:bg-gray-100"
+                            >
+                                <X className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+
+                        {feedbackSuccess ? (
+                            <div className="text-center py-6">
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: `${config.primary_color}15` }}>
+                                    <CheckCircle2 className="w-8 h-8" style={{ color: config.primary_color }} />
+                                </div>
+                                <h4 className="text-lg font-bold text-gray-900 mb-2">Thank You!</h4>
+                                <p className="text-sm text-gray-500">We appreciate you taking the time to share your thoughts with us.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <p className="text-sm text-gray-500">
+                                    We value your feedback! Let us know what you think about our product.
+                                </p>
+
+                                {feedbackError && (
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                        <p className="text-sm text-red-600">{feedbackError}</p>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Title <span className="text-red-500">*</span>
+                                    </label>
+                                    <Input 
+                                        placeholder="e.g. Great product quality!"
+                                        value={feedbackTitle}
+                                        onChange={(e) => setFeedbackTitle(e.target.value)}
+                                        className="h-11"
+                                        maxLength={100}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Message <span className="text-red-500">*</span>
+                                    </label>
+                                    <textarea
+                                        placeholder="Share your experience or suggestions..."
+                                        value={feedbackMessage}
+                                        onChange={(e) => setFeedbackMessage(e.target.value)}
+                                        className="w-full min-h-[120px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                        maxLength={1000}
+                                    />
+                                    <p className="text-xs text-gray-400 text-right mt-1">{feedbackMessage.length}/1000</p>
+                                </div>
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        onClick={() => {
+                                            setShowFeedbackModal(false)
+                                            setFeedbackTitle('')
+                                            setFeedbackMessage('')
+                                            setFeedbackError('')
+                                        }}
+                                        disabled={submittingFeedback}
+                                        className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleSubmitFeedback}
+                                        disabled={submittingFeedback || !feedbackTitle.trim() || !feedbackMessage.trim()}
+                                        className="flex-1 px-4 py-3 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                        style={{ backgroundColor: config.button_color }}
+                                    >
+                                        {submittingFeedback ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Sending...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Send className="w-4 h-4" />
+                                                Send
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
             )}
         </div>
     )

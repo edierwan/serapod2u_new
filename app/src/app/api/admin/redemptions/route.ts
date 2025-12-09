@@ -30,8 +30,7 @@ export async function GET(request: NextRequest) {
       .from('users')
       .select(`
         id,
-        organization_id,
-        organizations!inner(org_type_code)
+        organization_id
       `)
       .eq('id', user.id)
       .single()
@@ -43,7 +42,28 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const orgType = (userProfile.organizations as any)?.org_type_code
+    if (!userProfile.organization_id) {
+      return NextResponse.json(
+        { success: false, error: 'User has no organization assigned' },
+        { status: 403 }
+      )
+    }
+
+    // Separately fetch organization details
+    const { data: org, error: orgError } = await supabase
+      .from('organizations')
+      .select('org_type_code')
+      .eq('id', userProfile.organization_id)
+      .single()
+
+    if (orgError || !org) {
+      return NextResponse.json(
+        { success: false, error: 'Organization not found' },
+        { status: 404 }
+      )
+    }
+
+    const orgType = org.org_type_code
     if (orgType !== 'HQ' && orgType !== 'MANUFACTURER') {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
@@ -265,8 +285,7 @@ export async function PATCH(request: NextRequest) {
       .select(`
         id,
         full_name,
-        organization_id,
-        organizations!inner(org_type_code)
+        organization_id
       `)
       .eq('id', user.id)
       .single()
@@ -278,7 +297,28 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const orgType = (userProfile.organizations as any)?.org_type_code
+    if (!userProfile.organization_id) {
+      return NextResponse.json(
+        { success: false, error: 'User has no organization assigned' },
+        { status: 403 }
+      )
+    }
+
+    // Separately fetch organization details
+    const { data: org, error: orgError } = await supabase
+      .from('organizations')
+      .select('org_type_code')
+      .eq('id', userProfile.organization_id)
+      .single()
+
+    if (orgError || !org) {
+      return NextResponse.json(
+        { success: false, error: 'Organization not found' },
+        { status: 404 }
+      )
+    }
+
+    const orgType = org.org_type_code
     if (orgType !== 'HQ' && orgType !== 'MANUFACTURER') {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },

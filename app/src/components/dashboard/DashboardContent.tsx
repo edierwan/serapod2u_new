@@ -210,11 +210,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <EditOrganizationView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'edit-organization-hq':
         // For HQ orgs, go to Settings
-        setCurrentView('settings')
         return <SettingsView userProfile={userProfile} />
       case 'view-organization':
         // Navigate back to organizations view
-        setCurrentView('organizations')
         return <OrganizationsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'distributors':
         return <DistributorsView userProfile={userProfile} />
