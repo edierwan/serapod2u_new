@@ -1599,7 +1599,7 @@ export default function PremiumLoyaltyTemplate({
                             ))}
                         </div>
                     ) : (
-                        <div className="flex overflow-x-auto gap-3 pb-2 snap-x hide-scrollbar">
+                        <div className="flex overflow-x-auto gap-3 pb-2 snap-x scrollbar-hide">
                             {config.banner_config.items
                                 .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
                                 .map((item) => (

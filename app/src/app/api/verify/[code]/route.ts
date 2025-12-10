@@ -212,7 +212,8 @@ function normalizeJourneyConfig(journey: any, order?: OrderInfo | null) {
     custom_image_url: journey?.custom_image_url ?? null,
     genuine_badge_style: journey?.genuine_badge_style ?? 'gold',
     redemption_requires_login: redemptionRequiresLogin,
-    require_customer_otp_for_redemption: redemptionRequiresLogin
+    require_customer_otp_for_redemption: redemptionRequiresLogin,
+    banner_config: journey?.banner_config ?? null
   }
 }
 

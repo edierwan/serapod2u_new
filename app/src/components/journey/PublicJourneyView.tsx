@@ -55,6 +55,16 @@ interface JourneyConfig {
   lucky_draw_image_url?: string | null
   lucky_draw_campaign_name?: string | null
   lucky_draw_prizes?: any[]
+  banner_config?: {
+    enabled: boolean
+    template: 'grid' | 'carousel'
+    items: Array<{
+      id: string
+      image_url: string
+      link_to?: 'rewards' | 'products' | string
+      expires_at?: string
+    }>
+  }
 }
 
 interface VerificationData {
