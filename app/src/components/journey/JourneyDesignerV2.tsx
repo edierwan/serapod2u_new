@@ -514,7 +514,7 @@ export default function JourneyDesignerV2({
         fetchProductImage()
     }, [order.id, supabase])
 
-    // Compress image for mobile optimization - target size below 10KB
+    // Compress image for mobile optimization
     const compressImage = (file: File): Promise<File> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader()
@@ -557,37 +557,22 @@ export default function JourneyDesignerV2({
                     ctx.imageSmoothingQuality = 'high'
                     ctx.drawImage(img, 0, 0, width, height)
 
-                    // Compress iteratively to ensure file size is below 10KB
-                    const compressWithQuality = (quality: number) => {
-                        canvas.toBlob(
-                            (blob) => {
-                                if (blob) {
-                                    const fileSizeKB = blob.size / 1024
-                                    console.log(`[Compress] Quality: ${quality}, Size: ${fileSizeKB.toFixed(2)}KB`)
-                                    
-                                    // If size is below 10KB or quality is too low, accept it
-                                    if (fileSizeKB <= 10 || quality <= 0.3) {
-                                        const compressedFile = new File([blob], file.name, {
-                                            type: 'image/jpeg',
-                                            lastModified: Date.now(),
-                                        })
-                                        console.log(`[Compress] Final size: ${fileSizeKB.toFixed(2)}KB`)
-                                        resolve(compressedFile)
-                                    } else {
-                                        // Reduce quality and try again
-                                        compressWithQuality(quality - 0.1)
-                                    }
-                                } else {
-                                    reject(new Error('Failed to compress image'))
-                                }
-                            },
-                            'image/jpeg',
-                            quality
-                        )
-                    }
-
-                    // Start with 70% quality
-                    compressWithQuality(0.7)
+                    // Convert to blob with compression (JPEG 70% quality for ~5KB)
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                const compressedFile = new File([blob], file.name, {
+                                    type: 'image/jpeg',
+                                    lastModified: Date.now(),
+                                })
+                                resolve(compressedFile)
+                            } else {
+                                reject(new Error('Failed to compress image'))
+                            }
+                        },
+                        'image/jpeg',
+                        0.7
+                    )
                 }
                 img.onerror = () => reject(new Error('Failed to load image'))
             }
@@ -630,7 +615,7 @@ export default function JourneyDesignerV2({
 
             toast({
                 title: "Image uploaded",
-                description: "Image has been compressed and uploaded successfully (below 10KB)",
+                description: "Image has been compressed and uploaded successfully (~5KB)",
             })
         } catch (error: any) {
             console.error('[Journey] Error uploading image:', error)

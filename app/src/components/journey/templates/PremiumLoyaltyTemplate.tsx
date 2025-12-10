@@ -633,7 +633,7 @@ export default function PremiumLoyaltyTemplate({
                 const normalizedPhone = normalizePhone(loginEmail)
                 
                 const { data: userEmail, error: lookupError } = await supabase
-                    .rpc('get_email_by_phone', { p_phone: normalizedPhone })
+                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
                 
                 if (lookupError) {
                     console.error('Phone lookup error:', lookupError)
@@ -648,7 +648,7 @@ export default function PremiumLoyaltyTemplate({
                     return
                 }
                 
-                emailToUse = userEmail
+                emailToUse = userEmail as string
             }
             
             if (isSignUp) {
@@ -1486,59 +1486,6 @@ export default function PremiumLoyaltyTemplate({
                 </div>
             </div>
 
-            {/* Announcement Banner - Show before Featured Rewards */}
-            {config.banner_config?.enabled && config.banner_config.items.length > 0 && (
-                <div className="px-5 mt-6">
-                    {config.banner_config.template === 'grid' ? (
-                        <div className="grid grid-cols-2 gap-3">
-                            {config.banner_config.items
-                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
-                                .map((item) => (
-                                <div 
-                                    key={item.id}
-                                    className={`relative rounded-xl overflow-hidden aspect-[16/9] shadow-sm ${item.link_to ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-                                    onClick={() => {
-                                        if (item.link_to === 'rewards') setActiveTab('rewards')
-                                        else if (item.link_to === 'products') setActiveTab('products')
-                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
-                                    }}
-                                >
-                                    <Image 
-                                        src={item.image_url} 
-                                        alt="Promotion" 
-                                        fill
-                                        className="object-cover"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="flex overflow-x-auto gap-3 pb-2 snap-x hide-scrollbar">
-                            {config.banner_config.items
-                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
-                                .map((item) => (
-                                <div 
-                                    key={item.id}
-                                    className={`relative min-w-[85%] aspect-[2/1] rounded-xl overflow-hidden shadow-sm snap-center flex-shrink-0 ${item.link_to ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-                                    onClick={() => {
-                                        if (item.link_to === 'rewards') setActiveTab('rewards')
-                                        else if (item.link_to === 'products') setActiveTab('products')
-                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
-                                    }}
-                                >
-                                    <Image 
-                                        src={item.image_url} 
-                                        alt="Promotion" 
-                                        fill
-                                        className="object-cover"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
-
             {/* Featured Rewards Section */}
             <div className="px-5 mt-6">
                 <div className="flex items-center justify-between mb-4">
@@ -1616,6 +1563,59 @@ export default function PremiumLoyaltyTemplate({
                     )}
                 </div>
             </div>
+
+            {/* Promotions Banner */}
+            {config.banner_config?.enabled && config.banner_config.items.length > 0 && (
+                <div className="px-5 mt-6">
+                    {config.banner_config.template === 'grid' ? (
+                        <div className="grid grid-cols-1 gap-3">
+                            {config.banner_config.items
+                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
+                                .map((item) => (
+                                <div 
+                                    key={item.id}
+                                    className={`relative rounded-xl overflow-hidden aspect-[16/9] shadow-sm ${item.link_to ? 'cursor-pointer' : ''}`}
+                                    onClick={() => {
+                                        if (item.link_to === 'rewards') setActiveTab('rewards')
+                                        else if (item.link_to === 'products') setActiveTab('products')
+                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
+                                    }}
+                                >
+                                    <Image 
+                                        src={item.image_url} 
+                                        alt="Promotion" 
+                                        fill
+                                        className="object-cover"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex overflow-x-auto gap-3 pb-2 snap-x hide-scrollbar">
+                            {config.banner_config.items
+                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
+                                .map((item) => (
+                                <div 
+                                    key={item.id}
+                                    className={`relative min-w-[85%] aspect-[2/1] rounded-xl overflow-hidden shadow-sm snap-center flex-shrink-0 ${item.link_to ? 'cursor-pointer' : ''}`}
+                                    onClick={() => {
+                                        if (item.link_to === 'rewards') setActiveTab('rewards')
+                                        else if (item.link_to === 'products') setActiveTab('products')
+                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
+                                    }}
+                                >
+                                    <Image 
+                                        src={item.image_url} 
+                                        alt="Promotion" 
+                                        fill
+                                        className="object-cover"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Recent Activity */}
             <div className="px-5 mt-6 mb-4">
@@ -3090,7 +3090,7 @@ export default function PremiumLoyaltyTemplate({
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
             {/* Main Content */}
             {renderContent()}
 
