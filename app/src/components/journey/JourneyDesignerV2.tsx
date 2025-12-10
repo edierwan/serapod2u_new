@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/components/ui/use-toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
     ArrowLeft,
     Save,
@@ -232,6 +233,7 @@ export default function JourneyDesignerV2({
     const [config, setConfig] = useState<JourneyConfig>({
         id: journey?.id,
         name: journey?.name || `Journey for ${order.order_no}`,
+        template_type: journey?.template_type || 'classic',
         is_active: journey?.is_active ?? true,
         is_default: journey?.is_default ?? false,
         points_enabled: journey?.points_enabled ?? true,
@@ -1059,67 +1061,16 @@ export default function JourneyDesignerV2({
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* Classic Template */}
-                                <button
-                                    type="button"
-                                    onClick={() => setConfig({ ...config, template_type: 'classic' })}
-                                    className={`relative p-4 rounded-xl border-2 transition-all text-left ${
-                                        config.template_type !== 'premium' 
-                                            ? 'border-blue-500 bg-blue-50' 
-                                            : 'border-gray-200 hover:border-gray-300'
-                                    }`}
-                                >
-                                    {config.template_type !== 'premium' && (
-                                        <div className="absolute top-2 right-2">
-                                            <CheckCircle2 className="w-5 h-5 text-blue-500" />
-                                        </div>
-                                    )}
-                                    <div className="w-full h-24 bg-gradient-to-b from-blue-400 to-blue-500 rounded-lg mb-3 flex items-center justify-center">
-                                        <div className="text-white text-center">
-                                            <CheckCircle2 className="w-6 h-6 mx-auto mb-1" />
-                                            <span className="text-xs font-medium">Welcome!</span>
-                                        </div>
-                                    </div>
-                                    <h3 className="font-semibold text-gray-900">Classic</h3>
-                                    <p className="text-xs text-gray-500 mt-1">Simple welcome page with feature buttons</p>
-                                </button>
-
-                                {/* Premium Template */}
-                                <button
-                                    type="button"
-                                    onClick={() => setConfig({ ...config, template_type: 'premium' })}
-                                    className={`relative p-4 rounded-xl border-2 transition-all text-left ${
-                                        config.template_type === 'premium' 
-                                            ? 'border-blue-500 bg-blue-50' 
-                                            : 'border-gray-200 hover:border-gray-300'
-                                    }`}
-                                >
-                                    {config.template_type === 'premium' && (
-                                        <div className="absolute top-2 right-2">
-                                            <CheckCircle2 className="w-5 h-5 text-blue-500" />
-                                        </div>
-                                    )}
-                                    <div className="w-full h-24 bg-gradient-to-b from-emerald-600 to-emerald-700 rounded-lg mb-3 relative overflow-hidden">
-                                        <div className="absolute bottom-0 left-0 right-0 bg-white h-6 flex items-center justify-around px-2">
-                                            <div className="w-3 h-3 rounded bg-gray-200" />
-                                            <div className="w-3 h-3 rounded bg-gray-200" />
-                                            <div className="w-3 h-3 rounded bg-emerald-500" />
-                                            <div className="w-3 h-3 rounded bg-gray-200" />
-                                            <div className="w-3 h-3 rounded bg-gray-200" />
-                                        </div>
-                                        <div className="text-white text-center pt-3">
-                                            <Star className="w-5 h-5 mx-auto mb-1 fill-yellow-400 text-yellow-400" />
-                                            <span className="text-xs font-medium">175 pts</span>
-                                        </div>
-                                    </div>
-                                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                                        Premium 
-                                        <span className="text-[10px] bg-gradient-to-r from-amber-500 to-orange-500 text-white px-1.5 py-0.5 rounded">NEW</span>
-                                    </h3>
-                                    <p className="text-xs text-gray-500 mt-1">Modern app-like interface with bottom navigation</p>
-                                </button>
-                            </div>
+                            <Tabs 
+                                value={config.template_type || 'classic'} 
+                                onValueChange={(value) => setConfig({ ...config, template_type: value as 'classic' | 'premium' })}
+                                className="w-full"
+                            >
+                                <TabsList className="grid w-full grid-cols-2">
+                                    <TabsTrigger value="classic">Classic</TabsTrigger>
+                                    <TabsTrigger value="premium">Premium</TabsTrigger>
+                                </TabsList>
+                            </Tabs>
                         </CardContent>
                     </Card>
 
@@ -1454,6 +1405,7 @@ export default function JourneyDesignerV2({
                     </Card>
 
                     {/* Content Customization */}
+                    {config.template_type !== 'premium' && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -1640,6 +1592,7 @@ export default function JourneyDesignerV2({
                             </div>
                         </CardContent>
                     </Card>
+                    )}
                 </div>
 
                 {/* Mobile Preview */}

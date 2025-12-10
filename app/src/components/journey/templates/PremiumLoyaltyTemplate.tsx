@@ -1388,12 +1388,12 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Quick Actions */}
             <div className="px-5 -mt-6 relative z-20">
-                <div className="bg-white rounded-2xl shadow-lg p-4 grid grid-cols-3 gap-3">
+                <div className="bg-white rounded-2xl shadow-lg p-4 flex justify-between gap-2">
                     {config.points_enabled && (
                         <button 
                             onClick={() => handleProtectedAction('collect-points')}
                             disabled={collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus}
-                            className={`flex flex-col items-center p-3 rounded-xl transition-colors ${
+                            className={`flex-1 flex flex-col items-center p-3 rounded-xl transition-colors ${
                                 (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                             }`}
                         >
@@ -1419,7 +1419,7 @@ export default function PremiumLoyaltyTemplate({
                         <button 
                             onClick={() => handleProtectedAction('lucky-draw')}
                             disabled={checkingQrStatus || luckyDrawQrUsed || luckyDrawEntered}
-                            className={`flex flex-col items-center p-3 rounded-xl transition-colors ${
+                            className={`flex-1 flex flex-col items-center p-3 rounded-xl transition-colors ${
                                 (luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                             }`}
                         >
@@ -1444,7 +1444,7 @@ export default function PremiumLoyaltyTemplate({
                     {config.redemption_enabled && (
                         <button 
                             onClick={() => setActiveTab('rewards')}
-                            className="flex flex-col items-center p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                            className="flex-1 flex flex-col items-center p-3 rounded-xl hover:bg-gray-50 transition-colors"
                         >
                             <div 
                                 className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
@@ -1453,6 +1453,21 @@ export default function PremiumLoyaltyTemplate({
                                 <Gift className="w-6 h-6 text-green-500" />
                             </div>
                             <span className="text-xs font-medium text-gray-700">Redeem</span>
+                        </button>
+                    )}
+
+                    {config.enable_scratch_card_game && (
+                        <button 
+                            onClick={() => handleProtectedAction('scratch-card')}
+                            className="flex-1 flex flex-col items-center p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                        >
+                            <div 
+                                className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                                style={{ backgroundColor: '#f3e8ff' }}
+                            >
+                                <Ticket className="w-6 h-6 text-purple-600" />
+                            </div>
+                            <span className="text-xs font-medium text-gray-700">Games</span>
                         </button>
                     )}
                 </div>
