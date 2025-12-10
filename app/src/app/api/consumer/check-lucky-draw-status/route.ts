@@ -72,23 +72,45 @@ export async function GET(request: NextRequest) {
       is_points_collected: qrData.is_points_collected
     })
 
-    // If lucky draw was entered, get the entry details
+    // BULLETPROOF: Check lucky_draw_entries table as fallback
+    // This catches cases where the flag wasn't set but entry exists
+    let isLuckyDrawEntered = qrData.is_lucky_draw_entered || false
     let entryDetails = null
-    if (qrData.is_lucky_draw_entered) {
-      const { data: entry } = await supabase
-        .from('lucky_draw_entries')
-        .select('consumer_name, consumer_phone, consumer_email, entry_number, entry_date')
-        .eq('qr_code_id', qrData.id)
-        .maybeSingle()
+
+    // Always check the entries table to be sure
+    const { data: entry } = await supabase
+      .from('lucky_draw_entries')
+      .select('id, consumer_name, consumer_phone, consumer_email, entry_number, entry_date')
+      .eq('qr_code_id', qrData.id)
+      .maybeSingle()
+    
+    if (entry) {
+      console.log('✅ Found lucky draw entry in entries table:', entry.entry_number)
+      isLuckyDrawEntered = true
+      entryDetails = entry
       
-      if (entry) {
-        entryDetails = entry
+      // SYNC FIX: If flag is false but entry exists, fix the flag
+      if (!qrData.is_lucky_draw_entered) {
+        console.log('⚠️ Flag mismatch detected! Fixing is_lucky_draw_entered flag...')
+        const { error: fixError } = await supabase
+          .from('qr_codes')
+          .update({ 
+            is_lucky_draw_entered: true,
+            lucky_draw_entered_at: entry.entry_date || new Date().toISOString()
+          })
+          .eq('id', qrData.id)
+        
+        if (fixError) {
+          console.error('Failed to fix flag:', fixError)
+        } else {
+          console.log('✅ Flag fixed successfully')
+        }
       }
     }
 
     return NextResponse.json({
       success: true,
-      is_lucky_draw_entered: qrData.is_lucky_draw_entered || false,
+      is_lucky_draw_entered: isLuckyDrawEntered,
       is_points_collected: qrData.is_points_collected || false,
       entry_details: entryDetails
     })

@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     // 4. Check if QR code already used for lucky draw (CRITICAL: Check QR code flag first!)
     if (qrCodeData.is_lucky_draw_entered) {
-      console.log('⚠️ QR code already used for lucky draw')
+      console.log('⚠️ QR code already used for lucky draw (flag check)')
       // Try to find the entry to return details
       const { data: existingEntry } = await supabase
         .from('lucky_draw_entries')
@@ -120,6 +120,32 @@ export async function POST(request: NextRequest) {
         success: true,
         already_entered: true,
         entry_number: existingEntry?.entry_number || 'N/A',
+        message: 'This QR code has already been used to enter the lucky draw!'
+      })
+    }
+
+    // 4b. BULLETPROOF: Also check lucky_draw_entries table directly (in case flag wasn't set)
+    const { data: qrExistingEntry } = await supabase
+      .from('lucky_draw_entries')
+      .select('id, entry_number, consumer_name')
+      .eq('qr_code_id', qrCodeData.id)
+      .maybeSingle()
+    
+    if (qrExistingEntry) {
+      console.log('⚠️ QR code already has entry in table (flag was not set!):', qrExistingEntry.entry_number)
+      // Fix the flag for future checks
+      await supabase
+        .from('qr_codes')
+        .update({ 
+          is_lucky_draw_entered: true,
+          lucky_draw_entered_at: new Date().toISOString()
+        })
+        .eq('id', qrCodeData.id)
+      
+      return NextResponse.json({
+        success: true,
+        already_entered: true,
+        entry_number: qrExistingEntry.entry_number,
         message: 'This QR code has already been used to enter the lucky draw!'
       })
     }
