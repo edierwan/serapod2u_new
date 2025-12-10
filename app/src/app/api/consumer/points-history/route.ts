@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
     const allTransactions: any[] = []
 
     // Add earn transactions
-    (earnScans || []).forEach((scan: any) => {
+    for (const scan of (earnScans || [])) {
       const qrCode = scan.qr_codes as any
       const product = qrCode?.products as any
       
@@ -160,10 +160,10 @@ export async function GET(request: NextRequest) {
         image_url: product?.product_image_url || null,
         balance_after: null // Will calculate below
       })
-    })
+    }
 
     // Add redeem transactions
-    (redeemTxns || []).forEach((txn: any) => {
+    for (const txn of (redeemTxns || [])) {
       const redeemItem = redeemItemsMap[txn.redeem_item_id]
       
       allTransactions.push({
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
         image_url: redeemItem?.item_image_url || null,
         balance_after: txn.balance_after
       })
-    })
+    }
 
     // Sort by date descending
     allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
