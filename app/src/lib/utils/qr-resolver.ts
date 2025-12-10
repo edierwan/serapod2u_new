@@ -101,7 +101,7 @@ export async function resolveQrCodeRecord(
   
   const { data: patternMatch, error: patternError } = await supabase
     .from('qr_codes')
-    .select('id, code, company_id, order_id, product_id, variant_id, status')
+    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
     .like('code', `${qr_code}__`)
     .maybeSingle()
   

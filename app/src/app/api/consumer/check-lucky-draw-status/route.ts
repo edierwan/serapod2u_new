@@ -67,29 +67,82 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.log('📊 QR Status:', {
+    console.log('📊 QR Status from flag:', {
       is_lucky_draw_entered: qrData.is_lucky_draw_entered,
       is_points_collected: qrData.is_points_collected
     })
 
-    // If lucky draw was entered, get the entry details
+    // CRITICAL: Also check directly in lucky_draw_entries table as fallback
+    // This handles cases where the flag might not have been set due to errors
     let entryDetails = null
-    if (qrData.is_lucky_draw_entered) {
-      const { data: entry } = await supabase
-        .from('lucky_draw_entries')
-        .select('consumer_name, consumer_phone, consumer_email, entry_number, entry_date')
+    let isLuckyDrawEntered = qrData.is_lucky_draw_entered || false
+    
+    // Always check lucky_draw_entries table directly
+    const { data: entry } = await supabase
+      .from('lucky_draw_entries')
+      .select('id, consumer_name, consumer_phone, consumer_email, entry_number, entry_date')
+      .eq('qr_code_id', qrData.id)
+      .maybeSingle()
+    
+    if (entry) {
+      console.log('✅ Found lucky draw entry in table:', entry.entry_number)
+      entryDetails = entry
+      isLuckyDrawEntered = true
+      
+      // If flag was not set but entry exists, update the flag now
+      if (!qrData.is_lucky_draw_entered) {
+        console.log('⚠️ Flag was not set, updating now...')
+        await supabase
+          .from('qr_codes')
+          .update({ 
+            is_lucky_draw_entered: true,
+            lucky_draw_entered_at: entry.entry_date || new Date().toISOString()
+          })
+          .eq('id', qrData.id)
+      }
+    } else {
+      console.log('ℹ️ No lucky draw entry found in table for QR:', qrData.id)
+    }
+
+    // CRITICAL: Also check consumer_qr_scans for points collection as fallback
+    let isPointsCollected = qrData.is_points_collected || false
+    
+    if (!isPointsCollected) {
+      const { data: scanRecord } = await supabase
+        .from('consumer_qr_scans')
+        .select('id, collected_points, points_collected_at')
         .eq('qr_code_id', qrData.id)
+        .eq('collected_points', true)
         .maybeSingle()
       
-      if (entry) {
-        entryDetails = entry
+      if (scanRecord) {
+        console.log('✅ Found points collection in consumer_qr_scans')
+        isPointsCollected = true
+        
+        // Update flag if not set
+        if (!qrData.is_points_collected) {
+          console.log('⚠️ Points flag was not set, updating now...')
+          await supabase
+            .from('qr_codes')
+            .update({ 
+              is_points_collected: true,
+              points_collected_at: scanRecord.points_collected_at || new Date().toISOString()
+            })
+            .eq('id', qrData.id)
+        }
       }
     }
 
+    console.log('📊 Final QR Status:', {
+      is_lucky_draw_entered: isLuckyDrawEntered,
+      is_points_collected: isPointsCollected,
+      has_entry_details: !!entryDetails
+    })
+
     return NextResponse.json({
       success: true,
-      is_lucky_draw_entered: qrData.is_lucky_draw_entered || false,
-      is_points_collected: qrData.is_points_collected || false,
+      is_lucky_draw_entered: isLuckyDrawEntered,
+      is_points_collected: isPointsCollected,
       entry_details: entryDetails
     })
 
