@@ -223,6 +223,35 @@ export default function PremiumLoyaltyTemplate({
     
     // Genuine product verified animation state
     const [showGenuineVerified, setShowGenuineVerified] = useState(false)
+    // Points animation state
+    const [showPointsAnimation, setShowPointsAnimation] = useState(false)
+    const [displayPoints, setDisplayPoints] = useState(0)
+
+    // Animate points counter
+    useEffect(() => {
+        if (showPointsAnimation) {
+            let start = 0
+            const end = userPoints
+            const duration = 2000
+            const startTime = Date.now()
+
+            const animate = () => {
+                const now = Date.now()
+                const progress = Math.min((now - startTime) / duration, 1)
+                const easeOutQuart = 1 - Math.pow(1 - progress, 4)
+                
+                setDisplayPoints(Math.floor(start + (end - start) * easeOutQuart))
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate)
+                }
+            }
+            
+            requestAnimationFrame(animate)
+        } else {
+            setDisplayPoints(0)
+        }
+    }, [showPointsAnimation, userPoints])
     
     // Reward redemption states
     const [selectedReward, setSelectedReward] = useState<RewardItem | null>(null)
@@ -389,8 +418,15 @@ export default function PremiumLoyaltyTemplate({
             const timer = setTimeout(() => {
                 setShowGenuineVerified(true)
                 // Auto-hide after 4 seconds
-                setTimeout(() => setShowGenuineVerified(false), 4000)
+                setTimeout(() => {
+                    setShowGenuineVerified(false)
+                    setShowPointsAnimation(true)
+                }, 4000)
             }, 500)
+            return () => clearTimeout(timer)
+        } else {
+            // If no genuine animation, show points animation immediately
+            const timer = setTimeout(() => setShowPointsAnimation(true), 500)
             return () => clearTimeout(timer)
         }
     }, [isLive, productInfo])
@@ -1321,8 +1357,8 @@ export default function PremiumLoyaltyTemplate({
                             <div>
                                 <p className="text-white/70 text-xs uppercase tracking-wider">Your Points</p>
                                 <div className="flex items-baseline gap-2 mt-1">
-                                    <span className="text-3xl font-bold">{userPoints}</span>
-                                    <Star className="w-5 h-5 text-yellow-300 fill-yellow-300" />
+                                    <span className="text-3xl font-bold tabular-nums">{displayPoints}</span>
+                                    <Star className={`w-5 h-5 text-yellow-300 fill-yellow-300 ${showPointsAnimation ? 'animate-bounce' : ''}`} />
                                 </div>
                             </div>
                             <div className="text-right">
@@ -1335,8 +1371,8 @@ export default function PremiumLoyaltyTemplate({
                         <div className="mt-4">
                             <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                                 <div 
-                                    className="h-full bg-yellow-400 rounded-full transition-all duration-500"
-                                    style={{ width: `${Math.min((userPoints / 500) * 100, 100)}%` }}
+                                    className="h-full bg-yellow-400 rounded-full transition-all duration-[2000ms] ease-out"
+                                    style={{ width: showPointsAnimation ? `${Math.min((userPoints / 500) * 100, 100)}%` : '0%' }}
                                 />
                             </div>
                             <div className="flex justify-between mt-2 text-xs text-white/60">
@@ -2450,6 +2486,20 @@ export default function PremiumLoyaltyTemplate({
                             onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
+                                setShowFeedbackModal(true)
+                                setFeedbackError('')
+                                setFeedbackSuccess(false)
+                            }}
+                            className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                            title="Send Feedback"
+                        >
+                            <MessageSquare className="w-4 h-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
                                 handleLogout()
                             }}
                             className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
@@ -2626,26 +2676,6 @@ export default function PremiumLoyaltyTemplate({
                     </div>
                 </div>
 
-                {/* Feedback Section */}
-                <div className="bg-white rounded-2xl shadow-lg p-4">
-                    <button 
-                        onClick={() => {
-                            setShowFeedbackModal(true)
-                            setFeedbackError('')
-                            setFeedbackSuccess(false)
-                        }}
-                        className="w-full flex items-center justify-between"
-                    >
-                        <div className="flex items-center gap-3">
-                            <MessageSquare className="w-5 h-5 text-blue-500" />
-                            <div className="text-left">
-                                <span className="font-medium block">Send Feedback</span>
-                                <span className="text-xs text-gray-500">Share your thoughts with us</span>
-                            </div>
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </button>
-                </div>
             </div>
         </div>
     )
@@ -2685,11 +2715,11 @@ export default function PremiumLoyaltyTemplate({
                 )}
 
                 {/* Account & Security Section */}
-                <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div className="bg-transparent">
                     {/* Account & Security */}
                     <button
                         onClick={() => setShowChangePassword(!showChangePassword)}
-                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors border-b border-gray-100"
+                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors bg-white rounded-xl mb-3"
                     >
                         <div className="flex items-center gap-3">
                             <Lock className="w-5 h-5 text-gray-600" />
@@ -2700,7 +2730,7 @@ export default function PremiumLoyaltyTemplate({
 
                     {/* Expandable Password Change Section */}
                     {showChangePassword && (
-                        <div className="p-4 bg-gray-50 space-y-4">
+                        <div className="p-4 bg-gray-50 rounded-xl space-y-4 mb-3">
                             <h4 className="font-semibold text-gray-900">Change Password</h4>
                             <p className="text-sm text-gray-500">Update your password to keep your account secure</p>
 
@@ -2809,11 +2839,11 @@ export default function PremiumLoyaltyTemplate({
                 </div>
 
                 {/* Profile Information Section */}
-                <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div className="bg-transparent">
                     {/* Profile Information Clickable Row */}
                     <button
                         onClick={() => setShowProfileInfo(!showProfileInfo)}
-                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors border-b border-gray-100"
+                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors bg-white rounded-xl mb-3"
                     >
                         <div className="flex items-center gap-3">
                             <User className="w-5 h-5 text-gray-600" />
@@ -2824,7 +2854,7 @@ export default function PremiumLoyaltyTemplate({
 
                     {/* Expandable Profile Info Section */}
                     {showProfileInfo && (
-                        <div className="bg-gray-50">
+                        <div className="bg-gray-50 rounded-xl mb-3 overflow-hidden">
                             {profileSaveError && (
                                 <div className="p-3 mx-4 mt-4 bg-red-50 border border-red-200 rounded-lg">
                                     <p className="text-sm text-red-600">{profileSaveError}</p>
@@ -3167,7 +3197,10 @@ export default function PremiumLoyaltyTemplate({
             <GenuineProductAnimation
                 isVisible={showGenuineVerified}
                 productInfo={productInfo}
-                onClose={() => setShowGenuineVerified(false)}
+                onClose={() => {
+                    setShowGenuineVerified(false)
+                    setShowPointsAnimation(true)
+                }}
             />
 
             {/* Redeem Confirmation Modal */}
