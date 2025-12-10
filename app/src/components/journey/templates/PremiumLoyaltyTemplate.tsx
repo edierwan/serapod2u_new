@@ -468,6 +468,26 @@ export default function PremiumLoyaltyTemplate({
         }
     }, [activeTab, isLive, orgId])
 
+    // Check QR status function - reusable for multiple calls
+    const checkQrStatusFromApi = async (): Promise<{ isLuckyDrawEntered: boolean, isPointsCollected: boolean }> => {
+        if (!qrCode) return { isLuckyDrawEntered: false, isPointsCollected: false }
+        
+        try {
+            const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
+            const data = await response.json()
+            
+            if (data.success) {
+                return {
+                    isLuckyDrawEntered: data.is_lucky_draw_entered || false,
+                    isPointsCollected: data.is_points_collected || false
+                }
+            }
+        } catch (error) {
+            console.error('Error checking QR status:', error)
+        }
+        return { isLuckyDrawEntered: false, isPointsCollected: false }
+    }
+
     // Check QR status on mount - this prevents button clicks if already used
     useEffect(() => {
         const checkQrStatus = async () => {
@@ -508,6 +528,22 @@ export default function PremiumLoyaltyTemplate({
             checkQrStatus()
         }
     }, [isLive, qrCode]) // Only run on mount and when qrCode changes
+
+    // Re-check QR status when navigating to lucky-draw tab (bulletproof double-check)
+    useEffect(() => {
+        const recheckStatus = async () => {
+            if (activeTab === 'lucky-draw' && isLive && qrCode && !luckyDrawQrUsed && !luckyDrawEntered) {
+                setCheckingQrStatus(true)
+                const status = await checkQrStatusFromApi()
+                if (status.isLuckyDrawEntered) {
+                    setLuckyDrawQrUsed(true)
+                    setLuckyDrawEntered(true)
+                }
+                setCheckingQrStatus(false)
+            }
+        }
+        recheckStatus()
+    }, [activeTab, isLive, qrCode])
 
     const fetchRewards = async () => {
         if (!orgId) return
@@ -1110,6 +1146,12 @@ export default function PremiumLoyaltyTemplate({
 
     // Submit lucky draw entry
     const handleLuckyDrawSubmit = async () => {
+        // BULLETPROOF CHECK 1: If already marked as entered, don't proceed
+        if (luckyDrawQrUsed || luckyDrawEntered) {
+            setLuckyDrawError('This QR code has already been used for lucky draw entry.')
+            return
+        }
+
         // Validate inputs
         if (!customerName || !customerPhone) {
             setLuckyDrawError('Please fill in all required fields')
@@ -1128,6 +1170,23 @@ export default function PremiumLoyaltyTemplate({
         
         setIsSubmitting(true)
         setLuckyDrawError('')
+
+        // BULLETPROOF CHECK 2: Pre-submit API verification
+        try {
+            const preCheckStatus = await checkQrStatusFromApi()
+            if (preCheckStatus.isLuckyDrawEntered) {
+                setLuckyDrawQrUsed(true)
+                setLuckyDrawEntered(true)
+                setLuckyDrawError('This QR code has already been used for lucky draw entry.')
+                setIsSubmitting(false)
+                return
+            }
+        } catch (error) {
+            console.error('Pre-check failed, proceeding with submission:', error)
+            // Continue with submission - the API will do final validation
+        }
+        
+        setLuckyDrawError('')
         
         try {
             const response = await fetch('/api/consumer/lucky-draw-entry', {
@@ -1144,9 +1203,14 @@ export default function PremiumLoyaltyTemplate({
             const data = await response.json()
             
             if (response.ok && data.success) {
+                // BULLETPROOF: Always set the flags on success
+                setLuckyDrawQrUsed(true)
+                setLuckyDrawEntered(true)
                 setShowLuckyDrawSuccess(true)
             } else if (data.already_entered) {
-                // Already entered - still show success
+                // Already entered - set flags and show success
+                setLuckyDrawQrUsed(true)
+                setLuckyDrawEntered(true)
                 setShowLuckyDrawSuccess(true)
             } else {
                 setLuckyDrawError(data.error || 'Failed to submit entry. Please try again.')
