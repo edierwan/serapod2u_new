@@ -32,7 +32,6 @@ import {
 } from 'lucide-react'
 import JourneyOrderSelectorV2 from './JourneyOrderSelectorV2'
 import JourneyDesignerV2 from './JourneyDesignerV2'
-import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
 import JourneyCardWithStats from './JourneyCardWithStats'
 
 interface UserProfile {

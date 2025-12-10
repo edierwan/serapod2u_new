@@ -87,6 +87,16 @@ interface JourneyConfig {
     redemption_description?: string
     scratch_card_title?: string
     scratch_card_description?: string
+    banner_config?: {
+        enabled: boolean
+        template: 'grid' | 'carousel'
+        items: Array<{
+            id: string
+            image_url: string
+            link_to?: 'rewards' | 'products' | string
+            expires_at?: string
+        }>
+    }
 }
 
 interface RewardItem {
@@ -94,6 +104,7 @@ interface RewardItem {
     item_name: string
     item_description: string | null
     points_required: number
+    point_offer?: number | null
     item_image_url: string | null
     item_code: string
     stock_quantity: number | null
@@ -1164,9 +1175,11 @@ export default function PremiumLoyaltyTemplate({
             return
         }
 
+        const pointsNeeded = reward.point_offer || reward.points_required
+
         // Check if user has enough points
-        if (userPoints < reward.points_required) {
-            alert(`You need ${reward.points_required} points but have ${userPoints}. Collect more points to redeem this reward!`)
+        if (userPoints < pointsNeeded) {
+            alert(`You need ${pointsNeeded} points but have ${userPoints}. Collect more points to redeem this reward!`)
             return
         }
 
@@ -1372,14 +1385,14 @@ export default function PremiumLoyaltyTemplate({
                             <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                                 <div 
                                     className="h-full bg-yellow-400 rounded-full transition-all duration-[2000ms] ease-out"
-                                    style={{ width: showPointsAnimation ? `${Math.min((userPoints / 500) * 100, 100)}%` : '0%' }}
+                                    style={{ width: showPointsAnimation ? `${Math.min((userPoints / 50000) * 100, 100)}%` : '0%' }}
                                 />
                             </div>
                             <div className="flex justify-between mt-2 text-xs text-white/60">
                                 <span>0</span>
-                                <span>100</span>
-                                <span>250</span>
-                                <span>500</span>
+                                <span>10,000</span>
+                                <span>25,000</span>
+                                <span>50,000</span>
                             </div>
                         </div>
                     </div>
@@ -1388,28 +1401,28 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Quick Actions */}
             <div className="px-5 -mt-6 relative z-20">
-                <div className="bg-white rounded-2xl shadow-lg p-4 flex justify-between gap-2">
+                <div className="bg-white rounded-2xl shadow-lg p-3 flex justify-between gap-2">
                     {config.points_enabled && (
                         <button 
                             onClick={() => handleProtectedAction('collect-points')}
                             disabled={collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus}
-                            className={`flex-1 flex flex-col items-center p-3 rounded-xl transition-colors ${
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${
                                 (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                             }`}
                         >
                             <div 
-                                className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                                className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: (pointsCollected || qrPointsCollected) ? '#dcfce7' : `${config.primary_color}15` }}
                             >
                                 {collectingPoints || checkingQrStatus ? (
-                                    <Loader2 className="w-6 h-6 animate-spin" style={{ color: config.primary_color }} />
+                                    <Loader2 className="w-5 h-5 animate-spin" style={{ color: config.primary_color }} />
                                 ) : (pointsCollected || qrPointsCollected) ? (
-                                    <CheckCircle2 className="w-6 h-6 text-green-500" />
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
                                 ) : (
-                                    <Coins className="w-6 h-6" style={{ color: config.primary_color }} />
+                                    <Coins className="w-5 h-5" style={{ color: config.primary_color }} />
                                 )}
                             </div>
-                            <span className="text-xs font-medium text-gray-700">
+                            <span className="text-[10px] font-medium text-gray-700">
                                 {collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : 'Collect'}
                             </span>
                         </button>
@@ -1419,23 +1432,23 @@ export default function PremiumLoyaltyTemplate({
                         <button 
                             onClick={() => handleProtectedAction('lucky-draw')}
                             disabled={checkingQrStatus || luckyDrawQrUsed || luckyDrawEntered}
-                            className={`flex-1 flex flex-col items-center p-3 rounded-xl transition-colors ${
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${
                                 (luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                             }`}
                         >
                             <div 
-                                className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                                className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: (luckyDrawQrUsed || luckyDrawEntered) ? '#dcfce7' : '#fef3c7' }}
                             >
                                 {checkingQrStatus ? (
-                                    <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+                                    <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
                                 ) : (luckyDrawQrUsed || luckyDrawEntered) ? (
-                                    <CheckCircle2 className="w-6 h-6 text-green-500" />
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
                                 ) : (
-                                    <Trophy className="w-6 h-6 text-amber-500" />
+                                    <Trophy className="w-5 h-5 text-amber-500" />
                                 )}
                             </div>
-                            <span className="text-xs font-medium text-gray-700">
+                            <span className="text-[10px] font-medium text-gray-700">
                                 {checkingQrStatus ? 'Checking...' : (luckyDrawQrUsed || luckyDrawEntered) ? 'Already In' : 'Lucky Draw'}
                             </span>
                         </button>
@@ -1444,30 +1457,30 @@ export default function PremiumLoyaltyTemplate({
                     {config.redemption_enabled && (
                         <button 
                             onClick={() => setActiveTab('rewards')}
-                            className="flex-1 flex flex-col items-center p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                            className="flex-1 flex flex-col items-center p-2 rounded-xl hover:bg-gray-50 transition-colors"
                         >
                             <div 
-                                className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                                className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: '#dcfce7' }}
                             >
-                                <Gift className="w-6 h-6 text-green-500" />
+                                <Gift className="w-5 h-5 text-green-500" />
                             </div>
-                            <span className="text-xs font-medium text-gray-700">Redeem</span>
+                            <span className="text-[10px] font-medium text-gray-700">Redeem</span>
                         </button>
                     )}
 
                     {config.enable_scratch_card_game && (
                         <button 
                             onClick={() => handleProtectedAction('scratch-card')}
-                            className="flex-1 flex flex-col items-center p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                            className="flex-1 flex flex-col items-center p-2 rounded-xl hover:bg-gray-50 transition-colors"
                         >
                             <div 
-                                className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                                className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: '#f3e8ff' }}
                             >
-                                <Ticket className="w-6 h-6 text-purple-600" />
+                                <Ticket className="w-5 h-5 text-purple-600" />
                             </div>
-                            <span className="text-xs font-medium text-gray-700">Games</span>
+                            <span className="text-[10px] font-medium text-gray-700">Games</span>
                         </button>
                     )}
                 </div>
@@ -1528,7 +1541,14 @@ export default function PremiumLoyaltyTemplate({
                                     <p className="text-xs font-medium text-gray-900 line-clamp-1">{reward.item_name}</p>
                                     <div className="flex items-center gap-1 mt-1">
                                         <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                        <span className="text-xs text-gray-600">{reward.points_required} pts</span>
+                                        {reward.point_offer ? (
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs text-gray-400 line-through">{reward.points_required}</span>
+                                                <span className="text-xs font-bold text-red-500">{reward.point_offer} pts</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-gray-600">{reward.points_required} pts</span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1545,22 +1565,57 @@ export default function PremiumLoyaltyTemplate({
             </div>
 
             {/* Promotions Banner */}
-            <div className="px-5 mt-6">
-                <div 
-                    className="rounded-2xl p-5 text-white relative overflow-hidden"
-                    style={{ 
-                        background: `linear-gradient(135deg, ${config.button_color} 0%, ${adjustColor(config.button_color, -20)} 100%)`
-                    }}
-                >
-                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-white/10 transform translate-x-8 -translate-y-8" />
-                    <Sparkles className="w-8 h-8 mb-2 text-yellow-300" />
-                    <h3 className="text-lg font-bold mb-1">Double Points Week!</h3>
-                    <p className="text-sm text-white/80">Earn 2x points on all scans this week</p>
-                    <button className="mt-3 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Learn More
-                    </button>
+            {config.banner_config?.enabled && config.banner_config.items.length > 0 && (
+                <div className="px-5 mt-6">
+                    {config.banner_config.template === 'grid' ? (
+                        <div className="grid grid-cols-2 gap-3">
+                            {config.banner_config.items
+                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
+                                .map((item) => (
+                                <div 
+                                    key={item.id}
+                                    className={`relative rounded-xl overflow-hidden aspect-[16/9] shadow-sm ${item.link_to ? 'cursor-pointer' : ''}`}
+                                    onClick={() => {
+                                        if (item.link_to === 'rewards') setActiveTab('rewards')
+                                        else if (item.link_to === 'products') setActiveTab('products')
+                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
+                                    }}
+                                >
+                                    <Image 
+                                        src={item.image_url} 
+                                        alt="Promotion" 
+                                        fill
+                                        className="object-cover"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex overflow-x-auto gap-3 pb-2 snap-x hide-scrollbar">
+                            {config.banner_config.items
+                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
+                                .map((item) => (
+                                <div 
+                                    key={item.id}
+                                    className={`relative min-w-[85%] aspect-[2/1] rounded-xl overflow-hidden shadow-sm snap-center flex-shrink-0 ${item.link_to ? 'cursor-pointer' : ''}`}
+                                    onClick={() => {
+                                        if (item.link_to === 'rewards') setActiveTab('rewards')
+                                        else if (item.link_to === 'products') setActiveTab('products')
+                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
+                                    }}
+                                >
+                                    <Image 
+                                        src={item.image_url} 
+                                        alt="Promotion" 
+                                        fill
+                                        className="object-cover"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
-            </div>
+            )}
 
             {/* Recent Activity */}
             <div className="px-5 mt-6 mb-4">
@@ -1731,20 +1786,27 @@ export default function PremiumLoyaltyTemplate({
                                         <div className="flex items-center justify-between mt-2">
                                             <div className="flex items-center gap-1">
                                                 <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                                <span className="text-sm font-bold" style={{ color: config.primary_color }}>
-                                                    {reward.points_required}
-                                                </span>
+                                                {reward.point_offer ? (
+                                                    <div className="flex flex-col leading-none">
+                                                        <span className="text-[10px] text-gray-400 line-through">{reward.points_required}</span>
+                                                        <span className="text-sm font-bold text-red-500">{reward.point_offer}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-sm font-bold" style={{ color: config.primary_color }}>
+                                                        {reward.points_required}
+                                                    </span>
+                                                )}
                                             </div>
                                             <button 
                                                 onClick={() => handleRedeemReward(reward)}
-                                                disabled={!isAuthenticated || !isShopUser || userPoints < reward.points_required}
+                                                disabled={!isAuthenticated || !isShopUser || userPoints < (reward.point_offer || reward.points_required)}
                                                 className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                                 style={{ 
                                                     backgroundColor: `${config.button_color}15`,
                                                     color: config.button_color
                                                 }}
                                             >
-                                                {userPoints < reward.points_required ? 'Need more' : 'Redeem'}
+                                                {userPoints < (reward.point_offer || reward.points_required) ? 'Need more' : 'Redeem'}
                                             </button>
                                         </div>
                                     </div>
@@ -3038,7 +3100,7 @@ export default function PremiumLoyaltyTemplate({
                     {[                        
                         { id: 'home' as TabType, icon: Home, label: 'Home' },
                         { id: 'rewards' as TabType, icon: Gift, label: 'Rewards' },
-                        { id: 'products' as TabType, icon: Package, label: 'Shop' },
+                        { id: 'products' as TabType, icon: Package, label: 'Product' },
                         { id: 'profile' as TabType, icon: User, label: 'Profile' },
                     ].map((tab) => {
                         const Icon = tab.icon

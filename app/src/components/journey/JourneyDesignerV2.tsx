@@ -24,19 +24,12 @@ import {
     Smartphone,
     CheckCircle2,
     Settings,
-    Palette,
     Layout,
     Info,
     Truck,
     Clock,
-    Zap,
-    Trophy,
-    Heart,
-    ShoppingBag,
     Building2
 } from 'lucide-react'
-import JourneyMobilePreviewV2 from './JourneyMobilePreviewV2'
-import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
 import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
 
 const PRODUCT_CONSUMER_READY_STATUSES = ['shipped_distributor', 'activated', 'redeemed'] as const
@@ -110,75 +103,19 @@ interface JourneyConfig {
     variant_image_url?: string | null
     custom_image_url?: string
     genuine_badge_style?: string
+    banner_config?: {
+        enabled: boolean
+        template: 'grid' | 'carousel'
+        items: Array<{
+            id: string
+            image_url: string
+            link_to: 'rewards' | 'products'
+            expires_at: string
+        }>
+    }
 }
 
-const FeatureCustomizer = ({ 
-    title, 
-    description, 
-    icon, 
-    onUpdate,
-    enabled 
-}: { 
-    title: string, 
-    description: string, 
-    icon: string, 
-    onUpdate: (field: string, value: string) => void,
-    enabled: boolean
-}) => {
-    if (!enabled) return null;
 
-    const icons = [
-        { value: 'Coins', label: 'Coins', icon: Coins },
-        { value: 'Star', label: 'Star', icon: Star },
-        { value: 'Gift', label: 'Gift', icon: Gift },
-        { value: 'Smartphone', label: 'Smartphone', icon: Smartphone },
-        { value: 'Zap', label: 'Zap', icon: Zap },
-        { value: 'Trophy', label: 'Trophy', icon: Trophy },
-        { value: 'Heart', label: 'Heart', icon: Heart },
-        { value: 'ShoppingBag', label: 'Shopping Bag', icon: ShoppingBag },
-    ];
-
-    return (
-        <div className="mt-4 p-3 bg-white/50 rounded border border-gray-200 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                    <Label className="text-xs">Button Title</Label>
-                    <Input 
-                        value={title} 
-                        onChange={(e) => onUpdate('title', e.target.value)}
-                        className="h-8 text-sm"
-                    />
-                </div>
-                <div className="space-y-1">
-                    <Label className="text-xs">Icon</Label>
-                    <Select value={icon} onValueChange={(val) => onUpdate('icon', val)}>
-                        <SelectTrigger className="h-8">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {icons.map(i => (
-                                <SelectItem key={i.value} value={i.value}>
-                                    <div className="flex items-center gap-2">
-                                        <i.icon className="w-4 h-4" />
-                                        <span>{i.label}</span>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-            </div>
-            <div className="space-y-1">
-                <Label className="text-xs">Description</Label>
-                <Input 
-                    value={description} 
-                    onChange={(e) => onUpdate('description', e.target.value)}
-                    className="h-8 text-sm"
-                />
-            </div>
-        </div>
-    )
-}
 
 export default function JourneyDesignerV2({
     order,
@@ -233,7 +170,7 @@ export default function JourneyDesignerV2({
     const [config, setConfig] = useState<JourneyConfig>({
         id: journey?.id,
         name: journey?.name || `Journey for ${order.order_no}`,
-        template_type: journey?.template_type || 'classic',
+        template_type: 'premium',
         is_active: journey?.is_active ?? true,
         is_default: journey?.is_default ?? false,
         points_enabled: journey?.points_enabled ?? true,
@@ -278,7 +215,12 @@ export default function JourneyDesignerV2({
         show_product_image: journey?.show_product_image ?? false,
         product_image_source: journey?.product_image_source ?? 'variant',
         custom_image_url: journey?.custom_image_url ?? '',
-        genuine_badge_style: journey?.genuine_badge_style ?? 'gold'
+        genuine_badge_style: journey?.genuine_badge_style ?? 'gold',
+        banner_config: (journey as any)?.banner_config ?? {
+            enabled: false,
+            template: 'grid',
+            items: []
+        }
     })
 
     const supabase = createClient()
@@ -294,7 +236,7 @@ export default function JourneyDesignerV2({
             setConfig({
                 id: journey.id,
                 name: journey.name || `Journey for ${order.order_no}`,
-                template_type: (journey as any).template_type || 'classic',
+                template_type: 'premium',
                 is_active: journey.is_active ?? true,
                 is_default: journey.is_default ?? false,
                 points_enabled: journey.points_enabled ?? true,
@@ -339,7 +281,12 @@ export default function JourneyDesignerV2({
                 show_product_image: journey.show_product_image ?? false,
                 product_image_source: journey.product_image_source ?? 'variant',
                 custom_image_url: journey.custom_image_url ?? '',
-                genuine_badge_style: journey.genuine_badge_style ?? 'gold'
+                genuine_badge_style: journey.genuine_badge_style ?? 'gold',
+                banner_config: (journey as any)?.banner_config ?? {
+                    enabled: false,
+                    template: 'grid',
+                    items: []
+                }
             })
             
             console.log('[JourneyDesigner] Config state updated with require_security_code:', journey.require_security_code ?? false)
@@ -567,7 +514,7 @@ export default function JourneyDesignerV2({
         fetchProductImage()
     }, [order.id, supabase])
 
-    // Compress image for mobile optimization
+    // Compress image for mobile optimization - target size below 10KB
     const compressImage = (file: File): Promise<File> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader()
@@ -610,22 +557,37 @@ export default function JourneyDesignerV2({
                     ctx.imageSmoothingQuality = 'high'
                     ctx.drawImage(img, 0, 0, width, height)
 
-                    // Convert to blob with compression (JPEG 70% quality for ~5KB)
-                    canvas.toBlob(
-                        (blob) => {
-                            if (blob) {
-                                const compressedFile = new File([blob], file.name, {
-                                    type: 'image/jpeg',
-                                    lastModified: Date.now(),
-                                })
-                                resolve(compressedFile)
-                            } else {
-                                reject(new Error('Failed to compress image'))
-                            }
-                        },
-                        'image/jpeg',
-                        0.7
-                    )
+                    // Compress iteratively to ensure file size is below 10KB
+                    const compressWithQuality = (quality: number) => {
+                        canvas.toBlob(
+                            (blob) => {
+                                if (blob) {
+                                    const fileSizeKB = blob.size / 1024
+                                    console.log(`[Compress] Quality: ${quality}, Size: ${fileSizeKB.toFixed(2)}KB`)
+                                    
+                                    // If size is below 10KB or quality is too low, accept it
+                                    if (fileSizeKB <= 10 || quality <= 0.3) {
+                                        const compressedFile = new File([blob], file.name, {
+                                            type: 'image/jpeg',
+                                            lastModified: Date.now(),
+                                        })
+                                        console.log(`[Compress] Final size: ${fileSizeKB.toFixed(2)}KB`)
+                                        resolve(compressedFile)
+                                    } else {
+                                        // Reduce quality and try again
+                                        compressWithQuality(quality - 0.1)
+                                    }
+                                } else {
+                                    reject(new Error('Failed to compress image'))
+                                }
+                            },
+                            'image/jpeg',
+                            quality
+                        )
+                    }
+
+                    // Start with 70% quality
+                    compressWithQuality(0.7)
                 }
                 img.onerror = () => reject(new Error('Failed to load image'))
             }
@@ -633,7 +595,7 @@ export default function JourneyDesignerV2({
         })
     }
 
-    const handleImageUpload = async (file: File) => {
+    const handleImageUpload = async (file: File, onSuccess?: (url: string) => void) => {
         try {
             setUploadingImage(true)
 
@@ -659,12 +621,16 @@ export default function JourneyDesignerV2({
                 .from('product-images')
                 .getPublicUrl(filePath)
 
-            // Update config with the uploaded image URL
-            setConfig({ ...config, custom_image_url: urlData.publicUrl })
+            if (onSuccess) {
+                onSuccess(urlData.publicUrl)
+            } else {
+                // Update config with the uploaded image URL (default behavior)
+                setConfig({ ...config, custom_image_url: urlData.publicUrl })
+            }
 
             toast({
                 title: "Image uploaded",
-                description: "Journey image has been compressed and uploaded successfully (~5KB)",
+                description: "Image has been compressed and uploaded successfully (below 10KB)",
             })
         } catch (error: any) {
             console.error('[Journey] Error uploading image:', error)
@@ -789,6 +755,9 @@ export default function JourneyDesignerV2({
 
             // Template selection
             if (config.template_type !== undefined) journeyData.template_type = config.template_type
+
+            // Banner Configuration
+            if (config.banner_config !== undefined) journeyData.banner_config = config.banner_config
 
             let journeyId = config.id
 
@@ -1049,31 +1018,6 @@ export default function JourneyDesignerV2({
                         </CardContent>
                     </Card>
 
-                    {/* Template Selection */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Palette className="w-5 h-5" />
-                                Template Style
-                            </CardTitle>
-                            <CardDescription>
-                                Choose a design template for your loyalty program
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Tabs 
-                                value={config.template_type || 'classic'} 
-                                onValueChange={(value) => setConfig({ ...config, template_type: value as 'classic' | 'premium' })}
-                                className="w-full"
-                            >
-                                <TabsList className="grid w-full grid-cols-2">
-                                    <TabsTrigger value="classic">Classic</TabsTrigger>
-                                    <TabsTrigger value="premium">Premium</TabsTrigger>
-                                </TabsList>
-                            </Tabs>
-                        </CardContent>
-                    </Card>
-
                     {/* Features */}
                     <Card>
                         <CardHeader>
@@ -1133,17 +1077,7 @@ export default function JourneyDesignerV2({
                                                 )}
                                             </div>
                                         )}
-                                        <FeatureCustomizer 
-                                            title={config.points_title || 'Collect Points'}
-                                            description={config.points_description || 'Earn rewards with every scan'}
-                                            icon={config.points_icon || 'Coins'}
-                                            enabled={config.points_enabled}
-                                            onUpdate={(field, value) => {
-                                                if (field === 'title') setConfig({ ...config, points_title: value })
-                                                if (field === 'description') setConfig({ ...config, points_description: value })
-                                                if (field === 'icon') setConfig({ ...config, points_icon: value })
-                                            }}
-                                        />
+
                                     </div>
                                 </div>
                             </div>
@@ -1229,17 +1163,7 @@ export default function JourneyDesignerV2({
                                                 )}
                                             </div>
                                         )}
-                                        <FeatureCustomizer 
-                                            title={config.lucky_draw_title || 'Lucky Draw'}
-                                            description={config.lucky_draw_description || 'Try your luck and win prizes!'}
-                                            icon={config.lucky_draw_icon || 'Star'}
-                                            enabled={config.lucky_draw_enabled && order.has_lucky_draw}
-                                            onUpdate={(field, value) => {
-                                                if (field === 'title') setConfig({ ...config, lucky_draw_title: value })
-                                                if (field === 'description') setConfig({ ...config, lucky_draw_description: value })
-                                                if (field === 'icon') setConfig({ ...config, lucky_draw_icon: value })
-                                            }}
-                                        />
+
                                     </div>
                                 </div>
                             </div>
@@ -1325,17 +1249,7 @@ export default function JourneyDesignerV2({
                                                 )}
                                             </div>
                                         )}
-                                        <FeatureCustomizer 
-                                            title={config.redemption_title || 'Claim Free Gift'}
-                                            description={config.redemption_description || 'Get your free gift at the shop'}
-                                            icon={config.redemption_icon || 'Gift'}
-                                            enabled={config.redemption_enabled && order.has_redeem}
-                                            onUpdate={(field, value) => {
-                                                if (field === 'title') setConfig({ ...config, redemption_title: value })
-                                                if (field === 'description') setConfig({ ...config, redemption_description: value })
-                                                if (field === 'icon') setConfig({ ...config, redemption_icon: value })
-                                            }}
-                                        />
+
                                     </div>
                                 </div>
                             </div>
@@ -1387,212 +1301,227 @@ export default function JourneyDesignerV2({
                                                 )}
                                             </div>
                                         )}
-                                        <FeatureCustomizer 
-                                            title={config.scratch_card_title || 'Scratch Card Game'}
-                                            description={config.scratch_card_description || 'Scratch & win surprise rewards'}
-                                            icon={config.scratch_card_icon || 'Gift'}
-                                            enabled={config.enable_scratch_card_game}
-                                            onUpdate={(field, value) => {
-                                                if (field === 'title') setConfig({ ...config, scratch_card_title: value })
-                                                if (field === 'description') setConfig({ ...config, scratch_card_description: value })
-                                                if (field === 'icon') setConfig({ ...config, scratch_card_icon: value })
-                                            }}
-                                        />
+
                                     </div>
                                 </div>
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Announcement Banner */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Layout className="w-5 h-5" />
+                                Announcement Banner
+                            </CardTitle>
+                            <CardDescription>
+                                Display promotional banners on the home screen
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <div className="space-y-0.5">
+                                    <Label>Enable Announcement Banner</Label>
+                                    <p className="text-sm text-gray-600">Show dynamic banners to consumers</p>
+                                </div>
+                                <Switch
+                                    checked={config.banner_config?.enabled || false}
+                                    onCheckedChange={(checked) => setConfig({
+                                        ...config,
+                                        banner_config: {
+                                            ...config.banner_config!,
+                                            enabled: checked
+                                        }
+                                    })}
+                                />
+                            </div>
+
+                            {config.banner_config?.enabled && (
+                                <div className="space-y-4 p-4 border border-gray-200 rounded-lg">
+                                    <div className="space-y-2">
+                                        <Label>Banner Template</Label>
+                                        <Select
+                                            value={config.banner_config.template}
+                                            onValueChange={(value: 'grid' | 'carousel') => setConfig({
+                                                ...config,
+                                                banner_config: {
+                                                    ...config.banner_config!,
+                                                    template: value
+                                                }
+                                            })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="grid">Grid (Side by Side)</SelectItem>
+                                                <SelectItem value="carousel">Carousel (Slider)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <Label>Banner Items</Label>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    const newItems = [...(config.banner_config?.items || [])]
+                                                    newItems.push({
+                                                        id: crypto.randomUUID(),
+                                                        image_url: '',
+                                                        link_to: 'rewards',
+                                                        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                                                    })
+                                                    setConfig({
+                                                        ...config,
+                                                        banner_config: {
+                                                            ...config.banner_config!,
+                                                            items: newItems
+                                                        }
+                                                    })
+                                                }}
+                                            >
+                                                Add Banner Item
+                                            </Button>
+                                        </div>
+
+                                        {config.banner_config.items.map((item, index) => (
+                                            <div key={item.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 relative">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="absolute top-2 right-2 text-red-500 hover:text-red-700"
+                                                    onClick={() => {
+                                                        const newItems = config.banner_config!.items.filter(i => i.id !== item.id)
+                                                        setConfig({
+                                                            ...config,
+                                                            banner_config: {
+                                                                ...config.banner_config!,
+                                                                items: newItems
+                                                            }
+                                                        })
+                                                    }}
+                                                >
+                                                    Remove
+                                                </Button>
+
+                                                <div className="space-y-2">
+                                                    <Label>Image URL</Label>
+                                                    <div className="flex gap-2">
+                                                        <Input
+                                                            value={item.image_url}
+                                                            onChange={(e) => {
+                                                                const newItems = [...config.banner_config!.items]
+                                                                newItems[index].image_url = e.target.value
+                                                                setConfig({
+                                                                    ...config,
+                                                                    banner_config: {
+                                                                        ...config.banner_config!,
+                                                                        items: newItems
+                                                                    }
+                                                                })
+                                                            }}
+                                                            placeholder="https://example.com/banner.jpg"
+                                                        />
+                                                        <div className="relative">
+                                                            <input
+                                                                type="file"
+                                                                id={`banner-upload-${item.id}`}
+                                                                className="hidden"
+                                                                accept="image/*"
+                                                                onChange={(e) => {
+                                                                    const file = e.target.files?.[0]
+                                                                    if (file) handleImageUpload(file, (url) => {
+                                                                        const newItems = [...config.banner_config!.items]
+                                                                        newItems[index].image_url = url
+                                                                        setConfig({
+                                                                            ...config,
+                                                                            banner_config: {
+                                                                                ...config.banner_config!,
+                                                                                items: newItems
+                                                                            }
+                                                                        })
+                                                                    })
+                                                                }}
+                                                            />
+                                                            <Button
+                                                                variant="outline"
+                                                                onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
+                                                            >
+                                                                Upload
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    {item.image_url && (
+                                                        <div className="relative w-full h-32 bg-gray-100 rounded-lg overflow-hidden">
+                                                            <Image
+                                                                src={item.image_url}
+                                                                alt="Banner preview"
+                                                                fill
+                                                                className="object-cover"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label>Link Destination</Label>
+                                                        <Select
+                                                            value={item.link_to}
+                                                            onValueChange={(value: 'rewards' | 'products') => {
+                                                                const newItems = [...config.banner_config!.items]
+                                                                newItems[index].link_to = value
+                                                                setConfig({
+                                                                    ...config,
+                                                                    banner_config: {
+                                                                        ...config.banner_config!,
+                                                                        items: newItems
+                                                                    }
+                                                                })
+                                                            }}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="rewards">Rewards Page</SelectItem>
+                                                                <SelectItem value="products">Product Page</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Expiration Date</Label>
+                                                        <Input
+                                                            type="date"
+                                                            value={item.expires_at}
+                                                            onChange={(e) => {
+                                                                const newItems = [...config.banner_config!.items]
+                                                                newItems[index].expires_at = e.target.value
+                                                                setConfig({
+                                                                    ...config,
+                                                                    banner_config: {
+                                                                        ...config.banner_config!,
+                                                                        items: newItems
+                                                                    }
+                                                                })
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
                     {/* Content Customization */}
-                    {config.template_type !== 'premium' && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Palette className="w-5 h-5" />
-                                Content & Appearance
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="welcome_title">Welcome Title</Label>
-                                <Input
-                                    id="welcome_title"
-                                    value={config.welcome_title}
-                                    onChange={(e) => setConfig({ ...config, welcome_title: e.target.value })}
-                                    placeholder="Welcome!"
-                                />
-                            </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="welcome_message">Welcome Message</Label>
-                                <Textarea
-                                    id="welcome_message"
-                                    value={config.welcome_message}
-                                    onChange={(e) => setConfig({ ...config, welcome_message: e.target.value })}
-                                    placeholder="Thank you for scanning our QR code..."
-                                    rows={3}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="thank_you_message">Thank You Message</Label>
-                                <Textarea
-                                    id="thank_you_message"
-                                    value={config.thank_you_message}
-                                    onChange={(e) => setConfig({ ...config, thank_you_message: e.target.value })}
-                                    placeholder="Thank you for your participation!"
-                                    rows={2}
-                                />
-                            </div>
-
-                            {/* Product Image Display Option */}
-                            <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                        <Label>Show Product Image</Label>
-                                        <p className="text-sm text-gray-600">Display product/variant image above welcome title</p>
-                                    </div>
-                                    <Switch
-                                        checked={config.show_product_image || false}
-                                        onCheckedChange={(checked) => setConfig({ ...config, show_product_image: checked })}
-                                    />
-                                </div>
-
-                                {config.show_product_image && (
-                                    <div className="space-y-3 pt-3 border-t border-gray-300">
-                                        <div className="space-y-2">
-                                            <Label>Image Source</Label>
-                                            <select
-                                                value={config.product_image_source || 'variant'}
-                                                onChange={(e) => setConfig({ ...config, product_image_source: e.target.value as 'variant' | 'custom' | 'genuine_badge' })}
-                                                className="w-full h-10 px-3 rounded-md border border-gray-300"
-                                            >
-                                                <option value="variant">Product Variant Image</option>
-                                                <option value="genuine_badge">Genuine Product Badge</option>
-                                                <option value="custom">Custom Icon/Image</option>
-                                            </select>
-                                        </div>
-
-                                        {config.product_image_source === 'custom' && (
-                                            <div className="space-y-3">
-                                                <Label>Upload Image or Enter URL</Label>
-                                                
-                                                {/* File Upload */}
-                                                <div className="space-y-2">
-                                                    <input
-                                                        type="file"
-                                                        id="journey_image_upload"
-                                                        accept="image/*"
-                                                        className="hidden"
-                                                        onChange={(e) => {
-                                                            const file = e.target.files?.[0]
-                                                            if (file) handleImageUpload(file)
-                                                        }}
-                                                    />
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        className="w-full"
-                                                        disabled={uploadingImage}
-                                                        onClick={() => document.getElementById('journey_image_upload')?.click()}
-                                                    >
-                                                        {uploadingImage ? 'Uploading...' : 'Upload Image from Device'}
-                                                    </Button>
-                                                    <p className="text-xs text-gray-500">Auto-compresses to ~5KB. Recommended: 400x400px for mobile display</p>
-                                                </div>
-
-                                                {/* Manual URL Input */}
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="custom_image_url">Or Enter Image URL</Label>
-                                                    <Input
-                                                        id="custom_image_url"
-                                                        value={config.custom_image_url || ''}
-                                                        onChange={(e) => setConfig({ ...config, custom_image_url: e.target.value })}
-                                                        placeholder="https://example.com/image.png"
-                                                    />
-                                                    <p className="text-xs text-gray-500">Upload an image or paste an external URL</p>
-                                                </div>
-
-                                                {/* Image Preview */}
-                                                {config.custom_image_url && (
-                                                    <div className="mt-2 p-3 bg-white rounded-lg border border-gray-200">
-                                                        <p className="text-xs text-gray-500 mb-2">Preview:</p>
-                                                        <Image
-                                                            src={config.custom_image_url}
-                                                            alt="Custom preview"
-                                                            width={96}
-                                                            height={96}
-                                                            className="object-cover rounded-lg mx-auto"
-                                                            onError={(e) => {
-                                                                e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage%3C/text%3E%3C/svg%3E'
-                                                            }}
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {config.product_image_source === 'genuine_badge' && (
-                                            <div className="space-y-2">
-                                                <Label>Badge Style</Label>
-                                                <select
-                                                    value={config.genuine_badge_style || 'gold'}
-                                                    onChange={(e) => setConfig({ ...config, genuine_badge_style: e.target.value })}
-                                                    className="w-full h-10 px-3 rounded-md border border-gray-300"
-                                                >
-                                                    <option value="gold">Gold Seal</option>
-                                                    <option value="blue">Blue Stamp</option>
-                                                    <option value="red">Red Certificate</option>
-                                                    <option value="green">Green Badge</option>
-                                                </select>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="primary_color">Primary Color</Label>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            id="primary_color"
-                                            type="color"
-                                            value={config.primary_color}
-                                            onChange={(e) => setConfig({ ...config, primary_color: e.target.value })}
-                                            className="w-20 h-10 p-1"
-                                        />
-                                        <Input
-                                            type="text"
-                                            value={config.primary_color}
-                                            onChange={(e) => setConfig({ ...config, primary_color: e.target.value })}
-                                            className="flex-1"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="button_color">Button Color</Label>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            id="button_color"
-                                            type="color"
-                                            value={config.button_color}
-                                            onChange={(e) => setConfig({ ...config, button_color: e.target.value })}
-                                            className="w-20 h-10 p-1"
-                                        />
-                                        <Input
-                                            type="text"
-                                            value={config.button_color}
-                                            onChange={(e) => setConfig({ ...config, button_color: e.target.value })}
-                                            className="flex-1"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    )}
                 </div>
 
                 {/* Mobile Preview */}
@@ -1611,26 +1540,22 @@ export default function JourneyDesignerV2({
                                     maxHeight: `${Math.max(previewMetrics.maxHeight - 24, 360)}px`
                                 }}
                             >
-                                {config.template_type === 'premium' ? (
-                                    <div className="relative mx-auto" style={{ width: '300px', height: '600px' }}>
-                                        <div className="absolute inset-0 border-8 border-gray-800 rounded-[40px] bg-white shadow-2xl overflow-hidden">
-                                            <div className="h-6 bg-gray-800 flex items-center justify-between px-4 relative z-10">
-                                                <span className="text-white text-xs">9:41</span>
-                                                <div className="flex gap-1">
-                                                    <div className="w-4 h-3 bg-white rounded-sm"></div>
-                                                    <div className="w-1 h-3 bg-white rounded-sm"></div>
-                                                </div>
+                                <div className="relative mx-auto" style={{ width: '300px', height: '600px' }}>
+                                    <div className="absolute inset-0 border-8 border-gray-800 rounded-[40px] bg-white shadow-2xl overflow-hidden">
+                                        <div className="h-6 bg-gray-800 flex items-center justify-between px-4 relative z-10">
+                                            <span className="text-white text-xs">9:41</span>
+                                            <div className="flex gap-1">
+                                                <div className="w-4 h-3 bg-white rounded-sm"></div>
+                                                <div className="w-1 h-3 bg-white rounded-sm"></div>
                                             </div>
-                                            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-gray-800 rounded-b-3xl z-20"></div>
-                                            <div className="h-[calc(100%-24px)] overflow-hidden">
-                                                <PremiumLoyaltyTemplate config={config} isLive={false} />
-                                            </div>
-                                            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-gray-800 rounded-full"></div>
                                         </div>
+                                        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-gray-800 rounded-b-3xl z-20"></div>
+                                        <div className="h-[calc(100%-24px)] overflow-hidden">
+                                            <PremiumLoyaltyTemplate config={config} isLive={false} />
+                                        </div>
+                                        <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-gray-800 rounded-full"></div>
                                     </div>
-                                ) : (
-                                    <InteractiveMobilePreviewV2 config={config} />
-                                )}
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -936,7 +936,23 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-4 font-semibold text-blue-600">{formatNumber(reward.points_required)}</td>
+                        <td className="px-4 py-4">
+                          {(reward as any).point_offer && (reward as any).point_offer > 0 ? (
+                            <div className="flex flex-col">
+                              <span className="text-xs text-muted-foreground line-through decoration-red-500/50">
+                                {formatNumber(reward.points_required)}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-bold text-red-600">{formatNumber((reward as any).point_offer)}</span>
+                                <Badge variant="outline" className="h-4 border-red-200 px-1 text-[10px] text-red-600">
+                                  PROMO
+                                </Badge>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="font-semibold text-blue-600">{formatNumber(reward.points_required)}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-4 text-sm">
                           {typeof reward.stock_quantity === "number" ? (
                             <span className={reward.stock_quantity <= 0 ? "text-destructive" : undefined}>

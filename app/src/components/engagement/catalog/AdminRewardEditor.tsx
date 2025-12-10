@@ -61,8 +61,8 @@ const compressImage = (file: File): Promise<File> => {
         let height = img.height
         
         // Aggressive compression for mobile optimization (< 5KB target)
-        const MAX_WIDTH = 300 // Reduced from 800
-        const MAX_HEIGHT = 300 // Reduced from 800
+        const MAX_WIDTH = 150 // Reduced from 300 to match avatar size
+        const MAX_HEIGHT = 150 // Reduced from 300 to match avatar size
         
         // Calculate new dimensions while maintaining aspect ratio
         if (width > height) {
@@ -103,7 +103,7 @@ const compressImage = (file: File): Promise<File> => {
             }
           },
           'image/jpeg',
-          0.5 // Reduced quality
+          0.6 // Aggressive compression
         )
       }
       img.onerror = () => reject(new Error('Image loading failed'))
@@ -117,6 +117,7 @@ type RewardFormState = {
   itemCode: string
   description: string
   points: string
+  pointOffer: string
   stock: string
   maxPerConsumer: string
   terms: string
@@ -161,6 +162,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     itemCode: generateCode("New Reward", "other"),
     description: "",
     points: "500",
+    pointOffer: "",
     stock: "",
     maxPerConsumer: "",
     terms: "",
@@ -231,6 +233,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
           itemCode: data.item_code,
           description: data.item_description ?? "",
           points: data.points_required.toString(),
+          pointOffer: (data as any).point_offer ? (data as any).point_offer.toString() : "",
           stock: data.stock_quantity != null ? data.stock_quantity.toString() : "",
           maxPerConsumer: data.max_redemptions_per_consumer != null ? data.max_redemptions_per_consumer.toString() : "",
           terms: data.terms_and_conditions ?? "",
@@ -376,11 +379,12 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   }
 
   const parsedPoints = Number(form.points)
+  const parsedPointOffer = form.pointOffer.trim() === "" ? null : Number(form.pointOffer)
   const parsedStock = form.stock.trim() === "" ? null : Number(form.stock)
   const parsedMaxPerConsumer = form.maxPerConsumer.trim() === "" ? null : Number(form.maxPerConsumer)
 
   const previewReward = useMemo(() => {
-    const draft: RedeemItemRow = {
+    const draft: RedeemItemRow & { point_offer?: number | null } = {
       id: rewardId ?? "preview",
       company_id: userProfile.organizations.id,
       item_code: form.itemCode || "PREVIEW-REWARD",
@@ -388,6 +392,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       item_description: form.description || null,
       item_image_url: imagePreview || form.imageUrl || null,
       points_required: Number.isFinite(parsedPoints) ? parsedPoints : 0,
+      point_offer: parsedPointOffer,
       stock_quantity: parsedStock ?? null,
       max_redemptions_per_consumer: requiresVerification
         ? parsedMaxPerConsumer ?? 1
@@ -401,7 +406,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       created_by: userProfile.id
     }
     return enrichReward(draft)
-  }, [form, parsedMaxPerConsumer, parsedPoints, parsedStock, requiresVerification, rewardId, userProfile.id, userProfile.organizations.id])
+  }, [form, parsedMaxPerConsumer, parsedPoints, parsedPointOffer, parsedStock, requiresVerification, rewardId, userProfile.id, userProfile.organizations.id])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -460,6 +465,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       item_description: form.description.trim() ? form.description.trim() : null,
       item_image_url: finalImageUrl,
       points_required: parsedPoints,
+      point_offer: parsedPointOffer,
       stock_quantity: parsedStock,
       max_redemptions_per_consumer: requiresVerification
         ? parsedMaxPerConsumer ?? 1
@@ -654,6 +660,22 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                     {pointValueRM > 0 && form.points && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Estimated Cost: RM {(parseInt(form.points) * pointValueRM).toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="pointOffer">Point Offer (Optional)</Label>
+                    <Input
+                      id="pointOffer"
+                      type="number"
+                      min={1}
+                      placeholder="Discounted points"
+                      value={form.pointOffer}
+                      onChange={(event) => updateForm("pointOffer", event.target.value)}
+                    />
+                    {pointValueRM > 0 && form.pointOffer && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Estimated Cost: RM {(parseInt(form.pointOffer) * pointValueRM).toFixed(2)}
                       </p>
                     )}
                   </div>
@@ -863,7 +885,14 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-blue-600">
                       <Sparkles className="h-4 w-4" />
-                      <span className="text-2xl font-semibold">{formatNumber(previewReward.points_required)}</span>
+                      {(previewReward as any).point_offer ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl font-bold text-green-600">{formatNumber((previewReward as any).point_offer)}</span>
+                          <span className="text-lg text-muted-foreground line-through decoration-2">{formatNumber(previewReward.points_required)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-2xl font-semibold">{formatNumber(previewReward.points_required)}</span>
+                      )}
                       <span className="text-xs uppercase tracking-wide text-muted-foreground">points</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">

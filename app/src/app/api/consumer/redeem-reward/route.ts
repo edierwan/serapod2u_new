@@ -94,6 +94,8 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Reward found:', reward.item_name, 'Points required:', reward.points_required)
 
+    const pointsRequired = reward.point_offer || reward.points_required
+
     // 3. Check stock
     if (typeof reward.stock_quantity === 'number' && reward.stock_quantity <= 0) {
       return NextResponse.json(
@@ -118,16 +120,16 @@ export async function POST(request: NextRequest) {
     }
 
     const currentBalance = balanceData?.current_balance || 0
-    console.log('💰 Current balance:', currentBalance, 'Required:', reward.points_required)
+    console.log('💰 Current balance:', currentBalance, 'Required:', pointsRequired)
 
     // 5. Check if user has enough points
-    if (currentBalance < reward.points_required) {
+    if (currentBalance < pointsRequired) {
       return NextResponse.json(
         { 
           success: false, 
-          error: `Insufficient points. You need ${reward.points_required} points but have ${currentBalance}.`,
+          error: `Insufficient points. You need ${pointsRequired} points but have ${currentBalance}.`,
           current_balance: currentBalance,
-          required: reward.points_required
+          required: pointsRequired
         },
         { status: 400 }
       )
@@ -159,7 +161,7 @@ export async function POST(request: NextRequest) {
     // IMPORTANT: Use shopId (the shop's organization ID) as company_id
     // so the shop_points_ledger view can properly filter by shop_id
     const consumerPhone = userProfile.phone || ''
-    const newBalance = currentBalance - reward.points_required
+    const newBalance = currentBalance - pointsRequired
     
     // Generate redemption code (will be finalized after insert with transaction ID)
     const tempRedemptionCode = `RED-${Date.now().toString(36).toUpperCase()}`
@@ -167,7 +169,7 @@ export async function POST(request: NextRequest) {
     console.log('📝 Recording redemption:', {
       shop_id: shopId,
       consumer_phone: consumerPhone,
-      points_amount: -reward.points_required,
+      points_amount: -pointsRequired,
       balance_after: newBalance,
       reward_name: reward.item_name
     })
@@ -179,7 +181,7 @@ export async function POST(request: NextRequest) {
         consumer_phone: consumerPhone,
         consumer_email: consumer_email || userProfile.email || null,
         transaction_type: 'redeem',
-        points_amount: -reward.points_required,
+        points_amount: -pointsRequired,
         balance_after: newBalance,
         redeem_item_id: reward_id,
         description: `Redeemed: ${reward.item_name}`,

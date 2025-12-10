@@ -12,7 +12,6 @@ import {
   Shield,
   XCircle
 } from 'lucide-react'
-import InteractiveMobilePreviewV2 from './InteractiveMobilePreviewV2'
 import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
 
 interface JourneyConfig {
@@ -241,27 +240,14 @@ export default function PublicJourneyView({
   const welcomeMessage = journeyConfig.welcome_message || 'Thank you for scanning our QR code'
 
   // Always show full-screen mobile view for consumers (eliminates flash/flicker)
-  // Use Premium template if configured, otherwise use Classic
-  if (journeyConfig.template_type === 'premium') {
-    return (
-      <PremiumLoyaltyTemplate 
-        config={journeyConfig}
-        qrCode={code}
-        orgId={data?.org_id}
-        isLive={true}
-        productInfo={data?.product_info}
-      />
-    )
-  }
-
+  // Use Premium template
   return (
-    <div className="min-h-screen bg-gray-50">
-      <InteractiveMobilePreviewV2 
-        config={journeyConfig} 
-        fullScreen={fullScreenMode} 
-        qrCode={code} 
-        isLive={true}
-      />
-    </div>
+    <PremiumLoyaltyTemplate 
+      config={journeyConfig}
+      qrCode={code}
+      orgId={data?.org_id}
+      isLive={true}
+      productInfo={data?.product_info}
+    />
   )
 }

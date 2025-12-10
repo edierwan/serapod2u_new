@@ -858,8 +858,26 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-blue-600">
                         <Trophy className="h-5 w-5" />
-                        <span className="text-2xl font-semibold">{formatNumber(reward.points_required)}</span>
-                        <span className="text-xs uppercase tracking-wide text-muted-foreground">Points</span>
+                        {(reward as any).point_offer && (reward as any).point_offer > 0 ? (
+                          <div className="flex flex-col items-start leading-none">
+                            <span className="text-xs text-muted-foreground line-through decoration-red-500/50">
+                              {formatNumber(reward.points_required)}
+                            </span>
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-2xl font-bold text-red-600">
+                                {formatNumber((reward as any).point_offer)}
+                              </span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">
+                                PROMO
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-2xl font-semibold">{formatNumber(reward.points_required)}</span>
+                            <span className="text-xs uppercase tracking-wide text-muted-foreground">Points</span>
+                          </>
+                        )}
                       </div>
                       {typeof reward.stock_quantity === "number" ? (
                         <Badge variant="outline" className="border-slate-200 text-xs">
@@ -884,13 +902,13 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
                     <div className="mt-auto flex items-center justify-between gap-3">
                       <div className="text-sm font-medium text-muted-foreground">
-                        {currentBalance >= reward.points_required ? (
+                        {currentBalance >= ((reward as any).point_offer || reward.points_required) ? (
                           <span className="flex items-center gap-1 text-emerald-600">
                             <TrendingUp className="h-4 w-4" /> Can redeem
                           </span>
                         ) : (
                           <span className="flex items-center gap-1 text-amber-600">
-                            <TrendingDown className="h-4 w-4" /> Need {formatNumber(reward.points_required - currentBalance)} pts
+                            <TrendingDown className="h-4 w-4" /> Need {formatNumber(((reward as any).point_offer || reward.points_required) - currentBalance)} pts
                           </span>
                         )}
                       </div>
