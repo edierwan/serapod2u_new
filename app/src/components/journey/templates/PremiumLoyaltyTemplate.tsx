@@ -52,6 +52,7 @@ import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimati
 import { LuckyDrawSuccessAnimation } from '@/components/animations/LuckyDrawSuccessAnimation'
 import { GenuineProductAnimation } from '@/components/animations/GenuineProductAnimation'
 import { RewardRedemptionAnimation } from '@/components/animations/RewardRedemptionAnimation'
+import { InsufficientPointsAnimation } from '@/components/animations/InsufficientPointsAnimation'
 import { validatePhoneNumber, normalizePhone } from '@/lib/utils'
 
 // Types
@@ -1805,17 +1806,36 @@ export default function PremiumLoyaltyTemplate({
                                                     </span>
                                                 )}
                                             </div>
-                                            <button 
-                                                onClick={() => handleRedeemReward(reward)}
-                                                disabled={!isAuthenticated || !isShopUser || userPoints < (reward.point_offer || reward.points_required)}
-                                                className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                                style={{ 
-                                                    backgroundColor: `${config.button_color}15`,
-                                                    color: config.button_color
-                                                }}
-                                            >
-                                                {userPoints < (reward.point_offer || reward.points_required) ? 'Need more' : 'Redeem'}
-                                            </button>
+                                            {userPoints < (reward.point_offer || reward.points_required) ? (
+                                                <button 
+                                                    onClick={() => {
+                                                        setInsufficientPointsData({
+                                                            needed: reward.point_offer || reward.points_required,
+                                                            available: userPoints
+                                                        })
+                                                        setShowInsufficientPoints(true)
+                                                    }}
+                                                    className="text-xs font-medium px-2 py-1 rounded-lg transition-all hover:scale-105 active:scale-95"
+                                                    style={{ 
+                                                        backgroundColor: '#FEE2E2',
+                                                        color: '#DC2626'
+                                                    }}
+                                                >
+                                                    Need more
+                                                </button>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => handleRedeemReward(reward)}
+                                                    disabled={!isAuthenticated || !isShopUser}
+                                                    className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+                                                    style={{ 
+                                                        backgroundColor: `${config.button_color}15`,
+                                                        color: config.button_color
+                                                    }}
+                                                >
+                                                    Redeem
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -3384,39 +3404,14 @@ export default function PremiumLoyaltyTemplate({
                 </div>
             )}
 
-            {/* Insufficient Points Modal */}
-            {showInsufficientPoints && insufficientPointsData && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl transform transition-all scale-100 animate-in zoom-in-95 duration-200">
-                        <div className="text-center space-y-4">
-                            <div className="relative inline-block">
-                                <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-20"></div>
-                                <div className="relative bg-red-50 p-4 rounded-full inline-flex items-center justify-center">
-                                    <Ghost className="w-12 h-12 text-red-500 animate-bounce" />
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">Oops! Not Enough Points</h3>
-                                <p className="text-gray-600">
-                                    You need <span className="font-bold text-red-500">{insufficientPointsData.needed}</span> points, 
-                                    but you only have <span className="font-bold text-gray-900">{insufficientPointsData.available}</span>.
-                                </p>
-                                <p className="text-sm text-gray-500 mt-2">
-                                    Keep scanning and collecting to unlock this reward! 🚀
-                                </p>
-                            </div>
-
-                            <button
-                                onClick={() => setShowInsufficientPoints(false)}
-                                className="w-full px-4 py-3 bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors"
-                            >
-                                Got it
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Insufficient Points Animation Modal */}
+            <InsufficientPointsAnimation
+                isOpen={showInsufficientPoints && insufficientPointsData !== null}
+                pointsNeeded={insufficientPointsData?.needed || 0}
+                pointsAvailable={insufficientPointsData?.available || 0}
+                onClose={() => setShowInsufficientPoints(false)}
+                primaryColor={config.button_color}
+            />
 
             {/* Reward Redemption Success Animation */}
             {redemptionDetails && (
