@@ -43,7 +43,8 @@ import {
     Send,
     TrendingUp,
     Grid3x3,
-    List
+    List,
+    Ghost
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { extractTokenFromQRCode } from '@/utils/qrSecurity'
@@ -281,6 +282,9 @@ export default function PremiumLoyaltyTemplate({
         rewardName: string
         pointsDeducted: number
     } | null>(null)
+
+    const [showInsufficientPoints, setShowInsufficientPoints] = useState(false)
+    const [insufficientPointsData, setInsufficientPointsData] = useState<{needed: number, available: number} | null>(null)
 
     // Rewards tab category states
     type RewardCategoryType = 'All' | 'Scanned' | 'Point History' | 'History'
@@ -1179,7 +1183,11 @@ export default function PremiumLoyaltyTemplate({
 
         // Check if user has enough points
         if (userPoints < pointsNeeded) {
-            alert(`You need ${pointsNeeded} points but have ${userPoints}. Collect more points to redeem this reward!`)
+            setInsufficientPointsData({
+                needed: pointsNeeded,
+                available: userPoints
+            })
+            setShowInsufficientPoints(true)
             return
         }
 
@@ -3325,11 +3333,15 @@ export default function PremiumLoyaltyTemplate({
                             <div className="pt-3 border-t border-gray-200">
                                 <div className="flex items-center justify-between text-sm">
                                     <span className="text-gray-600">Points Required:</span>
-                                    <span className="font-bold text-red-600">-{selectedReward.points_required}</span>
+                                    <span className="font-bold text-red-600">
+                                        -{selectedReward.point_offer || selectedReward.points_required}
+                                    </span>
                                 </div>
                                 <div className="flex items-center justify-between text-sm mt-1">
                                     <span className="text-gray-600">New Balance:</span>
-                                    <span className="font-bold text-green-600">{userPoints - selectedReward.points_required}</span>
+                                    <span className="font-bold text-green-600">
+                                        {userPoints - (selectedReward.point_offer || selectedReward.points_required)}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -3366,6 +3378,40 @@ export default function PremiumLoyaltyTemplate({
                                 ) : (
                                     'Confirm'
                                 )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Insufficient Points Modal */}
+            {showInsufficientPoints && insufficientPointsData && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl transform transition-all scale-100 animate-in zoom-in-95 duration-200">
+                        <div className="text-center space-y-4">
+                            <div className="relative inline-block">
+                                <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-20"></div>
+                                <div className="relative bg-red-50 p-4 rounded-full inline-flex items-center justify-center">
+                                    <Ghost className="w-12 h-12 text-red-500 animate-bounce" />
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Oops! Not Enough Points</h3>
+                                <p className="text-gray-600">
+                                    You need <span className="font-bold text-red-500">{insufficientPointsData.needed}</span> points, 
+                                    but you only have <span className="font-bold text-gray-900">{insufficientPointsData.available}</span>.
+                                </p>
+                                <p className="text-sm text-gray-500 mt-2">
+                                    Keep scanning and collecting to unlock this reward! 🚀
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={() => setShowInsufficientPoints(false)}
+                                className="w-full px-4 py-3 bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors"
+                            >
+                                Got it
                             </button>
                         </div>
                     </div>
