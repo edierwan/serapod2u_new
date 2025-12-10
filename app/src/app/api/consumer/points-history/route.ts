@@ -4,7 +4,6 @@ import { createClient } from '@supabase/supabase-js'
 /**
  * GET /api/consumer/points-history
  * Get authenticated shop user's points transaction history
- * Combines earn transactions (from scans) and redeem transactions
  */
 export async function GET(request: NextRequest) {
   try {
@@ -81,139 +80,98 @@ export async function GET(request: NextRequest) {
 
     const shopId = organization.id
 
-    // Get EARN transactions from consumer_qr_scans (where points were collected)
-    const { data: earnScans, error: earnError } = await supabaseAdmin
-      .from('consumer_qr_scans')
-      .select(`
-        id,
-        scanned_at,
-        points_amount,
-        points_collected_at,
-        qr_codes (
-          id,
-          code,
-          products (
-            id,
-            product_name,
-            product_image_url,
-            variant_name
-          )
-        )
-      `)
-      .eq('shop_id', shopId)
-      .eq('collected_points', true)
-      .order('scanned_at', { ascending: false })
-      .limit(100)
-
-    if (earnError) {
-      console.error('❌ Error fetching earn transactions:', earnError)
-    }
-
-    // Get REDEEM transactions from points_transactions
-    const { data: redeemTxns, error: redeemError } = await supabaseAdmin
-      .from('points_transactions')
+    // Get points history from shop_points_ledger view
+    // This includes both scans (points earned) and redemptions (points spent)
+    const { data: ledgerData, error: ledgerError } = await supabaseAdmin
+      .from('shop_points_ledger')
       .select('*')
-      .eq('company_id', shopId)
-      .eq('transaction_type', 'redeem')
+      .eq('shop_id', shopId)
       .order('transaction_date', { ascending: false })
       .limit(100)
 
-    if (redeemError) {
-      console.error('❌ Error fetching redeem transactions:', redeemError)
+    if (ledgerError) {
+      console.error('❌ Error fetching points history:', ledgerError)
+      return NextResponse.json(
+        { success: false, error: 'Failed to fetch points history' },
+        { status: 500 }
+      )
     }
 
-    // Get redeem items info for the redemptions
-    const redeemItemIds = (redeemTxns || [])
-      .map((txn: any) => txn.redeem_item_id)
-      .filter(Boolean)
+    // Get images for variants and redeem items
+    const variantIds = Array.from(new Set((ledgerData || []).map((entry: any) => entry.variant_id).filter(Boolean)))
+    const redeemItemIds = Array.from(new Set((ledgerData || []).map((entry: any) => entry.redeem_item_id).filter(Boolean)))
     
-    let redeemItemsMap: { [key: string]: any } = {}
+    let variantImagesMap: { [key: string]: string } = {}
+    let redeemItemImagesMap: { [key: string]: string } = {}
+    
+    if (variantIds.length > 0) {
+      const { data: variants } = await supabaseAdmin
+        .from('product_variants')
+        .select('id, image_url')
+        .in('id', variantIds)
+      
+      if (variants) {
+        variantImagesMap = variants.reduce((acc: any, v: any) => {
+          acc[v.id] = v.image_url
+          return acc
+        }, {})
+      }
+    }
+    
     if (redeemItemIds.length > 0) {
       const { data: redeemItems } = await supabaseAdmin
         .from('redeem_items')
-        .select('id, item_name, item_image_url')
+        .select('id, item_image_url')
         .in('id', redeemItemIds)
-
+      
       if (redeemItems) {
-        redeemItemsMap = redeemItems.reduce((acc: any, item: any) => {
-          acc[item.id] = item
+        redeemItemImagesMap = redeemItems.reduce((acc: any, r: any) => {
+          acc[r.id] = r.item_image_url
           return acc
         }, {})
       }
     }
 
-    // Combine and format all transactions
-    const allTransactions: any[] = []
-
-    // Add earn transactions
-    for (const scan of (earnScans || [])) {
-      const qrCode = scan.qr_codes as any
-      const product = qrCode?.products as any
-      
-      allTransactions.push({
-        id: scan.id,
-        type: 'earn',
-        date: scan.points_collected_at || scan.scanned_at,
-        points: scan.points_amount || 0,
-        description: product?.product_name || 'Points Earned',
-        variant_name: product?.variant_name || null,
-        image_url: product?.product_image_url || null,
-        balance_after: null // Will calculate below
-      })
-    }
-
-    // Add redeem transactions
-    for (const txn of (redeemTxns || [])) {
-      const redeemItem = redeemItemsMap[txn.redeem_item_id]
-      
-      allTransactions.push({
-        id: txn.id,
-        type: 'redeem',
-        date: txn.transaction_date,
-        points: txn.points_amount, // Already negative
-        description: redeemItem?.item_name || txn.description || 'Redemption',
-        variant_name: null,
-        image_url: redeemItem?.item_image_url || null,
-        balance_after: txn.balance_after
-      })
-    }
-
-    // Sort by date descending
-    allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-    // Calculate running balance for earn transactions that don't have it
-    // Get current balance from latest redeem transaction or calculate from scratch
-    let runningBalance = 0
-    const totalEarned = allTransactions
-      .filter(t => t.points > 0)
-      .reduce((sum, t) => sum + t.points, 0)
-    const totalRedeemed = allTransactions
-      .filter(t => t.points < 0)
-      .reduce((sum, t) => sum + Math.abs(t.points), 0)
-    
-    const currentBalance = totalEarned - totalRedeemed
-
-    // Calculate balance_after for each transaction (going backwards in time)
-    runningBalance = currentBalance
-    for (const txn of allTransactions) {
-      if (txn.balance_after === null) {
-        txn.balance_after = runningBalance
-      } else {
-        runningBalance = txn.balance_after
+    // Format the response
+    const formattedTransactions = (ledgerData || []).map((entry: any) => {
+      let imageUrl = null
+      if (entry.variant_id) {
+        imageUrl = variantImagesMap[entry.variant_id]
+      } else if (entry.redeem_item_id) {
+        imageUrl = redeemItemImagesMap[entry.redeem_item_id]
       }
-      // For the PREVIOUS transaction in time, subtract/add the current points
-      runningBalance = runningBalance - txn.points
-    }
+      
+      return {
+        id: entry.transaction_id,
+        type: entry.transaction_type,
+        date: entry.transaction_date,
+        points: entry.points_change,
+        balance_after: entry.balance_after,
+        description: entry.description,
+        product_name: entry.product_name,
+        variant_name: entry.variant_name,
+        image_url: imageUrl
+      }
+    })
+
+    // Calculate summary
+    const totalEarned = formattedTransactions
+      .filter((t: any) => t.points > 0)
+      .reduce((sum: number, t: any) => sum + t.points, 0)
+    
+    const totalRedeemed = formattedTransactions
+      .filter((t: any) => t.points < 0)
+      .reduce((sum: number, t: any) => sum + Math.abs(t.points), 0)
 
     return NextResponse.json({
       success: true,
-      transactions: allTransactions,
+      transactions: formattedTransactions,
       summary: {
         total_earned: totalEarned,
         total_redeemed: totalRedeemed,
-        current_balance: currentBalance
+        current_balance: formattedTransactions.length > 0 ? formattedTransactions[0].balance_after : 0
       },
-      count: allTransactions.length
+      count: formattedTransactions.length
     })
 
   } catch (error) {
