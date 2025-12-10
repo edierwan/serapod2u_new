@@ -1910,9 +1910,11 @@ export default function PremiumLoyaltyTemplate({
                                                 }`}>
                                                     {txn.points > 0 ? '+' : ''}{txn.points} pts
                                                 </p>
-                                                <p className="text-xs text-gray-400">
-                                                    Balance: {txn.balance_after}
-                                                </p>
+                                                {txn.balance_after !== null && txn.balance_after !== undefined && (
+                                                    <p className="text-xs text-gray-400">
+                                                        Balance: {txn.balance_after}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
       .from('shop_points_ledger')
       .select('*')
       .eq('shop_id', shopId)
-      .order('transaction_date', { ascending: false })
+      .order('occurred_at', { ascending: false })
       .limit(100)
 
     if (ledgerError) {
@@ -142,11 +142,11 @@ export async function GET(request: NextRequest) {
       }
       
       return {
-        id: entry.transaction_id,
+        id: entry.id,
         type: entry.transaction_type,
-        date: entry.transaction_date,
+        date: entry.occurred_at,
         points: entry.points_change,
-        balance_after: entry.balance_after,
+        balance_after: null, // Not available in view
         description: entry.description,
         product_name: entry.product_name,
         variant_name: entry.variant_name,

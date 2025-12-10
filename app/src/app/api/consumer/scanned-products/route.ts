@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('shop_id', shopId)
       .eq('transaction_type', 'scan')
-      .order('transaction_date', { ascending: false })
+      .order('occurred_at', { ascending: false })
       .limit(100)
 
     if (ledgerError) {
