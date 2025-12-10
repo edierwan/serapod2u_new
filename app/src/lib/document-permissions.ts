@@ -5,7 +5,7 @@
 
 export interface Document {
   id: string
-  doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST'
+  doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST' | 'SO' | 'DO'
   doc_no: string
   status: 'pending' | 'acknowledged' | 'completed'
   issued_by_org_id: string
@@ -76,6 +76,10 @@ export function getAcknowledger(document: Document): 'buyer' | 'seller' | 'hq' |
   switch (document.doc_type) {
     case 'PO':
       return 'seller' // Seller acknowledges PO
+    case 'SO':
+      return 'none' // Sales Order is internal/confirmation, usually no ack needed or maybe buyer? Let's say none for now or buyer.
+    case 'DO':
+      return 'buyer' // Buyer acknowledges Delivery Order (Goods Received)
     case 'INVOICE':
       return 'buyer' // Buyer acknowledges Invoice
     case 'PAYMENT':

@@ -33,7 +33,7 @@ function formatRoleName(roleName?: string | null, roleCode?: string | null): str
   return ''
 }
 
-export type DocumentGenerateType = 'order' | 'purchase_order' | 'invoice' | 'receipt' | 'payment' | 'payment_request'
+export type DocumentGenerateType = 'order' | 'purchase_order' | 'sales_order' | 'delivery_order' | 'invoice' | 'receipt' | 'payment' | 'payment_request'
 
 export interface GenerateDocumentOptions {
   documentId?: string
@@ -170,6 +170,12 @@ export async function generatePdfForOrderDocument(
     switch (type) {
       case 'purchase_order':
         docType = 'PO'
+        break
+      case 'sales_order':
+        docType = 'SO'
+        break
+      case 'delivery_order':
+        docType = 'DO'
         break
       case 'invoice':
         docType = 'INVOICE'
@@ -452,6 +458,14 @@ export async function generatePdfForOrderDocument(
       case 'purchase_order':
         pdfBlob = await generatorWithSigs.generatePurchaseOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
         filename = `${orderData.order_no}-PO.pdf`
+        break
+      case 'sales_order':
+        pdfBlob = await generatorWithSigs.generateSalesOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
+        filename = `${orderData.order_no}-SO.pdf`
+        break
+      case 'delivery_order':
+        pdfBlob = await generatorWithSigs.generateDeliveryOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
+        filename = `${orderData.order_no}-DO.pdf`
         break
       case 'invoice':
         pdfBlob = await generatorWithSigs.generateInvoicePDF(enrichedOrderData as any, enrichedDocumentData as any)

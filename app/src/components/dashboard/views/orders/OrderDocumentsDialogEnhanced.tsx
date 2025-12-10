@@ -27,7 +27,7 @@ interface OrderDocumentsDialogEnhancedProps {
       role_level: number
     }
   }
-  initialTab?: 'po' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
+  initialTab?: 'po' | 'so' | 'do' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
   open: boolean
   onClose: () => void
 }
@@ -40,11 +40,13 @@ export default function OrderDocumentsDialogEnhanced({
   open,
   onClose
 }: OrderDocumentsDialogEnhancedProps) {
-  type DocumentTab = 'po' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
+  type DocumentTab = 'po' | 'so' | 'do' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<DocumentTab>(initialTab ?? 'po')
   const [documents, setDocuments] = useState<{
     po?: Document | null
+    so?: Document | null
+    do?: Document | null
     invoice?: Document | null
     payment?: Document | null
     receipt?: Document | null
@@ -104,7 +106,7 @@ export default function OrderDocumentsDialogEnhanced({
   const is50_50Split = useSplitPayment
 
   const isDocumentTab = (value: string): value is DocumentTab =>
-    value === 'po' || value === 'invoice' || value === 'payment' || value === 'receipt' ||
+    value === 'po' || value === 'so' || value === 'do' || value === 'invoice' || value === 'payment' || value === 'receipt' ||
     value === 'depositInvoice' || value === 'depositPayment' || value === 'balanceRequest' || value === 'balancePayment'
 
   const handleTabChange = (value: string) => {
@@ -421,6 +423,12 @@ export default function OrderDocumentsDialogEnhanced({
       switch (docType.toUpperCase()) {
         case 'PO':
           apiType = 'purchase_order'
+          break
+        case 'SO':
+          apiType = 'sales_order'
+          break
+        case 'DO':
+          apiType = 'delivery_order'
           break
         case 'INVOICE':
           apiType = 'invoice'
@@ -810,7 +818,22 @@ export default function OrderDocumentsDialogEnhanced({
 
             {/* Document Tabs */}
             <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-              {is50_50Split ? (
+              {orderData?.order_type === 'D2H' || orderData?.order_type === 'S2D' ? (
+                // D2H/S2D Flow Tabs
+                <TabsList className="grid w-full grid-cols-5">
+                  <TabsTrigger value="so">
+                    <span className="sm:hidden">SO</span>
+                    <span className="hidden sm:inline">Sales Order</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="do">
+                    <span className="sm:hidden">DO</span>
+                    <span className="hidden sm:inline">Delivery Order</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="invoice">Invoice</TabsTrigger>
+                  <TabsTrigger value="payment">Payment</TabsTrigger>
+                  <TabsTrigger value="receipt">Receipt</TabsTrigger>
+                </TabsList>
+              ) : is50_50Split ? (
                 // 50/50 Split Payment Tabs
                 <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
                   <TabsTrigger value="po">
@@ -847,6 +870,122 @@ export default function OrderDocumentsDialogEnhanced({
                   <TabsTrigger value="receipt">Receipt</TabsTrigger>
                 </TabsList>
               )}
+
+              {/* SO Tab */}
+              <TabsContent value="so" className="space-y-4">
+                {documents.so ? (
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h3 className="font-semibold text-blue-900 mb-2">Sales Order Details</h3>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-blue-700">Document No:</span>{' '}
+                          <span className="font-medium">{documents.so.doc_no}</span>
+                        </div>
+                        <div>
+                          <span className="text-blue-700">Status:</span>{' '}
+                          <span className="font-medium capitalize">{documents.so.status}</span>
+                        </div>
+                        <div>
+                          <span className="text-blue-700">Created:</span>{' '}
+                          <span>{formatDate(documents.so.created_at)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={() => handleDownload(documents.so!.id, 'SO')}
+                        disabled={downloading === documents.so!.id}
+                        className="flex-1"
+                      >
+                        {downloading === documents.so!.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Downloading...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download SO PDF
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    <AcknowledgeButton
+                      document={documents.so as Document}
+                      userProfile={userProfileWithSignature}
+                      onSuccess={loadData}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    Sales Order not yet created
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* DO Tab */}
+              <TabsContent value="do" className="space-y-4">
+                {documents.do ? (
+                  <div className="space-y-4">
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                      <h3 className="font-semibold text-indigo-900 mb-2">Delivery Order Details</h3>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-indigo-700">Document No:</span>{' '}
+                          <span className="font-medium">{documents.do.doc_no}</span>
+                        </div>
+                        <div>
+                          <span className="text-indigo-700">Status:</span>{' '}
+                          <span className="font-medium capitalize">{documents.do.status}</span>
+                        </div>
+                        <div>
+                          <span className="text-indigo-700">Created:</span>{' '}
+                          <span>{formatDate(documents.do.created_at)}</span>
+                        </div>
+                        {documents.do.acknowledged_at && (
+                          <div>
+                            <span className="text-indigo-700">Acknowledged:</span>{' '}
+                            <span>{formatDate(documents.do.acknowledged_at)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={() => handleDownload(documents.do!.id, 'DO')}
+                        disabled={downloading === documents.do!.id}
+                        className="flex-1"
+                      >
+                        {downloading === documents.do!.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Downloading...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download DO PDF
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    <AcknowledgeButton
+                      document={documents.do as Document}
+                      userProfile={userProfileWithSignature}
+                      onSuccess={loadData}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    Delivery Order not yet created
+                  </div>
+                )}
+              </TabsContent>
 
               {/* PO Tab */}
               <TabsContent value="po" className="space-y-4">

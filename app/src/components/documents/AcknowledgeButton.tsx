@@ -124,6 +124,20 @@ export default function AcknowledgeButton({
           successMessage = 'Purchase Order acknowledged. Invoice has been automatically generated.'
           break
 
+        case 'SO':
+          result = await supabase.rpc('so_acknowledge', {
+            p_document_id: document.id
+          })
+          successMessage = 'Sales Order acknowledged.'
+          break
+
+        case 'DO':
+          result = await supabase.rpc('do_acknowledge', {
+            p_document_id: document.id
+          })
+          successMessage = 'Delivery Order acknowledged.'
+          break
+
         case 'INVOICE':
           result = await supabase.rpc('invoice_acknowledge', {
             p_document_id: document.id,

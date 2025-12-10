@@ -8,6 +8,8 @@ import { getDocumentStatusText, type Document } from '@/lib/document-permissions
 interface DocumentWorkflowProgressProps {
   documents: {
     po?: Document | null
+    so?: Document | null
+    do?: Document | null
     invoice?: Document | null
     payment?: Document | null
     receipt?: Document | null
@@ -41,6 +43,44 @@ export default function DocumentWorkflowProgress({
     color: string
     document: Document | null | undefined
   }
+
+  const d2hSteps: Step[] = [
+    {
+      key: 'so',
+      label: 'Sales Order',
+      icon: FileText,
+      color: 'blue',
+      document: documents.so
+    },
+    {
+      key: 'do',
+      label: 'Delivery Order',
+      icon: FileCheck,
+      color: 'indigo',
+      document: documents.do
+    },
+    {
+      key: 'invoice',
+      label: 'Invoice',
+      icon: FileCheck,
+      color: 'green',
+      document: documents.invoice
+    },
+    {
+      key: 'payment',
+      label: 'Payment',
+      icon: CreditCard,
+      color: 'purple',
+      document: documents.payment
+    },
+    {
+      key: 'receipt',
+      label: 'Receipt',
+      icon: Receipt,
+      color: 'orange',
+      document: documents.receipt
+    }
+  ]
 
   const traditionalSteps: Step[] = [
     {
@@ -83,34 +123,34 @@ export default function DocumentWorkflowProgress({
     },
     {
       key: 'depositInvoice',
-      label: `Deposit Invoice (${depositPercentage}%)`,
-      shortLabel: 'Deposit Invoice',
+      label: 'Deposit Invoice',
+      shortLabel: 'Dep. Inv',
       icon: FileCheck,
-      color: 'green',
+      color: 'indigo',
       document: documents.depositInvoice || documents.invoice
     },
     {
       key: 'depositPayment',
-      label: `Deposit Payment (${depositPercentage}%)`,
-      shortLabel: 'Deposit Pay',
+      label: 'Deposit Payment',
+      shortLabel: 'Dep. Pay',
       icon: CreditCard,
       color: 'purple',
-      document: documents.depositPayment || (!documents.balancePayment ? documents.payment : null)
+      document: documents.depositPayment || documents.payment
     },
     {
       key: 'balanceRequest',
-      label: `Balance Request (${balancePercentage}%)`,
-      shortLabel: 'Balance Req',
-      icon: FileText,
-      color: 'teal',
+      label: 'Balance Request',
+      shortLabel: 'Bal. Req',
+      icon: FileCheck,
+      color: 'pink',
       document: documents.balancePaymentRequest
     },
     {
       key: 'balancePayment',
-      label: `Balance Payment (${balancePercentage}%)`,
-      shortLabel: 'Balance Pay',
+      label: 'Balance Payment',
+      shortLabel: 'Bal. Pay',
       icon: CreditCard,
-      color: 'indigo',
+      color: 'rose',
       document: documents.balancePayment
     },
     {
@@ -122,7 +162,12 @@ export default function DocumentWorkflowProgress({
     }
   ]
 
-  const steps = use50_50Split ? split50_50Steps : traditionalSteps
+  let steps = traditionalSteps
+  if (orderType === 'D2H' || orderType === 'S2D') {
+    steps = d2hSteps
+  } else if (use50_50Split) {
+    steps = split50_50Steps
+  }
 
   const getStepStatus = (document: Document | null | undefined) => {
     if (!document) return 'not-started'
@@ -147,7 +192,16 @@ export default function DocumentWorkflowProgress({
   }
 
   const getProgressPercentage = () => {
-    if (use50_50Split) {
+    if (orderType === 'D2H' || orderType === 'S2D') {
+      let completed = 0
+      const total = 5
+      if (documents.so) completed++
+      if (documents.do) completed++
+      if (documents.invoice) completed++
+      if (documents.payment) completed++
+      if (documents.receipt) completed++
+      return (completed / total) * 100
+    } else if (use50_50Split) {
       let completed = 0
       const total = 6
 
@@ -189,7 +243,7 @@ export default function DocumentWorkflowProgress({
         </div>
       </div>
 
-      <div className={`grid gap-3 sm:gap-4 ${use50_50Split ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-4'}`}>
+      <div className={`grid gap-3 sm:gap-4 ${use50_50Split ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : (orderType === 'D2H' || orderType === 'S2D') ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
         {steps.map((step, index) => {
           const isReceiptStep = use50_50Split && step.key === 'receipt'
           const depositReceipt = documents.depositReceipt
@@ -229,7 +283,7 @@ export default function DocumentWorkflowProgress({
                   </div>
                   
                   <p className="font-semibold text-xs sm:text-sm mb-1">
-                    <span className="sm:hidden">{step.key === 'po' ? 'PO' : displayLabel}</span>
+                    <span className="sm:hidden">{step.key === 'po' ? 'PO' : step.key === 'so' ? 'SO' : step.key === 'do' ? 'DO' : displayLabel}</span>
                     <span className="hidden sm:inline">{displayLabel}</span>
                   </p>
                   
@@ -258,7 +312,7 @@ export default function DocumentWorkflowProgress({
                     getStepStatus(steps[index + 1].document) !== 'not-started' 
                       ? 'bg-green-400' 
                       : 'bg-gray-300'
-                  }`} />
+                  }`}></div>
                 </div>
               )}
             </div>
@@ -266,15 +320,16 @@ export default function DocumentWorkflowProgress({
         })}
       </div>
 
-      {/* Workflow Explanation */}
-      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <p className="text-sm text-blue-900">
-          <strong>Workflow:</strong> {use50_50Split 
-            ? (orderType === 'D2H'
-                ? `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.`
-                : `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Production Complete → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.`)
-            : 'Each document is automatically created when the previous one is acknowledged. The Receipt marks the completion of the order.'}
-        </p>
+      {/* Workflow Description */}
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-800">
+        <span className="font-bold">Workflow: </span>
+        {orderType === 'D2H' || orderType === 'S2D' ? (
+           'Sales Order → Delivery Order → Invoice → Payment → Receipt.'
+        ) : use50_50Split ? (
+          `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.`
+        ) : (
+          'Standard workflow: Purchase Order → Invoice → Payment → Receipt.'
+        )}
       </div>
     </Card>
   )

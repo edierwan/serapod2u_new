@@ -854,8 +854,9 @@ export class PDFGenerator {
     const buyerLines = this.buildPartyLines(orderData.buyer_org)
     const sellerLines = this.buildPartyLines(orderData.seller_org)
     const shipToFallbackAddress = orderData.ship_to_location ? [orderData.ship_to_location] : undefined
-    const shipToLines = this.buildPartyLines(orderData.warehouse_org, {
-      fallbackName: orderData.ship_to_location || orderData.warehouse_org?.org_name || 'Serapod2u Central Warehouse',
+    // Use buyer_org for Ship To location as requested
+    const shipToLines = this.buildPartyLines(orderData.buyer_org, {
+      fallbackName: orderData.ship_to_location || orderData.buyer_org?.org_name,
       fallbackAddress: shipToFallbackAddress,
       fallbackAttention: orderData.ship_to_manager || undefined
     })
@@ -2201,5 +2202,79 @@ export class PDFGenerator {
     const summaryTable = (this.doc as any).lastAutoTable
 
     return summaryTable.finalY + 10
+  }
+
+  async generateSalesOrderPDF(orderData: OrderData, documentData: DocumentData): Promise<Blob> {
+    let y = 15
+    
+    // Company Logo
+    y = await this.addCompanyLogo(y)
+    y += 5
+
+    // Document Title
+    y = this.addDocumentHeader('SALES ORDER (SO)', y)
+    y += 3
+
+    // SO Information Table
+    const soInfo = [
+      { label: 'SO Number', value: `   ${documentData.doc_no}` },
+      { label: 'SO Date', value: `   ${this.formatDate(documentData.created_at)}` },
+      { label: 'Status', value: `   ${documentData.status.toUpperCase()}` },
+      { label: 'Estimated ETA', value: `   ${documentData.estimated_eta || '30 Oct 2025'}` },
+      { label: 'Payment Terms', value: `   ${this.formatPaymentTermsLabel(orderData.payment_terms)}` },
+      { label: '', value: '' }
+    ]
+    y = this.addInfoTable(soInfo, y, 2)
+
+    // Parties Section
+    y = this.addPartiesSection(orderData, y, 'SO')
+
+    // Order Lines Section
+    y = this.addOrderLinesSection(orderData, y)
+
+    // Summary Section
+    y = this.addSummarySection(orderData, y)
+
+    // Signatures / Approval Trail
+    y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
+
+    return this.doc.output('blob')
+  }
+
+  async generateDeliveryOrderPDF(orderData: OrderData, documentData: DocumentData): Promise<Blob> {
+    let y = 15
+    
+    // Company Logo
+    y = await this.addCompanyLogo(y)
+    y += 5
+
+    // Document Title
+    y = this.addDocumentHeader('DELIVERY ORDER (DO)', y)
+    y += 3
+
+    // DO Information Table
+    const doInfo = [
+      { label: 'DO Number', value: `   ${documentData.doc_no}` },
+      { label: 'DO Date', value: `   ${this.formatDate(documentData.created_at)}` },
+      { label: 'Status', value: `   ${documentData.status.toUpperCase()}` },
+      { label: 'Estimated ETA', value: `   ${documentData.estimated_eta || '30 Oct 2025'}` },
+      { label: '', value: '' },
+      { label: '', value: '' }
+    ]
+    y = this.addInfoTable(doInfo, y, 2)
+
+    // Parties Section
+    y = this.addPartiesSection(orderData, y, 'DO')
+
+    // Order Lines Section
+    y = this.addOrderLinesSection(orderData, y)
+
+    // Summary Section
+    y = this.addSummarySection(orderData, y)
+
+    // Signatures / Approval Trail
+    y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
+
+    return this.doc.output('blob')
   }
 }

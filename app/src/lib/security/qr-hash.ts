@@ -37,8 +37,17 @@ export function generateQRHash(qrCode: string): string {
   hmac.update(qrCode)
   const fullHash = hmac.digest('hex')
   
-  // Take first 12 characters for compact representation
-  return fullHash.substring(0, HASH_LENGTH)
+  // Take first 10 characters for prefix
+  const prefix = fullHash.substring(0, HASH_LENGTH - 2)
+  
+  // Generate 2 digits deterministically from the next part of the hash
+  // We use the next 2 hex characters (byte) and convert to integer modulo 100
+  const suffixHex = fullHash.substring(HASH_LENGTH - 2, HASH_LENGTH)
+  const suffixInt = parseInt(suffixHex, 16)
+  const suffixDigits = (suffixInt % 100).toString().padStart(2, '0')
+  
+  // Return prefix + 2 digits (total 12 chars)
+  return prefix + suffixDigits
 }
 
 /**
@@ -77,6 +86,17 @@ export function extractQRCodeParts(secureCode: string): {
 }
 
 /**
+ * Generate legacy HMAC-SHA256 hash (all hex)
+ * Used for backward compatibility validation
+ */
+function generateLegacyQRHash(qrCode: string): string {
+  const hmac = crypto.createHmac('sha256', QR_HASH_SECRET)
+  hmac.update(qrCode)
+  const fullHash = hmac.digest('hex')
+  return fullHash.substring(0, HASH_LENGTH)
+}
+
+/**
  * Validate QR code hash
  * 
  * @param secureCode - The complete QR code with hash
@@ -93,11 +113,23 @@ export function validateQRHash(secureCode: string): boolean {
   const { baseCode, hash } = parts
   const expectedHash = generateQRHash(baseCode)
   
+  // Check against new hash format (prefix + 2 digits)
   // Use timing-safe comparison to prevent timing attacks
-  return crypto.timingSafeEqual(
+  const isValidNew = crypto.timingSafeEqual(
     Buffer.from(hash.toLowerCase()),
     Buffer.from(expectedHash.toLowerCase())
   )
+  
+  if (isValidNew) return true
+  
+  // Check against legacy hash format (all hex) for backward compatibility
+  const legacyHash = generateLegacyQRHash(baseCode)
+  const isValidLegacy = crypto.timingSafeEqual(
+    Buffer.from(hash.toLowerCase()),
+    Buffer.from(legacyHash.toLowerCase())
+  )
+  
+  return isValidLegacy
 }
 
 /**

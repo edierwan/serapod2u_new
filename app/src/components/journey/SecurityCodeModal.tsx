@@ -35,7 +35,7 @@ export function SecurityCodeModal({
     e.preventDefault()
     
     if (code.length !== 2) {
-      setError("Please enter a 2-character code")
+      setError("Please enter a 2-digit code")
       return
     }
 
@@ -85,7 +85,7 @@ export function SecurityCodeModal({
             Security Verification
           </DialogTitle>
           <DialogDescription>
-            Please enter the 2-character security code printed on your product box to continue.
+            Please enter the 2-digit security code printed on your product box to continue.
           </DialogDescription>
         </DialogHeader>
 
@@ -95,19 +95,20 @@ export function SecurityCodeModal({
               <Label htmlFor="security-code">Security Code</Label>
               <Input
                 id="security-code"
-                type="text"
-                inputMode="text"
+                type="tel"
+                inputMode="numeric"
                 autoComplete="off"
-                autoCapitalize="characters"
-                pattern="[0-9a-zA-Z]{2}"
+                pattern="[0-9]*"
                 maxLength={2}
-                placeholder="Enter 2-character code"
+                placeholder="Enter 2 digits"
                 value={code}
                 onChange={(e) => {
-                  setCode(e.target.value.toUpperCase())
+                  // Only allow digits
+                  const val = e.target.value.replace(/[^0-9]/g, '')
+                  setCode(val)
                   setError("")
                 }}
-                className="text-center text-2xl font-mono tracking-widest uppercase"
+                className="text-center text-2xl font-mono tracking-widest"
                 autoFocus
                 disabled={loading}
               />
