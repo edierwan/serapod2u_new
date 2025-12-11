@@ -277,6 +277,8 @@ async function getJourneyData(code: string) {
           scratch_card_description: (journeyConfig as any).scratch_card_description,
           scratch_card_icon: (journeyConfig as any).scratch_card_icon,
 
+          banner_config: (journeyConfig as any).banner_config,
+
           show_product_image: journeyConfig.show_product_image,
           product_image_source: journeyConfig.product_image_source || 'variant',
           custom_image_url: journeyConfig.custom_image_url,
