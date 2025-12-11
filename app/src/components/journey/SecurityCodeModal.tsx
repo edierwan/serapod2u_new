@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Shield, AlertCircle } from "lucide-react"
+import { Shield, AlertCircle, Keyboard, Hash } from "lucide-react"
 
 interface SecurityCodeModalProps {
   isOpen: boolean
@@ -30,12 +30,14 @@ export function SecurityCodeModal({
   const [code, setCode] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  // Keyboard mode: 'numeric' for digit-only, 'alphanumeric' for letters + numbers
+  const [keyboardMode, setKeyboardMode] = useState<'numeric' | 'alphanumeric'>('alphanumeric')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (code.length !== 2) {
-      setError("Please enter a 2-digit code")
+      setError("Please enter a 2-character code")
       return
     }
 
@@ -50,7 +52,7 @@ export function SecurityCodeModal({
         },
         body: JSON.stringify({
           publicToken,
-          code,
+          code: code.toUpperCase(), // Normalize to uppercase for comparison
         }),
       })
 
@@ -61,7 +63,7 @@ export function SecurityCodeModal({
         onClose()
         setCode("")
       } else {
-        setError(data.error || "Invalid security code. Please check the 2 digits on your product box.")
+        setError(data.error || "Invalid security code. Please check the 2 characters on your product box.")
       }
     } catch (err) {
       setError("Failed to verify code. Please try again.")
@@ -74,6 +76,26 @@ export function SecurityCodeModal({
     setCode("")
     setError("")
     onClose()
+  }
+
+  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value
+    
+    if (keyboardMode === 'numeric') {
+      // Only allow digits
+      val = val.replace(/[^0-9]/g, '')
+    } else {
+      // Allow alphanumeric, convert to uppercase
+      val = val.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    }
+    
+    setCode(val)
+    setError("")
+  }
+
+  const toggleKeyboardMode = () => {
+    setKeyboardMode(prev => prev === 'numeric' ? 'alphanumeric' : 'numeric')
+    setCode("") // Clear code when switching modes
   }
 
   return (
@@ -95,26 +117,42 @@ export function SecurityCodeModal({
               <Label htmlFor="security-code">Security Code</Label>
               <Input
                 id="security-code"
-                type="tel"
-                inputMode="numeric"
+                type={keyboardMode === 'numeric' ? 'tel' : 'text'}
+                inputMode={keyboardMode === 'numeric' ? 'numeric' : 'text'}
                 autoComplete="off"
-                pattern="[0-9]*"
+                pattern={keyboardMode === 'numeric' ? '[0-9]*' : '[A-Za-z0-9]*'}
                 maxLength={2}
-                placeholder="Enter 2 digits"
+                placeholder={keyboardMode === 'numeric' ? 'Enter 2 digits' : 'Enter 2 characters'}
                 value={code}
-                onChange={(e) => {
-                  // Only allow digits
-                  const val = e.target.value.replace(/[^0-9]/g, '')
-                  setCode(val)
-                  setError("")
-                }}
-                className="text-center text-2xl font-mono tracking-widest"
+                onChange={handleCodeChange}
+                className="text-center text-2xl font-mono tracking-widest uppercase"
                 autoFocus
                 disabled={loading}
               />
               <p className="text-xs text-gray-500 text-center">
                 The code can contain letters and numbers (e.g., A7, 3B, XY)
               </p>
+            </div>
+
+            {/* Keyboard Mode Toggle */}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={toggleKeyboardMode}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                {keyboardMode === 'numeric' ? (
+                  <>
+                    <Keyboard className="w-4 h-4" />
+                    <span>Switch to letters & numbers</span>
+                  </>
+                ) : (
+                  <>
+                    <Hash className="w-4 h-4" />
+                    <span>Switch to numbers only</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {error && (

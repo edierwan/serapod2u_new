@@ -47,6 +47,7 @@ import {
     Ghost
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
+import { AnnouncementBanner } from '../AnnouncementBanner'
 import { extractTokenFromQRCode } from '@/utils/qrSecurity'
 import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimation'
 import { LuckyDrawSuccessAnimation } from '@/components/animations/LuckyDrawSuccessAnimation'
@@ -482,6 +483,14 @@ export default function PremiumLoyaltyTemplate({
             fetchRewards()
         }
     }, [activeTab, isLive, orgId])
+
+    // Fetch free gifts when rewards tab is active (fixes issue where free gifts don't show when directly navigating to Rewards)
+    useEffect(() => {
+        if (activeTab === 'rewards' && isLive && qrCode && config.redemption_enabled) {
+            fetchFreeGifts()
+            checkGiftRedeemStatus()
+        }
+    }, [activeTab, isLive, qrCode, config.redemption_enabled])
 
     // Fetch products from API when products tab is active
     useEffect(() => {
@@ -1773,56 +1782,18 @@ export default function PremiumLoyaltyTemplate({
                 </div>
             </div>
 
-            {/* Promotions Banner */}
+            {/* Promotions Banner - Using reusable AnnouncementBanner component */}
             {config.banner_config?.enabled && config.banner_config.items.length > 0 && (
                 <div className="px-5 mt-6">
-                    {config.banner_config.template === 'grid' ? (
-                        <div className="grid grid-cols-1 gap-3">
-                            {config.banner_config.items
-                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
-                                .map((item) => (
-                                <div 
-                                    key={item.id}
-                                    className={`relative rounded-xl overflow-hidden aspect-[16/9] shadow-sm ${item.link_to ? 'cursor-pointer' : ''}`}
-                                    onClick={() => {
-                                        if (item.link_to === 'rewards') setActiveTab('rewards')
-                                        else if (item.link_to === 'products') setActiveTab('products')
-                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
-                                    }}
-                                >
-                                    <Image 
-                                        src={item.image_url} 
-                                        alt="Promotion" 
-                                        fill
-                                        className="object-cover"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="flex overflow-x-auto gap-3 pb-2 snap-x scrollbar-hide">
-                            {config.banner_config.items
-                                .filter(item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date()))
-                                .map((item) => (
-                                <div 
-                                    key={item.id}
-                                    className={`relative min-w-[85%] aspect-[2/1] rounded-xl overflow-hidden shadow-sm snap-center flex-shrink-0 ${item.link_to ? 'cursor-pointer' : ''}`}
-                                    onClick={() => {
-                                        if (item.link_to === 'rewards') setActiveTab('rewards')
-                                        else if (item.link_to === 'products') setActiveTab('products')
-                                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
-                                    }}
-                                >
-                                    <Image 
-                                        src={item.image_url} 
-                                        alt="Promotion" 
-                                        fill
-                                        className="object-cover"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <AnnouncementBanner
+                        items={config.banner_config.items}
+                        template={config.banner_config.template}
+                        onItemClick={(item) => {
+                            if (item.link_to === 'rewards') setActiveTab('rewards')
+                            else if (item.link_to === 'products') setActiveTab('products')
+                            else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
+                        }}
+                    />
                 </div>
             )}
 

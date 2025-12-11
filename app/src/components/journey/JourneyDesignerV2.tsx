@@ -515,7 +515,8 @@ export default function JourneyDesignerV2({
     }, [order.id, supabase])
 
     // Compress image for mobile optimization
-    const compressImage = (file: File): Promise<File> => {
+    // For banner images: use higher quality settings to preserve text readability
+    const compressImage = (file: File, options?: { isBanner?: boolean }): Promise<File> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader()
             reader.readAsDataURL(file)
@@ -530,23 +531,24 @@ export default function JourneyDesignerV2({
                         return
                     }
 
-                    // Target size: 400x400px for mobile display
-                    const MAX_WIDTH = 400
-                    const MAX_HEIGHT = 400
+                    // Banner images need higher resolution for text readability
+                    // Target: 1080px width at 2x retina, 16:9 aspect ratio
+                    const isBanner = options?.isBanner ?? false
+                    const MAX_WIDTH = isBanner ? 1080 : 400
+                    const MAX_HEIGHT = isBanner ? 608 : 400 // 1080 / (16/9) ≈ 608
+                    const QUALITY = isBanner ? 0.80 : 0.7 // Higher quality for banners
+                    
                     let width = img.width
                     let height = img.height
 
-                    // Calculate aspect ratio
-                    if (width > height) {
-                        if (width > MAX_WIDTH) {
-                            height = Math.round((height * MAX_WIDTH) / width)
-                            width = MAX_WIDTH
-                        }
-                    } else {
-                        if (height > MAX_HEIGHT) {
-                            width = Math.round((width * MAX_HEIGHT) / height)
-                            height = MAX_HEIGHT
-                        }
+                    // Calculate new dimensions while maintaining aspect ratio
+                    if (width > MAX_WIDTH) {
+                        height = Math.round((height * MAX_WIDTH) / width)
+                        width = MAX_WIDTH
+                    }
+                    if (height > MAX_HEIGHT) {
+                        width = Math.round((width * MAX_HEIGHT) / height)
+                        height = MAX_HEIGHT
                     }
 
                     canvas.width = width
@@ -557,7 +559,9 @@ export default function JourneyDesignerV2({
                     ctx.imageSmoothingQuality = 'high'
                     ctx.drawImage(img, 0, 0, width, height)
 
-                    // Convert to blob with compression (JPEG 70% quality for ~5KB)
+                    // Convert to blob with compression
+                    // Banner: JPEG 80% quality for better text clarity (~100-300KB)
+                    // Other images: JPEG 70% quality (~5KB)
                     canvas.toBlob(
                         (blob) => {
                             if (blob) {
@@ -571,7 +575,7 @@ export default function JourneyDesignerV2({
                             }
                         },
                         'image/jpeg',
-                        0.7
+                        QUALITY
                     )
                 }
                 img.onerror = () => reject(new Error('Failed to load image'))
@@ -580,15 +584,16 @@ export default function JourneyDesignerV2({
         })
     }
 
-    const handleImageUpload = async (file: File, onSuccess?: (url: string) => void) => {
+    const handleImageUpload = async (file: File, onSuccess?: (url: string) => void, options?: { isBanner?: boolean }) => {
         try {
             setUploadingImage(true)
 
-            // Compress image before upload
-            const compressedFile = await compressImage(file)
+            // Compress image before upload (banner images use higher quality)
+            const compressedFile = await compressImage(file, { isBanner: options?.isBanner })
 
             const fileExt = 'jpg' // Always use jpg after compression
-            const fileName = `journey-${order.id}-${Date.now()}.${fileExt}`
+            const imageType = options?.isBanner ? 'banner' : 'journey'
+            const fileName = `${imageType}-${order.id}-${Date.now()}.${fileExt}`
             const filePath = `journey-images/${fileName}`
 
             // Upload compressed image to Supabase storage
@@ -613,9 +618,10 @@ export default function JourneyDesignerV2({
                 setConfig({ ...config, custom_image_url: urlData.publicUrl })
             }
 
+            const sizeMsg = options?.isBanner ? 'optimized for mobile display' : 'compressed (~5KB)'
             toast({
                 title: "Image uploaded",
-                description: "Image has been compressed and uploaded successfully (~5KB)",
+                description: `Image has been ${sizeMsg}`,
             })
         } catch (error: any) {
             console.error('[Journey] Error uploading image:', error)
@@ -1429,7 +1435,7 @@ export default function JourneyDesignerV2({
                                                                                 items: newItems
                                                                             }
                                                                         })
-                                                                    })
+                                                                    }, { isBanner: true }) // Use banner-specific compression
                                                                 }}
                                                             />
                                                             <Button
@@ -1441,13 +1447,17 @@ export default function JourneyDesignerV2({
                                                         </div>
                                                     </div>
                                                     {item.image_url && (
-                                                        <div className="relative w-full h-32 bg-gray-100 rounded-lg overflow-hidden">
-                                                            <Image
-                                                                src={item.image_url}
-                                                                alt="Banner preview"
-                                                                fill
-                                                                className="object-cover"
-                                                            />
+                                                        <div className="space-y-2">
+                                                            <p className="text-xs text-gray-500">Preview (actual mobile size):</p>
+                                                            <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                                                                <Image
+                                                                    src={item.image_url}
+                                                                    alt="Banner preview"
+                                                                    fill
+                                                                    className="object-cover"
+                                                                />
+                                                            </div>
+                                                            <p className="text-[10px] text-gray-400">16:9 aspect ratio • Optimized for mobile</p>
                                                         </div>
                                                     )}
                                                 </div>
