@@ -312,6 +312,26 @@ export default function PremiumLoyaltyTemplate({
     const [feedbackError, setFeedbackError] = useState('')
     const [feedbackSuccess, setFeedbackSuccess] = useState(false)
 
+    // Free Gift Redemption states
+    interface FreeGift {
+        id: string
+        gift_name: string
+        gift_description: string | null
+        gift_image_url: string | null
+        total_quantity: number
+        claimed_quantity: number
+    }
+    const [freeGifts, setFreeGifts] = useState<FreeGift[]>([])
+    const [loadingFreeGifts, setLoadingFreeGifts] = useState(false)
+    const [giftRedeemed, setGiftRedeemed] = useState(false)
+    const [giftQrUsed, setGiftQrUsed] = useState(false)
+    const [selectedGift, setSelectedGift] = useState<FreeGift | null>(null)
+    const [showGiftConfirm, setShowGiftConfirm] = useState(false)
+    const [claimingGift, setClaimingGift] = useState(false)
+    const [giftError, setGiftError] = useState('')
+    const [showGiftSuccess, setShowGiftSuccess] = useState(false)
+    const [claimedGiftName, setClaimedGiftName] = useState('')
+
     // Helper function to check if user is from SHOP organization (uses API to bypass RLS)
     const checkUserOrganization = async (userId: string) => {
         try {
@@ -515,6 +535,12 @@ export default function PremiumLoyaltyTemplate({
                             setCustomerPhone(data.entry_details.consumer_phone || '')
                         }
                     }
+
+                    // Check if gift already redeemed from this QR
+                    if (data.is_gift_redeemed) {
+                        setGiftQrUsed(true)
+                        setGiftRedeemed(true)
+                    }
                 }
             } catch (error) {
                 console.error('Error checking QR status:', error)
@@ -652,6 +678,86 @@ export default function PremiumLoyaltyTemplate({
             setScannedProducts([])
         } finally {
             setLoadingScannedProducts(false)
+        }
+    }
+
+    // Fetch free gifts for redemption
+    const fetchFreeGifts = async () => {
+        if (!qrCode) return
+        setLoadingFreeGifts(true)
+        try {
+            const response = await fetch(`/api/consumer/redeem-gifts?qr_code=${encodeURIComponent(qrCode)}`)
+            const result = await response.json()
+            
+            if (result.success) {
+                setFreeGifts(result.gifts || [])
+            } else {
+                console.error('Error fetching free gifts:', result.error)
+                setFreeGifts([])
+            }
+        } catch (error) {
+            console.error('Error fetching free gifts:', error)
+            setFreeGifts([])
+        } finally {
+            setLoadingFreeGifts(false)
+        }
+    }
+
+    // Check if gift already redeemed for this QR
+    const checkGiftRedeemStatus = async () => {
+        if (!qrCode) return
+        try {
+            const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
+            const data = await response.json()
+            if (data.success && data.is_gift_redeemed) {
+                setGiftQrUsed(true)
+                setGiftRedeemed(true)
+            }
+        } catch (error) {
+            console.error('Error checking gift redeem status:', error)
+        }
+    }
+
+    // Handle gift claim
+    const handleClaimGift = async () => {
+        if (!selectedGift || !qrCode) return
+        
+        setClaimingGift(true)
+        setGiftError('')
+        
+        try {
+            const response = await fetch('/api/consumer/claim-gift', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    qr_code: qrCode,
+                    gift_id: selectedGift.id,
+                    consumer_name: customerName || null,
+                    consumer_phone: customerPhone || null,
+                    consumer_email: customerEmail || null
+                })
+            })
+            
+            const data = await response.json()
+            
+            if (data.success) {
+                setClaimedGiftName(selectedGift.gift_name)
+                setGiftRedeemed(true)
+                setGiftQrUsed(true)
+                setShowGiftConfirm(false)
+                setShowGiftSuccess(true)
+            } else if (data.code === 'ALREADY_REDEEMED') {
+                setGiftQrUsed(true)
+                setGiftRedeemed(true)
+                setGiftError('This QR code has already been used to claim a gift.')
+            } else {
+                setGiftError(data.error || 'Failed to claim gift')
+            }
+        } catch (error) {
+            console.error('Error claiming gift:', error)
+            setGiftError('Network error. Please try again.')
+        } finally {
+            setClaimingGift(false)
         }
     }
 
@@ -927,7 +1033,9 @@ export default function PremiumLoyaltyTemplate({
                 break
             case 'redeem':
             case 'redemption':
-                // Handle redemption
+                // Navigate to free gift selection
+                setActiveTab('rewards')
+                // Show free gift modal section (will be handled in rewards tab)
                 break
         }
     }
@@ -1529,16 +1637,30 @@ export default function PremiumLoyaltyTemplate({
                     
                     {config.redemption_enabled && (
                         <button 
-                            onClick={() => setActiveTab('rewards')}
-                            className="flex-1 flex flex-col items-center p-2 rounded-xl hover:bg-gray-50 transition-colors"
+                            onClick={() => {
+                                handleProtectedAction('redeem')
+                                fetchFreeGifts()
+                            }}
+                            disabled={checkingQrStatus || giftQrUsed || giftRedeemed}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${
+                                (giftQrUsed || giftRedeemed) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                            }`}
                         >
                             <div 
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                style={{ backgroundColor: '#dcfce7' }}
+                                style={{ backgroundColor: (giftQrUsed || giftRedeemed) ? '#dcfce7' : '#dcfce7' }}
                             >
-                                <Gift className="w-5 h-5 text-green-500" />
+                                {checkingQrStatus ? (
+                                    <Loader2 className="w-5 h-5 animate-spin text-green-500" />
+                                ) : (giftQrUsed || giftRedeemed) ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                ) : (
+                                    <Gift className="w-5 h-5 text-green-500" />
+                                )}
                             </div>
-                            <span className="text-[10px] font-medium text-gray-700">Redeem</span>
+                            <span className="text-[10px] font-medium text-gray-700">
+                                {checkingQrStatus ? 'Checking...' : (giftQrUsed || giftRedeemed) ? 'Redeemed' : 'Redeem'}
+                            </span>
                         </button>
                     )}
 
@@ -1826,6 +1948,83 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Tab Content */}
             <div className="px-5 mt-4">
+                {/* Free Gifts Section - Show when redemption is enabled and there are gifts */}
+                {config.redemption_enabled && (
+                    <div className="mb-6">
+                        <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Gift className="w-5 h-5 text-green-500" />
+                            Free Gifts Available
+                        </h3>
+                        {loadingFreeGifts ? (
+                            <div className="text-center py-6">
+                                <Loader2 className="w-6 h-6 animate-spin mx-auto text-green-500" />
+                                <p className="text-sm text-gray-500 mt-2">Loading gifts...</p>
+                            </div>
+                        ) : giftQrUsed || giftRedeemed ? (
+                            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                                <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-2" />
+                                <p className="text-sm font-medium text-green-700">You've already claimed a gift with this QR code!</p>
+                                <p className="text-xs text-green-600 mt-1">Scan another product to claim more gifts.</p>
+                            </div>
+                        ) : freeGifts.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-3">
+                                {freeGifts.map((gift) => {
+                                    const remaining = gift.total_quantity === 0 
+                                        ? 'Unlimited' 
+                                        : gift.total_quantity - gift.claimed_quantity
+                                    const isAvailable = gift.total_quantity === 0 || remaining > 0
+                                    
+                                    return (
+                                        <div key={gift.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                                            <div className="h-24 bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center relative overflow-hidden">
+                                                {gift.gift_image_url ? (
+                                                    <img 
+                                                        src={gift.gift_image_url} 
+                                                        alt={gift.gift_name}
+                                                        className="w-full h-full object-contain p-2"
+                                                    />
+                                                ) : (
+                                                    <Gift className="w-10 h-10 text-green-400" />
+                                                )}
+                                                {gift.total_quantity > 0 && remaining !== 'Unlimited' && (
+                                                    <Badge className="absolute top-1 right-1 bg-green-500 text-white text-[10px]">
+                                                        {remaining} left
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <div className="p-3">
+                                                <p className="text-sm font-medium text-gray-900 line-clamp-1">{gift.gift_name}</p>
+                                                <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{gift.gift_description || 'Free gift for you!'}</p>
+                                                <button 
+                                                    onClick={() => {
+                                                        if (isAvailable) {
+                                                            setSelectedGift(gift)
+                                                            setShowGiftConfirm(true)
+                                                        }
+                                                    }}
+                                                    disabled={!isAvailable}
+                                                    className="w-full mt-2 text-xs font-medium px-3 py-2 rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    style={{ 
+                                                        backgroundColor: isAvailable ? '#dcfce7' : '#e5e7eb',
+                                                        color: isAvailable ? '#16a34a' : '#6b7280'
+                                                    }}
+                                                >
+                                                    {isAvailable ? 'Claim Free' : 'Out of Stock'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        ) : (
+                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                                <Ghost className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-500">No free gifts available for this product.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* ALL - Show rewards grid */}
                 {rewardCategory === 'All' && (
                     <div className="grid grid-cols-2 gap-3">
@@ -2443,7 +2642,7 @@ export default function PremiumLoyaltyTemplate({
                                         <img 
                                             src={prize.image_url} 
                                             alt={prize.name || `Prize ${index + 1}`}
-                                            className="w-full h-full object-cover"
+                                            className="w-full h-full object-contain p-1"
                                         />
                                     ) : (
                                         <Crown className="w-10 h-10 text-amber-600" />
@@ -3487,6 +3686,116 @@ export default function PremiumLoyaltyTemplate({
                     redemptionCode={redemptionDetails.redemptionCode}
                     onClose={handleRedeemSuccessClose}
                 />
+            )}
+
+            {/* Free Gift Confirmation Modal */}
+            {showGiftConfirm && selectedGift && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+                        <div className="text-center">
+                            <div className="relative w-20 h-20 mx-auto mb-4">
+                                <div className="absolute inset-0 animate-ping rounded-full bg-green-200 opacity-30" />
+                                <div className="relative w-20 h-20 rounded-full flex items-center justify-center bg-green-100 animate-bounce">
+                                    <Gift className="w-10 h-10 text-green-500 animate-pulse" />
+                                </div>
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900">Claim Free Gift</h3>
+                            <p className="text-sm text-gray-500 mt-2">Are you sure you want to claim this gift?</p>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-xl p-4">
+                            <div className="flex items-center gap-3">
+                                {selectedGift.gift_image_url ? (
+                                    <img 
+                                        src={selectedGift.gift_image_url} 
+                                        alt={selectedGift.gift_name}
+                                        className="w-16 h-16 object-contain rounded-lg bg-white p-1"
+                                    />
+                                ) : (
+                                    <div className="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <Gift className="w-8 h-8 text-green-400" />
+                                    </div>
+                                )}
+                                <div className="flex-1">
+                                    <p className="font-semibold text-gray-900">{selectedGift.gift_name}</p>
+                                    {selectedGift.gift_description && (
+                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{selectedGift.gift_description}</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                            <p className="text-xs text-amber-700 text-center">
+                                ⚠️ This QR code can only be used once to claim a free gift.
+                            </p>
+                        </div>
+
+                        {giftError && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                                <p className="text-sm text-red-600 text-center">{giftError}</p>
+                            </div>
+                        )}
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowGiftConfirm(false)
+                                    setSelectedGift(null)
+                                    setGiftError('')
+                                }}
+                                disabled={claimingGift}
+                                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleClaimGift}
+                                disabled={claimingGift}
+                                className="flex-1 px-4 py-3 text-white font-semibold rounded-xl bg-green-500 hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {claimingGift ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Claiming...
+                                    </>
+                                ) : (
+                                    'Claim Gift'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Free Gift Success Modal */}
+            {showGiftSuccess && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 text-center">
+                        <div className="relative w-24 h-24 mx-auto mb-4">
+                            <div className="absolute inset-0 animate-ping rounded-full bg-green-200 opacity-30" />
+                            <div className="relative w-24 h-24 rounded-full flex items-center justify-center bg-gradient-to-br from-green-400 to-green-600">
+                                <CheckCircle2 className="w-12 h-12 text-white" />
+                            </div>
+                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900 mb-2">🎉 Gift Claimed!</h3>
+                        <p className="text-gray-600 mb-4">
+                            You've successfully claimed <strong>{claimedGiftName}</strong>
+                        </p>
+                        <p className="text-sm text-gray-500 mb-6">
+                            Show this screen to the shop staff to receive your gift.
+                        </p>
+                        <button
+                            onClick={() => {
+                                setShowGiftSuccess(false)
+                                setSelectedGift(null)
+                            }}
+                            className="w-full px-4 py-3 text-white font-semibold rounded-xl bg-green-500 hover:bg-green-600 transition-colors"
+                        >
+                            Done
+                        </button>
+                    </div>
+                </div>
             )}
 
             {/* Feedback Modal */}

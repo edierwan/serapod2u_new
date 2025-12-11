@@ -108,10 +108,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Check if gift already redeemed from this QR
+    let isGiftRedeemed = false
+    const { data: giftClaim } = await supabase
+      .from('gift_claims')
+      .select('id')
+      .eq('qr_code_id', qrData.id)
+      .maybeSingle()
+    
+    if (giftClaim) {
+      isGiftRedeemed = true
+    }
+
     return NextResponse.json({
       success: true,
       is_lucky_draw_entered: isLuckyDrawEntered,
       is_points_collected: qrData.is_points_collected || false,
+      is_gift_redeemed: isGiftRedeemed,
       entry_details: entryDetails
     })
 
