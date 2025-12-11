@@ -94,10 +94,11 @@ interface JourneyConfig {
     banner_config?: {
         enabled: boolean
         template: 'grid' | 'carousel'
+        location?: 'home' | 'rewards' | 'products' | 'profile'
         items: Array<{
             id: string
             image_url: string
-            link_to?: 'rewards' | 'products' | string
+            link_to?: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
             expires_at?: string
         }>
     }
@@ -1510,6 +1511,32 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Render Home Tab
+    // Helper to render banner based on location
+    const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile') => {
+        if (!config.banner_config?.enabled || config.banner_config.items.length === 0) return null
+        
+        // Default to 'home' if location is not set
+        const bannerLocation = config.banner_config.location || 'home'
+        
+        if (bannerLocation !== location) return null
+
+        return (
+            <div className="px-5 mt-6">
+                <AnnouncementBanner
+                    items={config.banner_config.items}
+                    template={config.banner_config.template}
+                    onItemClick={(item) => {
+                        if (item.link_to === 'rewards') setActiveTab('rewards')
+                        else if (item.link_to === 'products') setActiveTab('products')
+                        else if (item.link_to === 'contact-us') setShowFeedbackModal(true)
+                        else if (item.link_to === 'no-link') return
+                        else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
+                    }}
+                />
+            </div>
+        )
+    }
+
     const renderHomeTab = () => (
         <div className="flex-1 overflow-y-auto pb-20">
             {/* Hero Section */}
@@ -1786,20 +1813,8 @@ export default function PremiumLoyaltyTemplate({
                 </div>
             </div>
 
-            {/* Promotions Banner - Using reusable AnnouncementBanner component */}
-            {config.banner_config?.enabled && config.banner_config.items.length > 0 && (
-                <div className="px-5 mt-6">
-                    <AnnouncementBanner
-                        items={config.banner_config.items}
-                        template={config.banner_config.template}
-                        onItemClick={(item) => {
-                            if (item.link_to === 'rewards') setActiveTab('rewards')
-                            else if (item.link_to === 'products') setActiveTab('products')
-                            else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
-                        }}
-                    />
-                </div>
-            )}
+            {/* Promotions Banner */}
+            {renderBanner('home')}
 
             {/* Recent Activity */}
             <div className="px-5 mt-6 mb-4">
@@ -1937,6 +1952,7 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Tab Content */}
             <div className="px-5 mt-4">
+                {renderBanner('rewards')}
                 {/* Free Gifts Section - Show when redemption is enabled and there are gifts */}
                 {config.redemption_enabled && showFreeGifts && (
                     <div className="mb-6">
@@ -2843,6 +2859,7 @@ export default function PremiumLoyaltyTemplate({
 
                 {/* Products Grid */}
                 <div className="px-5 -mt-4 relative z-20">
+                    {renderBanner('products')}
                     {loadingProducts ? (
                         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
                             <Loader2 className="w-8 h-8 mx-auto animate-spin text-gray-400" />
@@ -2988,6 +3005,7 @@ export default function PremiumLoyaltyTemplate({
             </div>
 
             <div className="px-5 -mt-8 relative z-20 space-y-4">
+                {renderBanner('profile')}
                 {/* Login/Logout Section */}
                 {!isAuthenticated ? (
                     <div className="bg-white rounded-2xl shadow-lg p-5">

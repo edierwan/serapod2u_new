@@ -106,10 +106,11 @@ interface JourneyConfig {
     banner_config?: {
         enabled: boolean
         template: 'grid' | 'carousel'
+        location?: 'home' | 'rewards' | 'products' | 'profile'
         items: Array<{
             id: string
             image_url: string
-            link_to: 'rewards' | 'products'
+            link_to: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
             expires_at: string
         }>
     }
@@ -1334,6 +1335,30 @@ export default function JourneyDesignerV2({
                             {config.banner_config?.enabled && (
                                 <div className="space-y-4 p-4 border border-gray-200 rounded-lg">
                                     <div className="space-y-2">
+                                        <Label>Banner Page</Label>
+                                        <Select
+                                            value={config.banner_config.location || 'home'}
+                                            onValueChange={(value: 'home' | 'rewards' | 'products' | 'profile') => setConfig({
+                                                ...config,
+                                                banner_config: {
+                                                    ...config.banner_config!,
+                                                    location: value
+                                                }
+                                            })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="home">Home</SelectItem>
+                                                <SelectItem value="rewards">Rewards</SelectItem>
+                                                <SelectItem value="products">Product</SelectItem>
+                                                <SelectItem value="profile">Profile</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
                                         <Label>Banner Template</Label>
                                         <Select
                                             value={config.banner_config.template}
@@ -1470,7 +1495,7 @@ export default function JourneyDesignerV2({
                                                         <Label>Link Destination</Label>
                                                         <Select
                                                             value={item.link_to}
-                                                            onValueChange={(value: 'rewards' | 'products') => {
+                                                            onValueChange={(value: string) => {
                                                                 const newItems = [...config.banner_config!.items]
                                                                 newItems[index].link_to = value
                                                                 setConfig({
@@ -1488,6 +1513,8 @@ export default function JourneyDesignerV2({
                                                             <SelectContent>
                                                                 <SelectItem value="rewards">Rewards Page</SelectItem>
                                                                 <SelectItem value="products">Product Page</SelectItem>
+                                                                <SelectItem value="contact-us">Contact Us</SelectItem>
+                                                                <SelectItem value="no-link">No Link</SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
