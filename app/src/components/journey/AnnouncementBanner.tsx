@@ -169,7 +169,6 @@ function BannerImage({ item, onClick, onLongPress }: BannerImageProps) {
             className={`relative w-full rounded-xl overflow-hidden shadow-sm cursor-pointer transition-transform ${
                 isPressed ? 'scale-[0.98]' : 'hover:shadow-md'
             } ${item.link_to ? '' : ''}`}
-            style={{ aspectRatio: '16/9' }}
             onClick={onClick}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
@@ -180,9 +179,10 @@ function BannerImage({ item, onClick, onLongPress }: BannerImageProps) {
             <Image 
                 src={imageUrl} 
                 alt="Promotional banner" 
-                fill
+                width={0}
+                height={0}
                 sizes="(max-width: 768px) 100vw, 50vw"
-                className="object-cover"
+                className="w-full h-auto"
                 priority
             />
             {/* Subtle indicator that image is clickable */}

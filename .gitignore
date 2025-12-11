@@ -332,3 +332,14 @@ local_test/
 sql_backup/
 experimental/
 tmp/
+
+# User requested exclusions
+*.sql
+*.md
+*.csv
+*.xlsx
+playground/
+local_test/
+sql_backup/
+experimental/
+tmp/

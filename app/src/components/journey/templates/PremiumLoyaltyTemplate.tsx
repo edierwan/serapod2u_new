@@ -178,6 +178,9 @@ export default function PremiumLoyaltyTemplate({
     const [luckyDrawQrUsed, setLuckyDrawQrUsed] = useState(false) // Track if QR already used for lucky draw
     const [checkingQrStatus, setCheckingQrStatus] = useState(true) // Start true to show loading
     
+    // Control visibility of Free Gifts section in Rewards tab
+    const [showFreeGifts, setShowFreeGifts] = useState(false)
+    
     // Points collection modal states
     const [showPointsLoginModal, setShowPointsLoginModal] = useState(false)
     const [shopId, setShopId] = useState('')
@@ -1058,6 +1061,7 @@ export default function PremiumLoyaltyTemplate({
             case 'redemption':
                 // Navigate to free gift selection
                 setActiveTab('rewards')
+                setShowFreeGifts(true)
                 // Show free gift modal section (will be handled in rewards tab)
                 break
         }
@@ -1934,7 +1938,7 @@ export default function PremiumLoyaltyTemplate({
             {/* Tab Content */}
             <div className="px-5 mt-4">
                 {/* Free Gifts Section - Show when redemption is enabled and there are gifts */}
-                {config.redemption_enabled && (
+                {config.redemption_enabled && showFreeGifts && (
                     <div className="mb-6">
                         <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
                             <Gift className="w-5 h-5 text-green-500" />
@@ -3466,7 +3470,12 @@ export default function PremiumLoyaltyTemplate({
                         return (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
+                                onClick={() => {
+                                    setActiveTab(tab.id)
+                                    if (tab.id === 'rewards') {
+                                        setShowFreeGifts(false)
+                                    }
+                                }}
                                 className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
                                     isActive ? 'text-white' : 'text-gray-500'
                                 }`}

@@ -589,7 +589,10 @@ export default function JourneyDesignerV2({
             setUploadingImage(true)
 
             // Compress image before upload (banner images use higher quality)
-            const compressedFile = await compressImage(file, { isBanner: options?.isBanner })
+            // For banner images, we skip compression to ensure high quality as requested
+            const compressedFile = options?.isBanner 
+                ? file 
+                : await compressImage(file, { isBanner: options?.isBanner })
 
             const fileExt = 'jpg' // Always use jpg after compression
             const imageType = options?.isBanner ? 'banner' : 'journey'
