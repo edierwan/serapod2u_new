@@ -52,6 +52,7 @@ import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimati
 import { LuckyDrawSuccessAnimation } from '@/components/animations/LuckyDrawSuccessAnimation'
 import { GenuineProductAnimation } from '@/components/animations/GenuineProductAnimation'
 import { RewardRedemptionAnimation } from '@/components/animations/RewardRedemptionAnimation'
+import { GiftClaimedAnimation } from '@/components/animations/GiftClaimedAnimation'
 import { InsufficientPointsAnimation } from '@/components/animations/InsufficientPointsAnimation'
 import { validatePhoneNumber, normalizePhone } from '@/lib/utils'
 
@@ -163,6 +164,7 @@ export default function PremiumLoyaltyTemplate({
     const [shopName, setShopName] = useState('')
     const [rewards, setRewards] = useState<RewardItem[]>([])
     const [products, setProducts] = useState<ProductItem[]>([])
+    const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
     const [loadingRewards, setLoadingRewards] = useState(false)
     const [loadingProducts, setLoadingProducts] = useState(false)
     const [pointsCollected, setPointsCollected] = useState(false)
@@ -2749,83 +2751,171 @@ export default function PremiumLoyaltyTemplate({
     )
 
     // Render Products Tab
-    const renderProductsTab = () => (
-        <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
-            {/* Header */}
-            <div 
-                className="px-5 pt-6 pb-8 text-white"
-                style={{ 
-                    background: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`
-                }}
-            >
-                <h1 className="text-xl font-bold mb-2">Product Catalog</h1>
-                <p className="text-white/80 text-sm">Discover our amazing products</p>
-            </div>
-
-            {/* Products Grid */}
-            <div className="px-5 -mt-4 relative z-20">
-                {loadingProducts ? (
-                    <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-                        <Loader2 className="w-8 h-8 mx-auto animate-spin text-gray-400" />
-                        <p className="text-sm text-gray-500 mt-2">Loading products...</p>
+    const renderProductsTab = () => {
+        if (selectedProduct) {
+            return (
+                <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
+                    {/* Header */}
+                    <div 
+                        className="px-5 pt-6 pb-8 text-white sticky top-0 z-30"
+                        style={{ 
+                            background: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`
+                        }}
+                    >
+                        <button 
+                            onClick={() => setSelectedProduct(null)}
+                            className="flex items-center gap-2 text-white/90 hover:text-white mb-4 transition-colors"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                            <span className="font-medium">Back to Catalog</span>
+                        </button>
+                        <h1 className="text-xl font-bold mb-1">{selectedProduct.product_name}</h1>
+                        <p className="text-white/80 text-sm">{selectedProduct.brand_name}</p>
                     </div>
-                ) : products.length > 0 ? (
-                    <div className="space-y-4">
-                        {products.map((product) => (
-                            <div key={product.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
-                                <div className="flex">
-                                    <div className="w-28 h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0 flex items-center justify-center relative">
-                                        {product.primary_image_url ? (
+
+                    {/* Product Details */}
+                    <div className="px-5 -mt-4 relative z-20 space-y-4">
+                        {/* Main Product Card */}
+                        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 p-4">
+                            <div className="aspect-video relative rounded-xl overflow-hidden bg-gray-100 mb-4">
+                                {selectedProduct.primary_image_url ? (
+                                    <Image 
+                                        src={selectedProduct.primary_image_url} 
+                                        alt={selectedProduct.product_name}
+                                        fill
+                                        className="object-contain"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <Package className="w-12 h-12 text-gray-300" />
+                                    </div>
+                                )}
+                            </div>
+                            <p className="text-sm text-gray-600">{selectedProduct.product_description}</p>
+                        </div>
+
+                        {/* Variants List */}
+                        <h3 className="text-lg font-bold text-gray-900 px-1">
+                            Available Variants ({selectedProduct.variants?.length || 0})
+                        </h3>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                            {selectedProduct.variants?.map((variant) => (
+                                <div key={variant.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                                    <div className="aspect-square relative bg-gray-50">
+                                        {variant.image_url ? (
                                             <Image 
-                                                src={product.primary_image_url} 
-                                                alt={product.product_name}
+                                                src={variant.image_url} 
+                                                alt={variant.variant_name}
                                                 fill
                                                 className="object-cover"
                                             />
                                         ) : (
-                                            <Package className="w-10 h-10 text-gray-400" />
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                <Package className="w-8 h-8 text-gray-300" />
+                                            </div>
                                         )}
                                     </div>
-                                    <div className="flex-1 p-4">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-bold text-gray-900 line-clamp-1">{product.product_name}</p>
-                                                <p className="text-xs text-gray-500 mt-0.5">{product.brand_name}</p>
-                                            </div>
-                                            {product.category_name && (
-                                                <Badge variant="secondary" className="text-[10px] flex-shrink-0 ml-2">
-                                                    {product.category_name}
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        {product.product_description && (
-                                            <p className="text-xs text-gray-600 mt-2 line-clamp-2">{product.product_description}</p>
-                                        )}
-                                        {product.variants && product.variants.length > 0 && (
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <span className="text-xs text-gray-500">{product.variants.length} variant{product.variants.length > 1 ? 's' : ''}</span>
-                                                {product.variants[0].suggested_retail_price && (
-                                                    <span className="text-sm font-bold" style={{ color: config.primary_color }}>
-                                                        RM {product.variants[0].suggested_retail_price.toFixed(2)}
-                                                    </span>
-                                                )}
-                                            </div>
+                                    <div className="p-3">
+                                        <p className="font-medium text-gray-900 text-sm line-clamp-2 mb-1">
+                                            {variant.variant_name}
+                                        </p>
+                                        {variant.suggested_retail_price && (
+                                            <p className="text-sm font-bold" style={{ color: config.primary_color }}>
+                                                RM {variant.suggested_retail_price.toFixed(2)}
+                                            </p>
                                         )}
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                ) : (
-                    <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-                        <Package className="w-16 h-16 mx-auto text-gray-300" />
-                        <h3 className="text-lg font-bold text-gray-900 mt-4">No Products Available</h3>
-                        <p className="text-sm text-gray-500 mt-1">Check back soon for new products!</p>
-                    </div>
-                )}
+                </div>
+            )
+        }
+
+        return (
+            <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
+                {/* Header */}
+                <div 
+                    className="px-5 pt-6 pb-8 text-white"
+                    style={{ 
+                        background: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`
+                    }}
+                >
+                    <h1 className="text-xl font-bold mb-2">Product Catalog</h1>
+                    <p className="text-white/80 text-sm">Discover our amazing products</p>
+                </div>
+
+                {/* Products Grid */}
+                <div className="px-5 -mt-4 relative z-20">
+                    {loadingProducts ? (
+                        <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+                            <Loader2 className="w-8 h-8 mx-auto animate-spin text-gray-400" />
+                            <p className="text-sm text-gray-500 mt-2">Loading products...</p>
+                        </div>
+                    ) : products.length > 0 ? (
+                        <div className="space-y-4">
+                            {products.map((product) => (
+                                <div 
+                                    key={product.id} 
+                                    className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 active:scale-[0.98] transition-transform cursor-pointer"
+                                    onClick={() => setSelectedProduct(product)}
+                                >
+                                    <div className="flex">
+                                        <div className="w-28 h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0 flex items-center justify-center relative">
+                                            {product.primary_image_url ? (
+                                                <Image 
+                                                    src={product.primary_image_url} 
+                                                    alt={product.product_name}
+                                                    fill
+                                                    className="object-cover"
+                                                />
+                                            ) : (
+                                                <Package className="w-10 h-10 text-gray-400" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 p-4">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-bold text-gray-900 line-clamp-1">{product.product_name}</p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">{product.brand_name}</p>
+                                                </div>
+                                                {product.category_name && (
+                                                    <Badge variant="secondary" className="text-[10px] flex-shrink-0 ml-2">
+                                                        {product.category_name}
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            {product.product_description && (
+                                                <p className="text-xs text-gray-600 mt-2 line-clamp-2">{product.product_description}</p>
+                                            )}
+                                            {product.variants && product.variants.length > 0 && (
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <span className="text-xs text-gray-500">{product.variants.length} variant{product.variants.length > 1 ? 's' : ''}</span>
+                                                    {product.variants[0].suggested_retail_price && (
+                                                        <span className="text-sm font-bold" style={{ color: config.primary_color }}>
+                                                            RM {product.variants[0].suggested_retail_price.toFixed(2)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+                            <Package className="w-16 h-16 mx-auto text-gray-300" />
+                            <h3 className="text-lg font-bold text-gray-900 mt-4">No Products Available</h3>
+                            <p className="text-sm text-gray-500 mt-1">Check back soon for new products!</p>
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
-    )
+        )
+    }
 
     // Render Profile Tab
     const renderProfileTab = () => (
@@ -3769,34 +3859,14 @@ export default function PremiumLoyaltyTemplate({
             )}
 
             {/* Free Gift Success Modal */}
-            {showGiftSuccess && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-md p-6 text-center">
-                        <div className="relative w-24 h-24 mx-auto mb-4">
-                            <div className="absolute inset-0 animate-ping rounded-full bg-green-200 opacity-30" />
-                            <div className="relative w-24 h-24 rounded-full flex items-center justify-center bg-gradient-to-br from-green-400 to-green-600">
-                                <CheckCircle2 className="w-12 h-12 text-white" />
-                            </div>
-                        </div>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-2">🎉 Gift Claimed!</h3>
-                        <p className="text-gray-600 mb-4">
-                            You've successfully claimed <strong>{claimedGiftName}</strong>
-                        </p>
-                        <p className="text-sm text-gray-500 mb-6">
-                            Show this screen to the shop staff to receive your gift.
-                        </p>
-                        <button
-                            onClick={() => {
-                                setShowGiftSuccess(false)
-                                setSelectedGift(null)
-                            }}
-                            className="w-full px-4 py-3 text-white font-semibold rounded-xl bg-green-500 hover:bg-green-600 transition-colors"
-                        >
-                            Done
-                        </button>
-                    </div>
-                </div>
-            )}
+            <GiftClaimedAnimation 
+                isVisible={showGiftSuccess}
+                giftName={claimedGiftName}
+                onClose={() => {
+                    setShowGiftSuccess(false)
+                    setSelectedGift(null)
+                }}
+            />
 
             {/* Feedback Modal */}
             {showFeedbackModal && (

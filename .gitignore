@@ -322,3 +322,13 @@ lerna-debug.log*
 .vercel
 *.md
 *.dll
+
+# User requested exclusions
+*.log
+*.csv
+*.xlsx
+playground/
+local_test/
+sql_backup/
+experimental/
+tmp/
