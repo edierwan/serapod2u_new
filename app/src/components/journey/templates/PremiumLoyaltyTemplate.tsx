@@ -781,7 +781,7 @@ export default function PremiumLoyaltyTemplate({
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(loginEmail)
                 
-                const { data: userEmail, error: lookupError } = await supabase
+                const { data: userEmailData, error: lookupError } = await supabase
                     .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
                 
                 if (lookupError) {
@@ -791,6 +791,18 @@ export default function PremiumLoyaltyTemplate({
                     return
                 }
                 
+                // Handle different response formats safely
+                let userEmail = userEmailData
+                if (Array.isArray(userEmailData)) {
+                    if (userEmailData.length > 0) {
+                        userEmail = userEmailData[0].email || userEmailData[0]
+                    } else {
+                        userEmail = null
+                    }
+                } else if (typeof userEmailData === 'object' && userEmailData !== null) {
+                    userEmail = (userEmailData as any).email || userEmailData
+                }
+
                 if (!userEmail) {
                     setLoginError('Phone number not found. Please check your number or use email to login.')
                     setLoginLoading(false)
@@ -2801,7 +2813,7 @@ export default function PremiumLoyaltyTemplate({
                         
                         <div className="grid grid-cols-2 gap-3">
                             {selectedProduct.variants?.map((variant) => (
-                                <div key={variant.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                                <div key={variant.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
                                     <div className="aspect-square relative bg-gray-50">
                                         {variant.image_url ? (
                                             <Image 
@@ -2816,12 +2828,19 @@ export default function PremiumLoyaltyTemplate({
                                             </div>
                                         )}
                                     </div>
-                                    <div className="p-3">
-                                        <p className="font-medium text-gray-900 text-sm line-clamp-2 mb-1">
-                                            {variant.variant_name}
-                                        </p>
+                                    <div className="p-3 flex flex-col flex-1">
+                                        <div className="font-medium text-gray-900 text-sm mb-1 flex-1">
+                                            {variant.variant_name.includes('[') ? (
+                                                <>
+                                                    <span className="block">{variant.variant_name.split('[')[0]}</span>
+                                                    <span className="block text-xs text-gray-500 mt-0.5">[{variant.variant_name.split('[')[1]}</span>
+                                                </>
+                                            ) : (
+                                                variant.variant_name
+                                            )}
+                                        </div>
                                         {variant.suggested_retail_price && (
-                                            <p className="text-sm font-bold" style={{ color: config.primary_color }}>
+                                            <p className="text-sm font-bold mt-auto" style={{ color: config.primary_color }}>
                                                 RM {variant.suggested_retail_price.toFixed(2)}
                                             </p>
                                         )}
@@ -3117,20 +3136,6 @@ export default function PremiumLoyaltyTemplate({
                             <span className="font-medium">Total Points</span>
                         </div>
                         <span className="font-bold" style={{ color: config.primary_color }}>{userPoints}</span>
-                    </div>
-                    <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Gift className="w-5 h-5 text-green-500" />
-                            <span className="font-medium">Rewards Redeemed</span>
-                        </div>
-                        <span className="font-bold">0</span>
-                    </div>
-                    <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Trophy className="w-5 h-5 text-purple-500" />
-                            <span className="font-medium">Lucky Draws Entered</span>
-                        </div>
-                        <span className="font-bold">{luckyDrawEntered ? 1 : 0}</span>
                     </div>
                 </div>
 
