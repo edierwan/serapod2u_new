@@ -1,11 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { useToast } from '@/components/ui/use-toast'
-import { Upload, File, X, Check, Loader2, Download } from 'lucide-react'
+import UnifiedDocumentUpload from './UnifiedDocumentUpload'
 
 interface ManufacturerDocumentUploadProps {
   documentId: string
@@ -22,48 +17,13 @@ export default function ManufacturerDocumentUpload({
   onUploadComplete,
   existingFileUrl = null
 }: ManufacturerDocumentUploadProps) {
-  const [uploading, setUploading] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(existingFileUrl)
   const currentFilePathRef = useRef<string | null>(existingFileUrl)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const supabase = createClient()
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    // Validate file type
-    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
-    if (!allowedTypes.includes(file.type)) {
-      toast({
-        title: 'Invalid File Type',
-        description: 'Please upload PDF or image files only (PDF, JPG, PNG)',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024 // 10MB in bytes
-    if (file.size > maxSize) {
-      toast({
-        title: 'File Too Large',
-        description: 'Maximum file size is 10MB',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    setSelectedFile(file)
-  }
-
-  const handleUpload = async () => {
-    if (!selectedFile) return
-
+  const handleUpload = async (file: File) => {
     try {
-      setUploading(true)
       const formData = new FormData()
       const existingPath = currentFilePathRef.current
 
@@ -75,8 +35,8 @@ export default function ManufacturerDocumentUpload({
       if (existingPath) {
         formData.append('existingFileUrl', existingPath)
       }
-      formData.append('fileName', selectedFile.name)
-      formData.append('file', selectedFile)
+      formData.append('fileName', file.name)
+      formData.append('file', file)
 
       const response = await fetch('/api/documents/manufacturer-upload', {
         method: 'POST',
@@ -104,10 +64,6 @@ export default function ManufacturerDocumentUpload({
           : 'Manufacturer document has been uploaded successfully'
       })
 
-      setSelectedFile(null)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
     } catch (error: any) {
       console.error('Error uploading file:', error)
       toast({
@@ -115,15 +71,7 @@ export default function ManufacturerDocumentUpload({
         description: error.message || 'Failed to upload manufacturer document',
         variant: 'destructive'
       })
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleRemoveFile = () => {
-    setSelectedFile(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      throw error
     }
   }
 
@@ -158,10 +106,6 @@ export default function ManufacturerDocumentUpload({
 
   const handleReplaceFile = () => {
     setUploadedUrl(null)
-    setSelectedFile(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
     toast({
       title: 'Ready to Replace',
       description: 'Please select a new manufacturer document file',
@@ -251,78 +195,13 @@ export default function ManufacturerDocumentUpload({
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Proforma Invoice (PI) Document
-        </label>
-        <p className="text-xs text-gray-500 mb-3">
-          Accepted formats: PDF, JPG, PNG • Maximum file size: 10MB
-        </p>
-      </div>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,.jpg,.jpeg,.png"
-        onChange={handleFileSelect}
-        className="hidden"
+      <UnifiedDocumentUpload
+        label="Proforma Invoice (PI) Document"
+        description="Accepted formats: PDF, JPG, PNG • Maximum file size: 10MB"
+        onUpload={handleUpload}
+        acceptedFileTypes={['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']}
+        maxDocSizeMB={10}
       />
-
-      {!selectedFile ? (
-        <Button
-          variant="outline"
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full h-32 border-2 border-dashed hover:border-blue-400 hover:bg-blue-50"
-        >
-          <div className="text-center">
-            <Upload className="w-10 h-10 mx-auto mb-2 text-blue-500" />
-            <p className="text-sm font-medium text-gray-900">Click to upload document</p>
-            <p className="text-xs text-gray-500 mt-1">or drag and drop your file here</p>
-            <p className="text-xs text-gray-400 mt-2">PDF, JPG or PNG (max 10MB)</p>
-          </div>
-        </Button>
-      ) : (
-        <Card className="p-4 border-2 border-blue-200 bg-blue-50">
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <File className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">{selectedFile.name}</p>
-              <p className="text-sm text-gray-600">
-                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={handleUpload}
-                disabled={uploading}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  'Upload'
-                )}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleRemoveFile}
-                disabled={uploading}
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
     </div>
   )
 }

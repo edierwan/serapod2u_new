@@ -1,11 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { useToast } from '@/components/ui/use-toast'
-import { Upload, File, X, Check, Loader2 } from 'lucide-react'
+import UnifiedDocumentUpload from './UnifiedDocumentUpload'
 
 type PaymentProofVariant = 'invoice' | 'balance'
 
@@ -76,129 +71,12 @@ export default function PaymentProofUpload({
   variant = 'invoice'
 }: PaymentProofUploadProps) {
   const copy = VARIANT_COPY[variant]
-  const [uploading, setUploading] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(existingFileUrl)
-  const [fileSizeSummary, setFileSizeSummary] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const supabase = createClient()
 
-  const compressImage = async (file: File): Promise<File> => {
-    // Only compress images
-    if (!file.type.startsWith('image/')) return file
-
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.src = URL.createObjectURL(file)
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          resolve(file)
-          return
-        }
-
-        // Max dimensions
-        const MAX_WIDTH = 1920
-        const MAX_HEIGHT = 1080
-        let width = img.width
-        let height = img.height
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width
-            width = MAX_WIDTH
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height
-            height = MAX_HEIGHT
-          }
-        }
-
-        canvas.width = width
-        canvas.height = height
-        ctx.drawImage(img, 0, 0, width, height)
-
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              resolve(file)
-              return
-            }
-            // If compressed is larger, use original
-            if (blob.size > file.size) {
-              resolve(file)
-            } else {
-              const compressedFile = new File([blob], file.name, {
-                type: 'image/jpeg',
-                lastModified: Date.now(),
-              })
-              resolve(compressedFile)
-            }
-          },
-          'image/jpeg',
-          0.7 // Quality
-        )
-      }
-      img.onerror = (error) => reject(error)
-    })
-  }
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFile = event.target.files?.[0]
-    if (!rawFile) return
-
-    // Validate file type
-    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
-    if (!allowedTypes.includes(rawFile.type)) {
-      toast({
-        title: 'Invalid File Type',
-        description: 'Please upload PDF or image files only (PDF, JPG, PNG)',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    // Validate max size (5MB)
-    const MAX_SIZE = 5 * 1024 * 1024 // 5MB
-    if (rawFile.size > MAX_SIZE) {
-      toast({
-        title: 'File Too Large',
-        description: 'File size must be less than 5MB',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    let fileToUpload = rawFile
-    
-    // Compress if image
-    if (rawFile.type.startsWith('image/')) {
-      try {
-        setUploading(true)
-        fileToUpload = await compressImage(rawFile)
-      } catch (error) {
-        console.error('Compression failed, using original file', error)
-      } finally {
-        setUploading(false)
-      }
-    }
-
-    // Format file size for display
-    const sizeInMB = (fileToUpload.size / (1024 * 1024)).toFixed(2)
-    setFileSizeSummary(`Uploaded size: ${sizeInMB} MB`)
-
-    setSelectedFile(fileToUpload)
-  }
-
-  const handleUpload = async () => {
-    if (!selectedFile) return
-
+  const handleUpload = async (file: File) => {
     try {
-      setUploading(true)
-
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError || !user) {
@@ -216,7 +94,6 @@ export default function PaymentProofUpload({
 
         if (deleteStorageError) {
           console.warn('Warning: Could not delete old file from storage:', deleteStorageError)
-          // Continue anyway - we'll replace the database record
         }
 
         // Delete old file record from database
@@ -227,18 +104,17 @@ export default function PaymentProofUpload({
 
         if (deleteDbError) {
           console.warn('Warning: Could not delete old file record:', deleteDbError)
-          // Continue anyway - insert will work if delete failed
         }
       }
 
       // Generate unique file name
-      const fileExt = selectedFile.name.split('.').pop()
+      const fileExt = file.name.split('.').pop()
       const fileName = `payment-proof-${documentId}-${Date.now()}.${fileExt}`
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('order-documents')
-        .upload(fileName, selectedFile, {
+        .upload(fileName, file, {
           cacheControl: '3600',
           upsert: false
         })
@@ -253,11 +129,11 @@ export default function PaymentProofUpload({
         .insert({
           document_id: documentId,
           file_url: fileUrl,
-          file_name: selectedFile.name,
-          file_size: selectedFile.size,
-          mime_type: selectedFile.type,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type,
           company_id: companyId,
-          uploaded_by: user.id  // Add user ID
+          uploaded_by: user.id
         } as any)
 
       if (dbError) throw dbError
@@ -272,10 +148,6 @@ export default function PaymentProofUpload({
           : copy.toastUploadDescription
       })
 
-      setSelectedFile(null)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
     } catch (error: any) {
       console.error('Error uploading file:', error)
       toast({
@@ -283,15 +155,7 @@ export default function PaymentProofUpload({
         description: error.message || 'Failed to upload payment proof',
         variant: 'destructive'
       })
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleRemoveFile = () => {
-    setSelectedFile(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      throw error // Re-throw so UnifiedDocumentUpload knows it failed
     }
   }
 
@@ -326,10 +190,6 @@ export default function PaymentProofUpload({
 
   const handleReplaceFile = () => {
     setUploadedUrl(null)
-    setSelectedFile(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
     toast({
       title: 'Ready to Replace',
       description: copy.replacePrompt,
@@ -415,78 +275,12 @@ export default function PaymentProofUpload({
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          {copy.fieldLabel} <span className="text-red-500">*</span>
-        </label>
-        <p className="text-xs text-gray-500 mb-3">
-          {copy.fieldHint}
-        </p>
-      </div>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,.jpg,.jpeg,.png"
-        onChange={handleFileSelect}
-        className="hidden"
+      <UnifiedDocumentUpload
+        label={copy.fieldLabel}
+        description={copy.fieldHint}
+        onUpload={handleUpload}
+        acceptedFileTypes={['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']}
       />
-
-      {!selectedFile ? (
-        <Button
-          variant="outline"
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full h-32 border-2 border-dashed hover:border-blue-400 hover:bg-blue-50"
-        >
-          <div className="text-center">
-            <Upload className="w-10 h-10 mx-auto mb-2 text-blue-500" />
-            <p className="text-sm font-medium text-gray-900">{copy.uploadCta}</p>
-            <p className="text-xs text-gray-500 mt-1">or drag and drop your file here</p>
-            <p className="text-xs text-gray-400 mt-2">PDF, JPG or PNG (max 5MB)</p>
-          </div>
-        </Button>
-      ) : (
-        <Card className="p-4 border-2 border-blue-200 bg-blue-50">
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <File className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">{selectedFile.name}</p>
-              <p className="text-sm text-gray-600">
-                {fileSizeSummary || `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={handleUpload}
-                disabled={uploading}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  'Upload'
-                )}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleRemoveFile}
-                disabled={uploading}
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
     </div>
   )
 }
