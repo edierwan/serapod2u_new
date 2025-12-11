@@ -361,6 +361,16 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     const variant = availableVariants.find(v => v.id === selectedVariantId)
     if (!variant) return
 
+    // Check if price is maintained
+    if (!variant.distributor_price || variant.distributor_price <= 0) {
+      toast({
+        title: 'Price Not Maintained',
+        description: 'Please maintain the distributor price for this product first.',
+        variant: 'destructive'
+      })
+      return
+    }
+
     // Check if variant already added
     if (orderItems.find(item => item.variant_id === selectedVariantId)) {
       toast({

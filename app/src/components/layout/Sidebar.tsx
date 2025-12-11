@@ -58,7 +58,7 @@ const navigationItems: MenuItem[] = [
     icon: TrendingUp,
     description: 'Executive reports & insights',
     access: {
-      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
+      allowedOrgTypes: ['HQ', 'DIST', 'WH'], // Removed MFG/MANU
       maxRoleLevel: 40 // Managers and above
     }
   },
@@ -347,7 +347,7 @@ const navigationItems: MenuItem[] = [
     submenu: [
       {
         id: 'manufacturer-quality-issues',
-        label: 'Quality & Return Issues',
+        label: 'Product Return',
         icon: ShieldCheck,
         access: {
           allowedOrgTypes: ['HQ', 'MFG', 'MANU'],
@@ -736,6 +736,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-gray-500">Time:</span>
                       <span className="text-gray-700">{isMounted ? time : '--:-- --'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1 mt-1 border-t border-gray-100">
+                      <span className="font-medium text-gray-500">Login:</span>
+                      <span className="text-gray-700 truncate max-w-[140px]" title={userProfile?.email}>{userProfile?.email || '--'}</span>
                     </div>
                   </div>
                 </div>

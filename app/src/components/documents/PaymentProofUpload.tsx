@@ -79,17 +79,80 @@ export default function PaymentProofUpload({
   const [uploading, setUploading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(existingFileUrl)
+  const [fileSizeSummary, setFileSizeSummary] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const supabase = createClient()
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const compressImage = async (file: File): Promise<File> => {
+    // Only compress images
+    if (!file.type.startsWith('image/')) return file
+
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.src = URL.createObjectURL(file)
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(file)
+          return
+        }
+
+        // Max dimensions
+        const MAX_WIDTH = 1920
+        const MAX_HEIGHT = 1080
+        let width = img.width
+        let height = img.height
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width
+            width = MAX_WIDTH
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height
+            height = MAX_HEIGHT
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        ctx.drawImage(img, 0, 0, width, height)
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(file)
+              return
+            }
+            // If compressed is larger, use original
+            if (blob.size > file.size) {
+              resolve(file)
+            } else {
+              const compressedFile = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              })
+              resolve(compressedFile)
+            }
+          },
+          'image/jpeg',
+          0.7 // Quality
+        )
+      }
+      img.onerror = (error) => reject(error)
+    })
+  }
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = event.target.files?.[0]
+    if (!rawFile) return
 
     // Validate file type
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
-    if (!allowedTypes.includes(file.type)) {
+    if (!allowedTypes.includes(rawFile.type)) {
       toast({
         title: 'Invalid File Type',
         description: 'Please upload PDF or image files only (PDF, JPG, PNG)',
@@ -98,18 +161,36 @@ export default function PaymentProofUpload({
       return
     }
 
-    // Validate file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024 // 5MB in bytes
-    if (file.size > maxSize) {
+    // Validate max size (5MB)
+    const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+    if (rawFile.size > MAX_SIZE) {
       toast({
         title: 'File Too Large',
-        description: 'Maximum file size is 5MB',
+        description: 'File size must be less than 5MB',
         variant: 'destructive'
       })
       return
     }
 
-    setSelectedFile(file)
+    let fileToUpload = rawFile
+    
+    // Compress if image
+    if (rawFile.type.startsWith('image/')) {
+      try {
+        setUploading(true)
+        fileToUpload = await compressImage(rawFile)
+      } catch (error) {
+        console.error('Compression failed, using original file', error)
+      } finally {
+        setUploading(false)
+      }
+    }
+
+    // Format file size for display
+    const sizeInMB = (fileToUpload.size / (1024 * 1024)).toFixed(2)
+    setFileSizeSummary(`Uploaded size: ${sizeInMB} MB`)
+
+    setSelectedFile(fileToUpload)
   }
 
   const handleUpload = async () => {
@@ -375,7 +456,7 @@ export default function PaymentProofUpload({
             <div className="flex-1 min-w-0">
               <p className="font-medium text-gray-900 truncate">{selectedFile.name}</p>
               <p className="text-sm text-gray-600">
-                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                {fileSizeSummary || `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`}
               </p>
             </div>
             <div className="flex gap-2">
