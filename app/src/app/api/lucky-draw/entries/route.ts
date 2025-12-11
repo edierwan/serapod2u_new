@@ -51,7 +51,17 @@ export async function GET(request: NextRequest) {
         entry_date,
         is_winner,
         prize_won,
-        prize_claimed
+        prize_claimed,
+        qr_codes (
+          id,
+          product_variants (
+            variant_name,
+            image_url,
+            products (
+              product_name
+            )
+          )
+        )
       `)
       .eq('campaign_id', campaignId)
       .order('entry_date', { ascending: false })

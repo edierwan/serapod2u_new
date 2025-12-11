@@ -87,6 +87,15 @@ interface Entry {
   is_winner: boolean
   prize_won: any
   prize_claimed: boolean
+  qr_codes?: {
+    product_variants?: {
+      variant_name: string
+      image_url: string
+      products?: {
+        product_name: string
+      }
+    }
+  }
 }
 
 interface Prize {
@@ -878,44 +887,77 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         <table className="w-full">
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Entry #</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 w-12">#</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Product</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Entry ID</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Name</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Phone</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Email</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Entry Date</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Date</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
-                            {filteredEntries.map(entry => (
-                              <tr key={entry.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 text-sm">{entry.entry_number}</td>
-                                <td className="px-4 py-3 text-sm font-medium">{entry.consumer_name || 'Anonymous'}</td>
-                                <td className="px-4 py-3 text-sm">{entry.consumer_phone}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{entry.consumer_email || '-'}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">
-                                  {new Date(entry.entry_date).toLocaleDateString()}
-                                </td>
-                                <td className="px-4 py-3">
-                                  {entry.prize_claimed ? (
-                                    <Badge className="bg-green-500">
-                                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                                      Claimed
-                                    </Badge>
-                                  ) : entry.is_winner ? (
-                                    <Badge className="bg-yellow-500">
-                                      <Trophy className="w-3 h-3 mr-1" />
-                                      Winner
-                                    </Badge>
-                                  ) : (
-                                    <Badge className="bg-blue-500 text-white">
-                                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                                      Entered
-                                    </Badge>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
+                            {filteredEntries.map((entry, index) => {
+                              const variant = entry.qr_codes?.product_variants
+                              const productName = variant?.products?.product_name || 'Unknown Product'
+                              const variantName = variant?.variant_name || ''
+                              const imageUrl = variant?.image_url
+
+                              return (
+                                <tr key={entry.id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-xs text-gray-500">{index + 1}</td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded border bg-white overflow-hidden flex-shrink-0">
+                                        {imageUrl ? (
+                                          <Image 
+                                            src={imageUrl} 
+                                            alt={variantName} 
+                                            width={32} 
+                                            height={32} 
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400">
+                                            <ImageIcon className="w-4 h-4" />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="min-w-0 max-w-[200px]">
+                                        <div className="text-xs font-medium truncate" title={productName}>{productName}</div>
+                                        {variantName && <div className="text-[10px] text-gray-500 truncate" title={variantName}>{variantName}</div>}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs font-mono">{entry.entry_number}</td>
+                                  <td className="px-4 py-3 text-xs font-medium">{entry.consumer_name || 'Anonymous'}</td>
+                                  <td className="px-4 py-3 text-xs">{entry.consumer_phone}</td>
+                                  <td className="px-4 py-3 text-xs text-gray-600 max-w-[150px] truncate" title={entry.consumer_email || ''}>{entry.consumer_email || '-'}</td>
+                                  <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                                    {new Date(entry.entry_date).toLocaleDateString()}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {entry.prize_claimed ? (
+                                      <Badge className="bg-green-500 text-[10px] px-1.5 h-5">
+                                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                                        Claimed
+                                      </Badge>
+                                    ) : entry.is_winner ? (
+                                      <Badge className="bg-yellow-500 text-[10px] px-1.5 h-5">
+                                        <Trophy className="w-3 h-3 mr-1" />
+                                        Winner
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-blue-500 text-white text-[10px] px-1.5 h-5">
+                                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                                        Entered
+                                      </Badge>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
