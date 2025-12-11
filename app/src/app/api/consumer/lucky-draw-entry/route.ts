@@ -150,21 +150,38 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 5. Also check by consumer phone (secondary check)
-    const { data: existingEntry } = await supabase
+    // 5. Check entry limits per consumer
+    const { count: existingEntriesCount, error: countError } = await supabase
       .from('lucky_draw_entries')
-      .select('id, entry_number')
+      .select('*', { count: 'exact', head: true })
       .eq('campaign_id', campaign.id)
       .eq('consumer_phone', consumer_phone)
-      .maybeSingle()
 
-    if (existingEntry) {
-      console.log('⚠️ Consumer already entered this campaign:', existingEntry.entry_number)
+    if (countError) {
+      console.error('Error counting entries:', countError)
+    }
+
+    // If max_entries_per_consumer is null or 0, treat as unlimited (or very high limit)
+    const maxEntries = campaign.max_entries_per_consumer || 999999
+
+    if ((existingEntriesCount || 0) >= maxEntries) {
+      console.log(`⚠️ Consumer reached entry limit (${existingEntriesCount}/${maxEntries})`)
+      
+      // Get the latest entry number to show
+      const { data: latestEntry } = await supabase
+        .from('lucky_draw_entries')
+        .select('entry_number')
+        .eq('campaign_id', campaign.id)
+        .eq('consumer_phone', consumer_phone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
       return NextResponse.json({
         success: true,
         already_entered: true,
-        entry_number: existingEntry.entry_number,
-        message: 'You have already entered this lucky draw campaign!'
+        entry_number: latestEntry?.entry_number || 'N/A',
+        message: 'You have reached the maximum number of entries for this campaign!'
       })
     }
 

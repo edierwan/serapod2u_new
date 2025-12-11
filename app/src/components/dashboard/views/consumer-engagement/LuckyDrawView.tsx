@@ -137,6 +137,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
   
   const [prizeImageFile, setPrizeImageFile] = useState<File | null>(null)
   const [prizeImagePreview, setPrizeImagePreview] = useState<string | null>(null)
+  const [compressedSize, setCompressedSize] = useState<string | null>(null)
   
   const [prizes, setPrizes] = useState<Prize[]>([])
   const [drawResult, setDrawResult] = useState<any>(null)
@@ -312,14 +313,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       let imageUrl = newPrize.image_url
       let fileToUpload = prizeImageFile
 
-      // Compress image if selected
-      if (fileToUpload) {
-        try {
-          fileToUpload = await compressImage(fileToUpload)
-        } catch (err) {
-          console.error('Image compression failed, using original:', err)
-        }
-      }
+      // Image is already compressed in onChange handler
 
       // Upload image if a new file is selected AND we have a campaign ID
       if (fileToUpload && selectedCampaign) {
@@ -379,6 +373,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       setNewPrize({ name: '', description: '', quantity: 1, image_url: '' })
       setPrizeImageFile(null)
       setPrizeImagePreview(null)
+      setCompressedSize(null)
       setShowPrizeModal(false)
     } catch (error) {
       console.error('Error adding prize:', error)
@@ -396,6 +391,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       image_url: prize.image_url || ''
     })
     setPrizeImagePreview(prize.image_url || null)
+    setCompressedSize(null)
     setShowPrizeModal(true)
   }
 
@@ -488,7 +484,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
     claimedPrizes: entries.filter(e => e.is_winner && e.prize_claimed).length
   }
 
-  // Compress image for mobile optimization
+  // Compress image for mobile optimization (< 6KB)
   const compressImage = (file: File): Promise<File> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -504,49 +500,56 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             return
           }
 
-          // Target size: 400x400px for mobile display
-          const MAX_WIDTH = 400
-          const MAX_HEIGHT = 400
+          // Target size: Small for mobile icons to ensure < 6KB
+          // Start with 150px
           let width = img.width
           let height = img.height
+          const MAX_DIMENSION = 150
 
-          // Calculate aspect ratio
           if (width > height) {
-            if (width > MAX_WIDTH) {
-              height = Math.round((height * MAX_WIDTH) / width)
-              width = MAX_WIDTH
+            if (width > MAX_DIMENSION) {
+              height = Math.round((height * MAX_DIMENSION) / width)
+              width = MAX_DIMENSION
             }
           } else {
-            if (height > MAX_HEIGHT) {
-              width = Math.round((width * MAX_HEIGHT) / height)
-              height = MAX_HEIGHT
+            if (height > MAX_DIMENSION) {
+              width = Math.round((width * MAX_DIMENSION) / height)
+              height = MAX_DIMENSION
             }
           }
 
           canvas.width = width
           canvas.height = height
 
-          // Draw image on canvas with high quality
-          ctx.imageSmoothingEnabled = true
-          ctx.imageSmoothingQuality = 'high'
+          // Draw image on canvas
           ctx.drawImage(img, 0, 0, width, height)
 
-          // Convert to blob with compression (JPEG 70% quality for ~5KB)
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
-                const compressedFile = new File([blob], file.name, {
-                  type: 'image/jpeg',
-                  lastModified: Date.now(),
-                })
-                resolve(compressedFile)
-              } else {
-                reject(new Error('Failed to compress image'))
-              }
-            },
-            'image/jpeg',
-            0.7
-          )
+          // Recursive compression to ensure < 6KB
+          const attemptCompression = (quality: number) => {
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  // Check if under 6KB (6144 bytes)
+                  if (blob.size < 6144 || quality <= 0.1) {
+                    const compressedFile = new File([blob], file.name, {
+                      type: 'image/jpeg',
+                      lastModified: Date.now(),
+                    })
+                    resolve(compressedFile)
+                  } else {
+                    // Reduce quality and try again
+                    attemptCompression(Math.max(0.1, quality - 0.1))
+                  }
+                } else {
+                  reject(new Error('Failed to compress image'))
+                }
+              },
+              'image/jpeg',
+              quality
+            )
+          }
+
+          attemptCompression(0.8)
         }
         img.onerror = () => reject(new Error('Failed to load image'))
       }
@@ -933,6 +936,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         setNewPrize({ name: '', description: '', quantity: 1, image_url: '' })
                         setPrizeImageFile(null)
                         setPrizeImagePreview(null)
+                        setCompressedSize(null)
                         setShowPrizeModal(true)
                       }}>
                         <Plus className="w-4 h-4 mr-2" />
@@ -1227,6 +1231,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                     setNewPrize({ name: '', description: '', quantity: 1, image_url: '' })
                     setPrizeImageFile(null)
                     setPrizeImagePreview(null)
+                    setCompressedSize(null)
                     setShowPrizeModal(true)
                   }}
                 >
@@ -1374,6 +1379,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                           setPrizeImageFile(null)
                           setPrizeImagePreview(null)
                           setNewPrize({...newPrize, image_url: ''})
+                          setCompressedSize(null)
                         }}
                       >
                         <X className="w-4 h-4" />
@@ -1382,6 +1388,11 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                   </div>
                   <p className="text-xs text-gray-500">
                     Optional: JPG, PNG, GIF, WebP (max 5MB)
+                    {compressedSize && (
+                      <span className="block text-green-600 font-medium mt-1">
+                        Compressed size: {compressedSize}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1389,7 +1400,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 id="prize_image_input"
                 type="file"
                 accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
                   
@@ -1402,13 +1413,22 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                     alert('Image size must be less than 5MB')
                     return
                   }
-                  
-                  const reader = new FileReader()
-                  reader.onloadend = () => {
-                    setPrizeImagePreview(reader.result as string)
+
+                  try {
+                    // Compress immediately
+                    const compressed = await compressImage(file)
+                    setCompressedSize(`${(compressed.size / 1024).toFixed(2)} KB`)
+                    
+                    const reader = new FileReader()
+                    reader.onloadend = () => {
+                      setPrizeImagePreview(reader.result as string)
+                    }
+                    reader.readAsDataURL(compressed)
+                    setPrizeImageFile(compressed)
+                  } catch (err) {
+                    console.error('Compression failed', err)
+                    alert('Failed to compress image')
                   }
-                  reader.readAsDataURL(file)
-                  setPrizeImageFile(file)
                 }}
                 className="hidden"
               />

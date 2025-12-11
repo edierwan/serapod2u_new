@@ -320,3 +320,5 @@ lerna-debug.log*
 !CHANGELOG.md
 !LICENSE.md
 .vercel
+*.md
+*.dll
