@@ -10,6 +10,7 @@ export interface Toast {
   action?: React.ReactNode
   onOpenChange?: (open: boolean) => void
   variant?: 'default' | 'destructive' | 'success' | 'warning'
+  duration?: number
 }
 
 const TOAST_REMOVE_DELAY = 4000
@@ -34,7 +35,7 @@ function toast(props: Omit<Toast, 'id'> | Toast) {
 
   setTimeout(() => {
     dismiss()
-  }, TOAST_REMOVE_DELAY)
+  }, props.duration || TOAST_REMOVE_DELAY)
 
   return {
     id,

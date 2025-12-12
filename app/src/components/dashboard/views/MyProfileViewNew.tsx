@@ -883,7 +883,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       )}
 
       {/* Change Password Card */}
-      <ChangePasswordCard userEmail={userProfile.email} />
+      <ChangePasswordCard userEmail={userProfile.email} userPhone={userProfile.phone} />
     </div>
   )
 }

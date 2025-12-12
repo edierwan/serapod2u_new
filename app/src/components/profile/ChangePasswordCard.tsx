@@ -11,9 +11,10 @@ import { Key, Eye, EyeOff, AlertTriangle, Info } from 'lucide-react'
 
 interface ChangePasswordCardProps {
   userEmail: string
+  userPhone?: string | null
 }
 
-export default function ChangePasswordCard({ userEmail }: ChangePasswordCardProps) {
+export default function ChangePasswordCard({ userEmail, userPhone }: ChangePasswordCardProps) {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [passwordData, setPasswordData] = useState({
@@ -135,9 +136,12 @@ export default function ChangePasswordCard({ userEmail }: ChangePasswordCardProp
       console.log('✅ Step 3: Password updated successfully in Supabase Auth')
 
       // Step 3: Success - clear form and show success message
+      const userId = userPhone || userEmail
       toast({
-        title: 'Success',
-        description: 'Your password has been changed successfully',
+        title: 'Password Updated Successfully',
+        description: `Your password for ID ${userId} has been updated.`,
+        variant: 'success',
+        duration: 3000
       })
 
       setPasswordData({

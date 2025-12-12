@@ -51,6 +51,7 @@
     "pdfkit": "^0.17.2",
     "pngjs": "^7.0.0",
     "react": "^18.3.0",
+    "react-custom-roulette": "^1.4.1",
     "react-dom": "^18.3.0",
     "react-hook-form": "^7.48.2",
     "recharts": "^3.5.1",

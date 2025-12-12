@@ -45,6 +45,7 @@ import {
 interface UserProfile {
   id: string
   email: string
+  phone?: string | null
   role_code: string
   organization_id: string
   is_active: boolean
@@ -558,9 +559,12 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
       console.log('✅ Step 3: Password updated successfully in Supabase Auth')
 
       // Step 3: Success - clear form and show success message
+      const userId = userProfile.phone || userProfile.email
       toast({
-        title: 'Success',
-        description: 'Your password has been changed successfully',
+        title: 'Password Updated Successfully',
+        description: `Your password for ID ${userId} has been updated.`,
+        variant: 'success',
+        duration: 3000
       })
 
       setPasswordData({

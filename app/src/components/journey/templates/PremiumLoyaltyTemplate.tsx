@@ -2715,7 +2715,7 @@ export default function PremiumLoyaltyTemplate({
             </div>
 
             {/* Games Grid */}
-            <div className="px-5 -mt-4 grid gap-4">
+            <div className="px-5 -mt-4 grid gap-4 relative z-10">
                 {config.enable_scratch_card_game && (
                     <button 
                         onClick={() => handleProtectedAction('play-scratch-card')}
@@ -2804,6 +2804,8 @@ export default function PremiumLoyaltyTemplate({
             <div className="flex-1 p-6 flex items-center justify-center">
                 <SpinWheelGame 
                     primaryColor={config.primary_color}
+                    journeyId={config.id}
+                    qrCode={qrCode}
                     onSpinComplete={() => {
                         // Handle completion logic
                     }}
@@ -2823,6 +2825,8 @@ export default function PremiumLoyaltyTemplate({
             <div className="flex-1 p-6">
                 <DailyQuizGame 
                     primaryColor={config.primary_color}
+                    journeyId={config.id}
+                    qrCode={qrCode}
                     onQuizComplete={(score) => {
                         // Handle completion logic
                     }}
