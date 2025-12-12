@@ -59,6 +59,7 @@ import { RewardRedemptionAnimation } from '@/components/animations/RewardRedempt
 import { GiftClaimedAnimation } from '@/components/animations/GiftClaimedAnimation'
 import { InsufficientPointsAnimation } from '@/components/animations/InsufficientPointsAnimation'
 import { validatePhoneNumber, normalizePhone } from '@/lib/utils'
+import { useToast } from '@/components/ui/use-toast'
 
 // Types
 interface JourneyConfig {
@@ -161,7 +162,14 @@ export default function PremiumLoyaltyTemplate({
     productInfo
 }: PremiumLoyaltyTemplateProps) {
     const supabase = createClient()
+    const { toast } = useToast()
     const [activeTab, setActiveTab] = useState<TabType>('home')
+    
+    // Scratch Card State
+    const [scratchResult, setScratchResult] = useState<{isWin: boolean, rewardName: string} | null>(null)
+    const [isScratching, setIsScratching] = useState(false)
+    const [scratchError, setScratchError] = useState<string | null>(null)
+
     const [userPoints, setUserPoints] = useState(0)
     const [userName, setUserName] = useState('')
     const [userEmail, setUserEmail] = useState('')
@@ -198,6 +206,44 @@ export default function PremiumLoyaltyTemplate({
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [isShopUser, setIsShopUser] = useState(false)
     const [authLoading, setAuthLoading] = useState(true)
+
+    // Game active states
+    const [activeGames, setActiveGames] = useState({
+        scratch: false,
+        spin: false,
+        quiz: false
+    })
+
+    useEffect(() => {
+        if (config?.id) {
+            checkActiveGames()
+        }
+    }, [config?.id])
+
+    const checkActiveGames = async () => {
+        if (!config?.id) return
+
+        const checkStatus = async (table: string) => {
+            const { count } = await supabase
+                .from(table)
+                .select('*', { count: 'exact', head: true })
+                .eq('journey_config_id', config.id)
+                .eq('status', 'active')
+            return (count || 0) > 0
+        }
+
+        const [scratchActive, spinActive, quizActive] = await Promise.all([
+            checkStatus('scratch_card_campaigns'),
+            checkStatus('spin_wheel_campaigns'),
+            checkStatus('daily_quiz_campaigns')
+        ])
+
+        setActiveGames({
+            scratch: scratchActive,
+            spin: spinActive,
+            quiz: quizActive
+        })
+    }
     const [showLoginForm, setShowLoginForm] = useState(false)
     const [loginEmail, setLoginEmail] = useState('')
     const [loginPassword, setLoginPassword] = useState('')
@@ -2716,7 +2762,7 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Games Grid */}
             <div className="px-5 -mt-4 grid gap-4 relative z-10">
-                {config.enable_scratch_card_game && (
+                {config.enable_scratch_card_game && activeGames.scratch && (
                     <button 
                         onClick={() => handleProtectedAction('play-scratch-card')}
                         className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
@@ -2735,41 +2781,116 @@ export default function PremiumLoyaltyTemplate({
                 )}
 
                 {/* Spin the Wheel */}
-                <button 
-                    onClick={() => handleProtectedAction('spin-wheel')}
-                    className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                            <Gamepad2 className="w-8 h-8 text-white" />
+                {activeGames.spin && (
+                    <button 
+                        onClick={() => handleProtectedAction('spin-wheel')}
+                        className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                                <Gamepad2 className="w-8 h-8 text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-bold text-gray-900">Spin the Wheel</h3>
+                                <p className="text-sm text-gray-500">Spin to win amazing rewards!</p>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-400" />
                         </div>
-                        <div className="flex-1">
-                            <h3 className="font-bold text-gray-900">Spin the Wheel</h3>
-                            <p className="text-sm text-gray-500">Spin to win amazing rewards!</p>
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </div>
-                </button>
+                    </button>
+                )}
 
                 {/* Daily Quiz */}
-                <button 
-                    onClick={() => handleProtectedAction('daily-quiz')}
-                    className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                            <Sparkles className="w-8 h-8 text-white" />
+                {activeGames.quiz && (
+                    <button 
+                        onClick={() => handleProtectedAction('daily-quiz')}
+                        className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                                <Sparkles className="w-8 h-8 text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-bold text-gray-900">Daily Quiz</h3>
+                                <p className="text-sm text-gray-500">Answer questions to earn points!</p>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-400" />
                         </div>
-                        <div className="flex-1">
-                            <h3 className="font-bold text-gray-900">Daily Quiz</h3>
-                            <p className="text-sm text-gray-500">Answer questions to earn points!</p>
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </div>
-                </button>
+                    </button>
+                )}
             </div>
         </div>
     )
+
+    const handlePlayScratchCard = async () => {
+        if (isScratching || scratchResult) return
+        
+        setIsScratching(true)
+        setScratchError(null)
+
+        try {
+            // Get phone from props or authenticated user
+            const phone = consumerPhone || userPhone
+            
+            if (!phone) {
+                throw new Error('Phone number not found. Please login or update your profile.')
+            }
+
+            const { data, error } = await supabase.rpc('play_scratch_card_turn', {
+                p_journey_config_id: config.id,
+                p_consumer_phone: phone,
+                p_qr_code_id: null // QR code tracking not yet implemented
+            })
+
+            if (error) throw error
+            
+            if (data.error) {
+                throw new Error(data.error)
+            }
+
+            // Check if API returned success
+            if (!data.success || !data.reward) {
+                throw new Error('Invalid response from server')
+            }
+
+            // Parse result from new API format
+            const reward = data.reward
+            const isWin = reward.type !== 'no_prize'
+            const rewardName = reward.name || 'No Prize'
+            const points = reward.value_points || 0
+
+            setScratchResult({
+                isWin,
+                rewardName
+            })
+
+            // Handle Win
+            if (isWin && points > 0) {
+                // Play sound
+                const audio = new Audio('/sounds/win.mp3')
+                audio.play().catch(e => console.log('Audio play failed', e))
+
+                // Show animation for points
+                setPreviousBalance(userPoints)
+                setTotalBalance(userPoints + points)
+                setPointsEarned(points)
+                setShowPointsSuccessModal(true)
+                
+                // Update balance
+                setUserPoints(prev => prev + points)
+            }
+
+        } catch (err: any) {
+            console.error('Scratch card error:', err)
+            setScratchError(err.message || 'Failed to play. Please try again.')
+            toast({
+                title: "Error",
+                description: err.message || "Failed to play scratch card",
+                variant: "destructive"
+            })
+        } finally {
+            setIsScratching(false)
+        }
+    }
 
     const renderScratchCardTab = () => (
         <div className="flex-1 overflow-y-auto bg-gray-50 flex flex-col">
@@ -2779,16 +2900,27 @@ export default function PremiumLoyaltyTemplate({
                 </button>
                 <h1 className="text-lg font-bold">Scratch & Win</h1>
             </div>
-            <div className="flex-1 p-6 flex items-center justify-center">
+            <div className="flex-1 p-6 flex items-center justify-center flex-col gap-4">
+                {scratchError && (
+                    <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center w-full max-w-sm">
+                        {scratchError}
+                    </div>
+                )}
                 <ScratchCard 
                     primaryColor={config.primary_color}
                     titleText={config.scratch_card_title || 'Scratch & Win'}
                     successMessage="You won: {{reward_name}}"
                     noPrizeMessage="Better luck next time!"
-                    onScratchComplete={() => {
-                        // Handle completion logic
-                    }}
+                    result={scratchResult}
+                    isScratching={isScratching}
+                    onScratchComplete={handlePlayScratchCard}
+                    theme="modern"
                 />
+                {!scratchResult && !isScratching && (
+                    <p className="text-sm text-gray-500 text-center animate-pulse">
+                        Tap or scratch to play!
+                    </p>
+                )}
             </div>
         </div>
     )

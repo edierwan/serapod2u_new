@@ -17,6 +17,7 @@ interface ScratchCardProps {
     onScratchComplete?: () => void
     isScratching?: boolean
     isPreview?: boolean
+    theme?: 'default' | 'modern' | 'classic'
 }
 
 export default function ScratchCard({
@@ -27,11 +28,34 @@ export default function ScratchCard({
     result,
     onScratchComplete,
     isScratching = false,
-    isPreview = false
+    isPreview = false,
+    theme = 'default'
 }: ScratchCardProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [isRevealed, setIsRevealed] = useState(false)
     const [scratchPercent, setScratchPercent] = useState(0)
+
+    // Theme styles
+    const getThemeStyles = () => {
+        switch (theme) {
+            case 'modern':
+                return {
+                    container: 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white border-none shadow-2xl',
+                    title: 'text-white drop-shadow-md',
+                    scratchArea: 'bg-white/10 backdrop-blur-sm border-white/20',
+                    footer: 'text-white/70'
+                }
+            default:
+                return {
+                    container: 'bg-white border-4 border-white shadow-xl',
+                    title: '', // Use inline style for color
+                    scratchArea: 'bg-gray-50 border-gray-300',
+                    footer: 'text-gray-400'
+                }
+        }
+    }
+
+    const styles = getThemeStyles()
 
     useEffect(() => {
         if (isPreview) return
@@ -44,12 +68,18 @@ export default function ScratchCard({
 
         // Initialize canvas
         const initCanvas = () => {
-            ctx.fillStyle = '#d1d5db' // Silver/Gray
+            // Create gradient for scratch surface
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height)
+            gradient.addColorStop(0, '#d1d5db')
+            gradient.addColorStop(0.5, '#f3f4f6')
+            gradient.addColorStop(1, '#9ca3af')
+            
+            ctx.fillStyle = gradient
             ctx.fillRect(0, 0, canvas.width, canvas.height)
             
             // Add some noise/texture
-            for (let i = 0; i < 500; i++) {
-                ctx.fillStyle = Math.random() > 0.5 ? '#e5e7eb' : '#9ca3af'
+            for (let i = 0; i < 1000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.1)'
                 ctx.fillRect(
                     Math.random() * canvas.width,
                     Math.random() * canvas.height,
@@ -58,11 +88,21 @@ export default function ScratchCard({
             }
 
             // Add "Scratch Here" text
-            ctx.font = 'bold 20px sans-serif'
-            ctx.fillStyle = '#6b7280'
+            ctx.font = 'bold 24px sans-serif'
+            ctx.fillStyle = '#4b5563'
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
+            
+            // Add shadow to text
+            ctx.shadowColor = 'rgba(255,255,255,0.5)'
+            ctx.shadowBlur = 2
+            ctx.shadowOffsetX = 1
+            ctx.shadowOffsetY = 1
+            
             ctx.fillText('SCRATCH HERE', canvas.width / 2, canvas.height / 2)
+            
+            // Reset shadow
+            ctx.shadowColor = 'transparent'
         }
 
         initCanvas()
@@ -79,26 +119,16 @@ export default function ScratchCard({
         let isDrawing = false
         let lastX = 0
         let lastY = 0
+        let hasTriggered = false
 
         const getPos = (e: MouseEvent | TouchEvent) => {
             const rect = canvas.getBoundingClientRect()
             const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX
             const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY
             return {
-                x: clientX - rect.left,
-                y: clientY - rect.top
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height)
             }
-        }
-
-        const scratch = (x: number, y: number) => {
-            ctx.globalCompositeOperation = 'destination-out'
-            ctx.beginPath()
-            ctx.arc(x, y, 20, 0, Math.PI * 2)
-            ctx.fill()
-            
-            // Calculate scratched percentage
-            // This is expensive, so maybe throttle or check less frequently
-            // For now, we'll just use a simple counter or rely on the parent to trigger "reveal"
         }
 
         const startDrawing = (e: MouseEvent | TouchEvent) => {
@@ -116,6 +146,7 @@ export default function ScratchCard({
             ctx.globalCompositeOperation = 'destination-out'
             ctx.lineWidth = 40
             ctx.lineCap = 'round'
+            ctx.lineJoin = 'round'
             ctx.beginPath()
             ctx.moveTo(lastX, lastY)
             ctx.lineTo(x, y)
@@ -124,9 +155,11 @@ export default function ScratchCard({
             lastX = x
             lastY = y
 
-            // Simple check: if user scratches enough, trigger complete
-            // In a real app, we'd count pixels. Here we'll just use a timeout in the parent
-            // or let the user scratch as much as they want until the API returns
+            // Trigger completion once user starts scratching significantly
+            if (!hasTriggered && onScratchComplete) {
+                hasTriggered = true
+                onScratchComplete()
+            }
         }
 
         const stopDrawing = () => {
@@ -148,69 +181,73 @@ export default function ScratchCard({
             canvas.removeEventListener('touchmove', draw)
             canvas.removeEventListener('touchend', stopDrawing)
         }
-    }, [isPreview])
+    }, [isPreview, onScratchComplete])
 
-    // If result is available and we are "scratching" (waiting for API), 
-    // or if it's already revealed, we might want to clear the canvas automatically
+    // Auto-reveal if result is present
     useEffect(() => {
         if (result && !isRevealed && !isPreview) {
-            // If we have a result, we can let the user scratch to reveal it.
-            // Or we can auto-reveal after some time.
-            // For this UI, we assume the parent handles the "isScratching" state 
-            // which might mean "waiting for API".
-            // Once API returns, 'result' is populated.
+             // If we have a result, we can fade out the canvas
+             const canvas = canvasRef.current
+             if (canvas) {
+                 canvas.style.opacity = '0'
+                 setTimeout(() => {
+                     setIsRevealed(true)
+                 }, 700)
+             }
         }
     }, [result, isRevealed, isPreview])
 
     return (
-        <div className="relative w-full max-w-sm mx-auto aspect-[3/4] bg-white rounded-xl overflow-hidden shadow-xl border-4 border-white">
+        <div className={cn("relative w-full max-w-sm mx-auto aspect-[3/4] rounded-xl overflow-hidden", styles.container)}>
             {/* Background Pattern */}
-            <div 
-                className="absolute inset-0 opacity-10"
-                style={{ 
-                    backgroundImage: `radial-gradient(circle at 2px 2px, ${primaryColor} 1px, transparent 0)`,
-                    backgroundSize: '20px 20px'
-                }}
-            />
+            {theme === 'default' && (
+                <div 
+                    className="absolute inset-0 opacity-10"
+                    style={{ 
+                        backgroundImage: `radial-gradient(circle at 2px 2px, ${primaryColor} 1px, transparent 0)`,
+                        backgroundSize: '20px 20px'
+                    }}
+                />
+            )}
 
             <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-6">
                 {/* Header */}
-                <div className="space-y-2">
+                <div className="space-y-2 z-10">
                     <h3 
-                        className="text-2xl font-extrabold uppercase tracking-wider drop-shadow-sm"
-                        style={{ color: primaryColor }}
+                        className={cn("text-2xl font-extrabold uppercase tracking-wider", styles.title)}
+                        style={theme === 'default' ? { color: primaryColor } : {}}
                     >
                         {titleText}
                     </h3>
-                    <div className="h-1 w-20 mx-auto rounded-full bg-gray-200" />
+                    <div className={cn("h-1 w-20 mx-auto rounded-full", theme === 'modern' ? "bg-white/30" : "bg-gray-200")} />
                 </div>
 
                 {/* Scratch Area Container */}
-                <div className="relative w-64 h-64 flex-shrink-0">
+                <div className="relative w-64 h-64 flex-shrink-0 z-10">
                     {/* Reward Layer (Bottom) */}
-                    <div className="absolute inset-0 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center p-4 overflow-hidden">
+                    <div className={cn("absolute inset-0 rounded-xl border-2 border-dashed flex items-center justify-center p-4 overflow-hidden", styles.scratchArea)}>
                         {result ? (
                             <div className="space-y-3 animate-in zoom-in duration-500">
                                 {result.isWin ? (
                                     <>
-                                        <Trophy className="w-16 h-16 mx-auto text-yellow-500 animate-bounce" />
+                                        <Trophy className={cn("w-16 h-16 mx-auto animate-bounce", theme === 'modern' ? "text-yellow-300" : "text-yellow-500")} />
                                         <div>
-                                            <p className="font-bold text-lg text-gray-900">
+                                            <p className={cn("font-bold text-lg", theme === 'modern' ? "text-white" : "text-gray-900")}>
                                                 {successMessage.replace('{{reward_name}}', result.rewardName)}
                                             </p>
                                         </div>
                                     </>
                                 ) : (
                                     <>
-                                        <div className="w-16 h-16 mx-auto bg-gray-200 rounded-full flex items-center justify-center">
+                                        <div className={cn("w-16 h-16 mx-auto rounded-full flex items-center justify-center", theme === 'modern' ? "bg-white/20" : "bg-gray-200")}>
                                             <span className="text-2xl">😔</span>
                                         </div>
-                                        <p className="font-medium text-gray-600">{noPrizeMessage}</p>
+                                        <p className={cn("font-medium", theme === 'modern' ? "text-white/80" : "text-gray-600")}>{noPrizeMessage}</p>
                                     </>
                                 )}
                             </div>
                         ) : (
-                            <div className="text-gray-400 font-medium text-sm">
+                            <div className={cn("font-medium text-sm", theme === 'modern' ? "text-white/50" : "text-gray-400")}>
                                 Prize hidden here
                             </div>
                         )}
@@ -220,7 +257,7 @@ export default function ScratchCard({
                     {!isRevealed && (
                         <div className={cn(
                             "absolute inset-0 rounded-xl overflow-hidden transition-opacity duration-700",
-                            result && isScratching ? "cursor-pointer" : "" // Logic handled by parent mostly
+                            result && isScratching ? "cursor-pointer" : "" 
                         )}>
                             {isPreview ? (
                                 <div className="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center relative">
@@ -234,7 +271,7 @@ export default function ScratchCard({
                                     width={256}
                                     height={256}
                                     className="w-full h-full touch-none"
-                                    onClick={onScratchComplete} // Fallback for simple click
+                                    // We remove onClick here because we handle it via event listeners
                                 />
                             )}
                         </div>
@@ -242,7 +279,7 @@ export default function ScratchCard({
                 </div>
 
                 {/* Footer */}
-                <div className="text-xs text-gray-400">
+                <div className={cn("text-xs z-10", styles.footer)}>
                     Scratch the silver area to reveal your prize!
                 </div>
             </div>

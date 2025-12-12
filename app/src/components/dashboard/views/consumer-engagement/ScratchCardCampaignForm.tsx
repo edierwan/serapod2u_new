@@ -23,10 +23,11 @@ const THEMES = [
 interface ScratchCardCampaignFormProps {
     userProfile: any
     campaignId: string | null
+    initialJourneyId?: string
     onBack: () => void
 }
 
-export default function ScratchCardCampaignForm({ userProfile, campaignId, onBack }: ScratchCardCampaignFormProps) {
+export default function ScratchCardCampaignForm({ userProfile, campaignId, initialJourneyId, onBack }: ScratchCardCampaignFormProps) {
     const [loading, setLoading] = useState(false)
     const [journeys, setJourneys] = useState<any[]>([])
     const [products, setProducts] = useState<any[]>([])
@@ -37,7 +38,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        journey_config_id: '',
+        journey_config_id: initialJourneyId || '',
         status: 'draft',
         start_at: '',
         end_at: '',
@@ -730,7 +731,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                 <Select 
                                     value={formData.journey_config_id} 
                                     onValueChange={handleJourneyChange}
-                                    disabled={journeys.length === 0}
+                                    disabled={journeys.length === 0 || !!initialJourneyId}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder={journeys.length === 0 ? "No journeys found. Please create a journey first." : "Select a journey..."} />
@@ -742,7 +743,9 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, onBac
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    Only journeys with "Scratch Card Game" enabled will show this campaign.
+                                    {initialJourneyId 
+                                        ? "Journey is locked to the selected order." 
+                                        : "Only journeys with \"Scratch Card Game\" enabled will show this campaign."}
                                 </p>
                             </div>
 

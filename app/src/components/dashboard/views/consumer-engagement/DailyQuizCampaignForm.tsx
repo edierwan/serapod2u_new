@@ -16,10 +16,11 @@ import { useToast } from '@/components/ui/use-toast'
 interface DailyQuizCampaignFormProps {
     userProfile: any
     campaignId: string | null
+    initialJourneyId?: string
     onBack: () => void
 }
 
-export default function DailyQuizCampaignForm({ userProfile, campaignId, onBack }: DailyQuizCampaignFormProps) {
+export default function DailyQuizCampaignForm({ userProfile, campaignId, initialJourneyId, onBack }: DailyQuizCampaignFormProps) {
     const [loading, setLoading] = useState(false)
     const [journeys, setJourneys] = useState<any[]>([])
     const { toast } = useToast()
@@ -28,7 +29,7 @@ export default function DailyQuizCampaignForm({ userProfile, campaignId, onBack 
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        journey_config_id: '',
+        journey_config_id: initialJourneyId || '',
         status: 'draft',
         start_at: '',
         end_at: '',
@@ -313,7 +314,7 @@ export default function DailyQuizCampaignForm({ userProfile, campaignId, onBack 
                                 <Select 
                                     value={formData.journey_config_id} 
                                     onValueChange={(val) => setFormData({...formData, journey_config_id: val})}
-                                    disabled={journeys.length === 0}
+                                    disabled={journeys.length === 0 || !!initialJourneyId}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder={journeys.length === 0 ? "No journeys found." : "Select a journey..."} />

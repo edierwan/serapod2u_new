@@ -218,10 +218,11 @@ const SpinWheelPreview = ({ rewards, themeConfig, maxTotalPlays }: { rewards: an
 interface SpinWheelCampaignFormProps {
     userProfile: any
     campaignId: string | null
+    initialJourneyId?: string
     onBack: () => void
 }
 
-export default function SpinWheelCampaignForm({ userProfile, campaignId, onBack }: SpinWheelCampaignFormProps) {
+export default function SpinWheelCampaignForm({ userProfile, campaignId, initialJourneyId, onBack }: SpinWheelCampaignFormProps) {
     const [loading, setLoading] = useState(false)
     const [journeys, setJourneys] = useState<any[]>([])
     const [products, setProducts] = useState<any[]>([])
@@ -232,7 +233,7 @@ export default function SpinWheelCampaignForm({ userProfile, campaignId, onBack 
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        journey_config_id: '',
+        journey_config_id: initialJourneyId || '',
         status: 'draft',
         start_at: '',
         end_at: '',
@@ -886,7 +887,7 @@ export default function SpinWheelCampaignForm({ userProfile, campaignId, onBack 
                                 <Select 
                                     value={formData.journey_config_id} 
                                     onValueChange={handleJourneyChange}
-                                    disabled={journeys.length === 0}
+                                    disabled={journeys.length === 0 || !!initialJourneyId}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder={journeys.length === 0 ? "No journeys found. Please create a journey first." : "Select a journey..."} />

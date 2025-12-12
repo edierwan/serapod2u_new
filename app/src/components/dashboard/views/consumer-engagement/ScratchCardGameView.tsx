@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Plus, Search, Filter, Edit, Eye, Copy, Trash2, Gift, Gamepad2, Sparkles, Ticket } from 'lucide-react'
+import { Plus, Search, Filter, Edit, Eye, Copy, Trash2, Gift, Gamepad2, Sparkles, Ticket, ArrowLeft } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
     Table,
     TableBody,
@@ -34,73 +35,135 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
     const [campaigns, setCampaigns] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
+    
+    // New state for Order Selection
+    const [selectedOrder, setSelectedOrder] = useState<any>(null)
+    const [orders, setOrders] = useState<any[]>([])
+    const [loadingOrders, setLoadingOrders] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const itemsPerPage = 9
+    
+    // State for active game status (for tab coloring)
+    const [gameStatuses, setGameStatuses] = useState({
+        scratch: false,
+        spin: false,
+        quiz: false
+    })
+
     const { toast } = useToast()
     const supabase = createClient()
 
     useEffect(() => {
-        fetchCampaigns()
-    }, [activeTab])
+        fetchOrders()
+    }, [])
+
+    useEffect(() => {
+        if (selectedOrder) {
+            fetchCampaigns()
+            checkGameStatuses()
+        }
+    }, [selectedOrder, activeTab])
+
+    const fetchOrders = async () => {
+        setLoadingOrders(true)
+        console.log('Fetching orders for org:', userProfile.organization_id)
+        
+        // 1. Fetch orders
+        const { data: orders, error: ordersError } = await supabase
+            .from('orders')
+            .select('id, order_no')
+            .eq('company_id', userProfile.organization_id)
+            .order('created_at', { ascending: false })
+
+        if (ordersError) {
+            console.error('Error fetching orders:', ordersError)
+            toast({
+                title: "Error",
+                description: "Failed to load orders",
+                variant: "destructive",
+            })
+            setLoadingOrders(false)
+            return
+        }
+
+        // 2. Fetch journey links separately to avoid join issues/RLS complexity
+        const orderIds = orders.map(o => o.id)
+        const { data: links, error: linksError } = await supabase
+            .from('journey_order_links')
+            .select('order_id, journey_config_id')
+            .in('order_id', orderIds)
+
+        if (linksError) {
+            console.error('Error fetching links:', linksError)
+            // Don't fail completely, just assume no links
+        }
+
+        // 3. Map links to orders
+        const linkMap = new Map(links?.map(l => [l.order_id, l.journey_config_id]) || [])
+        
+        const formattedOrders = orders.map((order: any) => ({
+            id: order.id,
+            order_no: order.order_no,
+            journey_config_id: linkMap.get(order.id)
+        }))
+        
+        console.log('Formatted orders:', formattedOrders)
+        setOrders(formattedOrders)
+        setLoadingOrders(false)
+    }
+
+    const checkGameStatuses = async () => {
+        if (!selectedOrder?.journey_config_id) return
+
+        const checkStatus = async (table: string) => {
+            const { count } = await supabase
+                .from(table)
+                .select('*', { count: 'exact', head: true })
+                .eq('journey_config_id', selectedOrder.journey_config_id)
+                .eq('status', 'active')
+            return (count || 0) > 0
+        }
+
+        const [scratchActive, spinActive, quizActive] = await Promise.all([
+            checkStatus('scratch_card_campaigns'),
+            checkStatus('spin_wheel_campaigns'),
+            checkStatus('daily_quiz_campaigns')
+        ])
+
+        setGameStatuses({
+            scratch: scratchActive,
+            spin: spinActive,
+            quiz: quizActive
+        })
+    }
 
     const fetchCampaigns = async () => {
+        if (!selectedOrder) return
+
         setLoading(true)
         
         let tableName = 'scratch_card_campaigns'
         if (activeTab === 'spin-wheel') tableName = 'spin_wheel_campaigns'
         if (activeTab === 'daily-quiz') tableName = 'daily_quiz_campaigns'
 
-        // Fetch campaigns
+        // Fetch campaigns for the selected journey
         const { data, error } = await supabase
             .from(tableName)
             .select('*')
             .eq('org_id', userProfile.organization_id)
+            .eq('journey_config_id', selectedOrder.journey_config_id)
             .order('created_at', { ascending: false })
 
         if (error) {
             console.error('Error fetching campaigns:', error)
-            // Don't show error toast immediately as table might not exist yet (migration pending)
-            // toast({
-            //     title: "Error",
-            //     description: "Failed to load campaigns",
-            //     variant: "destructive",
-            // })
             setCampaigns([])
-            setLoading(false)
-            return
+        } else {
+            const campaignsWithOrder = data.map((c: any) => ({
+                ...c,
+                order_no: selectedOrder.order_no
+            }))
+            setCampaigns(campaignsWithOrder)
         }
-
-        // Fetch stats (simplified for now, as RPCs might differ)
-        // For now, we'll skip complex stats fetching for new game types to avoid errors
-        // We can add specific stats fetching later
-        
-        // Fetch Order No for each campaign
-        const campaignsWithOrder = await Promise.all((data || []).map(async (c: any) => {
-            let orderNo = '-'
-            if (c.journey_config_id) {
-                // Try to find order via journey_order_links
-                const { data: linkData } = await supabase
-                    .from('journey_order_links')
-                    .select('orders(order_no)')
-                    .eq('journey_config_id', c.journey_config_id)
-                    .limit(1)
-                    .maybeSingle()
-                
-                if (linkData?.orders) {
-                    // @ts-ignore
-                    orderNo = linkData.orders.order_no
-                }
-            }
-            
-            // Placeholder stats
-            const stats = { plays_count: 0, winners_count: 0 }
-            
-            return { 
-                ...c, 
-                order_no: orderNo,
-                plays_count: stats.plays_count,
-                winners_count: stats.winners_count
-            }
-        }))
-        setCampaigns(campaignsWithOrder)
         setLoading(false)
     }
 
@@ -123,6 +186,13 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
         setView('list')
         setSelectedCampaignId(null)
         fetchCampaigns()
+        checkGameStatuses()
+    }
+
+    const handleBackToOrders = () => {
+        setSelectedOrder(null)
+        setCampaigns([])
+        setView('list')
     }
 
     const handleDelete = async (campaign: any) => {
@@ -256,6 +326,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 <ScratchCardCampaignForm 
                     userProfile={userProfile} 
                     campaignId={selectedCampaignId} 
+                    initialJourneyId={selectedOrder?.journey_config_id}
                     onBack={handleBack} 
                 />
             )
@@ -265,6 +336,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 <SpinWheelCampaignForm 
                     userProfile={userProfile} 
                     campaignId={selectedCampaignId} 
+                    initialJourneyId={selectedOrder?.journey_config_id}
                     onBack={handleBack} 
                 />
             )
@@ -274,10 +346,107 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 <DailyQuizCampaignForm 
                     userProfile={userProfile} 
                     campaignId={selectedCampaignId} 
+                    initialJourneyId={selectedOrder?.journey_config_id}
                     onBack={handleBack} 
                 />
             )
         }
+    }
+
+    // If no order selected, show order selector
+    if (!selectedOrder) {
+        const totalPages = Math.ceil(orders.length / itemsPerPage)
+        const currentOrders = orders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+        return (
+             <div className="space-y-6">
+                <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Games</h2>
+                    <p className="text-muted-foreground">
+                        Select an Order to manage games.
+                    </p>
+                </div>
+                
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Select Order</CardTitle>
+                        <CardDescription>Choose an order to configure games for its journey.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {loadingOrders ? (
+                            <div className="text-center py-4">Loading orders...</div>
+                        ) : orders.length === 0 ? (
+                            <div className="text-center py-4 text-muted-foreground">
+                                No orders found.
+                            </div>
+                        ) : (
+                            <>
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-4">
+                                    {currentOrders.map((order) => (
+                                        <Button
+                                            key={order.id}
+                                            variant="outline"
+                                            className={`h-auto p-3 flex flex-col items-start gap-1.5 ${
+                                                !order.journey_config_id 
+                                                    ? 'opacity-60 cursor-not-allowed' 
+                                                    : 'hover:border-green-500 hover:bg-green-50 bg-green-50/30 border-green-200'
+                                            }`}
+                                            onClick={() => {
+                                                if (order.journey_config_id) {
+                                                    setSelectedOrder(order)
+                                                } else {
+                                                    toast({
+                                                        title: "No Journey Linked",
+                                                        description: "Please create a journey for this order in Journey Builder first.",
+                                                        variant: "destructive"
+                                                    })
+                                                }
+                                            }}
+                                        >
+                                            <div className="flex justify-between w-full items-center">
+                                                <span className="font-bold text-base">{order.order_no}</span>
+                                                {!order.journey_config_id ? (
+                                                    <Badge variant="secondary" className="text-[10px] px-1.5 h-5">No Journey</Badge>
+                                                ) : (
+                                                    <Badge variant="outline" className="text-[10px] px-1.5 h-5 bg-green-100 text-green-700 border-green-200">Linked</Badge>
+                                                )}
+                                            </div>
+                                            <span className="text-[11px] text-muted-foreground">
+                                                {order.journey_config_id ? 'Click to manage games' : 'Journey required'}
+                                            </span>
+                                        </Button>
+                                    ))}
+                                </div>
+                                
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-center gap-2 mt-6">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                        >
+                                            Previous
+                                        </Button>
+                                        <span className="text-sm text-muted-foreground">
+                                            Page {currentPage} of {totalPages}
+                                        </span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                        >
+                                            Next
+                                        </Button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        )
     }
 
     if (view === 'stats' && selectedCampaignId) {
@@ -307,7 +476,14 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                     </TableRow>
                 ) : campaigns.length === 0 ? (
                     <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8">No campaigns found. Create one to get started.</TableCell>
+                        <TableCell colSpan={5} className="text-center py-8">
+                            <div className="flex flex-col items-center gap-2">
+                                <p>No campaigns found for this order.</p>
+                                <Button onClick={handleCreate} size="sm">
+                                    <Plus className="mr-2 h-4 w-4" /> Create Campaign
+                                </Button>
+                            </div>
+                        </TableCell>
                     </TableRow>
                 ) : (
                     campaigns.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map((campaign) => (
@@ -367,30 +543,49 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Games</h2>
-                    <p className="text-muted-foreground">
-                        Create and manage interactive games for your consumers.
-                    </p>
+                <div className="flex items-center gap-4">
+                    <Button variant="ghost" size="icon" onClick={handleBackToOrders}>
+                        <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                    <div>
+                        <h2 className="text-3xl font-bold tracking-tight">Games</h2>
+                        <p className="text-muted-foreground">
+                            Managing games for Order: <span className="font-mono font-medium text-foreground">{selectedOrder.order_no}</span>
+                        </p>
+                    </div>
                 </div>
-                <Button onClick={handleCreate}>
-                    <Plus className="mr-2 h-4 w-4" /> New Campaign
-                </Button>
+                {campaigns.length > 0 && (
+                    <Button onClick={handleCreate}>
+                        <Plus className="mr-2 h-4 w-4" /> New Campaign
+                    </Button>
+                )}
             </div>
 
             <Tabs defaultValue="scratch-card" value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
-                    <TabsTrigger value="scratch-card" className="flex items-center gap-2">
-                        <Ticket className="w-4 h-4" />
+                    <TabsTrigger 
+                        value="scratch-card" 
+                        className={`flex items-center gap-2 ${gameStatuses.scratch ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
+                    >
+                        <Ticket className={`w-4 h-4 ${gameStatuses.scratch ? 'text-green-600' : ''}`} />
                         Scratch Card
+                        {gameStatuses.scratch && <Badge variant="secondary" className="ml-2 bg-green-200 text-green-800 hover:bg-green-200 text-[10px] h-5">Active</Badge>}
                     </TabsTrigger>
-                    <TabsTrigger value="spin-wheel" className="flex items-center gap-2">
-                        <Gamepad2 className="w-4 h-4" />
+                    <TabsTrigger 
+                        value="spin-wheel" 
+                        className={`flex items-center gap-2 ${gameStatuses.spin ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
+                    >
+                        <Gamepad2 className={`w-4 h-4 ${gameStatuses.spin ? 'text-green-600' : ''}`} />
                         Spin the Wheel
+                        {gameStatuses.spin && <Badge variant="secondary" className="ml-2 bg-green-200 text-green-800 hover:bg-green-200 text-[10px] h-5">Active</Badge>}
                     </TabsTrigger>
-                    <TabsTrigger value="daily-quiz" className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" />
+                    <TabsTrigger 
+                        value="daily-quiz" 
+                        className={`flex items-center gap-2 ${gameStatuses.quiz ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
+                    >
+                        <Sparkles className={`w-4 h-4 ${gameStatuses.quiz ? 'text-green-600' : ''}`} />
                         Daily Quiz
+                        {gameStatuses.quiz && <Badge variant="secondary" className="ml-2 bg-green-200 text-green-800 hover:bg-green-200 text-[10px] h-5">Active</Badge>}
                     </TabsTrigger>
                 </TabsList>
 

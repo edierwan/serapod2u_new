@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => {
             const currentPath = window.location.pathname
             if (currentPath.startsWith('/dashboard')) {
-              console.error('⚠️ Session expired unexpectedly - redirecting to login')
+              console.warn('⚠️ Session expired unexpectedly - redirecting to login')
               router.push('/login')
             }
           }, 100)
