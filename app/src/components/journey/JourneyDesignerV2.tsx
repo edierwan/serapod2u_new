@@ -106,12 +106,13 @@ interface JourneyConfig {
     banner_config?: {
         enabled: boolean
         template: 'grid' | 'carousel'
-        location?: 'home' | 'rewards' | 'products' | 'profile'
+        location?: 'home' | 'rewards' | 'products' | 'profile' // kept for backward compatibility
         items: Array<{
             id: string
             image_url: string
             link_to: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
             expires_at: string
+            page?: 'home' | 'rewards' | 'products' | 'profile' // new: which page to show this banner
         }>
     }
 }
@@ -151,6 +152,7 @@ export default function JourneyDesignerV2({
     const [previewMetrics, setPreviewMetrics] = useState({ top: 104, maxHeight: 640 })
     const { toast } = useToast()
     const [activationTrigger, setActivationTrigger] = useState<'shipped_distributor' | 'received_warehouse'>('shipped_distributor')
+    const [activeBannerTab, setActiveBannerTab] = useState<'home' | 'rewards' | 'products' | 'profile'>('home')
 
     useEffect(() => {
         const fetchOrgSettings = async () => {
@@ -1249,7 +1251,7 @@ export default function JourneyDesignerV2({
                                 </div>
                             </div>
 
-                            {/* Scratch Card Game */}
+                            {/* Games */}
                             <div className="flex items-start justify-between p-4 bg-purple-50 rounded-lg border border-purple-200">
                                 <div className="flex items-start gap-3 flex-1">
                                     <div className="p-2 bg-purple-100 rounded-lg">
@@ -1257,14 +1259,14 @@ export default function JourneyDesignerV2({
                                     </div>
                                     <div className="flex-1">
                                         <div className="flex items-center justify-between">
-                                            <h3 className="font-semibold text-purple-900">Scratch Card Game</h3>
+                                            <h3 className="font-semibold text-purple-900">Games</h3>
                                             <Switch
                                                 checked={config.enable_scratch_card_game}
                                                 onCheckedChange={(checked) => setConfig({ ...config, enable_scratch_card_game: checked })}
                                             />
                                         </div>
                                         <p className="text-sm text-purple-700 mt-1">
-                                            Let consumers scratch to reveal random gifts
+                                            Enable games like Scratch Card, Spin the Wheel, and Daily Quiz
                                         </p>
                                         {config.enable_scratch_card_game && (
                                             <div className="mt-3 space-y-2">
@@ -1336,26 +1338,14 @@ export default function JourneyDesignerV2({
                                 <div className="space-y-4 p-4 border border-gray-200 rounded-lg">
                                     <div className="space-y-2">
                                         <Label>Banner Page</Label>
-                                        <Select
-                                            value={config.banner_config.location || 'home'}
-                                            onValueChange={(value: 'home' | 'rewards' | 'products' | 'profile') => setConfig({
-                                                ...config,
-                                                banner_config: {
-                                                    ...config.banner_config!,
-                                                    location: value
-                                                }
-                                            })}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="home">Home</SelectItem>
-                                                <SelectItem value="rewards">Rewards</SelectItem>
-                                                <SelectItem value="products">Product</SelectItem>
-                                                <SelectItem value="profile">Profile</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Tabs value={activeBannerTab} onValueChange={(value) => setActiveBannerTab(value as 'home' | 'rewards' | 'products' | 'profile')} className="w-full">
+                                            <TabsList className="grid w-full grid-cols-4">
+                                                <TabsTrigger value="home">Home</TabsTrigger>
+                                                <TabsTrigger value="rewards">Rewards</TabsTrigger>
+                                                <TabsTrigger value="products">Product</TabsTrigger>
+                                                <TabsTrigger value="profile">Profile</TabsTrigger>
+                                            </TabsList>
+                                        </Tabs>
                                     </div>
 
                                     <div className="space-y-2">
@@ -1382,7 +1372,7 @@ export default function JourneyDesignerV2({
 
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between">
-                                            <Label>Banner Items</Label>
+                                            <Label>Banner Items for {activeBannerTab.charAt(0).toUpperCase() + activeBannerTab.slice(1)} Page</Label>
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -1392,7 +1382,8 @@ export default function JourneyDesignerV2({
                                                         id: crypto.randomUUID(),
                                                         image_url: '',
                                                         link_to: 'rewards',
-                                                        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                                                        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                                                        page: activeBannerTab
                                                     })
                                                     setConfig({
                                                         ...config,
@@ -1407,7 +1398,9 @@ export default function JourneyDesignerV2({
                                             </Button>
                                         </div>
 
-                                        {config.banner_config.items.map((item, index) => (
+                                        {config.banner_config.items.filter(item => (item.page || 'home') === activeBannerTab).map((item) => {
+                                            const actualIndex = config.banner_config!.items.findIndex(i => i.id === item.id)
+                                            return (
                                             <div key={item.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 relative">
                                                 <Button
                                                     variant="ghost"
@@ -1434,7 +1427,7 @@ export default function JourneyDesignerV2({
                                                             value={item.image_url}
                                                             onChange={(e) => {
                                                                 const newItems = [...config.banner_config!.items]
-                                                                newItems[index].image_url = e.target.value
+                                                                newItems[actualIndex].image_url = e.target.value
                                                                 setConfig({
                                                                     ...config,
                                                                     banner_config: {
@@ -1455,7 +1448,7 @@ export default function JourneyDesignerV2({
                                                                     const file = e.target.files?.[0]
                                                                     if (file) handleImageUpload(file, (url) => {
                                                                         const newItems = [...config.banner_config!.items]
-                                                                        newItems[index].image_url = url
+                                                                        newItems[actualIndex].image_url = url
                                                                         setConfig({
                                                                             ...config,
                                                                             banner_config: {
@@ -1497,7 +1490,7 @@ export default function JourneyDesignerV2({
                                                             value={item.link_to}
                                                             onValueChange={(value: string) => {
                                                                 const newItems = [...config.banner_config!.items]
-                                                                newItems[index].link_to = value
+                                                                newItems[actualIndex].link_to = value
                                                                 setConfig({
                                                                     ...config,
                                                                     banner_config: {
@@ -1525,7 +1518,7 @@ export default function JourneyDesignerV2({
                                                             value={item.expires_at}
                                                             onChange={(e) => {
                                                                 const newItems = [...config.banner_config!.items]
-                                                                newItems[index].expires_at = e.target.value
+                                                                newItems[actualIndex].expires_at = e.target.value
                                                                 setConfig({
                                                                     ...config,
                                                                     banner_config: {
@@ -1538,7 +1531,7 @@ export default function JourneyDesignerV2({
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                        )})}
                                     </div>
                                 </div>
                             )}

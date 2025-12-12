@@ -48,6 +48,9 @@ import {
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { AnnouncementBanner } from '../AnnouncementBanner'
+import ScratchCard from '../ScratchCard'
+import SpinWheelGame from '../SpinWheelGame'
+import DailyQuizGame from '../DailyQuizGame'
 import { extractTokenFromQRCode } from '@/utils/qrSecurity'
 import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimation'
 import { LuckyDrawSuccessAnimation } from '@/components/animations/LuckyDrawSuccessAnimation'
@@ -1020,6 +1023,9 @@ export default function PremiumLoyaltyTemplate({
             case 'redemption':
                 return !config.skip_security_code_for_redemption
             case 'scratch-card':
+            case 'play-scratch-card':
+            case 'spin-wheel':
+            case 'daily-quiz':
             case 'games':
                 return !config.skip_security_code_for_scratch_card
             default:
@@ -1057,6 +1063,15 @@ export default function PremiumLoyaltyTemplate({
             case 'games':
             case 'scratch-card':
                 setActiveTab('games')
+                break
+            case 'play-scratch-card':
+                setActiveTab('play-scratch-card')
+                break
+            case 'spin-wheel':
+                setActiveTab('spin-wheel')
+                break
+            case 'daily-quiz':
+                setActiveTab('daily-quiz')
                 break
             case 'redeem':
             case 'redemption':
@@ -1515,15 +1530,15 @@ export default function PremiumLoyaltyTemplate({
     const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile') => {
         if (!config.banner_config?.enabled || config.banner_config.items.length === 0) return null
         
-        // Default to 'home' if location is not set
-        const bannerLocation = config.banner_config.location || 'home'
+        // Filter items by page (defaults to 'home' if page is not set)
+        const pageItems = config.banner_config.items.filter(item => (item.page || 'home') === location)
         
-        if (bannerLocation !== location) return null
+        if (pageItems.length === 0) return null
 
         return (
-            <div className="px-5 mt-6">
+            <div className="mt-6">
                 <AnnouncementBanner
-                    items={config.banner_config.items}
+                    items={pageItems}
                     template={config.banner_config.template}
                     onItemClick={(item) => {
                         if (item.link_to === 'rewards') setActiveTab('rewards')
@@ -2703,7 +2718,7 @@ export default function PremiumLoyaltyTemplate({
             <div className="px-5 -mt-4 grid gap-4">
                 {config.enable_scratch_card_game && (
                     <button 
-                        onClick={() => handleProtectedAction('scratch-card')}
+                        onClick={() => handleProtectedAction('play-scratch-card')}
                         className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
                     >
                         <div className="flex items-center gap-4">
@@ -2719,36 +2734,99 @@ export default function PremiumLoyaltyTemplate({
                     </button>
                 )}
 
-                {/* Coming Soon Games */}
-                <div className="bg-white rounded-2xl shadow-sm p-5 opacity-60">
+                {/* Spin the Wheel */}
+                <button 
+                    onClick={() => handleProtectedAction('spin-wheel')}
+                    className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
+                >
                     <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-xl bg-gray-200 flex items-center justify-center">
-                            <Gamepad2 className="w-8 h-8 text-gray-400" />
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                            <Gamepad2 className="w-8 h-8 text-white" />
                         </div>
                         <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-gray-900">Spin the Wheel</h3>
-                                <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
-                            </div>
+                            <h3 className="font-bold text-gray-900">Spin the Wheel</h3>
                             <p className="text-sm text-gray-500">Spin to win amazing rewards!</p>
                         </div>
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
                     </div>
-                </div>
+                </button>
 
-                <div className="bg-white rounded-2xl shadow-sm p-5 opacity-60">
+                {/* Daily Quiz */}
+                <button 
+                    onClick={() => handleProtectedAction('daily-quiz')}
+                    className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
+                >
                     <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-xl bg-gray-200 flex items-center justify-center">
-                            <Sparkles className="w-8 h-8 text-gray-400" />
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                            <Sparkles className="w-8 h-8 text-white" />
                         </div>
                         <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-gray-900">Daily Quiz</h3>
-                                <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
-                            </div>
+                            <h3 className="font-bold text-gray-900">Daily Quiz</h3>
                             <p className="text-sm text-gray-500">Answer questions to earn points!</p>
                         </div>
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
                     </div>
-                </div>
+                </button>
+            </div>
+        </div>
+    )
+
+    const renderScratchCardTab = () => (
+        <div className="flex-1 overflow-y-auto bg-gray-50 flex flex-col">
+            <div className="p-4 flex items-center gap-3 bg-white shadow-sm z-10">
+                <button onClick={() => setActiveTab('games')} className="p-2 -ml-2">
+                    <ArrowLeft className="w-6 h-6 text-gray-600" />
+                </button>
+                <h1 className="text-lg font-bold">Scratch & Win</h1>
+            </div>
+            <div className="flex-1 p-6 flex items-center justify-center">
+                <ScratchCard 
+                    primaryColor={config.primary_color}
+                    titleText={config.scratch_card_title || 'Scratch & Win'}
+                    successMessage="You won: {{reward_name}}"
+                    noPrizeMessage="Better luck next time!"
+                    onScratchComplete={() => {
+                        // Handle completion logic
+                    }}
+                />
+            </div>
+        </div>
+    )
+
+    const renderSpinWheelTab = () => (
+        <div className="flex-1 overflow-y-auto bg-gray-50 flex flex-col">
+            <div className="p-4 flex items-center gap-3 bg-white shadow-sm z-10">
+                <button onClick={() => setActiveTab('games')} className="p-2 -ml-2">
+                    <ArrowLeft className="w-6 h-6 text-gray-600" />
+                </button>
+                <h1 className="text-lg font-bold">Spin the Wheel</h1>
+            </div>
+            <div className="flex-1 p-6 flex items-center justify-center">
+                <SpinWheelGame 
+                    primaryColor={config.primary_color}
+                    onSpinComplete={() => {
+                        // Handle completion logic
+                    }}
+                />
+            </div>
+        </div>
+    )
+
+    const renderDailyQuizTab = () => (
+        <div className="flex-1 overflow-y-auto bg-gray-50 flex flex-col">
+            <div className="p-4 flex items-center gap-3 bg-white shadow-sm z-10">
+                <button onClick={() => setActiveTab('games')} className="p-2 -ml-2">
+                    <ArrowLeft className="w-6 h-6 text-gray-600" />
+                </button>
+                <h1 className="text-lg font-bold">Daily Quiz</h1>
+            </div>
+            <div className="flex-1 p-6">
+                <DailyQuizGame 
+                    primaryColor={config.primary_color}
+                    onQuizComplete={(score) => {
+                        // Handle completion logic
+                    }}
+                />
             </div>
         </div>
     )
@@ -3459,6 +3537,12 @@ export default function PremiumLoyaltyTemplate({
                 return renderProductsTab()
             case 'games':
                 return renderGamesTab()
+            case 'play-scratch-card':
+                return renderScratchCardTab()
+            case 'spin-wheel':
+                return renderSpinWheelTab()
+            case 'daily-quiz':
+                return renderDailyQuizTab()
             case 'profile':
                 return renderProfileTab()
             case 'account-settings':

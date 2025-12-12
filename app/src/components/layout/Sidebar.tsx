@@ -241,7 +241,7 @@ const navigationItems: MenuItem[] = [
       },
       {
         id: 'scratch-card-game',
-        label: 'Scratch Card Game',
+        label: 'Games',
         icon: Gift,
         access: {
           allowedOrgTypes: ['HQ'],

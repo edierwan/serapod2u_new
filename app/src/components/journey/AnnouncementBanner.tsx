@@ -17,6 +17,7 @@ interface BannerItem {
     cropped_image_url?: string  // Optimized cropped version
     link_to?: 'rewards' | 'products' | string
     expires_at?: string
+    page?: 'home' | 'rewards' | 'products' | 'profile'  // Which page to display the banner on
     crop_data?: {
         x: number
         y: number
