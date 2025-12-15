@@ -11,6 +11,8 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now()
   const supabase = createAdminClient()
 
+  console.log('🚀 Warehouse Receiving Worker started')
+
   try {
     // 1. Find a batch to process (queued or processing)
     const { data: batch, error: fetchError } = await supabase
@@ -39,11 +41,17 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .single()
 
-    if (fetchError || !batch) {
+    if (fetchError) {
+      console.log('📭 No batches to receive or error:', fetchError.message)
+      return NextResponse.json({ message: 'No batches to receive', error: fetchError.message })
+    }
+    
+    if (!batch) {
+      console.log('📭 No batches found with queued/processing status')
       return NextResponse.json({ message: 'No batches to receive' })
     }
 
-    console.log(`📦 Receiving batch ${batch.id} (Status: ${batch.receiving_status})`)
+    console.log(`📦 Found batch ${batch.id} (Status: ${batch.receiving_status}, Total unique: ${batch.total_unique_codes})`)
 
     const order = batch.orders as any
     let warehouseOrgId = order?.buyer_org_id
