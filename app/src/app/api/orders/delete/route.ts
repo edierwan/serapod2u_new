@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
-import { cascadeDeleteOrder } from '@/lib/utils/deletionValidation'
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { orderId, forceDelete = true } = body
+    const { orderId } = body
 
     if (!orderId) {
       return NextResponse.json({ error: 'Order ID is required' }, { status: 400 })
@@ -50,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`🗑️ Super Admin ${user.email} deleting order ${order.order_no} (${orderId})`)
 
-    // Delete Excel files from storage
+    // Delete Excel files from storage first
     const { data: excelFiles } = await adminSupabase.storage
       .from('order-excel')
       .list(`${orderId}/`)
@@ -61,13 +60,27 @@ export async function POST(request: NextRequest) {
       console.log(`🗑️ Deleted ${excelFiles.length} Excel files from storage`)
     }
 
-    // Cascade delete all database records
-    await cascadeDeleteOrder(adminSupabase as any, orderId, forceDelete)
+    // Use RPC function for fast, reliable hard delete that bypasses RLS
+    console.log('🗑️ Calling hard_delete_order RPC...')
+    const { data: result, error: rpcError } = await adminSupabase
+      .rpc('hard_delete_order', { p_order_id: orderId })
+
+    if (rpcError) {
+      console.error('❌ RPC error:', rpcError)
+      throw new Error(rpcError.message || 'Failed to delete order via RPC')
+    }
+
+    if (!result?.success) {
+      throw new Error(result?.error || 'Failed to delete order')
+    }
+
+    console.log('🎉 Order deleted successfully:', result)
 
     return NextResponse.json({ 
       success: true, 
       message: `Order ${order.order_no} deleted successfully`,
-      order_no: order.order_no
+      order_no: order.order_no,
+      deleted: result.deleted
     })
   } catch (error: any) {
     console.error('❌ Error deleting order:', error)

@@ -152,10 +152,11 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
   const fetchOrders = useCallback(async () => {
     try {
       setLoading(true);
+      // Use buyer_org_id or seller_org_id to find orders for this organization
       const { data, error } = await supabase
         .from('orders')
         .select('id, order_no, order_type, status, has_redeem, company_id')
-        .eq('company_id', userProfile.organization_id)
+        .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
         .eq('has_redeem', true)
         .order('order_no', { ascending: false });
 

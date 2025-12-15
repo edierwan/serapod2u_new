@@ -711,27 +711,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   }
 
   const handleUpdateQuantity = (variantId: string, qty: number) => {
-    // Available units per case options
-    const availableUnitsPerCase = [50, 100, 200]
-    
-    // Check if quantity is divisible by current units per case
-    if (qty > 0 && qty % unitsPerCase !== 0) {
-      // Check if quantity itself could be a valid units per case
-      if (availableUnitsPerCase.includes(qty)) {
-        // Automatically adjust units per case to match the quantity
-        setUnitsPerCase(qty)
-      } else {
-        // Quantity doesn't match any standard case size
-        // Find if it's a multiple of any available units per case
-        const validOption = availableUnitsPerCase.find(units => qty % units === 0)
-        
-        if (validOption) {
-          // It's a valid multiple - suggest or auto-adjust
-        }
-        // If not divisible by any option, we'll show validation error in UI
-      }
-    }
-    
+    // Simply update the quantity - don't auto-adjust units per case
+    // The user can manually adjust units per case if needed
+    // Auto-adjusting based on keystroke intermediate values causes bugs
+    // (e.g., typing "50000" passes through "50" which was incorrectly triggering case size change)
     setOrderItems(orderItems.map(item => 
       item.variant_id === variantId 
         ? { ...item, qty, line_total: qty * item.unit_price } 

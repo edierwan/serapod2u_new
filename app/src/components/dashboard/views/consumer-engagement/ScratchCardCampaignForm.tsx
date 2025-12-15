@@ -59,16 +59,34 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, initi
 
     const [rewards, setRewards] = useState<any[]>([])
     const [winners, setWinners] = useState<any[]>([])
+    const [organizations, setOrganizations] = useState<any[]>([])
+    const [selectedOrgId, setSelectedOrgId] = useState<string>('')
+
+    const isAdmin = ['SUPERADMIN', 'SA', 'HQ_ADMIN', 'super_admin', 'admin_hq', 'SUPER_ADMIN'].includes(userProfile?.role_code)
 
     useEffect(() => {
         fetchJourneys()
         fetchProducts()
         fetchOrgSettings()
+        if (isAdmin) {
+            fetchOrganizations()
+        }
         if (campaignId) {
             fetchCampaign()
             fetchWinners()
+        } else if (userProfile?.organization_id) {
+            setSelectedOrgId(userProfile.organization_id)
         }
     }, [campaignId])
+
+    const fetchOrganizations = async () => {
+        const { data } = await supabase
+            .from('organizations')
+            .select('id, org_name')
+            .order('org_name')
+        
+        if (data) setOrganizations(data)
+    }
 
     const fetchWinners = async () => {
         if (!campaignId) return
@@ -308,6 +326,10 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, initi
             theme_config: campaign.theme_config || formData.theme_config
         })
 
+        if (campaign.org_id) {
+            setSelectedOrgId(campaign.org_id)
+        }
+
         const { data: rewardsData } = await supabase
             .from('scratch_card_rewards')
             .select('*')
@@ -320,6 +342,11 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, initi
     const handleSave = async () => {
         if (!formData.name) {
             toast({ title: "Error", description: "Campaign name is required", variant: "destructive" })
+            return
+        }
+
+        if (!selectedOrgId && !userProfile.organization_id) {
+            toast({ title: "Error", description: "Organization is required", variant: "destructive" })
             return
         }
 
@@ -337,7 +364,7 @@ export default function ScratchCardCampaignForm({ userProfile, campaignId, initi
         setLoading(true)
         
         const campaignData = {
-            org_id: userProfile.organization_id,
+            org_id: selectedOrgId || userProfile.organization_id,
             name: formData.name,
             description: formData.description,
             journey_config_id: formData.journey_config_id || null,

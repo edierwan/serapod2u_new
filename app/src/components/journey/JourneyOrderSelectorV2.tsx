@@ -49,11 +49,11 @@ export default function JourneyOrderSelectorV2({
         try {
             setLoading(true)
 
-            // Get orders for this organization
+            // Get orders for this organization - use buyer_org_id or seller_org_id
             const { data: orders, error: ordersError } = await supabase
                 .from('orders')
                 .select('id, order_no, order_type, status, has_redeem, has_lucky_draw, company_id, created_at')
-                .eq('company_id', userProfile.organization_id)
+                .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
                 .order('created_at', { ascending: false })
 
             if (ordersError) {

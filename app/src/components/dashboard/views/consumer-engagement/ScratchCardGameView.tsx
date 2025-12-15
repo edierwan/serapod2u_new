@@ -68,11 +68,11 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
         setLoadingOrders(true)
         console.log('Fetching orders for org:', userProfile.organization_id)
         
-        // 1. Fetch orders
+        // 1. Fetch orders - use buyer_org_id or seller_org_id to find orders for this organization
         const { data: orders, error: ordersError } = await supabase
             .from('orders')
             .select('id, order_no')
-            .eq('company_id', userProfile.organization_id)
+            .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
             .order('created_at', { ascending: false })
 
         if (ordersError) {

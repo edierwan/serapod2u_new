@@ -223,26 +223,23 @@ export default function PremiumLoyaltyTemplate({
     const checkActiveGames = async () => {
         if (!config?.id) return
 
-        const checkStatus = async (table: string) => {
-            const { count } = await supabase
-                .from(table)
-                .select('*', { count: 'exact', head: true })
-                .eq('journey_config_id', config.id)
-                .eq('status', 'active')
-            return (count || 0) > 0
+        try {
+            // Use API route to bypass RLS for public consumer access
+            const response = await fetch(`/api/consumer/active-games?journey_config_id=${config.id}`)
+            const result = await response.json()
+            
+            if (result.success) {
+                setActiveGames({
+                    scratch: result.activeGames?.scratch || false,
+                    spin: result.activeGames?.spin || false,
+                    quiz: result.activeGames?.quiz || false
+                })
+            } else {
+                console.error('Error checking active games:', result.error)
+            }
+        } catch (error) {
+            console.error('Error checking active games:', error)
         }
-
-        const [scratchActive, spinActive, quizActive] = await Promise.all([
-            checkStatus('scratch_card_campaigns'),
-            checkStatus('spin_wheel_campaigns'),
-            checkStatus('daily_quiz_campaigns')
-        ])
-
-        setActiveGames({
-            scratch: scratchActive,
-            spin: spinActive,
-            quiz: quizActive
-        })
     }
     const [showLoginForm, setShowLoginForm] = useState(false)
     const [loginEmail, setLoginEmail] = useState('')
@@ -391,8 +388,16 @@ export default function PremiumLoyaltyTemplate({
     // Helper function to check if user is from SHOP organization (uses API to bypass RLS)
     const checkUserOrganization = async (userId: string) => {
         try {
+            // Get current session to pass token
+            const { data: { session } } = await supabase.auth.getSession()
+            const token = session?.access_token
+
             // Use API endpoint to fetch profile (bypasses RLS issues)
-            const response = await fetch('/api/user/profile')
+            const response = await fetch('/api/user/profile', {
+                headers: {
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                }
+            })
             const result = await response.json()
             
             if (!result.success || !result.profile) {
@@ -2832,7 +2837,14 @@ export default function PremiumLoyaltyTemplate({
             const phone = consumerPhone || userPhone
             
             if (!phone) {
-                throw new Error('Phone number not found. Please login or update your profile.')
+                // Check if user is authenticated but has no phone
+                if (isAuthenticated) {
+                    setScratchError('Please update your phone number in your profile to play.')
+                } else {
+                    setScratchError('Please login to play the scratch card game.')
+                }
+                setIsScratching(false)
+                return
             }
 
             const { data, error } = await supabase.rpc('play_scratch_card_turn', {
@@ -2847,16 +2859,10 @@ export default function PremiumLoyaltyTemplate({
                 throw new Error(data.error)
             }
 
-            // Check if API returned success
-            if (!data.success || !data.reward) {
-                throw new Error('Invalid response from server')
-            }
-
-            // Parse result from new API format
-            const reward = data.reward
-            const isWin = reward.type !== 'no_prize'
-            const rewardName = reward.name || 'No Prize'
-            const points = reward.value_points || 0
+            // RPC returns: { status, reward_name, reward_type, points_value, reward_image_url, play_id }
+            const isWin = data.status === 'win'
+            const rewardName = data.reward_name || 'No Prize'
+            const points = data.points_value || 0
 
             setScratchResult({
                 isWin,
@@ -2904,6 +2910,22 @@ export default function PremiumLoyaltyTemplate({
                 {scratchError && (
                     <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center w-full max-w-sm">
                         {scratchError}
+                        {!isAuthenticated && scratchError.includes('login') && (
+                            <button 
+                                onClick={() => setActiveTab('profile')}
+                                className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                                Go to Login
+                            </button>
+                        )}
+                        {isAuthenticated && scratchError.includes('phone') && (
+                            <button 
+                                onClick={() => setActiveTab('account-settings')}
+                                className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                                Update Profile
+                            </button>
+                        )}
                     </div>
                 )}
                 <ScratchCard 

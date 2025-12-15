@@ -126,10 +126,22 @@ async function deleteInBatches(
 ) {
   let totalDeleted = 0
   let hasMore = true
+  let batchNumber = 0
+  let consecutiveTimeouts = 0
+  const MAX_CONSECUTIVE_TIMEOUTS = 3
 
-  console.log(`Starting batch deletion for ${table} where ${column}=${value}`)
+  console.log(`Starting batch deletion for ${table} where ${column}=${value} (batchSize=${batchSize})`)
 
   while (hasMore) {
+    batchNumber++
+    
+    // Add delay between batches to prevent overwhelming the database
+    if (batchNumber > 1) {
+      const delayMs = Math.min(100 + (consecutiveTimeouts * 500), 2000)
+      console.log(`  Waiting ${delayMs}ms before next batch...`)
+      await new Promise(r => setTimeout(r, delayMs))
+    }
+
     // Select IDs to delete
     let query = supabase
       .from(table)
@@ -170,20 +182,38 @@ async function deleteInBatches(
     // If batch size is small (e.g. < 100), delete one by one to isolate problematic rows
     if (batchSize < 100) {
       let deletedInBatch = 0
-      for (const id of ids) {
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i]
         // Add a small delay between deletes to let DB breathe
-        if (deletedInBatch > 0) await new Promise(r => setTimeout(r, 50))
+        if (i > 0) await new Promise(r => setTimeout(r, 100))
         
-        const { error: singleDeleteError } = await supabase
-          .from(table)
-          .delete()
-          .eq('id', id)
+        let retries = 0
+        const maxRetries = 2
         
-        if (singleDeleteError) {
-          console.error(`Error deleting single item ${id} from ${table}:`, singleDeleteError)
-          // Don't throw, try to continue deleting others
-        } else {
-          deletedInBatch++
+        while (retries <= maxRetries) {
+          const { error: singleDeleteError } = await supabase
+            .from(table)
+            .delete()
+            .eq('id', id)
+          
+          if (singleDeleteError) {
+            // Check if it's a timeout error
+            if (singleDeleteError.code === '57014') {
+              retries++
+              console.warn(`⚠️ Timeout deleting item ${id} from ${table} (attempt ${retries}/${maxRetries + 1})`)
+              if (retries <= maxRetries) {
+                // Wait before retry with exponential backoff
+                await new Promise(r => setTimeout(r, 1000 * retries))
+                continue
+              }
+            }
+            console.error(`Error deleting single item ${id} from ${table}:`, singleDeleteError)
+            // Don't throw, try to continue deleting others
+          } else {
+            deletedInBatch++
+            consecutiveTimeouts = 0
+          }
+          break
         }
       }
       // Mock count for total
@@ -194,28 +224,71 @@ async function deleteInBatches(
          // If we couldn't delete ANY in this batch, we might be stuck.
          // But maybe some failed and some succeeded.
          // If ALL failed, we should probably break to avoid infinite loop.
-         if (deletedInBatch === 0) break
+         if (deletedInBatch === 0) {
+           consecutiveTimeouts++
+           if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+             console.error(`❌ ${MAX_CONSECUTIVE_TIMEOUTS} consecutive batch failures. Aborting deletion for ${table}.`)
+             break
+           }
+         }
       }
       totalDeleted += count
-      console.log(`Deleted batch of ${count} from ${table} (one-by-one mode)`)
+      console.log(`Deleted batch ${batchNumber} of ${count} from ${table} (one-by-one mode)`)
     } else {
-      const { error: deleteError, count } = await supabase
-        .from(table)
-        .delete()
-        .in('id', ids)
+      let retries = 0
+      const maxRetries = 2
+      let deleteSuccess = false
+      let deletedCount = 0
+      
+      while (retries <= maxRetries && !deleteSuccess) {
+        const { error: deleteError, count } = await supabase
+          .from(table)
+          .delete()
+          .in('id', ids)
 
-      if (deleteError) {
-        console.error(`Error deleting batch from ${table}:`, deleteError)
-        throw deleteError
+        if (deleteError) {
+          // Check if it's a timeout error
+          if (deleteError.code === '57014') {
+            retries++
+            consecutiveTimeouts++
+            console.warn(`⚠️ Timeout deleting batch from ${table} (attempt ${retries}/${maxRetries + 1})`)
+            if (retries <= maxRetries) {
+              // Wait before retry with exponential backoff
+              await new Promise(r => setTimeout(r, 2000 * retries))
+              continue
+            }
+            // After max retries, fall back to one-by-one deletion
+            console.log(`🔄 Falling back to one-by-one deletion for this batch...`)
+            let fallbackDeleted = 0
+            for (let i = 0; i < ids.length; i++) {
+              if (i > 0) await new Promise(r => setTimeout(r, 100))
+              const { error: singleErr } = await supabase.from(table).delete().eq('id', ids[i])
+              if (!singleErr) fallbackDeleted++
+            }
+            deletedCount = fallbackDeleted
+            deleteSuccess = true
+            break
+          }
+          console.error(`Error deleting batch from ${table}:`, deleteError)
+          throw deleteError
+        }
+        
+        deletedCount = count || 0
+        deleteSuccess = true
+        consecutiveTimeouts = 0
       }
       
-      if ((count === 0 || count === null) && items.length > 0) {
-        console.warn(`⚠️ Batch delete returned 0 count but found ${items.length} items in ${table}. Potential infinite loop detected. Aborting batch deletion.`)
-        break
+      if ((deletedCount === 0) && items.length > 0) {
+        console.warn(`⚠️ Batch delete returned 0 count but found ${items.length} items in ${table}. Potential infinite loop detected.`)
+        consecutiveTimeouts++
+        if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+          console.error(`❌ ${MAX_CONSECUTIVE_TIMEOUTS} consecutive failures. Aborting batch deletion for ${table}.`)
+          break
+        }
       }
       
-      totalDeleted += count || 0
-      console.log(`Deleted batch of ${count} from ${table}`)
+      totalDeleted += deletedCount
+      console.log(`Deleted batch ${batchNumber} of ${deletedCount} from ${table}`)
     }
     
     // If we fetched fewer than batchSize, we are done
@@ -223,6 +296,8 @@ async function deleteInBatches(
       hasMore = false
     }
   }
+  
+  console.log(`✓ Completed deletion from ${table}: ${totalDeleted} total records deleted in ${batchNumber} batches`)
   return totalDeleted
 }
 
@@ -238,12 +313,13 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     // Delete in correct order (child tables first)
     
     // 1. Delete QR codes (all if forceDelete, otherwise only pending)
+    // Use smaller batch size (100) to prevent timeouts - QR codes can have many records
     const qrCount = await deleteInBatches(
       supabase, 
       'qr_codes', 
       'order_id', 
       orderId, 
-      500, 
+      100, 
       !forceDelete ? (q) => q.eq('status', 'pending') : undefined,
       async (ids, items) => {
         // Delete dependencies for these QR codes
@@ -274,15 +350,16 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
     console.log(`✅ Deleted ${qrCount || 0} QR codes`)
 
     // 1a. Delete Lucky Draw Entries
-    const luckyDrawCount = await deleteInBatches(supabase, 'lucky_draw_entries', 'order_id', orderId)
+    const luckyDrawCount = await deleteInBatches(supabase, 'lucky_draw_entries', 'order_id', orderId, 100)
     console.log(`✅ Deleted ${luckyDrawCount || 0} lucky draw entries`)
 
-    // 1b. Delete QR master codes
-    const masterCount = await deleteInBatches(supabase, 'qr_master_codes', 'shipment_order_id', orderId)
+    // 1b. Delete QR master codes - use smaller batch size
+    const masterCount = await deleteInBatches(supabase, 'qr_master_codes', 'shipment_order_id', orderId, 100)
     console.log(`✅ Deleted ${masterCount || 0} QR master codes`)
 
-    // 2. Delete QR batches
-    const batchCount = await deleteInBatches(supabase, 'qr_batches', 'order_id', orderId)
+    // 2. Delete QR batches - use small batch size to avoid timeout
+    // qr_batches can have triggers/constraints that slow deletion significantly
+    const batchCount = await deleteInBatches(supabase, 'qr_batches', 'order_id', orderId, 50)
     console.log(`✅ Deleted ${batchCount || 0} QR batches`)
 
     // 3. Delete document files first (they reference documents)
@@ -412,14 +489,14 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
       console.log(`  - Movement ${id}: Type=${m.movement_type}, Qty=${m.quantity_change}, Notes=${m.notes}`)
     })
 
-    // First attempt: Delete by reference_id (UUID)
-    const movementsCount1 = await deleteInBatches(supabase, 'stock_movements', 'reference_id', orderId)
+    // First attempt: Delete by reference_id (UUID) - use smaller batch size to prevent timeout
+    const movementsCount1 = await deleteInBatches(supabase, 'stock_movements', 'reference_id', orderId, 100)
     console.log(`✅ Deleted ${movementsCount1 || 0} stock movements by reference_id`)
     
     // Second attempt: Delete by reference_no (order number)
     let movementsCount2 = 0
     if (orderNo) {
-      movementsCount2 = await deleteInBatches(supabase, 'stock_movements', 'reference_no', orderNo)
+      movementsCount2 = await deleteInBatches(supabase, 'stock_movements', 'reference_no', orderNo, 100)
       console.log(`✅ Deleted ${movementsCount2} stock movements by reference_no`)
     }
     

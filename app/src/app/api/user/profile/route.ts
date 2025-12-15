@@ -30,7 +30,21 @@ export async function GET(request: NextRequest) {
 
     // Get the authenticated user from session
     const supabase = await createServerClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    let { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    // Fallback: Check Authorization header if cookie auth fails
+    if (!user || authError) {
+      const authHeader = request.headers.get('Authorization')
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1]
+        const { data: { user: userFromToken }, error: tokenError } = await supabase.auth.getUser(token)
+        
+        if (userFromToken && !tokenError) {
+          user = userFromToken
+          authError = null
+        }
+      }
+    }
 
     if (authError || !user) {
       console.error('Authentication failed:', authError)
