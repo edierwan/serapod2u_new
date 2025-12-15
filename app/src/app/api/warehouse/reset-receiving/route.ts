@@ -37,19 +37,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
   }
 
-  // Only allow reset if stuck in processing or queued
-  if (batch.receiving_status !== 'processing' && batch.receiving_status !== 'queued') {
+  // Only allow reset if stuck in processing, queued, or failed
+  if (!['processing', 'queued', 'failed', 'cancelled'].includes(batch.receiving_status)) {
     return NextResponse.json({ 
-      error: 'Batch is not in a stuck state', 
+      error: 'Batch is not in a resettable state', 
       current_status: batch.receiving_status 
     }, { status: 400 })
   }
 
-  // Reset to idle
+  // Reset to idle with cleared heartbeat fields
   const { error: updateError } = await supabase
     .from('qr_batches')
     .update({ 
       receiving_status: 'idle',
+      receiving_heartbeat: null,
+      receiving_worker_id: null,
+      receiving_progress: 0,
+      receiving_started_at: null,
+      receiving_completed_at: null,
       last_error: `Reset by user ${user.id} at ${new Date().toISOString()}`
     })
     .eq('id', batch_id)

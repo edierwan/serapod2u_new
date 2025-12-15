@@ -46,6 +46,11 @@ interface BatchProgress {
   unique_progress_percentage: number
   buffer_codes: number
   warranty_bonus_percent: number
+  // Heartbeat tracking
+  receiving_heartbeat?: string | null
+  receiving_worker_id?: string | null
+  receiving_progress?: number
+  is_stale?: boolean
 }
 
 function CountUp({ value }: { value: number }) {
@@ -250,16 +255,26 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
   }
 
   const fetchBatchProgress = async (batchId: string, order: any) => {
-    // Get latest batch status first
+    // Get latest batch status with heartbeat info
     const { data: batchInfo } = await supabase
       .from('qr_batches')
-      .select('status, receiving_status')
+      .select('status, receiving_status, receiving_heartbeat, receiving_worker_id, receiving_progress')
       .eq('id', batchId)
       .single()
       
     const batchStatus = batchInfo?.status || 'unknown'
     const receivingStatus = batchInfo?.receiving_status || 'idle'
     const isCompleted = receivingStatus === 'completed'
+
+    // Check for stale heartbeat (3 minutes)
+    let isStale = false
+    if (receivingStatus === 'processing' && batchInfo?.receiving_heartbeat) {
+      const heartbeatTime = new Date(batchInfo.receiving_heartbeat)
+      const ageMs = Date.now() - heartbeatTime.getTime()
+      isStale = ageMs > 3 * 60 * 1000 // 3 minutes
+    } else if (receivingStatus === 'processing' && !batchInfo?.receiving_heartbeat) {
+      isStale = true
+    }
 
     // Get counts
     const { count: totalMaster } = await supabase
@@ -319,7 +334,12 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       master_progress_percentage: totalMaster ? (receivedMaster / totalMaster) * 100 : 0,
       unique_progress_percentage: totalUnique ? (receivedUnique / totalUnique) * 100 : 0,
       buffer_codes: Math.floor((totalUnique || 0) * (warrantyBonus / 100)),
-      warranty_bonus_percent: warrantyBonus
+      warranty_bonus_percent: warrantyBonus,
+      // Heartbeat tracking
+      receiving_heartbeat: batchInfo?.receiving_heartbeat,
+      receiving_worker_id: batchInfo?.receiving_worker_id,
+      receiving_progress: batchInfo?.receiving_progress,
+      is_stale: isStale
     }
 
     setCurrentBatch(batchData)
@@ -550,9 +570,23 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
 
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 flex flex-col justify-center items-center">
                 <p className="text-xs text-gray-500 font-medium mb-1">Current Status</p>
-                <Badge variant={currentBatch.receiving_status === 'completed' ? 'default' : 'outline'} className="text-sm px-3 py-1">
-                  {currentBatch.receiving_status || 'idle'}
+                <Badge 
+                  variant={currentBatch.receiving_status === 'completed' ? 'default' : currentBatch.is_stale ? 'destructive' : 'outline'} 
+                  className={`text-sm px-3 py-1 ${currentBatch.is_stale ? 'animate-pulse' : ''}`}
+                >
+                  {currentBatch.is_stale ? 'STALE' : (currentBatch.receiving_status || 'idle')}
                 </Badge>
+                {/* Show heartbeat age when processing */}
+                {currentBatch.receiving_status === 'processing' && currentBatch.receiving_heartbeat && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Last heartbeat: {Math.round((Date.now() - new Date(currentBatch.receiving_heartbeat).getTime()) / 1000)}s ago
+                  </p>
+                )}
+                {currentBatch.receiving_worker_id && (
+                  <p className="text-xs text-gray-400">
+                    Worker: {currentBatch.receiving_worker_id}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -565,8 +599,24 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-3">
-                  {/* Show alert for in-progress/stuck batches */}
-                  {(currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') && !processing && (
+                  {/* Show alert for stale/stuck/failed batches */}
+                  {currentBatch.is_stale && (
+                    <Alert className="bg-red-50 border-red-200">
+                      <AlertTriangle className="h-4 w-4 text-red-600" />
+                      <AlertDescription className="text-red-700">
+                        This batch appears stuck - no heartbeat for 3+ minutes. Click Reset to restart.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {currentBatch.receiving_status === 'failed' && (
+                    <Alert className="bg-red-50 border-red-200">
+                      <AlertTriangle className="h-4 w-4 text-red-600" />
+                      <AlertDescription className="text-red-700">
+                        Processing failed. Click Reset to retry.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {(currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') && !processing && !currentBatch.is_stale && (
                     <Alert className="bg-yellow-50 border-yellow-200">
                       <AlertTriangle className="h-4 w-4 text-yellow-600" />
                       <AlertDescription className="text-yellow-700">
@@ -579,7 +629,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                       size="lg" 
                       className="min-w-[200px] bg-blue-600 hover:bg-blue-700"
                       onClick={handleCompleteProcess}
-                      disabled={processing}
+                      disabled={processing || currentBatch.is_stale || currentBatch.receiving_status === 'failed'}
                     >
                       {processing ? (
                         <>
@@ -599,8 +649,8 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                       )}
                     </Button>
                     
-                    {/* Reset button - only show when stuck */}
-                    {(currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') && (
+                    {/* Reset button - show when stuck, stale, or failed */}
+                    {(currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing' || currentBatch.receiving_status === 'failed' || currentBatch.is_stale) && (
                       <Button 
                         size="lg" 
                         variant="outline"
