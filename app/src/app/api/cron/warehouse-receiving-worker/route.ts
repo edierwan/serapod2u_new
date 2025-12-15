@@ -135,14 +135,15 @@ export async function GET(request: NextRequest) {
     let processedCount = 0
 
     // --- Update Master Codes ---
-    // Accept multiple statuses for bulk receiving
     // First, get the IDs to log movements (we need them for qr_movements)
     const { data: masterCodes, error: masterFetchError } = await supabase
       .from('qr_master_codes')
       .select('id, master_code')
       .eq('batch_id', batch.id)
-      .in('status', ['generated', 'printed', 'ready_to_ship'])
+      .eq('status', 'ready_to_ship')
       .limit(5000) // Safety limit
+    
+    console.log(`📦 Found ${masterCodes?.length || 0} master codes with ready_to_ship status`)
 
     if (masterFetchError) {
        console.error('Error fetching master codes:', masterFetchError)
@@ -150,12 +151,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (masterCodes && masterCodes.length > 0) {
-        // Bulk update by batch_id - accept multiple source statuses
+        // Bulk update by batch_id
         const { error: masterUpdateError } = await supabase
           .from('qr_master_codes')
           .update({ status: 'received_warehouse' })
           .eq('batch_id', batch.id)
-          .in('status', ['generated', 'printed', 'ready_to_ship'])
+          .eq('status', 'ready_to_ship')
         
         if (masterUpdateError) {
             console.error('Error updating master codes:', masterUpdateError)
@@ -213,15 +214,15 @@ export async function GET(request: NextRequest) {
         }
         
         // Fetch next chunk of unique codes (NON-BUFFER only)
-        // Accept multiple statuses: generated, printed, ready_to_ship
-        // This handles cases where packing step was skipped or bulk receiving is done
         const { data: uniqueCodes, error: uniqueFetchError } = await supabase
             .from('qr_codes')
             .select('id, variant_id, is_buffer')
             .eq('batch_id', batch.id)
-            .in('status', ['generated', 'printed', 'ready_to_ship'])
+            .eq('status', 'ready_to_ship')
             .eq('is_buffer', false) // Only normal codes
             .limit(CHUNK_SIZE)
+        
+        console.log(`📦 Fetched ${uniqueCodes?.length || 0} unique codes with ready_to_ship status`)
 
         if (uniqueFetchError) {
             console.error('Error fetching unique codes:', uniqueFetchError)

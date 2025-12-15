@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { CheckCircle, AlertTriangle, Loader2, Play, Clock, FileText } from 'lucide-react'
+import { CheckCircle, AlertTriangle, Loader2, Play, Clock, FileText, RotateCcw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -193,30 +193,30 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         
         // Check 2: Batch receiving is NOT completed - check for pending work
         if (batch.receiving_status !== 'completed') {
-          // Check if there are master codes not yet received (any status except received_warehouse)
+          // Check if there are master codes still ready_to_ship
           const { count: pendingMasterCount } = await supabase
             .from('qr_master_codes')
             .select('*', { count: 'exact', head: true })
             .eq('batch_id', batch.id)
-            .in('status', ['generated', 'printed', 'ready_to_ship'])
+            .eq('status', 'ready_to_ship')
           
           if (pendingMasterCount && pendingMasterCount > 0) {
-            console.log(`Order ${order.order_no}: Has ${pendingMasterCount} master codes pending - including`)
+            console.log(`Order ${order.order_no}: Has ${pendingMasterCount} master codes ready_to_ship - including`)
             shouldInclude = true
             break
           }
           
-          // Check if there are unique codes not yet received (generated, printed, or ready_to_ship)
+          // Check if there are unique codes still ready_to_ship (master done, unique pending)
           const { count: pendingUniqueCount } = await supabase
             .from('qr_codes')
             .select('*', { count: 'exact', head: true })
             .eq('batch_id', batch.id)
-            .in('status', ['generated', 'printed', 'ready_to_ship'])
+            .eq('status', 'ready_to_ship')
             .eq('is_buffer', false)
             .limit(1) // We just need to know if ANY exist
           
           if (pendingUniqueCount && pendingUniqueCount > 0) {
-            console.log(`Order ${order.order_no}: Has unique codes pending - including`)
+            console.log(`Order ${order.order_no}: Has unique codes ready_to_ship - including`)
             shouldInclude = true
             break
           }
@@ -423,6 +423,47 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
     }
   }
 
+  const handleResetProcess = async () => {
+    if (!currentBatch) return
+    
+    if (!confirm('Are you sure you want to reset this batch? This will allow you to restart the receiving process.')) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/warehouse/reset-receiving', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: currentBatch.batch_id })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reset')
+      }
+
+      toast({
+        title: 'Reset Successful',
+        description: 'Batch has been reset. You can now restart the process.',
+      })
+
+      // Refresh batch data
+      const order = orders.find(o => o.id === selectedOrder)
+      await fetchBatchProgress(currentBatch.batch_id, order)
+      setProcessing(false)
+      setStartTime(null)
+
+    } catch (error: any) {
+      console.error('Reset failed:', error)
+      toast({
+        title: 'Reset Failed',
+        description: error.message,
+        variant: 'destructive'
+      })
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
@@ -533,29 +574,45 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                       </AlertDescription>
                     </Alert>
                   )}
-                  <Button 
-                    size="lg" 
-                    className="w-full md:w-auto min-w-[200px] bg-blue-600 hover:bg-blue-700"
-                    onClick={handleCompleteProcess}
-                    disabled={processing}
-                  >
-                    {processing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') ? (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Resume Processing
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Receive Order
-                      </>
+                  <div className="flex flex-wrap gap-3 justify-center">
+                    <Button 
+                      size="lg" 
+                      className="min-w-[200px] bg-blue-600 hover:bg-blue-700"
+                      onClick={handleCompleteProcess}
+                      disabled={processing}
+                    >
+                      {processing ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') ? (
+                        <>
+                          <Play className="mr-2 h-4 w-4" />
+                          Resume Processing
+                        </>
+                      ) : (
+                        <>
+                          <Play className="mr-2 h-4 w-4" />
+                          Receive Order
+                        </>
+                      )}
+                    </Button>
+                    
+                    {/* Reset button - only show when stuck */}
+                    {(currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') && (
+                      <Button 
+                        size="lg" 
+                        variant="outline"
+                        className="min-w-[150px] border-red-300 text-red-600 hover:bg-red-50"
+                        onClick={handleResetProcess}
+                        disabled={processing}
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        Reset
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </div>
               )}
             </div>
