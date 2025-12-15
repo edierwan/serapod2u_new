@@ -257,23 +257,17 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       .from('qr_codes')
       .select('*', { count: 'exact', head: true })
       .eq('batch_id', batchId)
+      .eq('is_buffer', false) // Only count non-buffer codes for main progress
 
-    let receivedUnique = 0
-    if (isCompleted) {
-       const { count } = await supabase
-        .from('qr_codes')
-        .select('*', { count: 'exact', head: true })
-        .eq('batch_id', batchId)
-        .eq('status', 'received_warehouse')
-      receivedUnique = count || 0
-    } else {
-      const { count } = await supabase
-        .from('qr_codes')
-        .select('*', { count: 'exact', head: true })
-        .eq('batch_id', batchId)
-        .eq('status', 'received_warehouse')
-      receivedUnique = count || 0
-    }
+    // Always count received codes for live progress updates
+    const { count: receivedCount } = await supabase
+      .from('qr_codes')
+      .select('*', { count: 'exact', head: true })
+      .eq('batch_id', batchId)
+      .eq('status', 'received_warehouse')
+      .eq('is_buffer', false) // Only non-buffer codes
+    
+    const receivedUnique = receivedCount || 0
 
     const warrantyBonus = (order as any).seller_org?.warranty_bonus || 0
 
@@ -333,11 +327,19 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
 
       // Poll for completion
       let isReceiving = true
+      let pollCount = 0
       while (isReceiving) {
         // Trigger worker explicitly to ensure it runs
-        fetch('/api/cron/warehouse-receiving-worker').catch(e => console.error('Worker trigger failed:', e))
+        // For large batches, we call more frequently to keep processing going
+        const workerPromise = fetch('/api/cron/warehouse-receiving-worker').catch(e => console.error('Worker trigger failed:', e))
+        
+        // Wait for worker or timeout (don't block forever)
+        await Promise.race([
+          workerPromise,
+          new Promise(resolve => setTimeout(resolve, 5000)) // 5s timeout
+        ])
 
-        await new Promise(resolve => setTimeout(resolve, 2000)) // Poll every 2s
+        await new Promise(resolve => setTimeout(resolve, 1000)) // Brief pause between polls
         
         const order = orders.find(o => o.id === selectedOrder)
         await fetchBatchProgress(currentBatch.batch_id, order)
@@ -352,6 +354,12 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
             isReceiving = false
         } else if (checkBatch?.receiving_status === 'failed') {
             throw new Error('Receiving failed')
+        }
+        
+        pollCount++
+        // Log progress every 10 polls for debugging
+        if (pollCount % 10 === 0) {
+          console.log(`🔄 Still processing... Poll count: ${pollCount}`)
         }
       }
 
