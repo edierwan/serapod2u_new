@@ -193,30 +193,30 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         
         // Check 2: Batch receiving is NOT completed - check for pending work
         if (batch.receiving_status !== 'completed') {
-          // Check if there are master codes still ready_to_ship
-          const { count: readyMasterCount } = await supabase
+          // Check if there are master codes not yet received (any status except received_warehouse)
+          const { count: pendingMasterCount } = await supabase
             .from('qr_master_codes')
             .select('*', { count: 'exact', head: true })
             .eq('batch_id', batch.id)
-            .eq('status', 'ready_to_ship')
+            .in('status', ['generated', 'printed', 'ready_to_ship'])
           
-          if (readyMasterCount && readyMasterCount > 0) {
-            console.log(`Order ${order.order_no}: Has ${readyMasterCount} master codes ready_to_ship - including`)
+          if (pendingMasterCount && pendingMasterCount > 0) {
+            console.log(`Order ${order.order_no}: Has ${pendingMasterCount} master codes pending - including`)
             shouldInclude = true
             break
           }
           
-          // Check if there are unique codes still ready_to_ship (master done, unique pending)
-          const { count: readyUniqueCount } = await supabase
+          // Check if there are unique codes not yet received (generated, printed, or ready_to_ship)
+          const { count: pendingUniqueCount } = await supabase
             .from('qr_codes')
             .select('*', { count: 'exact', head: true })
             .eq('batch_id', batch.id)
-            .eq('status', 'ready_to_ship')
+            .in('status', ['generated', 'printed', 'ready_to_ship'])
             .eq('is_buffer', false)
             .limit(1) // We just need to know if ANY exist
           
-          if (readyUniqueCount && readyUniqueCount > 0) {
-            console.log(`Order ${order.order_no}: Has unique codes ready_to_ship - including`)
+          if (pendingUniqueCount && pendingUniqueCount > 0) {
+            console.log(`Order ${order.order_no}: Has unique codes pending - including`)
             shouldInclude = true
             break
           }
