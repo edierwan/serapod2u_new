@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { v4 as uuidv4 } from 'uuid'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes max
@@ -8,6 +7,11 @@ export const maxDuration = 300 // 5 minutes max
 // Configuration
 const CHUNK_SIZE = 5000 // Process 5k codes per chunk
 const STALE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes - if no heartbeat, consider stale
+
+// Generate short unique ID without uuid dependency
+function generateWorkerId(): string {
+  return Math.random().toString(36).substring(2, 10)
+}
 
 /**
  * Warehouse Receiving Worker
@@ -19,7 +23,7 @@ const STALE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes - if no heartbeat, conside
  * - Progress tracking
  */
 export async function GET(request: NextRequest) {
-  const workerId = uuidv4().substring(0, 8)
+  const workerId = generateWorkerId()
   const startTime = Date.now()
   const supabase = createAdminClient()
 
@@ -67,10 +71,10 @@ export async function GET(request: NextRequest) {
     if (manufacturerOrgId) {
       const { data: mfgOrg } = await supabase
         .from('organizations')
-        .select('warranty_bonus')
+        .select('*')
         .eq('id', manufacturerOrgId)
         .single()
-      if (mfgOrg?.warranty_bonus) warrantyBonusPercent = Number(mfgOrg.warranty_bonus)
+      if ((mfgOrg as any)?.warranty_bonus) warrantyBonusPercent = Number((mfgOrg as any).warranty_bonus)
     }
 
     let totalProcessed = batch.receiving_progress || 0

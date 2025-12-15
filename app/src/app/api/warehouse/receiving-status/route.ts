@@ -27,7 +27,6 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         order_id,
-        total_codes,
         total_unique_codes,
         total_master_codes,
         receiving_status,
@@ -65,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     // Enrich with real-time counts and stale detection
     const now = new Date()
-    const enrichedBatches = await Promise.all(batches.map(async (batch) => {
+    const enrichedBatches = await Promise.all(batches.map(async (batch: any) => {
       // Get actual code counts
       const [masterResult, uniqueResult, uniqueDoneResult] = await Promise.all([
         supabase
