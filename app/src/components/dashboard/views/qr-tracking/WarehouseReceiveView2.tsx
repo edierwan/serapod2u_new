@@ -142,10 +142,10 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
   const fetchOrders = async () => {
     console.log('Fetching orders for Warehouse Receive...')
 
-    // Fetch orders that have batches with master codes in 'ready_to_ship' status
-    // We might need to filter this more efficiently, but for now let's fetch active orders and filter in JS
-    // Assuming warehouse can see all orders or orders related to them. 
-    // If this is the main warehouse, they might see all orders.
+    // Fetch orders that:
+    // 1. Have batches with master codes in 'ready_to_ship' status (not started yet)
+    // 2. OR have batches with receiving_status 'queued'/'processing' (in progress/stuck)
+    // 3. OR have unique codes still in 'ready_to_ship' status (master done, unique pending)
     
     let query = supabase
       .from('orders')
@@ -157,7 +157,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         seller_org_id,
         buyer_org:organizations!orders_buyer_org_id_fkey(org_name),
         seller_org:organizations!orders_seller_org_id_fkey(warranty_bonus),
-        qr_batches(id, status)
+        qr_batches(id, status, receiving_status)
       `)
       .in('status', ['approved', 'closed']) // Assuming orders are still in these statuses
       .order('created_at', { ascending: false })
@@ -171,7 +171,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
 
     console.log('Raw orders fetched:', data?.length)
 
-    const ordersWithReadyToShipMasters = []
+    const ordersToShow = []
     
     for (const order of data || []) {
       const batches = order.qr_batches as any
@@ -180,23 +180,56 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       const batchList = Array.isArray(batches) ? batches : [batches]
       if (batchList.length === 0) continue
       
+      let shouldInclude = false
+      
       for (const batch of batchList) {
-        // Query master codes for this batch with ready_to_ship status
-        const { count: readyCount } = await supabase
-          .from('qr_master_codes')
-          .select('*', { count: 'exact', head: true })
-          .eq('batch_id', batch.id)
-          .eq('status', 'ready_to_ship')
-        
-        if (readyCount && readyCount > 0) {
-          ordersWithReadyToShipMasters.push(order)
-          break 
+        // Check 1: Batch is actively being processed (queued or processing)
+        // This handles the "stuck" scenario - user can re-select and continue
+        if (batch.receiving_status === 'queued' || batch.receiving_status === 'processing') {
+          console.log(`Order ${order.order_no}: Batch ${batch.id} is in ${batch.receiving_status} - including`)
+          shouldInclude = true
+          break
         }
+        
+        // Check 2: Batch receiving is NOT completed - check for pending work
+        if (batch.receiving_status !== 'completed') {
+          // Check if there are master codes still ready_to_ship
+          const { count: readyMasterCount } = await supabase
+            .from('qr_master_codes')
+            .select('*', { count: 'exact', head: true })
+            .eq('batch_id', batch.id)
+            .eq('status', 'ready_to_ship')
+          
+          if (readyMasterCount && readyMasterCount > 0) {
+            console.log(`Order ${order.order_no}: Has ${readyMasterCount} master codes ready_to_ship - including`)
+            shouldInclude = true
+            break
+          }
+          
+          // Check if there are unique codes still ready_to_ship (master done, unique pending)
+          const { count: readyUniqueCount } = await supabase
+            .from('qr_codes')
+            .select('*', { count: 'exact', head: true })
+            .eq('batch_id', batch.id)
+            .eq('status', 'ready_to_ship')
+            .eq('is_buffer', false)
+            .limit(1) // We just need to know if ANY exist
+          
+          if (readyUniqueCount && readyUniqueCount > 0) {
+            console.log(`Order ${order.order_no}: Has unique codes ready_to_ship - including`)
+            shouldInclude = true
+            break
+          }
+        }
+      }
+      
+      if (shouldInclude) {
+        ordersToShow.push(order)
       }
     }
     
-    console.log('Orders with ready to ship master codes:', ordersWithReadyToShipMasters.length)
-    setOrders(ordersWithReadyToShipMasters)
+    console.log('Orders ready for warehouse receive:', ordersToShow.length)
+    setOrders(ordersToShow)
   }
 
   const handleOrderSelect = async (orderId: string) => {
@@ -490,24 +523,40 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                   <p className="text-green-600 font-medium">Receiving Completed</p>
                 </div>
               ) : (
-                <Button 
-                  size="lg" 
-                  className="w-full md:w-auto min-w-[200px] bg-blue-600 hover:bg-blue-700"
-                  onClick={handleCompleteProcess}
-                  disabled={processing}
-                >
-                  {processing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="mr-2 h-4 w-4" />
-                      Receive Order
-                    </>
+                <div className="flex flex-col items-center gap-3">
+                  {/* Show alert for in-progress/stuck batches */}
+                  {(currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') && !processing && (
+                    <Alert className="bg-yellow-50 border-yellow-200">
+                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                      <AlertDescription className="text-yellow-700">
+                        This batch was previously started but not completed. Click below to resume processing.
+                      </AlertDescription>
+                    </Alert>
                   )}
-                </Button>
+                  <Button 
+                    size="lg" 
+                    className="w-full md:w-auto min-w-[200px] bg-blue-600 hover:bg-blue-700"
+                    onClick={handleCompleteProcess}
+                    disabled={processing}
+                  >
+                    {processing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing') ? (
+                      <>
+                        <Play className="mr-2 h-4 w-4" />
+                        Resume Processing
+                      </>
+                    ) : (
+                      <>
+                        <Play className="mr-2 h-4 w-4" />
+                        Receive Order
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
           </CardContent>
