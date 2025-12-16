@@ -129,7 +129,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
   useEffect(() => {
     let workerInterval: NodeJS.Timeout | undefined
     if (processing && (currentBatch?.receiving_status === 'queued' || currentBatch?.receiving_status === 'processing')) {
-      // Trigger worker every 5 seconds if queued or processing
+      // Trigger worker every 8 seconds if queued or processing
       workerInterval = setInterval(async () => {
         try {
           console.log('Triggering receiving worker...')
@@ -137,12 +137,28 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         } catch (e) {
           console.error('Failed to trigger worker:', e)
         }
-      }, 5000)
+      }, 8000)
     }
     return () => {
       if (workerInterval) clearInterval(workerInterval)
     }
   }, [processing, currentBatch?.receiving_status])
+
+  // Auto-refresh progress when processing
+  useEffect(() => {
+    let progressInterval: NodeJS.Timeout | undefined
+    if (processing && currentBatch && selectedOrder) {
+      progressInterval = setInterval(async () => {
+        const order = orders.find(o => o.id === selectedOrder)
+        if (order && currentBatch) {
+          await fetchBatchProgress(currentBatch.batch_id, order)
+        }
+      }, 3000) // Refresh every 3 seconds
+    }
+    return () => {
+      if (progressInterval) clearInterval(progressInterval)
+    }
+  }, [processing, currentBatch?.batch_id, selectedOrder, orders])
 
   const fetchOrders = async () => {
     console.log('Fetching orders for Warehouse Receive...')
@@ -381,38 +397,63 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       // Poll for completion
       let isReceiving = true
       let pollCount = 0
+      let lastProgress = 0
+      let stuckCount = 0
+      
       while (isReceiving) {
         // Trigger worker explicitly to ensure it runs
-        // For large batches, we call more frequently to keep processing going
         const workerPromise = fetch('/api/cron/warehouse-receiving-worker').catch(e => console.error('Worker trigger failed:', e))
         
         // Wait for worker or timeout (don't block forever)
         await Promise.race([
           workerPromise,
-          new Promise(resolve => setTimeout(resolve, 5000)) // 5s timeout
+          new Promise(resolve => setTimeout(resolve, 8000)) // 8s timeout - give worker more time
         ])
 
-        await new Promise(resolve => setTimeout(resolve, 1000)) // Brief pause between polls
+        await new Promise(resolve => setTimeout(resolve, 2000)) // 2s pause between polls
         
         const order = orders.find(o => o.id === selectedOrder)
         await fetchBatchProgress(currentBatch.batch_id, order)
         
         const { data: checkBatch } = await supabase
             .from('qr_batches')
-            .select('receiving_status')
+            .select('receiving_status, receiving_progress, last_error')
             .eq('id', currentBatch.batch_id)
             .single()
             
         if (checkBatch?.receiving_status === 'completed') {
             isReceiving = false
         } else if (checkBatch?.receiving_status === 'failed') {
-            throw new Error('Receiving failed')
+            // Don't throw - let the UI show the error and allow retry
+            const errorMsg = checkBatch?.last_error || 'Unknown error'
+            console.error('Batch receiving failed:', errorMsg)
+            toast({
+              title: 'Processing Error',
+              description: `${errorMsg}. You can click Reset to retry.`,
+              variant: 'destructive'
+            })
+            setProcessing(false)
+            setStartTime(null)
+            // Refresh to show failed state with retry option
+            await fetchBatchProgress(currentBatch.batch_id, order)
+            return // Exit without throwing
+        }
+        
+        // Check for stuck progress (no change for 30 polls = ~5 min)
+        const currentProgress = checkBatch?.receiving_progress || 0
+        if (currentProgress === lastProgress) {
+          stuckCount++
+          if (stuckCount > 30) {
+            console.warn('Progress appears stuck, worker may need attention')
+          }
+        } else {
+          stuckCount = 0
+          lastProgress = currentProgress
         }
         
         pollCount++
-        // Log progress every 10 polls for debugging
         if (pollCount % 10 === 0) {
-          console.log(`🔄 Still processing... Poll count: ${pollCount}`)
+          console.log(`🔄 Poll ${pollCount}: progress=${currentProgress}, status=${checkBatch?.receiving_status}`)
         }
       }
 

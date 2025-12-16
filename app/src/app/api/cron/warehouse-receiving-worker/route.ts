@@ -4,11 +4,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes max
 
-// Configuration
-const CHUNK_SIZE = 5000 // Process 5k codes per chunk
-const STALE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes - if no heartbeat, consider stale
+// ============================================================================
+// CONFIGURATION - Tunable via environment variables
+// ============================================================================
+const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '1000', 10) // Reduced to avoid timeouts
+const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '200', 10)
+const MAX_RUNTIME_MS = parseInt(process.env.MAX_RUNTIME_PER_RUN_MS || '270000', 10) // 4.5 minutes default
+const STALE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes
 
-// Generate short unique ID without uuid dependency
+// Generate short unique worker ID
 function generateWorkerId(): string {
   return Math.random().toString(36).substring(2, 10)
 }
@@ -16,29 +20,41 @@ function generateWorkerId(): string {
 /**
  * Warehouse Receiving Worker
  * 
- * This worker processes QR code status updates in chunks with:
- * - Heartbeat tracking for stale detection
- * - Resumable processing (continues from where it left off)
- * - Proper cancellation support
- * - Progress tracking
+ * Processes QR code status updates in chunks with:
+ * - Heartbeat tracking for stale detection  
+ * - Resumable processing
+ * - Proper claim/release logic
+ * - High throughput via larger batches
  */
 export async function GET(request: NextRequest) {
   const workerId = generateWorkerId()
   const startTime = Date.now()
   const supabase = createAdminClient()
 
-  console.log(`🚀 [${workerId}] Warehouse Receiving Worker started`)
+  console.log(`🚀 [${workerId}] Warehouse Receiving Worker started (chunk=${CHUNK_SIZE}, in_clause=${IN_CLAUSE_SIZE})`)
 
   try {
-    // Step 1: Find and claim a batch to process
-    const batch = await claimBatch(supabase, workerId)
+    // Step 1: Diagnostic - show top batches for debugging
+    await logDiagnostics(supabase, workerId)
+
+    // Step 2: Find and claim a batch to process  
+    const claimResult = await claimBatch(supabase, workerId)
     
-    if (!batch) {
+    if (!claimResult.batch) {
+      if (claimResult.reason === 'active_worker') {
+        console.log(`⏳ [${workerId}] Batch being processed by another worker (${claimResult.activeWorker})`)
+        return NextResponse.json({ 
+          message: 'Batch being processed by another worker', 
+          worker_id: workerId,
+          active_worker: claimResult.activeWorker
+        })
+      }
       console.log(`📭 [${workerId}] No batches to process`)
       return NextResponse.json({ message: 'No batches to process', worker_id: workerId })
     }
 
-    console.log(`📦 [${workerId}] Claimed batch ${batch.id} (Order: ${batch.orders?.order_no})`)
+    const batch = claimResult.batch
+    console.log(`📦 [${workerId}] Claimed batch ${batch.id} (Order: ${(batch.orders as any)?.order_no})`)
 
     const order = batch.orders as any
     const warehouseOrgId = await resolveWarehouseOrgId(supabase, order?.buyer_org_id)
@@ -47,7 +63,7 @@ export async function GET(request: NextRequest) {
     const orderId = order?.id
     const orderNo = order?.order_no
 
-    // Get received_by from metadata
+    // Get received_by from metadata or created_by
     let receivedBy = batch.created_by
     try {
       if (batch.last_error && batch.last_error.includes('received_by')) {
@@ -79,18 +95,18 @@ export async function GET(request: NextRequest) {
 
     let totalProcessed = batch.receiving_progress || 0
 
-    // Step 2: Process Master Codes (if not done)
+    // Step 3: Process Master Codes (if not done)
     const masterResult = await processMasterCodes(supabase, batch.id, warehouseOrgId, manufacturerOrgId, companyId, orderId, receivedBy)
     console.log(`📦 [${workerId}] Master codes: ${masterResult.processed} processed`)
 
-    // Step 3: Process Unique Codes in chunks
+    // Step 4: Process Unique Codes in chunks
     console.log(`🔄 [${workerId}] Starting unique code processing. Current progress: ${totalProcessed}`)
 
     const cumulativeVariantCounts = new Map<string, number>()
     let chunksProcessed = 0
-    let hasMore = true
+    let consecutiveZeroChunks = 0
 
-    while (hasMore) {
+    while (true) {
       // Check for cancellation
       const { data: statusCheck } = await supabase
         .from('qr_batches')
@@ -107,10 +123,10 @@ export async function GET(request: NextRequest) {
         })
       }
 
-      // Check time limit (leave 30s buffer)
+      // Check time limit
       const elapsed = Date.now() - startTime
-      if (elapsed > 270000) {
-        console.log(`⏱️ [${workerId}] Time limit approaching, yielding. Processed: ${totalProcessed}`)
+      if (elapsed > MAX_RUNTIME_MS) {
+        console.log(`⏱️ [${workerId}] Time limit reached (${Math.round(elapsed/1000)}s). Processed: ${totalProcessed}. Will continue next run.`)
         await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
         return NextResponse.json({ 
           message: 'Partial processing, will continue',
@@ -120,7 +136,7 @@ export async function GET(request: NextRequest) {
         })
       }
 
-      // Fetch next chunk of unique codes
+      // Fetch next chunk of unique codes (only IDs and variant_id for counting)
       const { data: uniqueCodes, error: fetchError } = await supabase
         .from('qr_codes')
         .select('id, variant_id')
@@ -132,52 +148,68 @@ export async function GET(request: NextRequest) {
 
       if (fetchError) {
         console.error(`❌ [${workerId}] Error fetching codes:`, fetchError)
-        await markFailed(supabase, batch.id, fetchError.message)
+        await markFailed(supabase, batch.id, `Fetch error: ${fetchError.message}`)
         return NextResponse.json({ error: fetchError.message }, { status: 500 })
       }
 
       if (!uniqueCodes || uniqueCodes.length === 0) {
-        hasMore = false
-        console.log(`✅ [${workerId}] No more unique codes to process`)
-        break
+        consecutiveZeroChunks++
+        if (consecutiveZeroChunks >= 2) {
+          console.log(`✅ [${workerId}] No more unique codes to process (confirmed)`)
+          break
+        }
+        // First zero might be a race condition, try once more after heartbeat
+        await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
+        continue
       }
-
+      
+      consecutiveZeroChunks = 0
       console.log(`📦 [${workerId}] Processing chunk of ${uniqueCodes.length} codes (total so far: ${totalProcessed})`)
 
-      // Update this chunk
+      // Update this chunk using sub-batches to avoid URL length limits
       const chunkIds = uniqueCodes.map(c => c.id)
-      const { error: updateError } = await supabase
-        .from('qr_codes')
-        .update({ status: 'received_warehouse' })
-        .in('id', chunkIds)
-
-      if (updateError) {
-        console.error(`❌ [${workerId}] Error updating chunk:`, updateError)
-        await markFailed(supabase, batch.id, updateError.message)
-        return NextResponse.json({ error: updateError.message }, { status: 500 })
+      let updateError: any = null
+      let updatedInChunk = 0
+      
+      for (let i = 0; i < chunkIds.length; i += IN_CLAUSE_SIZE) {
+        const batchIds = chunkIds.slice(i, i + IN_CLAUSE_SIZE)
+        
+        const { error } = await supabase
+          .from('qr_codes')
+          .update({ status: 'received_warehouse' })
+          .in('id', batchIds)
+        
+        if (error) {
+          console.error(`  ❌ Update error at offset ${i}:`, JSON.stringify(error, null, 2))
+          updateError = error
+          break
+        }
+        updatedInChunk += batchIds.length
       }
 
-      // Accumulate variant counts
+      if (updateError) {
+        await markFailed(supabase, batch.id, `Update error: ${JSON.stringify(updateError)}`)
+        return NextResponse.json({ error: updateError.message || 'Update failed' }, { status: 500 })
+      }
+
+      // Accumulate variant counts for inventory
       uniqueCodes.forEach(c => {
         if (c.variant_id) {
           cumulativeVariantCounts.set(c.variant_id, (cumulativeVariantCounts.get(c.variant_id) || 0) + 1)
         }
       })
 
-      totalProcessed += uniqueCodes.length
+      totalProcessed += updatedInChunk
       chunksProcessed++
 
-      // Update heartbeat and progress
+      // Update heartbeat every chunk
       await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
-      console.log(`✅ [${workerId}] Chunk ${chunksProcessed} complete. Progress: ${totalProcessed}`)
-
-      // If we got fewer than CHUNK_SIZE, we're done
-      if (uniqueCodes.length < CHUNK_SIZE) {
-        hasMore = false
-      }
+      
+      const rate = Math.round(totalProcessed / ((Date.now() - startTime) / 1000))
+      console.log(`✅ [${workerId}] Chunk ${chunksProcessed}: +${updatedInChunk} (total: ${totalProcessed}, rate: ${rate}/s)`)
     }
 
-    // Step 4: Record inventory movements
+    // Step 5: Record inventory movements
     if (warehouseOrgId && cumulativeVariantCounts.size > 0) {
       console.log(`📊 [${workerId}] Recording inventory for ${cumulativeVariantCounts.size} variants`)
       await recordInventoryMovements(
@@ -187,7 +219,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Step 5: Mark as completed
+    // Step 6: Mark as completed
     await supabase
       .from('qr_batches')
       .update({ 
@@ -198,13 +230,15 @@ export async function GET(request: NextRequest) {
       })
       .eq('id', batch.id)
 
-    console.log(`🎉 [${workerId}] Batch ${batch.id} completed! Total processed: ${totalProcessed}`)
+    const totalTime = Math.round((Date.now() - startTime) / 1000)
+    console.log(`🎉 [${workerId}] Batch ${batch.id} completed! Processed: ${totalProcessed} in ${totalTime}s`)
     
     return NextResponse.json({ 
       success: true,
       message: 'Batch receiving completed',
       worker_id: workerId,
       processed: totalProcessed,
+      duration_seconds: totalTime,
       batch_id: batch.id
     })
 
@@ -218,37 +252,48 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Claim a batch for processing with stale detection
+ * Log diagnostic info about batches for debugging
  */
-async function claimBatch(supabase: any, workerId: string) {
+async function logDiagnostics(supabase: any, workerId: string) {
+  const { data: batches } = await supabase
+    .from('qr_batches')
+    .select(`
+      id,
+      receiving_status,
+      receiving_heartbeat,
+      receiving_worker_id,
+      receiving_progress,
+      total_unique_codes,
+      orders!inner (order_no)
+    `)
+    .in('receiving_status', ['queued', 'processing', 'failed'])
+    .order('created_at', { ascending: false })
+    .limit(3)
+
+  if (batches && batches.length > 0) {
+    console.log(`📊 [${workerId}] Top batches:`)
+    for (const b of batches) {
+      const heartbeatAge = b.receiving_heartbeat 
+        ? Math.round((Date.now() - new Date(b.receiving_heartbeat).getTime()) / 1000)
+        : 'never'
+      console.log(`   - ${(b.orders as any)?.order_no}: status=${b.receiving_status}, heartbeat=${heartbeatAge}s ago, progress=${b.receiving_progress}/${b.total_unique_codes}`)
+    }
+  }
+}
+
+/**
+ * Claim a batch for processing with proper stale detection
+ * Returns: { batch, reason, activeWorker }
+ */
+async function claimBatch(supabase: any, workerId: string): Promise<{
+  batch: any | null,
+  reason?: 'active_worker' | 'no_batches',
+  activeWorker?: string
+}> {
   const now = new Date()
   const staleThreshold = new Date(now.getTime() - STALE_THRESHOLD_MS)
 
-  // First, check for stale processing jobs and mark them as failed
-  const { data: staleJobs } = await supabase
-    .from('qr_batches')
-    .select('id, receiving_heartbeat')
-    .eq('receiving_status', 'processing')
-
-  if (staleJobs && staleJobs.length > 0) {
-    for (const job of staleJobs) {
-      // Check if heartbeat is stale (or null)
-      const heartbeat = job.receiving_heartbeat ? new Date(job.receiving_heartbeat) : null
-      if (!heartbeat || heartbeat < staleThreshold) {
-        console.log(`🔄 [${workerId}] Found stale job ${job.id}, marking as failed`)
-        await supabase
-          .from('qr_batches')
-          .update({ 
-            receiving_status: 'failed',
-            last_error: 'Worker timeout - no heartbeat for 3+ minutes'
-          })
-          .eq('id', job.id)
-          .eq('receiving_status', 'processing')
-      }
-    }
-  }
-
-  // Try to claim a queued batch (atomic update)
+  // Strategy 1: Try to claim a 'queued' batch first (highest priority)
   const { data: queuedBatches } = await supabase
     .from('qr_batches')
     .select('id')
@@ -259,97 +304,119 @@ async function claimBatch(supabase: any, workerId: string) {
   if (queuedBatches && queuedBatches.length > 0) {
     const batchId = queuedBatches[0].id
     
-    // Atomic claim
-    const { data: claimed, error } = await supabase
+    const { data: claimed } = await supabase
       .from('qr_batches')
       .update({ 
         receiving_status: 'processing',
         receiving_worker_id: workerId,
         receiving_heartbeat: now.toISOString(),
         receiving_started_at: now.toISOString(),
-        receiving_progress: 0
+        receiving_progress: 0,
+        last_error: null
       })
       .eq('id', batchId)
-      .eq('receiving_status', 'queued') // Ensure still queued
+      .eq('receiving_status', 'queued')
       .select(`
-        id, 
-        receiving_status,
-        receiving_progress,
-        created_by,
-        last_error,
-        order_id,
-        total_unique_codes,
-        orders (
-          id,
-          order_no,
-          buyer_org_id,
-          seller_org_id,
-          company_id,
-          order_items (
-            variant_id,
-            unit_price
-          )
-        )
+        id, receiving_status, receiving_progress, created_by, last_error, order_id, total_unique_codes,
+        orders (id, order_no, buyer_org_id, seller_org_id, company_id, order_items (variant_id, unit_price))
       `)
       .single()
 
     if (claimed) {
-      return claimed
+      console.log(`📥 [${workerId}] Claimed queued batch ${batchId}`)
+      return { batch: claimed }
     }
   }
 
-  // If no queued batch, try to resume a processing batch owned by this worker or unclaimed
-  const { data: existing } = await supabase
+  // Strategy 2: Resume a 'processing' batch (either stale or same worker)
+  const { data: processingBatches } = await supabase
     .from('qr_batches')
     .select(`
-      id, 
-      receiving_status,
-      receiving_progress,
-      receiving_worker_id,
-      receiving_heartbeat,
-      created_by,
-      last_error,
-      order_id,
-      total_unique_codes,
-      orders (
-        id,
-        order_no,
-        buyer_org_id,
-        seller_org_id,
-        company_id,
-        order_items (
-          variant_id,
-          unit_price
-        )
-      )
+      id, receiving_status, receiving_progress, receiving_worker_id, receiving_heartbeat,
+      created_by, last_error, order_id, total_unique_codes,
+      orders (id, order_no, buyer_org_id, seller_org_id, company_id, order_items (variant_id, unit_price))
     `)
     .eq('receiving_status', 'processing')
     .order('created_at', { ascending: true })
-    .limit(1)
-    .single()
+    .limit(5)
 
-  if (existing) {
-    // Update heartbeat to claim it
-    await supabase
-      .from('qr_batches')
-      .update({ 
-        receiving_worker_id: workerId,
-        receiving_heartbeat: now.toISOString()
-      })
-      .eq('id', existing.id)
-    
-    console.log(`🔄 [${workerId}] Resuming existing processing job ${existing.id}`)
-    return existing
+  if (processingBatches && processingBatches.length > 0) {
+    for (const batch of processingBatches) {
+      const heartbeat = batch.receiving_heartbeat ? new Date(batch.receiving_heartbeat) : null
+      const isStale = !heartbeat || heartbeat < staleThreshold
+      const isMine = batch.receiving_worker_id === workerId
+
+      if (isStale || isMine) {
+        // Re-claim this batch
+        await supabase
+          .from('qr_batches')
+          .update({ 
+            receiving_worker_id: workerId,
+            receiving_heartbeat: now.toISOString(),
+            last_error: isStale ? `Re-claimed from stale worker ${batch.receiving_worker_id}` : null
+          })
+          .eq('id', batch.id)
+        
+        console.log(`🔄 [${workerId}] ${isStale ? 'Re-claimed stale' : 'Resumed'} batch ${batch.id}`)
+        return { batch }
+      } else {
+        // There's an active worker on this batch
+        return { 
+          batch: null, 
+          reason: 'active_worker', 
+          activeWorker: batch.receiving_worker_id 
+        }
+      }
+    }
   }
 
-  return null
+  // Strategy 3: Retry a 'failed' batch that still has pending codes
+  const { data: failedBatches } = await supabase
+    .from('qr_batches')
+    .select(`
+      id, receiving_status, receiving_progress, created_by, last_error, order_id, total_unique_codes,
+      orders (id, order_no, buyer_org_id, seller_org_id, company_id, order_items (variant_id, unit_price))
+    `)
+    .eq('receiving_status', 'failed')
+    .order('created_at', { ascending: true })
+    .limit(3)
+
+  if (failedBatches && failedBatches.length > 0) {
+    for (const batch of failedBatches) {
+      // Check if there are still pending codes
+      const { count: pendingCount } = await supabase
+        .from('qr_codes')
+        .select('*', { count: 'exact', head: true })
+        .eq('batch_id', batch.id)
+        .eq('status', 'ready_to_ship')
+        .eq('is_buffer', false)
+
+      if (pendingCount && pendingCount > 0) {
+        // Re-queue this failed batch
+        await supabase
+          .from('qr_batches')
+          .update({ 
+            receiving_status: 'processing',
+            receiving_worker_id: workerId,
+            receiving_heartbeat: now.toISOString(),
+            last_error: `Auto-retrying failed batch (was: ${batch.last_error})`
+          })
+          .eq('id', batch.id)
+        
+        console.log(`🔁 [${workerId}] Auto-retrying failed batch ${batch.id} (${pendingCount} pending codes)`)
+        return { batch }
+      }
+    }
+  }
+
+  return { batch: null, reason: 'no_batches' }
 }
 
 /**
  * Update heartbeat and progress
  */
 async function updateHeartbeat(supabase: any, batchId: string, workerId: string, progress: number) {
-  const { error } = await supabase
+  await supabase
     .from('qr_batches')
     .update({ 
       receiving_heartbeat: new Date().toISOString(),
@@ -357,21 +424,17 @@ async function updateHeartbeat(supabase: any, batchId: string, workerId: string,
       receiving_worker_id: workerId
     })
     .eq('id', batchId)
-  
-  if (error) {
-    console.error(`Error updating heartbeat:`, error)
-  }
 }
 
 /**
- * Mark batch as failed
+ * Mark batch as failed with error message
  */
 async function markFailed(supabase: any, batchId: string, error: string) {
   await supabase
     .from('qr_batches')
     .update({ 
       receiving_status: 'failed',
-      last_error: error
+      last_error: error.substring(0, 500) // Truncate long errors
     })
     .eq('id', batchId)
 }
@@ -400,7 +463,7 @@ async function resolveWarehouseOrgId(supabase: any, buyerOrgId: string): Promise
       .single()
 
     if (whOrg) {
-      console.log(`📍 Resolved Warehouse ID: ${whOrg.id} (from HQ: ${buyerOrgId})`)
+      console.log(`📍 Resolved Warehouse: ${whOrg.id} (from HQ: ${buyerOrgId})`)
       return whOrg.id
     }
   }
@@ -409,30 +472,14 @@ async function resolveWarehouseOrgId(supabase: any, buyerOrgId: string): Promise
 }
 
 /**
- * Process master codes (one-time bulk update)
+ * Process master codes (bulk update)
  */
 async function processMasterCodes(
-  supabase: any, 
-  batchId: string, 
-  warehouseOrgId: string,
-  manufacturerOrgId: string,
-  companyId: string,
-  orderId: string,
-  receivedBy: string
+  supabase: any, batchId: string, warehouseOrgId: string,
+  manufacturerOrgId: string, companyId: string, orderId: string, receivedBy: string
 ): Promise<{ processed: number }> {
-  const { data: masterCodes } = await supabase
-    .from('qr_master_codes')
-    .select('id, master_code')
-    .eq('batch_id', batchId)
-    .eq('status', 'ready_to_ship')
-    .limit(5000)
-
-  if (!masterCodes || masterCodes.length === 0) {
-    return { processed: 0 }
-  }
-
-  // Bulk update
-  const { error } = await supabase
+  // Use direct filter update instead of fetching IDs first
+  const { error, count } = await supabase
     .from('qr_master_codes')
     .update({ status: 'received_warehouse' })
     .eq('batch_id', batchId)
@@ -443,63 +490,72 @@ async function processMasterCodes(
     return { processed: 0 }
   }
 
-  // Log movements
-  if (warehouseOrgId && manufacturerOrgId) {
-    const movements = masterCodes.map((m: any) => ({
-      company_id: companyId,
-      qr_master_code_id: m.id,
-      movement_type: 'warehouse_receive',
-      from_org_id: manufacturerOrgId,
-      to_org_id: warehouseOrgId,
-      current_status: 'received_warehouse',
-      scanned_at: new Date().toISOString(),
-      scanned_by: receivedBy,
-      related_order_id: orderId,
-      notes: `Warehouse receive worker: ${m.master_code}`
-    }))
+  const processed = count || 0
 
-    await supabase.from('qr_movements').insert(movements)
+  // Log movements for master codes if any were updated
+  if (processed > 0 && warehouseOrgId && manufacturerOrgId) {
+    const { data: masterCodes } = await supabase
+      .from('qr_master_codes')
+      .select('id, master_code')
+      .eq('batch_id', batchId)
+      .eq('status', 'received_warehouse')
+      .limit(processed)
+
+    if (masterCodes && masterCodes.length > 0) {
+      const movements = masterCodes.map((m: any) => ({
+        company_id: companyId,
+        qr_master_code_id: m.id,
+        movement_type: 'warehouse_receive',
+        from_org_id: manufacturerOrgId,
+        to_org_id: warehouseOrgId,
+        current_status: 'received_warehouse',
+        scanned_at: new Date().toISOString(),
+        scanned_by: receivedBy,
+        related_order_id: orderId,
+        notes: `Warehouse receive: ${m.master_code}`
+      }))
+      
+      // Insert in batches of 500
+      for (let i = 0; i < movements.length; i += 500) {
+        await supabase.from('qr_movements').insert(movements.slice(i, i + 500))
+      }
+    }
   }
 
-  return { processed: masterCodes.length }
+  return { processed }
 }
 
 /**
- * Record inventory movements after all chunks processed
+ * Record inventory movements after processing
  */
 async function recordInventoryMovements(
-  supabase: any,
-  batchId: string,
-  warehouseOrgId: string,
-  manufacturerOrgId: string,
-  companyId: string,
-  orderId: string,
-  orderNo: string,
-  receivedBy: string,
-  variantCounts: Map<string, number>,
-  variantPriceMap: Map<string, number>,
-  warrantyBonusPercent: number
+  supabase: any, batchId: string, warehouseOrgId: string, manufacturerOrgId: string,
+  companyId: string, orderId: string, orderNo: string, receivedBy: string,
+  variantCounts: Map<string, number>, variantPriceMap: Map<string, number>, warrantyBonusPercent: number
 ) {
   for (const [variantId, quantity] of Array.from(variantCounts.entries())) {
     const unitCost = variantPriceMap.get(variantId) || 0
 
-    // Record stock movement
-    await supabase.rpc('record_stock_movement', {
-      p_movement_type: 'addition',
-      p_variant_id: variantId,
-      p_organization_id: warehouseOrgId,
-      p_quantity_change: quantity,
-      p_unit_cost: unitCost,
-      p_manufacturer_id: manufacturerOrgId,
-      p_warehouse_location: null,
-      p_reason: 'warehouse_receive',
-      p_notes: `Batch receive worker ${batchId}`,
-      p_reference_type: 'order',
-      p_reference_id: orderId,
-      p_reference_no: orderNo,
-      p_company_id: companyId,
-      p_created_by: receivedBy
-    })
+    try {
+      await supabase.rpc('record_stock_movement', {
+        p_movement_type: 'addition',
+        p_variant_id: variantId,
+        p_organization_id: warehouseOrgId,
+        p_quantity_change: quantity,
+        p_unit_cost: unitCost,
+        p_manufacturer_id: manufacturerOrgId,
+        p_warehouse_location: null,
+        p_reason: 'warehouse_receive',
+        p_notes: `Batch receive ${batchId}`,
+        p_reference_type: 'order',
+        p_reference_id: orderId,
+        p_reference_no: orderNo,
+        p_company_id: companyId,
+        p_created_by: receivedBy
+      })
+    } catch (e) {
+      console.error(`Error recording stock movement for variant ${variantId}:`, e)
+    }
 
     // Handle warranty bonus
     const bonusQuantity = Math.floor(quantity * (warrantyBonusPercent / 100))
@@ -521,22 +577,26 @@ async function recordInventoryMovements(
           .update({ status: 'received_warehouse' })
           .in('id', bufferIds)
 
-        await supabase.rpc('record_stock_movement', {
-          p_movement_type: 'warranty_bonus',
-          p_variant_id: variantId,
-          p_organization_id: warehouseOrgId,
-          p_quantity_change: bufferCodes.length,
-          p_unit_cost: 0,
-          p_manufacturer_id: manufacturerOrgId,
-          p_warehouse_location: null,
-          p_reason: 'manufacturer_warranty',
-          p_notes: `${warrantyBonusPercent}% warranty bonus for order ${orderNo}`,
-          p_reference_type: 'order',
-          p_reference_id: orderId,
-          p_reference_no: orderNo,
-          p_company_id: companyId,
-          p_created_by: receivedBy
-        })
+        try {
+          await supabase.rpc('record_stock_movement', {
+            p_movement_type: 'warranty_bonus',
+            p_variant_id: variantId,
+            p_organization_id: warehouseOrgId,
+            p_quantity_change: bufferCodes.length,
+            p_unit_cost: 0,
+            p_manufacturer_id: manufacturerOrgId,
+            p_warehouse_location: null,
+            p_reason: 'manufacturer_warranty',
+            p_notes: `${warrantyBonusPercent}% warranty bonus for ${orderNo}`,
+            p_reference_type: 'order',
+            p_reference_id: orderId,
+            p_reference_no: orderNo,
+            p_company_id: companyId,
+            p_created_by: receivedBy
+          })
+        } catch (e) {
+          console.error(`Error recording warranty bonus for variant ${variantId}:`, e)
+        }
       }
     }
   }

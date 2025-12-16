@@ -476,8 +476,8 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       }
 
       toast({
-        title: 'Success',
-        description: 'Excel file downloaded'
+        title: 'Download Started',
+        description: 'Your Excel file is downloading. Please check your browser downloads.'
       })
     } catch (error: any) {
       toast({

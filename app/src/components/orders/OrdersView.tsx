@@ -808,7 +808,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
           <Card>
             <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
@@ -817,30 +817,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                   <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.total_orders}</p>
                 </div>
                 <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Draft</p>
-                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.draft_orders}</p>
-                </div>
-                <Edit className="w-6 h-6 sm:w-8 sm:h-8 text-gray-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Submitted</p>
-                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.submitted_orders}</p>
-                </div>
-                <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
@@ -1016,19 +992,19 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       <div className="flex items-center gap-4 flex-1">
                         <div className="min-w-[180px]">
                           <div 
-                            className="font-bold text-blue-600 mb-1 cursor-pointer hover:underline"
+                            className="text-sm font-bold text-blue-600 mb-1 cursor-pointer hover:underline"
                             onClick={() => handleViewOrderDetails(order.id)}
                           >
                             {order.order_no}
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                            <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
                               {order.order_type}
                             </Badge>
                             <Badge className={getStatusColor(order.status)}>
                               <div className="flex items-center gap-1">
                                 {getStatusIcon(order.status)}
-                                <span className="text-xs">{order.status}</span>
+                                <span className="text-[10px]">{order.status}</span>
                               </div>
                             </Badge>
                           </div>
@@ -1036,10 +1012,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                         {/* Customer */}
                         <div className="flex items-center gap-2 min-w-[200px]">
-                          <ShoppingCart className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                          <ShoppingCart className="w-3 h-3 text-blue-500 flex-shrink-0" />
                           <div>
-                            <div className="text-xs text-gray-500">Customer</div>
-                            <div className="text-sm font-medium text-gray-900 truncate">
+                            <div className="text-[10px] text-gray-500">Customer</div>
+                            <div className="text-xs font-medium text-gray-900 truncate">
                               {order.buyer_org?.org_name || 'N/A'}
                             </div>
                           </div>
@@ -1047,10 +1023,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                         {/* Seller */}
                         <div className="flex items-center gap-2 min-w-[200px]">
-                          <Store className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          <Store className="w-3 h-3 text-green-500 flex-shrink-0" />
                           <div>
-                            <div className="text-xs text-gray-500">Seller</div>
-                            <div className="text-sm font-medium text-gray-900 truncate" title={order.seller_org?.org_name || 'N/A'}>
+                            <div className="text-[10px] text-gray-500">Seller</div>
+                            <div className="text-xs font-medium text-gray-900 truncate" title={order.seller_org?.org_name || 'N/A'}>
                               {shortenOrgName(order.seller_org?.org_name || 'N/A')}
                             </div>
                           </div>
@@ -1059,30 +1035,30 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         {/* Stats */}
                         <div className="flex items-center gap-6">
                           <div className="text-center">
-                            <div className="text-xs text-gray-500">Items</div>
-                            <div className="text-sm font-bold text-gray-900">{formatNumber(itemCount)}</div>
+                            <div className="text-[10px] text-gray-500">Items</div>
+                            <div className="text-xs font-bold text-gray-900">{formatNumber(itemCount)}</div>
                           </div>
                           <div className="text-center">
-                            <div className="text-xs text-gray-500">Units</div>
-                            <div className="text-sm font-bold text-gray-900">{formatNumber(totalUnits)}</div>
+                            <div className="text-[10px] text-gray-500">Units</div>
+                            <div className="text-xs font-bold text-gray-900">{formatNumber(totalUnits)}</div>
                           </div>
                           <div className="text-center">
-                            <div className="text-xs text-gray-500">Amount</div>
-                            <div className="text-sm font-bold text-blue-600">
+                            <div className="text-[10px] text-gray-500">Amount</div>
+                            <div className="text-xs font-bold text-blue-600">
                               {formatCurrency(totalAmount)}
                             </div>
                           </div>
                         </div>
 
                         {/* Date */}
-                        <div className="flex items-center gap-1 text-xs text-gray-500 min-w-[120px]">
+                        <div className="flex items-center gap-1 text-[10px] text-gray-500 min-w-[120px]">
                           <Calendar className="w-3 h-3" />
                           <span>{new Date(order.created_at).toLocaleDateString('en-MY')}</span>
                         </div>
                       </div>
 
                       {/* Creator and Approver Info */}
-                      <div className="flex items-center gap-4 text-xs mt-2 pt-2 border-t border-gray-100">
+                      <div className="flex items-center gap-4 text-[10px] mt-2 pt-2 border-t border-gray-100">
                         {order.created_by_user && (
                           <div className="flex items-center gap-1.5">
                             <User className="w-3 h-3 text-gray-400" />

@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
   const downloadName = `QR_Batch_${orderNo || batch.id}.xlsx`
 
-    // Increase timeout to 300 seconds (5 minutes) for Vercel/slower networks
+    // Increase timeout to 3600 seconds (1 hour) for slower networks/large files
     // Add retry logic for network stability
     let signedUrlData = null
     let signedUrlError = null
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       try {
         const result = await supabase.storage
           .from(BUCKET_NAME)
-          .createSignedUrl(storagePath, 300, {
+          .createSignedUrl(storagePath, 3600, {
             download: downloadName
           })
         
