@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { getStorageUrl } from '@/lib/utils'
 import BrandDialog from '../dialogs/BrandDialog'
 
 interface Brand {
@@ -302,20 +303,20 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="w-10 h-10">
-                        {brand.logo_url && <AvatarImage src={brand.logo_url} alt={brand.brand_name} />}
+                        {brand.logo_url && <AvatarImage src={getStorageUrl(brand.logo_url) || brand.logo_url} alt={brand.brand_name} />}
                         <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
                           {getBrandInitials(brand.brand_name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-gray-900">{brand.brand_name}</div>
-                        <div className="text-sm text-gray-500">{brand.brand_code}</div>
+                        <div className="text-sm font-medium text-gray-900">{brand.brand_name}</div>
+                        <div className="text-xs text-gray-500">{brand.brand_code}</div>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-gray-600 truncate max-w-xs">{brand.brand_description || '-'}</TableCell>
+                  <TableCell className="text-xs text-gray-600 truncate max-w-xs">{brand.brand_description || '-'}</TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={brand.is_active ? 'default' : 'secondary'}>
+                    <Badge variant={brand.is_active ? 'default' : 'secondary'} className="text-xs">
                       {brand.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
@@ -354,7 +355,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
         </Table>
       </div>
 
-      <div className="text-sm text-gray-600">
+      <div className="text-xs text-gray-600">
         Showing {getSortedBrands().length} of {brands.length} brands
       </div>
     </div>

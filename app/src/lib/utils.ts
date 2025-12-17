@@ -200,3 +200,77 @@ export function formatPhoneDisplay(phone: string): string {
   
   return phone
 }
+
+/**
+ * Extract the relative storage path from a full Supabase storage URL
+ * Supports both old and new Supabase instance URLs
+ * 
+ * Example input: "https://hsvmvmurvpqcdmxckhnz.supabase.co/storage/v1/object/public/avatars/file.jpg"
+ * Example output: "avatars/file.jpg"
+ */
+export function extractStoragePath(fullUrl: string | null | undefined): string | null {
+  if (!fullUrl) return null
+  
+  // Check if it's already a relative path (doesn't start with http)
+  if (!fullUrl.startsWith('http')) {
+    return fullUrl
+  }
+  
+  // Match pattern: /storage/v1/object/public/{bucket}/{path}
+  const match = fullUrl.match(/\/storage\/v1\/object\/public\/(.+?)(?:\?|$)/)
+  if (match && match[1]) {
+    return match[1]
+  }
+  
+  return null
+}
+
+/**
+ * Convert a storage path (relative or absolute URL) to the current environment's storage URL
+ * This ensures images work correctly when migrating between Supabase instances
+ * 
+ * @param pathOrUrl - Either a relative path like "avatars/file.jpg" or full URL
+ * @param bucket - Optional bucket name if path doesn't include it
+ * @returns Full URL for the current environment's Supabase storage
+ */
+export function getStorageUrl(pathOrUrl: string | null | undefined, bucket?: string): string | null {
+  if (!pathOrUrl) return null
+  
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!supabaseUrl) {
+    console.warn('NEXT_PUBLIC_SUPABASE_URL is not set')
+    return pathOrUrl // Return as-is if no env var
+  }
+  
+  // If it's already a URL from the current instance, return as-is
+  if (pathOrUrl.includes(supabaseUrl)) {
+    return pathOrUrl
+  }
+  
+  // Extract relative path if it's a full URL from another instance
+  let relativePath = extractStoragePath(pathOrUrl)
+  
+  // If extraction failed, assume it's already a relative path
+  if (!relativePath) {
+    relativePath = pathOrUrl
+  }
+  
+  // If bucket is provided and path doesn't include it, prepend it
+  if (bucket && !relativePath.startsWith(bucket + '/')) {
+    relativePath = `${bucket}/${relativePath}`
+  }
+  
+  // Remove any query params from the path before rebuilding URL
+  const cleanPath = relativePath.split('?')[0]
+  
+  // Build the new URL with cache busting
+  return `${supabaseUrl}/storage/v1/object/public/${cleanPath}`
+}
+
+/**
+ * Check if a URL points to Supabase storage (any instance)
+ */
+export function isSupabaseStorageUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  return url.includes('.supabase.co/storage/') || url.includes('/storage/v1/object/')
+}

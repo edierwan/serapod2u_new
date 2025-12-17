@@ -339,15 +339,15 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
             {getSortedCategories().length > 0 ? (
               getSortedCategories().map((category) => (
                 <TableRow key={category.id} className="hover:bg-gray-50">
-                  <TableCell>{category.category_name}</TableCell>
-                  <TableCell className="text-sm text-gray-600 truncate max-w-xs">{category.category_description || '-'}</TableCell>
+                  <TableCell className="text-sm">{category.category_name}</TableCell>
+                  <TableCell className="text-xs text-gray-600 truncate max-w-xs">{category.category_description || '-'}</TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={category.is_vape ? 'default' : 'secondary'}>
+                    <Badge variant={category.is_vape ? 'default' : 'secondary'} className="text-xs">
                       {category.is_vape ? 'Yes' : 'No'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={category.is_active ? 'default' : 'secondary'}>
+                    <Badge variant={category.is_active ? 'default' : 'secondary'} className="text-xs">
                       {category.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
@@ -386,7 +386,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
         </Table>
       </div>
 
-      <div className="text-sm text-gray-600">
+      <div className="text-xs text-gray-600">
         Showing {getSortedCategories().length} of {categories.length} categories
       </div>
     </div>

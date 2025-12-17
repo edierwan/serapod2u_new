@@ -17,7 +17,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import SignatureUpload from '@/components/profile/SignatureUpload'
 import ChangePasswordCard from '@/components/profile/ChangePasswordCard'
 import { updateUserWithAuth } from '@/lib/actions'
-import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
+import { normalizePhone, validatePhoneNumber, getStorageUrl, type PhoneValidationResult } from '@/lib/utils'
+import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
 interface UserProfile {
   id: string
@@ -307,6 +308,14 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       // Handle avatar upload if file is selected
       if (avatarFile) {
         try {
+          // Compress the avatar first
+          const compressionResult = await compressAvatar(avatarFile)
+          
+          toast({
+            title: '🖼️ Avatar Compressed',
+            description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+          })
+
           // Delete old avatar if exists
           if (userProfile.avatar_url) {
             const oldPath = userProfile.avatar_url.split('/').pop()?.split('?')[0]
@@ -317,13 +326,13 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           }
           
           // Upload new avatar
-          const fileExtension = avatarFile.name.split('.').pop()
-          const fileName = `${Date.now()}.${fileExtension}`
+          const fileName = `${Date.now()}.jpg`
           const filePath = `${userProfile.id}/${fileName}`
           
           const { error: uploadError } = await supabase.storage
             .from('avatars')
-            .upload(filePath, avatarFile, {
+            .upload(filePath, compressionResult.file, {
+              contentType: compressionResult.file.type,
               cacheControl: '3600',
               upsert: true
             })
@@ -347,8 +356,11 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         }
       }
 
-      // Update user profile in database
-      const result = await updateUserWithAuth(userProfile.id, updateData)
+      // Update user profile in database (self-update - pass own profile info)
+      const result = await updateUserWithAuth(userProfile.id, updateData, {
+        id: userProfile.id,
+        role_code: userProfile.role_code
+      })
 
       if (!result.success) throw new Error(result.error || 'Failed to update profile')
 
@@ -516,7 +528,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                 <Avatar className="h-24 w-24 cursor-pointer border-4 border-gray-100" onClick={handleAvatarClick}>
                   {(avatarPreview || userProfile.avatar_url) && (
                     <AvatarImage 
-                      src={avatarPreview || `${userProfile.avatar_url?.split('?')[0]}?v=${Date.now()}`} 
+                      src={avatarPreview || getStorageUrl(`${userProfile.avatar_url?.split('?')[0]}?v=${Date.now()}`) || userProfile.avatar_url} 
                       alt={userProfile.full_name || 'User'} 
                     />
                   )}

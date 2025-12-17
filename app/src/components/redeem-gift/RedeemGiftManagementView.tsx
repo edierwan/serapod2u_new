@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { getStorageUrl } from '@/lib/utils';
 import { 
   Gift, 
   Plus, 
@@ -652,7 +653,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                                 <div className="relative w-full border rounded-lg overflow-hidden bg-gray-50">
                                                     <div className="relative w-full h-64">
                                                         <Image
-                                                            src={giftImageUrl}
+                                                            src={getStorageUrl(giftImageUrl) || giftImageUrl}
                                                             alt="Gift preview"
                                                             layout="fill"
                                                             objectFit="contain"
@@ -730,7 +731,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                                                     {gift.gift_image_url ? (
                                                                         <div className="w-24 h-24 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
                                                                             <Image
-                                                                                src={gift.gift_image_url}
+                                                                                src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url}
                                                                                 alt={gift.gift_name}
                                                                                 width={96}
                                                                                 height={96}

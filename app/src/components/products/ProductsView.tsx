@@ -354,8 +354,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-          <p className="text-gray-600">Manage your product catalog</p>
+          <h1 className="text-xl font-bold text-gray-900">Products</h1>
+          <p className="text-sm text-gray-600">Manage your product catalog</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" size="sm">
@@ -386,8 +386,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 <span>+12.5%</span>
               </div>
             </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">Total Products</p>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalProducts}</p>
+            <p className="text-gray-600 text-xs mb-1">Total Products</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalProducts}</p>
           </CardContent>
         </Card>
 
@@ -402,8 +402,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 <span>+8.1%</span>
               </div>
             </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">Active Products</p>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activeProducts}</p>
+            <p className="text-gray-600 text-xs mb-1">Active Products</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.activeProducts}</p>
           </CardContent>
         </Card>
 
@@ -414,8 +414,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 <Filter className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
               </div>
             </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">Categories</p>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalCategories}</p>
+            <p className="text-gray-600 text-xs mb-1">Categories</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalCategories}</p>
           </CardContent>
         </Card>
 
@@ -426,8 +426,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 <Package className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
               </div>
             </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">Brands</p>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalBrands}</p>
+            <p className="text-gray-600 text-xs mb-1">Brands</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalBrands}</p>
           </CardContent>
         </Card>
       </div>
@@ -577,7 +577,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                     </div>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">
+                        <CardTitle className="text-base mb-1">
                           <button
                             type="button"
                             onClick={() => handleViewProduct(product)}
@@ -586,7 +586,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                             {product.product_name}
                           </button>
                         </CardTitle>
-                        <CardDescription>{product.product_code}</CardDescription>
+                        <CardDescription className="text-xs">{product.product_code}</CardDescription>
                       </div>
                     </div>
                   </CardHeader>
@@ -605,7 +605,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                       {getStatusBadge(product.is_active, product.is_vape)}
                     </div>
                     
-                    <div className="text-sm space-y-1">
+                    <div className="text-xs space-y-1">
                       <p className="text-gray-600">
                         <span className="font-medium">Brand:</span> {product.brands?.brand_name || 'No Brand'}
                       </p>
@@ -837,49 +837,49 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         </div>
                         {/* Product Info */}
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleViewProduct(product)}
-                              className="font-medium text-left text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded"
+                              className="text-xs font-medium text-left text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded"
                             >
                               {product.product_name}
                             </button>
                             {product.is_vape && (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[10px] px-1.5 py-0 h-4">
                                 Vape
                               </Badge>
                             )}
                             {product.age_restriction && product.age_restriction > 0 && (
-                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-[10px] px-1.5 py-0 h-4">
                                 {product.age_restriction}+
                               </Badge>
                             )}
                           </div>
                           {product.product_description && (
-                            <p className="text-sm text-gray-600 truncate max-w-[250px]">
+                            <p className="text-xs text-gray-600 truncate max-w-[250px]">
                               {product.product_description}
                             </p>
                           )}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-xs">
                       {product.brands?.brand_name || 'No Brand'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-xs">
                       {product.product_categories?.category_name || 'No Category'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-xs">
                       {product.manufacturers?.org_name || 'Unknown'} {product.manufacturers?.org_code && `(${product.manufacturers.org_code})`}
                     </TableCell>
                     <TableCell>
                       {product.is_vape ? (
-                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[10px] px-1.5 py-0 h-5">
                           Vape Product
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-1.5 py-0 h-5">
                           Regular Product
                         </Badge>
                       )}
@@ -932,7 +932,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
 
           {/* Pagination */}
           <div className="mt-6 flex items-center justify-between">
-            <p className="text-gray-600 text-sm">
+            <p className="text-gray-600 text-xs">
               Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, products.length)} of {products.length} items
             </p>
             <div className="flex gap-2">

@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/components/ui/use-toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { getStorageUrl } from '@/lib/utils'
 import {
     ArrowLeft,
     Save,
@@ -1472,7 +1473,7 @@ export default function JourneyDesignerV2({
                                                             <p className="text-xs text-gray-500">Preview (actual mobile size):</p>
                                                             <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
                                                                 <Image
-                                                                    src={item.image_url}
+                                                                    src={getStorageUrl(item.image_url) || item.image_url}
                                                                     alt="Banner preview"
                                                                     fill
                                                                     className="object-cover"

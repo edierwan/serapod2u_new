@@ -6,7 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
+import { getStorageUrl } from '@/lib/utils'
 import ImageUpload from '@/components/ui/image-upload'
+import { compressProductImage, formatFileSize } from '@/lib/utils/imageCompression'
 import { 
   ArrowLeft,
   Package,
@@ -173,14 +175,24 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
     
     setUploadingImage(true)
     try {
+      // Compress image first
+      const compressionResult = await compressProductImage(file)
+      
+      toast({
+        title: '🖼️ Image Compressed',
+        description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+      })
+
       // Upload to Supabase storage
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${product.product_code}-${Date.now()}.${fileExt}`
+      const fileName = `${product.product_code}-${Date.now()}.jpg`
       const filePath = `products/${fileName}`
 
       const { error: uploadError } = await supabase.storage
         .from('product-images')
-        .upload(filePath, file, { upsert: true })
+        .upload(filePath, compressionResult.file, { 
+          contentType: compressionResult.file.type,
+          upsert: true 
+        })
 
       if (uploadError) throw uploadError
 
@@ -189,7 +201,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         .from('product-images')
         .getPublicUrl(filePath)
 
-      // Get current images count to set sort_order
+      // Get current images count
       const currentImagesCount = product.product_images?.length || 0
       const isFirstImage = currentImagesCount === 0
 
@@ -199,8 +211,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         .insert({
           product_id: product.id,
           image_url: publicUrl,
-          is_primary: isFirstImage,
-          sort_order: currentImagesCount
+          is_primary: isFirstImage
         })
 
       if (dbError) throw dbError
@@ -524,27 +535,28 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Product Image */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="w-5 h-5" />
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Product Image - Compact Design */}
+        <Card className="lg:col-span-2 border-0 shadow-sm overflow-hidden">
+          <CardHeader className="pb-2 px-4 pt-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <ImageIcon className="w-4 h-4 text-blue-600" />
                 Product Image
-              </div>
+              </CardTitle>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setShowImageUpload(!showImageUpload)}
                 disabled={uploadingImage}
+                className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
               >
-                <Upload className="w-4 h-4 mr-1" />
+                <Upload className="w-3 h-3 mr-1" />
                 {showImageUpload ? 'Cancel' : 'Change'}
               </Button>
-            </CardTitle>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4 pt-0">
             {showImageUpload ? (
               <ImageUpload
                 currentImageUrl={primaryImage}
@@ -554,45 +566,48 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
               />
             ) : (
               <>
-                <div className="relative w-full h-64 bg-gray-100 rounded-lg overflow-hidden">
+                {/* Main Image Display */}
+                <div className="relative aspect-square w-full bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl overflow-hidden border border-gray-100">
                   {(selectedImageUrl || primaryImage) ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img 
-                      src={selectedImageUrl || primaryImage} 
+                      src={getStorageUrl(selectedImageUrl || primaryImage) || selectedImageUrl || primaryImage} 
                       alt={product.product_name}
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain p-2"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Package className="w-16 h-16 text-gray-400" />
+                      <Package className="w-12 h-12 text-gray-300" />
                     </div>
                   )}
                 </div>
+
+                {/* Thumbnail Gallery */}
                 {product.product_images && product.product_images.length > 0 && (
-                  <div className="mt-4">
-                    <div className="text-xs text-gray-600 mb-2">
+                  <div className="mt-3">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">
                       {product.product_images.length} image{product.product_images.length > 1 ? 's' : ''}
-                    </div>
-                    <div className="grid grid-cols-4 gap-2">
+                    </p>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
                       {product.product_images.map((img: any) => (
-                        <div key={img.id} className="relative group">
+                        <div key={img.id} className="relative group flex-shrink-0">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img 
-                            src={img.image_url}
+                            src={getStorageUrl(img.image_url) || img.image_url}
                             alt="Product"
                             onClick={() => {
                               setSelectedImageUrl(img.image_url)
                               handleSetPrimaryImage(img.id)
                             }}
-                            className={`w-full h-16 object-contain rounded cursor-pointer border-2 transition-all bg-gray-50 ${
+                            className={`w-14 h-14 object-cover rounded-lg cursor-pointer transition-all duration-200 ${
                               (selectedImageUrl === img.image_url || (!selectedImageUrl && img.is_primary)) 
-                                ? 'border-blue-500 ring-2 ring-blue-300' 
-                                : 'border-gray-200 hover:border-blue-400'
+                                ? 'ring-2 ring-blue-500 ring-offset-1' 
+                                : 'border border-gray-200 hover:border-blue-300 opacity-70 hover:opacity-100'
                             }`}
                           />
                           <button
                             type="button"
-                            className="absolute top-0.5 right-0.5 h-6 w-6 flex items-center justify-center rounded bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed z-10"
+                            className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
@@ -601,7 +616,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                             disabled={deletingImageId === img.id || product.product_images.length === 1}
                             title={product.product_images.length === 1 ? "Cannot delete the last image" : "Delete image"}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-2.5 w-2.5" />
                           </button>
                         </div>
                       ))}
@@ -613,68 +628,84 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
           </CardContent>
         </Card>
 
-        {/* Product Details */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Info className="w-5 h-5" />
+        {/* Product Information - Redesigned */}
+        <Card className="lg:col-span-3 border-0 shadow-sm">
+          <CardHeader className="pb-3 px-4 pt-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Info className="w-4 h-4 text-blue-600" />
               Product Information
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Brand</label>
-                <p className="text-gray-900 mt-1">{product.brands?.brand_name || 'No Brand'}</p>
+          <CardContent className="px-4 pb-4 pt-0">
+            {/* Info Grid */}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+              {/* Brand */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Brand</span>
+                <p className="text-[13px] font-medium text-gray-900">{product.brands?.brand_name || 'No Brand'}</p>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Category</label>
-                <p className="text-gray-900 mt-1">{product.product_categories?.category_name || 'No Category'}</p>
+
+              {/* Category */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Category</span>
+                <p className="text-[13px] font-medium text-gray-900">{product.product_categories?.category_name || 'No Category'}</p>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Manufacturer</label>
-                <p className="text-gray-900 mt-1">
-                  {product.manufacturers?.org_name || 'Unknown'} 
-                  {product.manufacturers?.org_code && ` (${product.manufacturers.org_code})`}
+
+              {/* Manufacturer */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Manufacturer</span>
+                <p className="text-[13px] font-medium text-gray-900 leading-tight">
+                  {product.manufacturers?.org_name || 'Unknown'}
+                  {product.manufacturers?.org_code && (
+                    <span className="text-gray-500 font-normal"> ({product.manufacturers.org_code})</span>
+                  )}
                 </p>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Product Type</label>
-                <div className="mt-1">
+
+              {/* Product Type */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Product Type</span>
+                <div>
                   {product.is_vape ? (
-                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-700 ring-1 ring-red-600/20">
                       Vape Product
-                    </Badge>
+                    </span>
                   ) : (
-                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 ring-1 ring-blue-600/20">
                       Regular Product
-                    </Badge>
+                    </span>
                   )}
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Status</label>
-                <div className="mt-1">
-                  <Badge variant="outline" className={product.is_active ? 
-                    'bg-green-50 text-green-700 border-green-200' : 
-                    'bg-gray-50 text-gray-700 border-gray-200'
-                  }>
+
+              {/* Status */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Status</span>
+                <div>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                    product.is_active 
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20' 
+                      : 'bg-gray-100 text-gray-500 ring-1 ring-gray-500/20'
+                  }`}>
                     {product.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
+                  </span>
                 </div>
               </div>
+
+              {/* Age Restriction */}
               {product.age_restriction && product.age_restriction > 0 && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Age Restriction</label>
-                  <p className="text-gray-900 mt-1">{product.age_restriction}+</p>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wide">Age Restriction</span>
+                  <p className="text-[13px] font-medium text-gray-900">{product.age_restriction}+</p>
                 </div>
               )}
             </div>
 
+            {/* Description */}
             {product.product_description && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">Description</label>
-                <p className="text-gray-900 mt-1">{product.product_description}</p>
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Description</span>
+                <p className="text-[12px] text-gray-600 mt-1 leading-relaxed">{product.product_description}</p>
               </div>
             )}
           </CardContent>
@@ -683,69 +714,95 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
 
       {/* Variants */}
       {product.product_variants && product.product_variants.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Tag className="w-5 h-5" />
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <Tag className="w-4 h-4 text-blue-600" />
               Product Variants ({product.product_variants.length})
             </CardTitle>
-            <CardDescription>Different variants of this product</CardDescription>
+            <CardDescription className="text-xs">Different variants of this product</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {product.product_variants.map((variant: any) => (
-                <Card key={variant.id} className="overflow-hidden">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex flex-col gap-3 md:flex-row">
-                      <div className="w-full overflow-hidden rounded-lg border border-gray-100 bg-gray-50 md:w-32 md:flex-shrink-0">
-                        {variant.image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={variant.image_url}
-                            alt={variant.variant_name}
-                            className="h-32 w-full object-contain md:h-full"
-                          />
-                        ) : (
-                          <div className="flex h-32 w-full items-center justify-center text-gray-400 md:h-24">
-                            <ImageIcon className="h-8 w-8" />
-                          </div>
-                        )}
+                <div 
+                  key={variant.id} 
+                  className="group relative bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all duration-200 overflow-hidden"
+                >
+                  {/* Status Badge & Delete Button */}
+                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        variant.is_active
+                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                          : 'bg-gray-100 text-gray-500 ring-1 ring-gray-500/20'
+                      }`}
+                    >
+                      {variant.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleDeleteVariant(variant.id, variant.variant_name)}
+                      disabled={deletingVariant === variant.id}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+
+                  {/* Image Section */}
+                  <div className="relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
+                    {variant.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={getStorageUrl(variant.image_url) || variant.image_url}
+                        alt={variant.variant_name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <ImageIcon className="h-10 w-10 text-gray-300" />
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="font-medium text-gray-900">{variant.variant_name}</h4>
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              variant="outline"
-                              className={variant.is_active
-                                ? 'bg-green-50 text-green-700 border-green-200'
-                                : 'bg-gray-50 text-gray-700 border-gray-200'
-                              }
-                            >
-                              {variant.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteVariant(variant.id, variant.variant_name)}
-                              disabled={deletingVariant === variant.id}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="mt-2 space-y-1.5 text-sm">
-                          <p className="text-gray-600">Code: <span className="text-gray-900">{variant.variant_code}</span></p>
-                          <p className="text-gray-600">Mfg SKU: <span className="text-gray-900">{variant.manufacturer_sku || 'N/A'}</span></p>
-                          <p className="text-gray-600">Barcode: <span className="text-gray-900">{variant.barcode || 'N/A'}</span></p>
-                          <p className="text-gray-600">Retail Price: <span className="text-gray-900 font-medium">RM {variant.suggested_retail_price?.toFixed(2) || '0.00'}</span></p>
-                          <p className="text-gray-600">Base Cost: <span className="text-gray-900">RM {variant.base_cost?.toFixed(2) || '0.00'}</span></p>
-                        </div>
+                    )}
+                  </div>
+
+                  {/* Content Section */}
+                  <div className="p-3 space-y-2">
+                    {/* Variant Name */}
+                    <h4 className="font-medium text-[13px] text-gray-900 leading-tight line-clamp-2">
+                      {variant.variant_name}
+                    </h4>
+
+                    {/* Info Grid */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-gray-400">Code:</span>
+                        <span className="text-gray-700 font-medium">{variant.variant_code}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-gray-400">Mfg SKU:</span>
+                        <span className="text-gray-700 font-medium truncate ml-2 max-w-[120px]">{variant.manufacturer_sku || '-'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-gray-400">Barcode:</span>
+                        <span className="text-gray-700 font-medium">{variant.barcode || '-'}</span>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+
+                    {/* Price Section */}
+                    <div className="pt-2 border-t border-gray-100 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">Retail Price</span>
+                        <span className="text-[13px] font-semibold text-blue-600">RM {variant.suggested_retail_price?.toFixed(2) || '0.00'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">Base Cost</span>
+                        <span className="text-[11px] font-medium text-gray-600">RM {variant.base_cost?.toFixed(2) || '0.00'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </CardContent>

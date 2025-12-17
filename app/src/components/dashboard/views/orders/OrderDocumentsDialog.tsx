@@ -100,6 +100,9 @@ export default function OrderDocumentsDialog({
         throw new Error('Failed to generate document')
       }
 
+      // Extract PDF size info from response headers
+      const pdfSizeFormatted = response.headers.get('X-PDF-Size-Formatted') || ''
+
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -111,8 +114,10 @@ export default function OrderDocumentsDialog({
       document.body.removeChild(a)
 
       toast({
-        title: "Success",
-        description: "Document downloaded successfully"
+        title: "✅ Document Downloaded",
+        description: pdfSizeFormatted 
+          ? `Document downloaded successfully (${pdfSizeFormatted})`
+          : "Document downloaded successfully"
       })
     } catch (error: any) {
       console.error('Error downloading document:', error)

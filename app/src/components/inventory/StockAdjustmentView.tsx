@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { getStorageUrl } from '@/lib/utils'
 import { 
   Settings,
   Search,
@@ -808,7 +809,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                       <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
                         {variant.image_url ? (
                           <img
-                            src={variant.image_url}
+                            src={getStorageUrl(variant.image_url) || variant.image_url}
                             alt={variant.variant_name}
                             className="w-full h-full object-cover"
                             onError={(e) => {

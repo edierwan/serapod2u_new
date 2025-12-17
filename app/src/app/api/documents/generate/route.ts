@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     // Generate new PDF
     console.log('📄 Generating new PDF...')
     // Skip internal upload in generation function, we handle it here with service role
-    const { buffer, filename } = await generatePdfForOrderDocument(orderId, type, {
+    const { buffer, filename, sizeInfo } = await generatePdfForOrderDocument(orderId, type, {
       documentId,
       skipUpload: true 
     })
@@ -111,10 +111,12 @@ export async function GET(request: NextRequest) {
         )
 
         // Upload PDF to storage using service role
-        const pdfFileName = `generated-pdf-${documentId}-${Date.now()}.pdf`
+        // Use friendly filename format: {orderId}/{filename} for organized storage
+        // filename already contains order number from pdf-generation.ts (e.g., "ORD-0101-25-0001-PO.pdf")
+        const pdfStoragePath = `${orderId}/${filename}`
         const { data: uploadData, error: uploadError } = await serviceSupabase.storage
           .from('order-documents')
-          .upload(pdfFileName, buffer, {
+          .upload(pdfStoragePath, buffer, {
             contentType: 'application/pdf',
             cacheControl: '3600',
             upsert: false
@@ -152,6 +154,11 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': String(buffer.length),
+        // PDF size info headers for frontend notification
+        'X-PDF-Size': String(sizeInfo.fileSize),
+        'X-PDF-Size-Formatted': sizeInfo.fileSizeFormatted,
+        'X-PDF-Compression-Summary': encodeURIComponent(sizeInfo.compressionSummary),
       },
     })
   } catch (error: any) {

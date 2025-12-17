@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { PDFGenerator } from '@/lib/pdf-generator'
+import { PDFGenerator, type PDFCompressionStats } from '@/lib/pdf-generator'
+import { formatFileSize } from '@/lib/pdf-optimizer'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Buffer } from 'buffer'
 
@@ -41,9 +42,18 @@ export interface GenerateDocumentOptions {
   skipUpload?: boolean
 }
 
+// PDF size statistics for notifications
+export interface PDFSizeInfo {
+  fileSize: number
+  fileSizeFormatted: string
+  compressionStats: PDFCompressionStats
+  compressionSummary: string
+}
+
 interface GenerateResult {
   buffer: Buffer
   filename: string
+  sizeInfo: PDFSizeInfo  // Added size information
 }
 
 export async function generatePdfForOrderDocument(
@@ -159,12 +169,14 @@ export async function generatePdfForOrderDocument(
 
   let signatures: any[] = []
   const generator = new PDFGenerator(signatures)
+  let compressionStats = generator.getCompressionStats()
   let pdfBlob: Blob
   let filename: string
 
   if (type === 'order') {
     pdfBlob = await generator.generateOrderPDF(enrichedOrderData as any)
     filename = `${orderData.order_no}-order.pdf`
+    compressionStats = generator.getCompressionStats()
   } else {
     let docType: string
     switch (type) {
@@ -453,6 +465,7 @@ export async function generatePdfForOrderDocument(
     }
 
     const generatorWithSigs = new PDFGenerator(signatures)
+    let compressionStats = generatorWithSigs.getCompressionStats()
 
     switch (type) {
       case 'purchase_order':
@@ -487,7 +500,9 @@ export async function generatePdfForOrderDocument(
         pdfBlob = await generatorWithSigs.generateOrderPDF(enrichedOrderData as any)
         filename = `${orderData.order_no}-order.pdf`
     }
-
+    
+    // Get updated compression stats after PDF generation
+    compressionStats = generatorWithSigs.getCompressionStats()
     if (!options.skipUpload) {
       try {
         const arrayBuffer = await pdfBlob.arrayBuffer()
@@ -510,9 +525,43 @@ export async function generatePdfForOrderDocument(
 
   const arrayBuffer = await pdfBlob.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
+  const fileSize = buffer.length
+  
+  // Build compression summary for notification
+  const summaryParts: string[] = []
+  summaryParts.push(`📄 PDF Size: ${formatFileSize(fileSize)}`)
+  
+  if (compressionStats.totalSavings > 0) {
+    summaryParts.push(`💾 Optimized: ${formatFileSize(compressionStats.totalSavings)} saved`)
+  }
+  
+  if (compressionStats.logoCompressedSize > 0) {
+    const logoSaving = compressionStats.logoOriginalSize - compressionStats.logoCompressedSize
+    if (logoSaving > 0) {
+      summaryParts.push(`🖼️ Logo: ${formatFileSize(compressionStats.logoCompressedSize)} (${Math.round(logoSaving / compressionStats.logoOriginalSize * 100)}% smaller)`)
+    }
+  }
+  
+  if (compressionStats.signatureCompressedSize > 0) {
+    const sigSaving = compressionStats.signatureOriginalSize - compressionStats.signatureCompressedSize
+    if (sigSaving > 0) {
+      summaryParts.push(`✍️ Signatures: ${formatFileSize(compressionStats.signatureCompressedSize)} (${Math.round(sigSaving / compressionStats.signatureOriginalSize * 100)}% smaller)`)
+    }
+  }
+  
+  const sizeInfo: PDFSizeInfo = {
+    fileSize,
+    fileSizeFormatted: formatFileSize(fileSize),
+    compressionStats,
+    compressionSummary: summaryParts.join(' | ')
+  }
+  
+  // Log compression summary for monitoring
+  console.log(`📊 PDF Generated: ${filename} | ${sizeInfo.compressionSummary}`)
 
   return {
     buffer,
-    filename
+    filename,
+    sizeInfo
   }
 }

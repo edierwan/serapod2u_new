@@ -71,10 +71,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User organization not found' }, { status: 403 })
     }
 
-    // Fetch document to validate access
+    // Fetch document to validate access and get order info for friendly naming
     const { data: document, error: docError } = await supabase
       .from('documents')
-      .select('id, issued_by_org_id, issued_to_org_id, company_id')
+      .select(`
+        id, 
+        issued_by_org_id, 
+        issued_to_org_id, 
+        company_id,
+        doc_no,
+        order_id,
+        orders!inner (
+          id,
+          order_no
+        )
+      `)
       .eq('id', documentId)
       .maybeSingle()
 
@@ -106,17 +117,26 @@ export async function POST(request: Request) {
     const fileArrayBuffer = await fileToUpload.arrayBuffer()
     const fileBuffer = Buffer.from(fileArrayBuffer)
     const fileExtension = fileToUpload.name.includes('.')
-      ? fileToUpload.name.split('.').pop()
+      ? fileToUpload.name.split('.').pop()?.toLowerCase()
       : undefined
-    const generatedFileName = `manufacturer-doc-${documentId}-${Date.now()}-${randomUUID()}${
-      fileExtension ? `.${fileExtension}` : ''
-    }`
+    
+    // Generate friendly filename using order_no and doc_no
+    const orderNo = (document as any)?.orders?.order_no || 'order'
+    const docNo = (document as any)?.doc_no || documentId.substring(0, 8)
+    const orderId = (document as any)?.order_id || 'unknown'
+    
+    // Create a clean, friendly filename: {orderId}/{orderNo}-PI.{ext}
+    // PI = Proforma Invoice (manufacturer's document)
+    const friendlyFileName = displayFileName 
+      ? displayFileName.replace(/[^a-zA-Z0-9.-]/g, '_')
+      : `${orderNo}-PI${fileExtension ? `.${fileExtension}` : ''}`
+    const storagePath = `${orderId}/${friendlyFileName}`
 
     const { data: uploadData, error: uploadError } = await admin.storage
       .from('order-documents')
-      .upload(generatedFileName, fileBuffer, {
+      .upload(storagePath, fileBuffer, {
         cacheControl: '3600',
-        upsert: false,
+        upsert: true, // Allow overwrite if file exists (e.g., replacing PI)
         contentType: fileToUpload.type || 'application/octet-stream'
       })
 

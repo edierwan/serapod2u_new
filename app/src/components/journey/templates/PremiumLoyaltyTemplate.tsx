@@ -58,7 +58,7 @@ import { GenuineProductAnimation } from '@/components/animations/GenuineProductA
 import { RewardRedemptionAnimation } from '@/components/animations/RewardRedemptionAnimation'
 import { GiftClaimedAnimation } from '@/components/animations/GiftClaimedAnimation'
 import { InsufficientPointsAnimation } from '@/components/animations/InsufficientPointsAnimation'
-import { validatePhoneNumber, normalizePhone } from '@/lib/utils'
+import { validatePhoneNumber, normalizePhone, getStorageUrl } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 
 // Types
@@ -1838,7 +1838,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative overflow-hidden">
                                     {reward.item_image_url ? (
                                         <Image 
-                                            src={reward.item_image_url} 
+                                            src={getStorageUrl(reward.item_image_url) || reward.item_image_url} 
                                             alt={reward.item_name}
                                             fill
                                             className="object-cover"
@@ -2050,7 +2050,7 @@ export default function PremiumLoyaltyTemplate({
                                             <div className="h-24 bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center relative overflow-hidden">
                                                 {gift.gift_image_url ? (
                                                     <img 
-                                                        src={gift.gift_image_url} 
+                                                        src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url} 
                                                         alt={gift.gift_name}
                                                         className="w-full h-full object-contain p-2"
                                                     />
@@ -2109,7 +2109,7 @@ export default function PremiumLoyaltyTemplate({
                                     <div className="h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative">
                                         {reward.item_image_url ? (
                                             <Image 
-                                                src={reward.item_image_url} 
+                                                src={getStorageUrl(reward.item_image_url) || reward.item_image_url} 
                                                 alt={reward.item_name}
                                                 fill
                                                 className="object-cover"
@@ -2230,7 +2230,7 @@ export default function PremiumLoyaltyTemplate({
                                                     <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                                                         {scan.image_url ? (
                                                             <Image 
-                                                                src={scan.image_url} 
+                                                                src={getStorageUrl(scan.image_url) || scan.image_url} 
                                                                 alt={scan.variant_name || 'Product'}
                                                                 width={64}
                                                                 height={64}
@@ -2268,7 +2268,7 @@ export default function PremiumLoyaltyTemplate({
                                                 <div className="h-32 bg-gray-100 flex items-center justify-center overflow-hidden">
                                                     {scan.image_url ? (
                                                         <Image 
-                                                            src={scan.image_url} 
+                                                            src={getStorageUrl(scan.image_url) || scan.image_url} 
                                                             alt={scan.variant_name || 'Product'}
                                                             width={128}
                                                             height={128}
@@ -2354,7 +2354,7 @@ export default function PremiumLoyaltyTemplate({
                                             <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                                                 {txn.image_url ? (
                                                     <Image 
-                                                        src={txn.image_url} 
+                                                        src={getStorageUrl(txn.image_url) || txn.image_url} 
                                                         alt={txn.product_name || 'Transaction'}
                                                         width={48}
                                                         height={48}
@@ -2452,7 +2452,7 @@ export default function PremiumLoyaltyTemplate({
                                                 <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                                                     {redemption.reward?.image_url ? (
                                                         <Image 
-                                                            src={redemption.reward.image_url} 
+                                                            src={getStorageUrl(redemption.reward.image_url) || redemption.reward.image_url} 
                                                             alt={redemption.reward?.name || 'Reward'}
                                                             width={64}
                                                             height={64}
@@ -2711,7 +2711,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center overflow-hidden flex-shrink-0 border border-amber-200">
                                     {prize.image_url ? (
                                         <img 
-                                            src={prize.image_url} 
+                                            src={getStorageUrl(prize.image_url) || prize.image_url} 
                                             alt={prize.name || `Prize ${index + 1}`}
                                             className="w-full h-full object-contain p-1"
                                         />
@@ -3019,7 +3019,7 @@ export default function PremiumLoyaltyTemplate({
                             <div className="aspect-video relative rounded-xl overflow-hidden bg-gray-100 mb-4">
                                 {selectedProduct.primary_image_url ? (
                                     <Image 
-                                        src={selectedProduct.primary_image_url} 
+                                        src={getStorageUrl(selectedProduct.primary_image_url) || selectedProduct.primary_image_url} 
                                         alt={selectedProduct.product_name}
                                         fill
                                         className="object-contain"
@@ -3044,7 +3044,7 @@ export default function PremiumLoyaltyTemplate({
                                     <div className="aspect-square relative bg-gray-50">
                                         {variant.image_url ? (
                                             <Image 
-                                                src={variant.image_url} 
+                                                src={getStorageUrl(variant.image_url) || variant.image_url} 
                                                 alt={variant.variant_name}
                                                 fill
                                                 className="object-cover"
@@ -3113,7 +3113,7 @@ export default function PremiumLoyaltyTemplate({
                                         <div className="w-28 h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0 flex items-center justify-center relative">
                                             {product.primary_image_url ? (
                                                 <Image 
-                                                    src={product.primary_image_url} 
+                                                    src={getStorageUrl(product.primary_image_url) || product.primary_image_url} 
                                                     alt={product.product_name}
                                                     fill
                                                     className="object-cover"
@@ -3930,7 +3930,7 @@ export default function PremiumLoyaltyTemplate({
                             <div className="flex items-center gap-3">
                                 {selectedReward.item_image_url ? (
                                     <img 
-                                        src={selectedReward.item_image_url} 
+                                        src={getStorageUrl(selectedReward.item_image_url) || selectedReward.item_image_url} 
                                         alt={selectedReward.item_name}
                                         className="w-16 h-16 object-cover rounded-lg"
                                     />
@@ -4042,7 +4042,7 @@ export default function PremiumLoyaltyTemplate({
                             <div className="flex items-center gap-3">
                                 {selectedGift.gift_image_url ? (
                                     <img 
-                                        src={selectedGift.gift_image_url} 
+                                        src={getStorageUrl(selectedGift.gift_image_url) || selectedGift.gift_image_url} 
                                         alt={selectedGift.gift_name}
                                         className="w-16 h-16 object-contain rounded-lg bg-white p-1"
                                     />

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
+import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import {
   getValidParentOrgs, 
   isParentRequired, 
@@ -362,8 +363,15 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
       if (logoFile) {
         try {
-          const fileExt = logoFile.name.split('.').pop()
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+          // Compress logo first
+          const compressionResult = await compressAvatar(logoFile)
+          
+          toast({
+            title: '🖼️ Logo Compressed',
+            description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+          })
+
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
           const filePath = `${organization!.id}/${fileName}` // Nested folder: org_id/filename
 
           // Delete old logo if exists (using same pattern as user avatars)
@@ -382,7 +390,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
           const { error: uploadError } = await supabase.storage
             .from('avatars') // Use same bucket as user avatars
-            .upload(filePath, logoFile, {
+            .upload(filePath, compressionResult.file, {
+              contentType: compressionResult.file.type,
               cacheControl: '3600',
               upsert: true // Allow overwrite
             })

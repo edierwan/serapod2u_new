@@ -485,8 +485,13 @@ export default function OrderDocumentsDialogEnhanced({
         throw new Error(errorMessage)
       }
 
+      // Extract PDF size info from response headers
+      const pdfSizeFormatted = response.headers.get('X-PDF-Size-Formatted') || ''
+      const compressionSummary = response.headers.get('X-PDF-Compression-Summary')
+      const decodedSummary = compressionSummary ? decodeURIComponent(compressionSummary) : ''
+
       const blob = await response.blob()
-      console.log('PDF blob size:', blob.size)
+      console.log('PDF blob size:', blob.size, '| Size info:', pdfSizeFormatted)
       
       if (blob.size === 0) {
         throw new Error('Generated PDF is empty')
@@ -505,9 +510,12 @@ export default function OrderDocumentsDialogEnhanced({
         document.body.removeChild(a)
       }, 100)
 
+      // Show success toast with PDF size information
       toast({
-        title: 'Success',
-        description: 'Document downloaded successfully'
+        title: '✅ Document Downloaded',
+        description: pdfSizeFormatted 
+          ? `${docType} downloaded successfully (${pdfSizeFormatted})`
+          : 'Document downloaded successfully'
       })
     } catch (error: any) {
       console.error('Error downloading document:', error)

@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Users, Search, Plus, Loader2, Edit, Trash2, CheckCircle, XCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import UserDialog from './UserDialog'
 import type { User as UserType, Role, Organization } from '@/types/user'
+import { getStorageUrl } from '@/lib/utils'
+import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
 const formatRelativeTime = (dateString: string | null): string => {
   if (!dateString) return 'Never'
@@ -169,6 +171,14 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
         // Handle avatar upload for edit
         if (avatarFile) {
           try {
+            // Compress the avatar first
+            const compressionResult = await compressAvatar(avatarFile)
+            
+            toast({
+              title: '🖼️ Avatar Compressed',
+              description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+            })
+
             // Delete old avatar if exists
             if (editingUser.avatar_url) {
               const oldPath = editingUser.avatar_url.split('/').pop()?.split('?')[0]
@@ -178,13 +188,13 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
               }
             }
             
-            const fileExtension = avatarFile.name.split('.').pop()
-            const fileName = `${Date.now()}.${fileExtension}`
+            const fileName = `${Date.now()}.jpg`
             const filePath = `${editingUser.id}/${fileName}`
             
             const { error: uploadError } = await supabase.storage
               .from('avatars')
-              .upload(filePath, avatarFile, {
+              .upload(filePath, compressionResult.file, {
+                contentType: compressionResult.file.type,
                 cacheControl: '3600',
                 upsert: true
               })
@@ -405,7 +415,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
       <TableBody>{filteredUsers.map((user) => <TableRow key={user.id} className="hover:bg-gray-50">
         <TableCell><div className="flex items-center gap-3"><Avatar className="w-10 h-10">
           {user.avatar_url && <AvatarImage 
-            src={`${user.avatar_url.split('?')[0]}?v=${avatarRefresh[user.id] || Date.now()}`} 
+            src={getStorageUrl(`${user.avatar_url.split('?')[0]}?v=${avatarRefresh[user.id] || Date.now()}`) || user.avatar_url} 
             alt={user.full_name || 'User'} 
             key={`avatar-${user.id}-${avatarRefresh[user.id]}`}
           />}

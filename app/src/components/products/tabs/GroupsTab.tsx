@@ -372,11 +372,11 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
             {getSortedGroups().length > 0 ? (
               getSortedGroups().map((group) => (
                 <TableRow key={group.id} className="hover:bg-gray-50">
-                  <TableCell>{group.group_name}</TableCell>
-                  <TableCell className="text-sm text-gray-600">{group.category_name}</TableCell>
-                  <TableCell className="text-sm text-gray-600 truncate max-w-xs">{group.group_description || '-'}</TableCell>
+                  <TableCell className="text-sm">{group.group_name}</TableCell>
+                  <TableCell className="text-xs text-gray-600">{group.category_name}</TableCell>
+                  <TableCell className="text-xs text-gray-600 truncate max-w-xs">{group.group_description || '-'}</TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={group.is_active ? 'default' : 'secondary'}>
+                    <Badge variant={group.is_active ? 'default' : 'secondary'} className="text-xs">
                       {group.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
@@ -415,7 +415,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
         </Table>
       </div>
 
-      <div className="text-sm text-gray-600">
+      <div className="text-xs text-gray-600">
         Showing {getSortedGroups().length} of {groups.filter(g => g.is_active).length} groups
       </div>
     </div>

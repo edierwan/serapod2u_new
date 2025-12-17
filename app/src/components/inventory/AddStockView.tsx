@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { getStorageUrl } from '@/lib/utils'
 import { 
   Package, 
   Plus,
@@ -538,7 +539,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                           {selectedVariantData.image_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={selectedVariantData.image_url}
+                              src={getStorageUrl(selectedVariantData.image_url) || selectedVariantData.image_url}
                               alt={selectedVariantData.variant_name}
                               className="w-full h-full object-cover"
                             />
@@ -672,7 +673,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               <div className="w-10 h-10 rounded-md overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
                                 {item.image_url ? (
                                   <img
-                                    src={item.image_url}
+                                    src={getStorageUrl(item.image_url) || item.image_url}
                                     alt={item.variant_name}
                                     className="w-full h-full object-cover"
                                   />

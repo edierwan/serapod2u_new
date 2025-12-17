@@ -41,6 +41,7 @@ import {
   Info,
   Package
 } from 'lucide-react'
+import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
 interface UserProfile {
   id: string
@@ -381,13 +382,21 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
       // Handle logo upload if there's a new file
       if (logoFile) {
-        const fileExt = logoFile.name.split('.').pop()
-        const fileName = `org-${userProfile.organizations.id}-${Date.now()}.${fileExt}`
+        // Compress logo first
+        const compressionResult = await compressAvatar(logoFile)
+        
+        toast({
+          title: '🖼️ Logo Compressed',
+          description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+        })
+
+        const fileName = `org-${userProfile.organizations.id}-${Date.now()}.jpg`
         
         // Upload the logo to avatars bucket
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('avatars')
-          .upload(fileName, logoFile, {
+          .upload(fileName, compressionResult.file, {
+            contentType: compressionResult.file.type,
             cacheControl: '3600',
             upsert: false
           })
@@ -801,7 +810,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                         <AvatarImage
                           src={logoPreview || undefined}
                           alt={`${orgSettings.org_name} logo`}
-                          className="object-cover"
+                          className="object-contain"
                         />
                         <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50">
                           <Building2 className="w-10 h-10 text-blue-600" />
@@ -1080,7 +1089,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                         <img 
                           src={brandingLogoPreview} 
                           alt="Logo preview" 
-                          className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
+                          className="h-10 w-10 rounded-lg object-contain flex-shrink-0"
                         />
                       ) : (
                         <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -1125,7 +1134,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                         <img 
                           src={brandingLogoPreview} 
                           alt="Logo preview" 
-                          className="w-16 h-16 rounded-lg object-cover"
+                          className="w-16 h-16 rounded-lg object-contain"
                         />
                       ) : (
                         <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -1208,7 +1217,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       <img 
                         src={brandingLogoPreview} 
                         alt="Logo preview" 
-                        className="h-12 w-12 rounded-lg object-cover mx-auto"
+                        className="h-12 w-12 rounded-lg object-contain mx-auto"
                       />
                     ) : (
                       <div className="h-12 w-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto">
@@ -1295,14 +1304,22 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       
                       // Upload logo to Supabase storage if new file selected
                       if (brandingLogoFile) {
+                        // Compress logo first
+                        const compressionResult = await compressAvatar(brandingLogoFile)
+                        
+                        toast({
+                          title: '🖼️ Logo Compressed',
+                          description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+                        })
+
                         const timestamp = Date.now()
-                        const fileExt = brandingLogoFile.name.split('.').pop()
-                        const fileName = `branding/${userProfile.organizations.id}-logo-${timestamp}.${fileExt}`
+                        const fileName = `branding/${userProfile.organizations.id}-logo-${timestamp}.jpg`
                         
                         // Upload to existing avatars bucket (same bucket used for user avatars and org logos)
                         const { data: uploadData, error: uploadError } = await supabase.storage
                           .from('avatars')
-                          .upload(fileName, brandingLogoFile, {
+                          .upload(fileName, compressionResult.file, {
+                            contentType: compressionResult.file.type,
                             cacheControl: '3600',
                             upsert: true
                           })

@@ -1,5 +1,10 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { 
+  compressSignatureForPdf,
+  formatFileSize,
+  type CompressionResult 
+} from './pdf-optimizer'
 
 interface PaymentTerms {
   deposit_pct?: number
@@ -114,16 +119,44 @@ interface SignatureData {
   signature_image_data?: string | null
 }
 
+// PDF compression statistics
+export interface PDFCompressionStats {
+  logoOriginalSize: number
+  logoCompressedSize: number
+  signatureOriginalSize: number
+  signatureCompressedSize: number
+  totalSavings: number
+}
+
 export class PDFGenerator {
   private doc: jsPDF
   private signatures: SignatureData[]
   private pageWidth: number = 210 // A4 width in mm
   private margin: number = 15
   private signatureTintCache = new Map<string, string>()
+  
+  // Compression tracking
+  private compressionStats: PDFCompressionStats = {
+    logoOriginalSize: 0,
+    logoCompressedSize: 0,
+    signatureOriginalSize: 0,
+    signatureCompressedSize: 0,
+    totalSavings: 0
+  }
+  
+  // Cached compressed logo to avoid re-compression
+  private compressedLogoCache: string | null = null
 
   constructor(signatures: SignatureData[] = []) {
-    this.doc = new jsPDF()
+    this.doc = new jsPDF({
+      compress: true  // Enable internal PDF compression
+    })
     this.signatures = signatures
+  }
+  
+  // Get compression statistics after PDF generation
+  public getCompressionStats(): PDFCompressionStats {
+    return { ...this.compressionStats }
   }
 
   private formatCurrency(amount: number | string): string {
@@ -652,7 +685,7 @@ export class PDFGenerator {
           this.applyBlueTintToPixelArray(imageDataObject.data)
           context.putImageData(imageDataObject, 0, 0)
 
-          resolve(canvas.toDataURL('image/png'))
+          resolve(canvas.toDataURL('image/png', 0.5))  // More aggressive compression with quality 0.5
         } catch (canvasError) {
           reject(canvasError)
         }
@@ -670,15 +703,33 @@ export class PDFGenerator {
       : normalized.replace(/^data:image\/[a-zA-Z+]+;base64,/, '')
 
     const { PNG } = await import('pngjs')
-    const png = PNG.sync.read(Buffer.from(base64, 'base64'))
+    const originalBuffer = Buffer.from(base64, 'base64')
+    const originalSize = originalBuffer.length
+    
+    const png = PNG.sync.read(originalBuffer)
     this.applyBlueTintToPixelArray(png.data)
-    const tintedBuffer = PNG.sync.write(png)
+    
+    // Write with maximum compression
+    const tintedBuffer = PNG.sync.write(png, {
+      filterType: 4,      // Paeth filter for best compression
+      deflateLevel: 9,    // Maximum compression level
+      deflateStrategy: 1  // Filtered strategy
+    })
+    
+    // Track signature compression stats
+    const compressedSize = tintedBuffer.length
+    this.compressionStats.signatureOriginalSize += originalSize
+    this.compressionStats.signatureCompressedSize += compressedSize
+    this.compressionStats.totalSavings += Math.max(0, originalSize - compressedSize)
+    
     return `data:image/png;base64,${tintedBuffer.toString('base64')}`
   }
 
   private async drawSignatureImageBlue(imageData: string, x: number, y: number, width: number, height: number): Promise<boolean> {
     try {
-      const tinted = await this.tintSignatureImageBlue(imageData)
+      // Compress signature first, then tint
+      const compressed = await compressSignatureForPdf(imageData)
+      const tinted = await this.tintSignatureImageBlue(compressed.data)
       this.doc.addImage(tinted, 'PNG', x, y, width, height)
       return true
     } catch (error) {
@@ -700,22 +751,50 @@ export class PDFGenerator {
     const xPos = (this.pageWidth - imgWidth) / 2
 
     try {
+      // Use cached compressed logo if available
+      if (this.compressedLogoCache) {
+        this.doc.addImage(this.compressedLogoCache, 'PNG', xPos, yPosition, imgWidth, imgHeight)
+        return yPosition + imgHeight + 5
+      }
+
       // When running on the server (API route), read the logo directly from disk
       if (typeof window === 'undefined') {
         const fs = await import('fs/promises')
         const path = await import('path')
-        // Correct path: public/images/seralogo.png (relative to process.cwd())
-        const logoPath = path.join(process.cwd(), 'public', 'images', 'seralogo.png')
+        
+        // Try optimized logo first (8-bit, smaller file), fallback to original
+        const optimizedLogoPath = path.join(process.cwd(), 'public', 'images', 'seralogo-optimized.png')
+        const originalLogoPath = path.join(process.cwd(), 'public', 'images', 'seralogo.png')
 
         try {
-          const imageBuffer = await fs.readFile(logoPath)
+          // Prefer optimized version (8-bit, ~29KB vs 110KB)
+          let imageBuffer: Buffer
+          let logoPath: string
+          
+          try {
+            imageBuffer = await fs.readFile(optimizedLogoPath)
+            logoPath = optimizedLogoPath
+          } catch {
+            // Fallback to original if optimized doesn't exist
+            imageBuffer = await fs.readFile(originalLogoPath)
+            logoPath = originalLogoPath
+          }
+          
           const base64data = `data:image/png;base64,${imageBuffer.toString('base64')}`
+          
+          // Track logo size
+          this.compressionStats.logoOriginalSize = 110078  // Original file size
+          this.compressionStats.logoCompressedSize = imageBuffer.length
+          this.compressionStats.totalSavings += Math.max(0, 110078 - imageBuffer.length)
+          
+          // Cache the logo
+          this.compressedLogoCache = base64data
+          
           this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
           return yPosition + imgHeight + 5
         } catch (fsError) {
-          console.warn('Logo file missing or unreadable at', logoPath, fsError)
+          console.warn('Logo file missing or unreadable:', fsError)
         }
-        // Do not fallback to fetch on server side with relative URL
         // Fallback to text if image fails to load
         this.doc.setFontSize(20)
         this.doc.setFont('helvetica', 'bold')
@@ -725,16 +804,39 @@ export class PDFGenerator {
       }
 
       // Fallback to fetching via browser if needed (e.g., client-side rendering)
-      const response = await fetch('/images/seralogo.png', { cache: 'no-store' })
+      // Try optimized version first
+      let response = await fetch('/images/seralogo-optimized.png', { cache: 'no-store' })
+      if (!response.ok) {
+        response = await fetch('/images/seralogo.png', { cache: 'no-store' })
+      }
+      
       if (response.ok) {
         const blob = await response.blob()
         const reader = new FileReader()
 
         return await new Promise((resolve, reject) => {
-          reader.onloadend = () => {
-            const base64data = reader.result as string
-            this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
-            resolve(yPosition + imgHeight + 5)
+          reader.onloadend = async () => {
+            try {
+              const base64data = reader.result as string
+              
+              // Use optimized logo directly without runtime compression
+              // (optimized version is pre-compressed 8-bit PNG)
+              this.compressionStats.logoOriginalSize = 110078
+              this.compressionStats.logoCompressedSize = blob.size
+              this.compressionStats.totalSavings += Math.max(0, 110078 - blob.size)
+              
+              // Cache the logo
+              this.compressedLogoCache = base64data
+              
+              this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
+              resolve(yPosition + imgHeight + 5)
+            } catch (error) {
+              console.error('Error adding logo:', error)
+              // Fallback to original if anything fails
+              const base64data = reader.result as string
+              this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
+              resolve(yPosition + imgHeight + 5)
+            }
           }
           reader.onerror = () => reject(new Error('Failed to read logo blob'))
           reader.readAsDataURL(blob)
@@ -800,12 +902,12 @@ export class PDFGenerator {
       this.doc.setFontSize(9)
       this.doc.setFont('helvetica', 'bold')
       this.doc.setTextColor(0, 0, 0)
-      this.doc.text(data[i].label + ':', x + 2, cellY + 5)
+      this.doc.text(data[i].label, x + 2, cellY + 5)
 
-      // Value (normal)
+      // Value (normal) - with spacing gap
       this.doc.setFont('helvetica', 'normal')
-      const labelWidth = this.doc.getTextWidth(data[i].label + ': ')
-      this.doc.text(data[i].value, x + 2 + labelWidth, cellY + 5)
+      const labelWidth = this.doc.getTextWidth(data[i].label)
+      this.doc.text(data[i].value, x + 2 + labelWidth + 2, cellY + 5)
     }
 
     return y + tableHeight + 5
@@ -1072,6 +1174,8 @@ export class PDFGenerator {
 
     const normalizedDocType = documentData?.doc_type?.toLowerCase?.() ?? ''
     const isBalancePaymentRequestDoc = normalizedDocType.includes('balance') && normalizedDocType.includes('request')
+    const orderType = orderData?.order_type || ''
+    const isD2HorS2D = orderType === 'D2H' || orderType === 'S2D'
 
     // Check if we need a new page - ensure enough space for both sections (about 120mm)
     if (y > 150) {
@@ -1106,27 +1210,21 @@ export class PDFGenerator {
       this.doc.setFont('helvetica', 'normal')
       this.doc.text(sig.signer_name, this.margin + col1Width + 2, y + 5)
 
-      // Role row
+      // Signed At row (moved up - Role row removed)
       this.doc.line(this.margin, y + 14, this.pageWidth - this.margin, y + 14)
       this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Role:', this.margin + 2, y + 12)
+      this.doc.text('Signed At:', this.margin + 2, y + 12)
       this.doc.setFont('helvetica', 'normal')
-      this.doc.text(sig.signer_role, this.margin + col1Width + 2, y + 12)
+      this.doc.text(this.formatDate(sig.signed_at) + ' ' + new Date(sig.signed_at).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' }), this.margin + col1Width + 2, y + 12)
 
-      // Signed At row
+      // Integrity Hash row (moved up)
       this.doc.line(this.margin, y + 21, this.pageWidth - this.margin, y + 21)
       this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Signed At:', this.margin + 2, y + 19)
-      this.doc.setFont('helvetica', 'normal')
-      this.doc.text(this.formatDate(sig.signed_at) + ' ' + new Date(sig.signed_at).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' }), this.margin + col1Width + 2, y + 19)
-
-      // Integrity Hash row
-      this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Integrity Hash:', this.margin + 2, y + 27)
+      this.doc.text('Integrity Hash:', this.margin + 2, y + 19)
       this.doc.setFont('helvetica', 'normal')
       this.doc.setFontSize(7)
-  const signatureHash = sig.integrity_hash || sig.signature_hash || '—'
-  this.doc.text(signatureHash, this.margin + col1Width + 2, y + 27)
+      const signatureHash = sig.integrity_hash || sig.signature_hash || '—'
+      this.doc.text(signatureHash, this.margin + col1Width + 2, y + 19)
 
       // Signature Image placeholder
       this.doc.setFontSize(8)
@@ -1204,7 +1302,7 @@ export class PDFGenerator {
         // HQ Approval Section
         this.doc.setFontSize(9)
         this.doc.setFont('helvetica', 'bold')
-        this.doc.text('HQ Approval (Power User)', this.margin, y)
+        this.doc.text('HQ Approval', this.margin, y)
         y += 5
         
         this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, boxHeight)
@@ -1218,29 +1316,22 @@ export class PDFGenerator {
         const approverName = orderData?.approver?.full_name || ''
         this.doc.text(approverName, this.margin + col1Width + 2, y + 5)
         
-        // Role row
+        // Approved At row (Role row removed)
         this.doc.line(this.margin, y + 14, this.pageWidth - this.margin, y + 14)
         this.doc.setFont('helvetica', 'bold')
-        this.doc.text('Role:', this.margin + 2, y + 12)
-        this.doc.setFont('helvetica', 'normal')
-        const approverRole = orderData?.approver?.role_name || ''
-        this.doc.text(approverRole, this.margin + col1Width + 2, y + 12)
-        
-        // Approved At row (changed from "Signed At")
-        this.doc.line(this.margin, y + 21, this.pageWidth - this.margin, y + 21)
-        this.doc.setFont('helvetica', 'bold')
-        this.doc.text('Approved At:', this.margin + 2, y + 19)
+        this.doc.text('Approved At:', this.margin + 2, y + 12)
         this.doc.setFont('helvetica', 'normal')
         const approvedAt = orderData?.approved_at ? this.format12HourTime(orderData.approved_at) : ''
-        this.doc.text(approvedAt, this.margin + col1Width + 2, y + 19)
+        this.doc.text(approvedAt, this.margin + col1Width + 2, y + 12)
         
-        // Integrity Hash row
+        // Integrity Hash row (moved up)
+        this.doc.line(this.margin, y + 21, this.pageWidth - this.margin, y + 21)
         this.doc.setFont('helvetica', 'bold')
-        this.doc.text('Integrity Hash:', this.margin + 2, y + 27)
+        this.doc.text('Integrity Hash:', this.margin + 2, y + 19)
         this.doc.setFont('helvetica', 'normal')
         this.doc.setFontSize(7)
         const integrityHash = orderData?.approval_hash || ''
-        this.doc.text(integrityHash, this.margin + col1Width + 2, y + 27)
+        this.doc.text(integrityHash, this.margin + col1Width + 2, y + 19)
         
         y += boxHeight + 5
         
@@ -1311,117 +1402,112 @@ export class PDFGenerator {
         y += 30
       }
 
-      // Manufacturer Acknowledgement Section
-      this.doc.setFontSize(9)
-      this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Manufacturer Acknowledgement', this.margin, y)
-      y += 5
-      
-      this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, boxHeight)
-      
-      // Name row
-      this.doc.line(this.margin, y + 7, this.pageWidth - this.margin, y + 7)
-      this.doc.setFontSize(8)
-      this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Name:', this.margin + 2, y + 5)
-      this.doc.setFont('helvetica', 'normal')
-      const mfgAckName = documentData?.acknowledger?.full_name || '—'
-      this.doc.text(mfgAckName, this.margin + col1Width + 2, y + 5)
-      
-      // Role row
-      this.doc.line(this.margin, y + 14, this.pageWidth - this.margin, y + 14)
-      this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Role:', this.margin + 2, y + 12)
-      this.doc.setFont('helvetica', 'normal')
-      const mfgAckRole = documentData?.acknowledger?.role_name || 'MANUFACTURER'
-      this.doc.text(mfgAckRole, this.margin + col1Width + 2, y + 12)
-      
-      // Acknowledged At row (changed from "Signed At", 12-hour format)
-      this.doc.line(this.margin, y + 21, this.pageWidth - this.margin, y + 21)
-      this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Acknowledged At:', this.margin + 2, y + 19)
-      this.doc.setFont('helvetica', 'normal')
-      const acknowledgedAt = documentData?.acknowledged_at ? this.format12HourTime(documentData.acknowledged_at) : '—'
-      this.doc.text(acknowledgedAt, this.margin + col1Width + 2, y + 19)
-      
-      // Integrity Hash row
-      this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Integrity Hash:', this.margin + 2, y + 27)
-      this.doc.setFont('helvetica', 'normal')
-      this.doc.setFontSize(7)
-      const mfgIntegrityHash = documentData?.acknowledgement_hash || '—'
-      this.doc.text(mfgIntegrityHash, this.margin + col1Width + 2, y + 27)
-      
-      y += boxHeight + 5
-      
-      // Signature Image
-      this.doc.setFontSize(8)
-      this.doc.setFont('helvetica', 'bold')
-      this.doc.text('Signature Image:', this.margin + 2, y)
-      y += 3
-      this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, 20)
-      
-      // Check if manufacturer acknowledgement signature exists
-      const mfgSignatureImage = documentData?.acknowledger_signature_image
-      if (mfgSignatureImage && documentData?.acknowledged_at) {
-        try {
-          const imgHeight = 18
-          const imgWidth = 60
-          const xPos = (this.pageWidth - imgWidth) / 2
-          const rendered = await this.drawSignatureImageBlue(mfgSignatureImage, xPos, y + 1, imgWidth, imgHeight)
-          if (!rendered) {
+      // Manufacturer Acknowledgement Section - Only show for orders that involve manufacturer (not D2H or S2D)
+      if (!isD2HorS2D) {
+        this.doc.setFontSize(9)
+        this.doc.setFont('helvetica', 'bold')
+        this.doc.text('Manufacturer Acknowledgement', this.margin, y)
+        y += 5
+        
+        this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, boxHeight)
+        
+        // Name row
+        this.doc.line(this.margin, y + 7, this.pageWidth - this.margin, y + 7)
+        this.doc.setFontSize(8)
+        this.doc.setFont('helvetica', 'bold')
+        this.doc.text('Name:', this.margin + 2, y + 5)
+        this.doc.setFont('helvetica', 'normal')
+        const mfgAckName = documentData?.acknowledger?.full_name || '—'
+        this.doc.text(mfgAckName, this.margin + col1Width + 2, y + 5)
+        
+        // Acknowledged At row (Role row removed)
+        this.doc.line(this.margin, y + 14, this.pageWidth - this.margin, y + 14)
+        this.doc.setFont('helvetica', 'bold')
+        this.doc.text('Acknowledged At:', this.margin + 2, y + 12)
+        this.doc.setFont('helvetica', 'normal')
+        const acknowledgedAt = documentData?.acknowledged_at ? this.format12HourTime(documentData.acknowledged_at) : '—'
+        this.doc.text(acknowledgedAt, this.margin + col1Width + 2, y + 12)
+        
+        // Integrity Hash row (moved up)
+        this.doc.line(this.margin, y + 21, this.pageWidth - this.margin, y + 21)
+        this.doc.setFont('helvetica', 'bold')
+        this.doc.text('Integrity Hash:', this.margin + 2, y + 19)
+        this.doc.setFont('helvetica', 'normal')
+        this.doc.setFontSize(7)
+        const mfgIntegrityHash = documentData?.acknowledgement_hash || '—'
+        this.doc.text(mfgIntegrityHash, this.margin + col1Width + 2, y + 19)
+        
+        y += boxHeight + 5
+        
+        // Signature Image
+        this.doc.setFontSize(8)
+        this.doc.setFont('helvetica', 'bold')
+        this.doc.text('Signature Image:', this.margin + 2, y)
+        y += 3
+        this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, 20)
+        
+        // Check if manufacturer acknowledgement signature exists
+        const mfgSignatureImage = documentData?.acknowledger_signature_image
+        if (mfgSignatureImage && documentData?.acknowledged_at) {
+          try {
+            const imgHeight = 18
+            const imgWidth = 60
+            const xPos = (this.pageWidth - imgWidth) / 2
+            const rendered = await this.drawSignatureImageBlue(mfgSignatureImage, xPos, y + 1, imgWidth, imgHeight)
+            if (!rendered) {
+              this.doc.setFont('helvetica', 'italic')
+              this.doc.setFontSize(9)
+              this.doc.text('(awaiting acknowledgement)', this.pageWidth / 2, y + 12, { align: 'center' })
+            }
+          } catch (error) {
+            console.error('Error adding manufacturer signature image:', error)
             this.doc.setFont('helvetica', 'italic')
             this.doc.setFontSize(9)
             this.doc.text('(awaiting acknowledgement)', this.pageWidth / 2, y + 12, { align: 'center' })
           }
-        } catch (error) {
-          console.error('Error adding manufacturer signature image:', error)
-          this.doc.setFont('helvetica', 'italic')
-          this.doc.setFontSize(9)
-          this.doc.text('(awaiting acknowledgement)', this.pageWidth / 2, y + 12, { align: 'center' })
-        }
-      } else {
-        let signatureRendered = false
-        const manufacturerSignatureUrl = documentData?.acknowledger?.signature_url
-        if (manufacturerSignatureUrl && documentData?.acknowledged_at && typeof window !== 'undefined') {
-          try {
-            const response = await fetch(manufacturerSignatureUrl)
-            if (response.ok) {
-              const blob = await response.blob()
-              const reader = new FileReader()
-              await new Promise<void>((resolve, reject) => {
-                reader.onloadend = async () => {
-                  try {
-                    const base64data = reader.result as string
-                    const imgHeight = 18
-                    const imgWidth = 60
-                    const xPos = (this.pageWidth - imgWidth) / 2
-                    signatureRendered = await this.drawSignatureImageBlue(base64data, xPos, y + 1, imgWidth, imgHeight)
-                    resolve()
-                  } catch (err) {
-                    reject(err as Error)
+        } else {
+          let signatureRendered = false
+          const manufacturerSignatureUrl = documentData?.acknowledger?.signature_url
+          if (manufacturerSignatureUrl && documentData?.acknowledged_at && typeof window !== 'undefined') {
+            try {
+              const response = await fetch(manufacturerSignatureUrl)
+              if (response.ok) {
+                const blob = await response.blob()
+                const reader = new FileReader()
+                await new Promise<void>((resolve, reject) => {
+                  reader.onloadend = async () => {
+                    try {
+                      const base64data = reader.result as string
+                      const imgHeight = 18
+                      const imgWidth = 60
+                      const xPos = (this.pageWidth - imgWidth) / 2
+                      signatureRendered = await this.drawSignatureImageBlue(base64data, xPos, y + 1, imgWidth, imgHeight)
+                      resolve()
+                    } catch (err) {
+                      reject(err as Error)
+                    }
                   }
-                }
-                reader.onerror = () => reject(new Error('Failed to load manufacturer signature'))
-                reader.readAsDataURL(blob)
-              })
+                  reader.onerror = () => reject(new Error('Failed to load manufacturer signature'))
+                  reader.readAsDataURL(blob)
+                })
+              }
+            } catch (clientError) {
+              console.error('Error loading manufacturer signature in browser:', clientError)
             }
-          } catch (clientError) {
-            console.error('Error loading manufacturer signature in browser:', clientError)
+          }
+
+          if (!signatureRendered) {
+            const message = documentData?.acknowledged_at
+              ? 'Signature missing. Please upload your digital signature in My Profile.'
+              : 'Awaiting acknowledgement. Upload digital signature in My Profile before acknowledging.'
+            this.doc.setFont('helvetica', 'italic')
+            this.doc.setFontSize(9)
+            this.doc.text(message, this.pageWidth / 2, y + 12, { align: 'center' })
           }
         }
-
-        if (!signatureRendered) {
-          const message = documentData?.acknowledged_at
-            ? 'Signature missing. Please upload your digital signature in My Profile.'
-            : 'Awaiting acknowledgement. Upload digital signature in My Profile before acknowledging.'
-          this.doc.setFont('helvetica', 'italic')
-          this.doc.setFontSize(9)
-          this.doc.text(message, this.pageWidth / 2, y + 12, { align: 'center' })
-        }
+        
+        y += 25
       }
-      
-      y += 25
     }
 
     return y
@@ -1440,11 +1526,11 @@ export class PDFGenerator {
 
     // PO Information Table
     const poInfo = [
-      { label: 'PO Number', value: `   ${orderData.order_no}` },
-      { label: 'PO Date', value: `   ${this.formatDate(orderData.created_at)}` },
-      { label: 'Status', value: `   ${orderData.status.toUpperCase()}` },
-      { label: 'Estimated ETA', value: `   ${orderData.estimated_eta || 'TBD'}` },
-      { label: 'Payment Terms', value: `   ${this.formatPaymentTermsLabel(orderData.payment_terms)}` },
+      { label: 'PO Number:', value: orderData.order_no },
+      { label: 'PO Date:', value: this.formatDate(orderData.created_at) },
+      { label: 'Status:', value: orderData.status.toUpperCase() },
+      { label: 'Estimated ETA:', value: orderData.estimated_eta || 'TBD' },
+      { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
       { label: '', value: '' }
     ]
     y = this.addInfoTable(poInfo, y, 2)
@@ -1477,11 +1563,11 @@ export class PDFGenerator {
 
     // PO Information Table
     const poInfo = [
-      { label: 'PO Number', value: `   ${documentData.doc_no}` },
-      { label: 'PO Date', value: `   ${this.formatDate(documentData.created_at)}` },
-      { label: 'Status', value: `   ${documentData.status.toUpperCase()}` },
-      { label: 'Estimated ETA', value: `   ${documentData.estimated_eta || '30 Oct 2025'}` },
-      { label: 'Payment Terms', value: `   ${this.formatPaymentTermsLabel(orderData.payment_terms)}` },
+      { label: 'PO Number:', value: documentData.doc_no },
+      { label: 'PO Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'Status:', value: documentData.status.toUpperCase() },
+      { label: 'Estimated ETA:', value: documentData.estimated_eta || '30 Oct 2025' },
+      { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
       { label: '', value: '' }
     ]
     y = this.addInfoTable(poInfo, y, 2)
@@ -1514,11 +1600,11 @@ export class PDFGenerator {
 
     // Invoice Information Table
     const invoiceInfo = [
-      { label: 'Invoice Number', value: documentData.doc_no },
-      { label: 'Invoice Date', value: this.formatDate(documentData.created_at) },
-      { label: 'Status', value: documentData.status.toUpperCase() },
-      { label: 'Payment Terms', value: documentData.payment_terms || 'Net 30 Days' },
-      { label: 'Acknowledged', value: documentData.acknowledged_at ? this.formatDate(documentData.acknowledged_at) : 'Pending' },
+      { label: 'Invoice Number:', value: documentData.doc_no },
+      { label: 'Invoice Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'Status:', value: documentData.status.toUpperCase() },
+      { label: 'Payment Terms:', value: documentData.payment_terms || 'Net 30 Days' },
+      { label: 'Acknowledged:', value: documentData.acknowledged_at ? this.formatDate(documentData.acknowledged_at) : 'Pending' },
       { label: '', value: '' }
     ]
     y = this.addInfoTable(invoiceInfo, y, 2)
@@ -1754,15 +1840,15 @@ export class PDFGenerator {
       : 'MYR'
 
     const infoRows = [
-      { label: 'Payment Number', value: documentData.doc_no },
-      { label: 'Payment Date', value: this.formatDate(documentData.created_at) },
-      { label: 'Status', value: documentData.status?.toUpperCase?.() || documentData.status },
-      { label: 'Payment Stage', value: paymentStageLabel },
-      { label: 'Payment Terms', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
-      { label: 'Currency', value: currency },
-      { label: 'Amount Due', value: this.formatCurrency(normalizedPaymentAmount) },
-      linkedInvoice?.doc_no ? { label: 'Related Invoice', value: linkedInvoice.doc_no } : null,
-      sourceRequest?.doc_no ? { label: 'Source Request', value: sourceRequest.doc_no } : null
+      { label: 'Payment Number:', value: documentData.doc_no },
+      { label: 'Payment Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'Status:', value: documentData.status?.toUpperCase?.() || documentData.status },
+      { label: 'Payment Stage:', value: paymentStageLabel },
+      { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
+      { label: 'Currency:', value: currency },
+      { label: 'Amount Due:', value: this.formatCurrency(normalizedPaymentAmount) },
+      linkedInvoice?.doc_no ? { label: 'Related Invoice:', value: linkedInvoice.doc_no } : null,
+      sourceRequest?.doc_no ? { label: 'Source Request:', value: sourceRequest.doc_no } : null
     ].filter((row): row is { label: string; value: string } => Boolean(row?.value))
 
     y = this.addInfoTable(infoRows, y, 2)
@@ -1851,10 +1937,10 @@ export class PDFGenerator {
       : `${paymentPercentage}% PAYMENT RECEIVED`
     
     const receiptInfo = [
-      { label: 'Receipt Number', value: documentData.doc_no },
-      { label: 'Receipt Date', value: this.formatDate(documentData.created_at) },
-      { label: 'Payment Status', value: paymentStatus },
-      { label: 'Payment Method', value: 'Bank Transfer' }
+      { label: 'Receipt Number:', value: documentData.doc_no },
+      { label: 'Receipt Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'Payment Status:', value: paymentStatus },
+      { label: 'Payment Method:', value: 'Bank Transfer' }
     ]
     y = this.addInfoTable(receiptInfo, y, 2)
 
@@ -1965,21 +2051,21 @@ export class PDFGenerator {
     const requestedAmountDisplay = `${this.formatCurrency(normalizedRequestedAmount)}${currency !== 'MYR' ? ` (${currency})` : ''}`
 
     const infoRows = [
-      { label: 'Request Number', value: documentData.doc_no },
-      { label: 'Request Date', value: this.formatDate(documentData.created_at) },
-      { label: 'Status', value: documentData.status?.toUpperCase?.() || documentData.status },
+      { label: 'Request Number:', value: documentData.doc_no },
+      { label: 'Request Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'Status:', value: documentData.status?.toUpperCase?.() || documentData.status },
       {
-        label: 'Requested Amount',
-        value: `   ${requestedAmountDisplay}`
+        label: 'Requested Amount:',
+        value: requestedAmountDisplay
       },
       balancePercentage !== undefined
-        ? { label: 'Balance Percentage', value: `${Math.round(balancePercentage)}% of order total` }
+        ? { label: 'Balance Percentage:', value: `${Math.round(balancePercentage)}% of order total` }
         : null,
-      { label: 'Payment Terms', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
-      payload.po_no ? { label: 'PO Reference', value: payload.po_no } : { label: 'PO Reference', value: orderData.order_no },
-      { label: 'Trigger Mode', value: this.formatTriggerMode(payload.trigger_mode as string | undefined) },
-      { label: 'Reason', value: this.formatRequestReason(payload.reason as string | undefined, orderData.payment_terms) },
-      { label: 'Currency', value: currency }
+      { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
+      payload.po_no ? { label: 'PO Reference:', value: payload.po_no } : { label: 'PO Reference:', value: orderData.order_no },
+      { label: 'Trigger Mode:', value: this.formatTriggerMode(payload.trigger_mode as string | undefined) },
+      { label: 'Reason:', value: this.formatRequestReason(payload.reason as string | undefined, orderData.payment_terms) },
+      { label: 'Currency:', value: currency }
     ].filter((row): row is { label: string; value: string } => Boolean(row?.value))
 
     y = this.addInfoTable(infoRows, y, 2)
@@ -2217,11 +2303,11 @@ export class PDFGenerator {
 
     // SO Information Table
     const soInfo = [
-      { label: 'SO Number', value: `   ${documentData.doc_no}` },
-      { label: 'SO Date', value: `   ${this.formatDate(documentData.created_at)}` },
-      { label: 'Status', value: `   ${documentData.status.toUpperCase()}` },
-      { label: 'Estimated ETA', value: `   ${documentData.estimated_eta || '30 Oct 2025'}` },
-      { label: 'Payment Terms', value: `   ${this.formatPaymentTermsLabel(orderData.payment_terms)}` },
+      { label: 'SO Number:', value: documentData.doc_no },
+      { label: 'SO Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'Status:', value: documentData.status.toUpperCase() },
+      { label: 'Estimated ETA:', value: documentData.estimated_eta || '30 Oct 2025' },
+      { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
       { label: '', value: '' }
     ]
     y = this.addInfoTable(soInfo, y, 2)
@@ -2254,10 +2340,10 @@ export class PDFGenerator {
 
     // DO Information Table
     const doInfo = [
-      { label: 'DO Number', value: `   ${documentData.doc_no}` },
-      { label: 'DO Date', value: `   ${this.formatDate(documentData.created_at)}` },
-      { label: 'Status', value: `   ${documentData.status.toUpperCase()}` },
-      { label: 'Estimated ETA', value: `   ${documentData.estimated_eta || '30 Oct 2025'}` },
+      { label: 'DO Number:', value: documentData.doc_no },
+      { label: 'DO Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'Status:', value: documentData.status.toUpperCase() },
+      { label: 'Estimated ETA:', value: documentData.estimated_eta || '30 Oct 2025' },
       { label: '', value: '' },
       { label: '', value: '' }
     ]

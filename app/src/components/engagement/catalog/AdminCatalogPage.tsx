@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { getStorageUrl } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -835,7 +836,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                             <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
                               {reward.item_image_url ? (
                                 <Image
-                                  src={reward.item_image_url}
+                                  src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
                                   alt={reward.item_name}
                                   fill
                                   className="object-cover"

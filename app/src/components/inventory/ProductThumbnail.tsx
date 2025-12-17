@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { Package } from 'lucide-react'
+import { getStorageUrl } from '@/lib/utils'
 
 interface ProductThumbnailProps {
   src?: string | null
@@ -13,9 +14,15 @@ interface ProductThumbnailProps {
  * - Fixed size box (default 36px)
  * - Centers content and uses object-contain (no cropping)
  * - Neutral background and rounded corners
+ * - Automatically converts storage URLs to current environment
  */
 export default function ProductThumbnail({ src, alt = 'Product image', size = 36, className = '' }: ProductThumbnailProps) {
   const [loaded, setLoaded] = useState<boolean>(!!src)
+  
+  // Convert storage URL to current environment
+  const dynamicSrc = useMemo(() => {
+    return src ? (getStorageUrl(src) || src) : null
+  }, [src])
 
   const containerStyle = {
     width: `${size}px`,
@@ -26,12 +33,12 @@ export default function ProductThumbnail({ src, alt = 'Product image', size = 36
     <div
       style={containerStyle}
       className={`relative rounded-md overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center ${className}`}
-      aria-hidden={src ? undefined : 'true'}
+      aria-hidden={dynamicSrc ? undefined : 'true'}
     >
-      {src && loaded ? (
+      {dynamicSrc && loaded ? (
         // use img with object-contain to keep whole image visible
         <img
-          src={src}
+          src={dynamicSrc}
           alt={alt}
           className="max-w-full max-h-full object-contain"
           onError={() => setLoaded(false)}

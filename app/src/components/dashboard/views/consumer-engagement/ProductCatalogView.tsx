@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { getStorageUrl } from '@/lib/utils'
 import { 
   Package, 
   Search, 
@@ -283,7 +284,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                 {product.primary_image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img 
-                    src={product.primary_image_url} 
+                    src={getStorageUrl(product.primary_image_url) || product.primary_image_url} 
                     alt={product.product_name}
                     className="w-full h-full object-cover"
                   />
@@ -354,7 +355,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                       {product.primary_image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img 
-                          src={product.primary_image_url} 
+                          src={getStorageUrl(product.primary_image_url) || product.primary_image_url} 
                           alt={product.product_name}
                           className="w-full h-full object-cover"
                         />

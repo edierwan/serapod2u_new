@@ -5,12 +5,14 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes max
 
 // ============================================================================
-// CONFIGURATION - Tunable via environment variables
+// CONFIGURATION - Balanced for throughput and reliability
 // ============================================================================
-const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '1000', 10) // Reduced to avoid timeouts
-const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '200', 10)
+const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '2000', 10) // Balanced chunk size
+const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '200', 10) // Smaller to avoid statement timeout
 const MAX_RUNTIME_MS = parseInt(process.env.MAX_RUNTIME_PER_RUN_MS || '270000', 10) // 4.5 minutes default
-const STALE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes
+const STALE_THRESHOLD_MS = 60 * 1000 // 1 minute - faster takeover of stale workers
+const HEARTBEAT_INTERVAL = 2 // Update heartbeat every 2 chunks (more frequent)
+const CANCEL_CHECK_INTERVAL = 5 // Check for cancellation every 5 chunks
 
 // Generate short unique worker ID
 function generateWorkerId(): string {
@@ -31,7 +33,7 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now()
   const supabase = createAdminClient()
 
-  console.log(`🚀 [${workerId}] Warehouse Receiving Worker started (chunk=${CHUNK_SIZE}, in_clause=${IN_CLAUSE_SIZE})`)
+  console.log(`🚀 [${workerId}] Warehouse Receiving Worker started (chunk=${CHUNK_SIZE}, in_clause=${IN_CLAUSE_SIZE}, heartbeat_interval=${HEARTBEAT_INTERVAL})`)
 
   try {
     // Step 1: Diagnostic - show top batches for debugging
@@ -99,7 +101,7 @@ export async function GET(request: NextRequest) {
     const masterResult = await processMasterCodes(supabase, batch.id, warehouseOrgId, manufacturerOrgId, companyId, orderId, receivedBy)
     console.log(`📦 [${workerId}] Master codes: ${masterResult.processed} processed`)
 
-    // Step 4: Process Unique Codes in chunks
+    // Step 4: Process Unique Codes in chunks (optimized for high throughput)
     console.log(`🔄 [${workerId}] Starting unique code processing. Current progress: ${totalProcessed}`)
 
     const cumulativeVariantCounts = new Map<string, number>()
@@ -107,20 +109,22 @@ export async function GET(request: NextRequest) {
     let consecutiveZeroChunks = 0
 
     while (true) {
-      // Check for cancellation
-      const { data: statusCheck } = await supabase
-        .from('qr_batches')
-        .select('receiving_status')
-        .eq('id', batch.id)
-        .single()
+      // Check for cancellation periodically (not every iteration to reduce DB calls)
+      if (chunksProcessed % CANCEL_CHECK_INTERVAL === 0 && chunksProcessed > 0) {
+        const { data: statusCheck } = await supabase
+          .from('qr_batches')
+          .select('receiving_status')
+          .eq('id', batch.id)
+          .single()
 
-      if (statusCheck?.receiving_status === 'cancelled') {
-        console.log(`🛑 [${workerId}] Job cancelled, stopping`)
-        return NextResponse.json({ 
-          message: 'Job cancelled', 
-          worker_id: workerId,
-          processed: totalProcessed 
-        })
+        if (statusCheck?.receiving_status === 'cancelled') {
+          console.log(`🛑 [${workerId}] Job cancelled, stopping`)
+          return NextResponse.json({ 
+            message: 'Job cancelled', 
+            worker_id: workerId,
+            processed: totalProcessed 
+          })
+        }
       }
 
       // Check time limit
@@ -158,14 +162,12 @@ export async function GET(request: NextRequest) {
           console.log(`✅ [${workerId}] No more unique codes to process (confirmed)`)
           break
         }
-        // First zero might be a race condition, try once more after heartbeat
-        await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
+        // First zero might be a race condition, try once more
         continue
       }
       
       consecutiveZeroChunks = 0
-      console.log(`📦 [${workerId}] Processing chunk of ${uniqueCodes.length} codes (total so far: ${totalProcessed})`)
-
+      
       // Update this chunk using sub-batches to avoid URL length limits
       const chunkIds = uniqueCodes.map(c => c.id)
       let updateError: any = null
@@ -180,6 +182,19 @@ export async function GET(request: NextRequest) {
           .in('id', batchIds)
         
         if (error) {
+          // Check if it's a statement timeout - this is recoverable
+          if (error.code === '57014' || error.message?.includes('timeout')) {
+            console.warn(`  ⚠️ [${workerId}] Statement timeout at offset ${i}, will retry in next run`)
+            // Update heartbeat with current progress and yield to next worker
+            await updateHeartbeat(supabase, batch.id, workerId, totalProcessed + updatedInChunk)
+            return NextResponse.json({ 
+              message: 'Statement timeout, yielding for retry',
+              worker_id: workerId,
+              processed: totalProcessed + updatedInChunk,
+              hasMore: true
+            })
+          }
+          
           console.error(`  ❌ Update error at offset ${i}:`, JSON.stringify(error, null, 2))
           updateError = error
           break
@@ -188,7 +203,9 @@ export async function GET(request: NextRequest) {
       }
 
       if (updateError) {
-        await markFailed(supabase, batch.id, `Update error: ${JSON.stringify(updateError)}`)
+        // Don't mark as failed for transient errors, just yield
+        console.error(`  ❌ [${workerId}] Update error, yielding for retry`)
+        await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
         return NextResponse.json({ error: updateError.message || 'Update failed' }, { status: 500 })
       }
 
@@ -202,21 +219,32 @@ export async function GET(request: NextRequest) {
       totalProcessed += updatedInChunk
       chunksProcessed++
 
-      // Update heartbeat every chunk
-      await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
+      // Update heartbeat periodically (not every chunk to reduce DB calls)
+      if (chunksProcessed % HEARTBEAT_INTERVAL === 0) {
+        await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
+      }
       
       const rate = Math.round(totalProcessed / ((Date.now() - startTime) / 1000))
       console.log(`✅ [${workerId}] Chunk ${chunksProcessed}: +${updatedInChunk} (total: ${totalProcessed}, rate: ${rate}/s)`)
     }
 
     // Step 5: Record inventory movements
-    if (warehouseOrgId && cumulativeVariantCounts.size > 0) {
-      console.log(`📊 [${workerId}] Recording inventory for ${cumulativeVariantCounts.size} variants`)
+    // IMPORTANT: Query the database for ACTUAL counts of received codes, not the in-memory counts.
+    // This handles multi-run scenarios where the worker times out and continues across multiple runs.
+    // The in-memory cumulativeVariantCounts only has codes processed in THIS run.
+    console.log(`📊 [${workerId}] Querying actual variant counts from received codes...`)
+    
+    const actualVariantCounts = await getActualReceivedCounts(supabase, batch.id)
+    
+    if (warehouseOrgId && actualVariantCounts.size > 0) {
+      console.log(`📊 [${workerId}] Recording inventory for ${actualVariantCounts.size} variants (total units: ${Array.from(actualVariantCounts.values()).reduce((a, b) => a + b, 0)})`)
       await recordInventoryMovements(
         supabase, batch.id, warehouseOrgId, manufacturerOrgId, 
         companyId, orderId, orderNo, receivedBy,
-        cumulativeVariantCounts, variantPriceMap, warrantyBonusPercent
+        actualVariantCounts, variantPriceMap, warrantyBonusPercent
       )
+    } else {
+      console.log(`⚠️ [${workerId}] No variant counts found to record`)
     }
 
     // Step 6: Mark as completed
@@ -523,6 +551,94 @@ async function processMasterCodes(
   }
 
   return { processed }
+}
+
+/**
+ * Get ACTUAL counts of received codes from the database.
+ * This is critical for multi-run scenarios where in-memory counts would be lost between runs.
+ * Uses efficient SQL aggregation to avoid fetching all rows.
+ */
+async function getActualReceivedCounts(supabase: any, batchId: string): Promise<Map<string, number>> {
+  const variantCounts = new Map<string, number>()
+  
+  // Use RPC for efficient GROUP BY aggregation
+  // This avoids fetching 100k+ rows just to count them
+  const { data, error } = await supabase.rpc('get_batch_variant_counts', {
+    p_batch_id: batchId,
+    p_status: 'received_warehouse'
+  })
+  
+  if (error) {
+    // Fallback: If RPC doesn't exist, use direct query (less efficient but works)
+    console.warn('RPC get_batch_variant_counts not available, using fallback query:', error.message)
+    return await getActualReceivedCountsFallback(supabase, batchId)
+  }
+  
+  if (data && data.length > 0) {
+    let totalUnits = 0
+    for (const row of data) {
+      if (row.variant_id && row.count) {
+        const count = parseInt(row.count, 10)
+        variantCounts.set(row.variant_id, count)
+        totalUnits += count
+      }
+    }
+    
+    console.log(`📊 Found ${totalUnits} received codes across ${variantCounts.size} variants`)
+    for (const [variantId, count] of variantCounts.entries()) {
+      console.log(`   - Variant ${variantId}: ${count} units`)
+    }
+  }
+  
+  return variantCounts
+}
+
+/**
+ * Fallback method for counting received codes when RPC is not available.
+ * Less efficient but handles the case where the RPC hasn't been deployed.
+ */
+async function getActualReceivedCountsFallback(supabase: any, batchId: string): Promise<Map<string, number>> {
+  const variantCounts = new Map<string, number>()
+  
+  // Paginate through results to handle large batches
+  const PAGE_SIZE = 10000
+  let offset = 0
+  let hasMore = true
+  
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('qr_codes')
+      .select('variant_id')
+      .eq('batch_id', batchId)
+      .eq('status', 'received_warehouse')
+      .eq('is_buffer', false)
+      .range(offset, offset + PAGE_SIZE - 1)
+    
+    if (error) {
+      console.error('Error fetching received code counts:', error)
+      break
+    }
+    
+    if (!data || data.length === 0) {
+      hasMore = false
+    } else {
+      for (const code of data) {
+        if (code.variant_id) {
+          variantCounts.set(code.variant_id, (variantCounts.get(code.variant_id) || 0) + 1)
+        }
+      }
+      offset += PAGE_SIZE
+      
+      if (data.length < PAGE_SIZE) {
+        hasMore = false
+      }
+    }
+  }
+  
+  const totalUnits = Array.from(variantCounts.values()).reduce((a, b) => a + b, 0)
+  console.log(`📊 Fallback: Found ${totalUnits} received codes across ${variantCounts.size} variants`)
+  
+  return variantCounts
 }
 
 /**

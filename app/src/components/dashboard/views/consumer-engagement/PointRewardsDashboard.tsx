@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { getStorageUrl } from '@/lib/utils';
 import { 
   Trophy,
   Gift, 
@@ -743,7 +744,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
                     {rewardImageUrl ? (
                       <div className="relative w-full h-48 border rounded-lg overflow-hidden">
                         <Image
-                          src={rewardImageUrl}
+                          src={getStorageUrl(rewardImageUrl) || rewardImageUrl}
                           alt="Reward preview"
                           layout="fill"
                           objectFit="cover"
@@ -828,7 +829,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
                   <div className="relative h-48 bg-gray-100">
                     {reward.reward_image_url ? (
                       <Image
-                        src={reward.reward_image_url}
+                        src={getStorageUrl(reward.reward_image_url) || reward.reward_image_url}
                         alt={reward.reward_name}
                         layout="fill"
                         objectFit="cover"
@@ -987,7 +988,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
                         <div className="flex gap-4">
                           {reward.reward_image_url ? (
                             <Image
-                              src={reward.reward_image_url}
+                              src={getStorageUrl(reward.reward_image_url) || reward.reward_image_url}
                               alt={reward.reward_name}
                               width={80}
                               height={80}

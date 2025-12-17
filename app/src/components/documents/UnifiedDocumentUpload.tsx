@@ -7,6 +7,54 @@ import { useToast } from '@/components/ui/use-toast'
 import { Upload, File as FileIcon, X, Check, Loader2, Image as ImageIcon, Download, RefreshCw } from 'lucide-react'
 import { compressImage, formatFileSize, type CompressionResult } from '@/utils/image-compression'
 
+// PDF compression function using pdf-lib
+async function compressPdf(file: File): Promise<{ file: File; originalSize: number; compressedSize: number; reductionPercentage: number }> {
+  try {
+    const { PDFDocument } = await import('pdf-lib')
+    const arrayBuffer = await file.arrayBuffer()
+    const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true })
+    
+    // Save with compression options
+    const compressedBytes = await pdfDoc.save({
+      useObjectStreams: true,      // Compress objects into streams
+      addDefaultPage: false,
+      objectsPerTick: 50,
+    })
+    
+    const compressedFile = new File([compressedBytes], file.name, {
+      type: 'application/pdf',
+      lastModified: Date.now()
+    })
+    
+    const reduction = Math.round(((file.size - compressedFile.size) / file.size) * 100)
+    
+    // Only use compressed if it's actually smaller
+    if (compressedFile.size >= file.size) {
+      return {
+        file,
+        originalSize: file.size,
+        compressedSize: file.size,
+        reductionPercentage: 0
+      }
+    }
+    
+    return {
+      file: compressedFile,
+      originalSize: file.size,
+      compressedSize: compressedFile.size,
+      reductionPercentage: Math.max(0, reduction)
+    }
+  } catch (error) {
+    console.warn('PDF compression failed, using original:', error)
+    return {
+      file,
+      originalSize: file.size,
+      compressedSize: file.size,
+      reductionPercentage: 0
+    }
+  }
+}
+
 interface UnifiedDocumentUploadProps {
   label?: string
   description?: string
@@ -65,8 +113,23 @@ export default function UnifiedDocumentUpload({
       } finally {
         setIsCompressing(false)
       }
+    } else if (file.type === 'application/pdf') {
+      // PDF: Compress using pdf-lib
+      try {
+        setIsCompressing(true)
+        const result = await compressPdf(file)
+        setCompressionStats(result)
+        setSelectedFile(result.file)
+      } catch (error) {
+        console.error('PDF compression error:', error)
+        // Use original file if compression fails
+        setCompressionStats(null)
+        setSelectedFile(file)
+      } finally {
+        setIsCompressing(false)
+      }
     } else {
-      // Document: Check size
+      // Other documents: Check size only
       const maxSize = maxDocSizeMB * 1024 * 1024
       if (file.size > maxSize) {
         toast({
@@ -111,27 +174,28 @@ export default function UnifiedDocumentUpload({
     const isImage = fileName.match(/\.(jpg|jpeg|png|webp)$/i)
 
     return (
-      <div className="space-y-3">
-        <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-r-md">
-          <div className="flex items-start gap-3">
+      <div className="space-y-2">
+        <div className="bg-green-50 border-l-4 border-green-500 p-2.5 rounded-r-md">
+          <div className="flex items-start gap-2">
             <div className="flex-shrink-0 mt-0.5">
-              <Check className="w-5 h-5 text-green-600" />
+              <Check className="w-4 h-4 text-green-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold text-green-900 mb-1">Upload Complete</h4>
-              <div className="flex items-center gap-2 text-sm text-green-700 mb-2">
-                {isImage ? <ImageIcon className="w-4 h-4" /> : <FileIcon className="w-4 h-4" />}
+              <h4 className="text-xs font-semibold text-green-900 mb-0.5">Upload Complete</h4>
+              <div className="flex items-center gap-1.5 text-[11px] text-green-700 mb-1.5">
+                {isImage ? <ImageIcon className="w-3 h-3" /> : <FileIcon className="w-3 h-3" />}
                 <span className="truncate font-medium">{fileName}</span>
+                {selectedFile && <span className="text-[10px] text-green-600">({formatFileSize(selectedFile.size)})</span>}
               </div>
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-1.5 mt-2">
                 {onDownload && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={onDownload}
-                    className="h-8 border-green-200 hover:bg-green-100 text-green-700"
+                    className="h-6 px-2 text-[10px] border-green-200 hover:bg-green-100 text-green-700"
                   >
-                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                    <Download className="w-3 h-3 mr-1" />
                     Download
                   </Button>
                 )}
@@ -139,9 +203,9 @@ export default function UnifiedDocumentUpload({
                   variant="outline"
                   size="sm"
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-8 border-green-200 hover:bg-green-100 text-green-700"
+                  className="h-6 px-2 text-[10px] border-green-200 hover:bg-green-100 text-green-700"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  <RefreshCw className="w-3 h-3 mr-1" />
                   Replace
                 </Button>
               </div>
@@ -161,12 +225,12 @@ export default function UnifiedDocumentUpload({
 
   // Upload State
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium text-gray-700 mb-0.5">
           {label}
         </label>
-        <p className="text-xs text-gray-500">
+        <p className="text-[10px] text-gray-500">
           {description}
         </p>
       </div>
@@ -184,59 +248,59 @@ export default function UnifiedDocumentUpload({
           variant="outline"
           onClick={() => fileInputRef.current?.click()}
           disabled={isCompressing}
-          className="w-full h-32 border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-all"
+          className="w-full h-20 border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-all"
         >
-          <div className="flex flex-col items-center justify-center text-center p-4">
+          <div className="flex flex-col items-center justify-center text-center p-2">
             {isCompressing ? (
               <>
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-2" />
-                <p className="text-sm font-medium text-blue-600">Compressing image...</p>
+                <Loader2 className="w-5 h-5 text-blue-500 animate-spin mb-1" />
+                <p className="text-xs font-medium text-blue-600">Compressing...</p>
               </>
             ) : (
               <>
-                <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                <p className="text-sm font-medium text-gray-900">Click to select file</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Supports PDF, DOCX, JPG, PNG
+                <Upload className="w-5 h-5 text-gray-400 mb-1" />
+                <p className="text-xs font-medium text-gray-900">Click to select file</p>
+                <p className="text-[10px] text-gray-500">
+                  PDF, JPG, PNG
                 </p>
               </>
             )}
           </div>
         </Button>
       ) : (
-        <Card className="p-4 border-blue-200 bg-blue-50/50">
-          <div className="space-y-4">
+        <Card className="p-3 border-blue-200 bg-blue-50/50">
+          <div className="space-y-2">
             {/* File Info */}
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-2">
               <div className="flex-shrink-0">
-                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
                   {selectedFile.type.startsWith('image/') ? (
-                    <ImageIcon className="w-5 h-5 text-blue-600" />
+                    <ImageIcon className="w-4 h-4 text-blue-600" />
                   ) : (
-                    <FileIcon className="w-5 h-5 text-blue-600" />
+                    <FileIcon className="w-4 h-4 text-blue-600" />
                   )}
                 </div>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-xs font-medium text-gray-900 truncate">
                   {selectedFile.name}
                 </p>
                 
                 {/* Compression Stats */}
                 {compressionStats && compressionStats.reductionPercentage > 0 ? (
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs">
-                    <span className="text-gray-500 line-through">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px]">
+                    <span className="text-gray-400 line-through">
                       {formatFileSize(compressionStats.originalSize)}
                     </span>
                     <span className="text-green-600 font-medium">
                       {formatFileSize(compressionStats.compressedSize)}
                     </span>
-                    <span className="text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full">
+                    <span className="text-green-700 bg-green-100 px-1 py-0.5 rounded-full text-[9px] font-medium">
                       -{compressionStats.reductionPercentage}%
                     </span>
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-[10px] text-gray-500 mt-0.5">
                     {formatFileSize(selectedFile.size)}
                   </p>
                 )}
@@ -245,9 +309,9 @@ export default function UnifiedDocumentUpload({
                 variant="ghost"
                 size="sm"
                 onClick={handleRemoveSelection}
-                className="text-gray-400 hover:text-red-500"
+                className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </Button>
             </div>
 
@@ -255,16 +319,17 @@ export default function UnifiedDocumentUpload({
             <Button
               onClick={handleUploadClick}
               disabled={isUploading}
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              size="sm"
+              className="w-full h-8 text-xs bg-blue-600 hover:bg-blue-700"
             >
               {isUploading ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                   Uploading...
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4 mr-2" />
+                  <Upload className="w-3.5 h-3.5 mr-1.5" />
                   Upload File
                 </>
               )}

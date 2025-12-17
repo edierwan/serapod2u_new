@@ -211,36 +211,35 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         return
       }
       
-      // Get QR codes stats
-      const { data: codes, error } = await supabase
+      // Get QR codes stats using proper count queries (avoids 1000 row limit)
+      // Count total valid links (all QR codes in batch)
+      const { count: validLinks } = await supabase
         .from('qr_codes')
-        .select('id, status')
+        .select('*', { count: 'exact', head: true })
         .eq('batch_id', batch.id)
       
-      if (error) {
-        console.error('Error loading QR codes:', error.message || error.code || 'Unknown error', error)
-        return
-      }
-      
-      const validLinks = codes?.length || 0
-      const scanned = codes?.filter(c => c.status !== 'pending' && c.status !== 'printed').length || 0
+      // Count scanned - actual consumer scans from consumer_qr_scans table
+      const { count: scanned } = await supabase
+        .from('consumer_qr_scans')
+        .select('*', { count: 'exact', head: true })
+        .eq('batch_id', batch.id)
       
       // Get redemptions count from consumer_qr_scans where reward was redeemed
       const { count: redemptionCount } = await supabase
         .from('consumer_qr_scans')
         .select('id', { count: 'exact', head: true })
-        .in('qr_code_id', codes?.map(c => c.id) || [])
+        .eq('batch_id', batch.id)
         .not('redeemed_at', 'is', null)
       
       // Get lucky draw entries
       const { count: luckyDrawCount } = await supabase
         .from('lucky_draw_entries')
         .select('id', { count: 'exact', head: true })
-        .in('qr_code_id', codes?.map(c => c.id) || [])
+        .eq('batch_id', batch.id)
       
       setQrStats({
-        validLinks,
-        scanned,
+        validLinks: validLinks || 0,
+        scanned: scanned || 0,
         redemptions: redemptionCount || 0,
         luckyDraws: luckyDrawCount || 0
       })

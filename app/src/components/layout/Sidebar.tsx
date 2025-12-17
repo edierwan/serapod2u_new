@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { signOut } from '@/app/actions/auth'
 import { Button } from '@/components/ui/button'
 import { filterMenuItems, type MenuItem } from '@/lib/menu-access'
+import { getStorageUrl } from '@/lib/utils'
 import {
   Package,
   BarChart3,
@@ -878,7 +879,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
               <Avatar className="h-8 w-8">
                 {userProfile?.avatar_url && (
                   <AvatarImage 
-                    src={`${userProfile.avatar_url.split('?')[0]}?t=${new Date(userProfile.updated_at || Date.now()).getTime()}`}
+                    src={getStorageUrl(`${userProfile.avatar_url.split('?')[0]}?t=${new Date(userProfile.updated_at || Date.now()).getTime()}`) || userProfile.avatar_url}
                     alt={userProfile.full_name || 'User'}
                   />
                 )}

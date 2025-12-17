@@ -10,6 +10,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Plus, Edit, Trash2, Search, Loader2, Package, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import VariantDialog from '../dialogs/VariantDialog'
+import { getStorageUrl } from '@/lib/utils'
+import { compressVariantImage, formatFileSize } from '@/lib/utils/imageCompression'
 
 interface Product {
   id: string
@@ -127,14 +129,23 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       // Handle image upload if there's a new image file
       if (variantData.imageFile) {
         const file = variantData.imageFile
-        const fileExt = file.name.split('.').pop()
-        const fileName = `variant-${Date.now()}.${fileExt}`
+        
+        // Compress the image first
+        const compressionResult = await compressVariantImage(file)
+        
+        toast({
+          title: '🖼️ Image Compressed',
+          description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+        })
+
+        const fileName = `variant-${Date.now()}.jpg`
         const filePath = `${fileName}`
 
         // Upload to avatars bucket
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('avatars')
-          .upload(filePath, file, {
+          .upload(filePath, compressionResult.file, {
+            contentType: compressionResult.file.type,
             cacheControl: '3600',
             upsert: false
           })
@@ -374,7 +385,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                     <Avatar className="w-10 h-10 rounded-lg">
                       {variant.image_url ? (
                         <AvatarImage 
-                          src={variant.image_url} 
+                          src={getStorageUrl(variant.image_url) || variant.image_url} 
                           alt={`${variant.variant_name} image`}
                           className="object-cover"
                         />
@@ -384,17 +395,17 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                       </AvatarFallback>
                     </Avatar>
                   </TableCell>
-                  <TableCell>{variant.variant_name}</TableCell>
-                  <TableCell className="text-sm text-gray-600">{variant.product_name}</TableCell>
-                  <TableCell className="text-right text-sm">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>
-                  <TableCell className="text-right text-sm">{variant.suggested_retail_price ? `$${variant.suggested_retail_price.toFixed(2)}` : '-'}</TableCell>
+                  <TableCell className="text-sm">{variant.variant_name}</TableCell>
+                  <TableCell className="text-xs text-gray-600">{variant.product_name}</TableCell>
+                  <TableCell className="text-right text-xs">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>
+                  <TableCell className="text-right text-xs">{variant.suggested_retail_price ? `$${variant.suggested_retail_price.toFixed(2)}` : '-'}</TableCell>
                   <TableCell className="text-center">
                     <Badge variant={variant.is_default ? 'default' : 'secondary'} className="text-xs">
                       {variant.is_default ? 'Yes' : 'No'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={variant.is_active ? 'default' : 'secondary'}>
+                    <Badge variant={variant.is_active ? 'default' : 'secondary'} className="text-xs">
                       {variant.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
@@ -433,7 +444,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         </Table>
       </div>
 
-      <div className="text-sm text-gray-600">
+      <div className="text-xs text-gray-600">
         Showing {getSortedVariants().length} of {variants.filter(v => v.is_active).length} variants
       </div>
     </div>

@@ -99,30 +99,63 @@ export async function updateUserWithAuth(userId: string, userData: {
   phone?: string
   is_active?: boolean
   avatar_url?: string
-}) {
+}, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
 
+    // Use server client to get current user from cookies
     const supabase = await createClient()
     
     // Check permissions: Current user must be admin OR updating themselves
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
-    if (!currentUser) return { success: false, error: 'Not authenticated' }
-
-    // Fetch current user role to check if admin (include roles relation for role_level)
-    const { data: currentUserProfile } = await supabase
-      .from('users')
-      .select('role_code, roles(role_level)')
-      .eq('id', currentUser.id)
-      .single()
+    const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
     
-    const isSelfUpdate = currentUser.id === userId
-    // Check by role_code OR role_level (level 1 = superadmin, level 10 = HQ_ADMIN)
-    const roleCode = currentUserProfile?.role_code
-    const roleLevel = (currentUserProfile?.roles as any)?.role_level
-    const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
+    let isAuthorized = false
+    let isSelfUpdate = false
     
-    if (!isSelfUpdate && !isAdmin) {
+    // If session check fails, try to use caller info passed from client
+    if (!currentUser || authError) {
+      console.log('Server action: Session not found via cookies, checking caller info...')
+      
+      if (callerInfo) {
+        // Validate caller info by checking against database
+        const { data: callerProfile } = await adminClient
+          .from('users')
+          .select('id, role_code, roles(role_level)')
+          .eq('id', callerInfo.id)
+          .single()
+        
+        if (callerProfile) {
+          isSelfUpdate = callerInfo.id === userId
+          const roleCode = callerProfile.role_code
+          const roleLevel = (callerProfile.roles as any)?.role_level
+          const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
+          isAuthorized = isSelfUpdate || isAdmin
+          console.log('Server action: Caller validated from DB -', { roleCode, roleLevel, isAdmin, isSelfUpdate })
+        }
+      }
+      
+      if (!isAuthorized) {
+        console.log('Server action: Not authorized, no valid session or caller info')
+        return { success: false, error: 'Not authenticated. Please refresh the page and try again.' }
+      }
+    } else {
+      // Session exists - check permissions normally
+      // Fetch current user role to check if admin (include roles relation for role_level)
+      const { data: currentUserProfile } = await supabase
+        .from('users')
+        .select('role_code, roles(role_level)')
+        .eq('id', currentUser.id)
+        .single()
+      
+      isSelfUpdate = currentUser.id === userId
+      // Check by role_code OR role_level (level 1 = superadmin, level 10 = HQ_ADMIN)
+      const roleCode = currentUserProfile?.role_code
+      const roleLevel = (currentUserProfile?.roles as any)?.role_level
+      const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
+      isAuthorized = isSelfUpdate || isAdmin
+    }
+    
+    if (!isAuthorized) {
        return { success: false, error: 'Unauthorized' }
     }
 

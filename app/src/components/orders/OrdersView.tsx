@@ -794,8 +794,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
-          <p className="text-gray-600 mt-1">Manage and track all your orders</p>
+          <h2 className="text-xl font-bold text-gray-900">Orders</h2>
+          <p className="text-sm text-gray-600 mt-1">Manage and track all your orders</p>
         </div>
         {/* Hide Create Order button for Manufacturer (MANU/MFG) organizations */}
         {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
@@ -813,8 +813,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Total Orders</p>
-                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.total_orders}</p>
+                  <p className="text-xs text-muted-foreground">Total Orders</p>
+                  <p className="text-lg sm:text-xl font-bold">{summary.total_orders}</p>
                 </div>
                 <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
               </div>
@@ -825,8 +825,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Approved</p>
-                  <p className="text-lg sm:text-xl lg:text-2xl font-bold">{summary.approved_orders}</p>
+                  <p className="text-xs text-muted-foreground">Approved</p>
+                  <p className="text-lg sm:text-xl font-bold">{summary.approved_orders}</p>
                 </div>
                 <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
               </div>
@@ -837,8 +837,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-muted-foreground">Total Amount</p>
-                  <p className="text-base sm:text-lg lg:text-2xl font-bold truncate">
+                  <p className="text-xs text-muted-foreground">Total Amount</p>
+                  <p className="text-base sm:text-lg font-bold truncate">
                     RM {summary.total_amount.toLocaleString('en-MY', { 
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2 
@@ -859,11 +859,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Order Type Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Order Type</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Order Type</label>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value as OrderType | 'all')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="all">All Types</option>
                 <option value="H2M">H2M (HQ → Manufacturer)</option>
@@ -874,11 +874,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
             {/* Manufacturer/Seller Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Seller/Manufacturer</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Seller/Manufacturer</label>
               <select
                 value={sellerFilter}
                 onChange={(e) => setSellerFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">All Sellers</option>
                 {uniqueSellers.map(seller => (
@@ -891,11 +891,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
             {/* Status Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="all">All Status</option>
                 <option value="draft">Draft</option>
@@ -1085,7 +1085,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 gap-1"
+                            className="h-7 gap-1 text-xs px-2"
                             onClick={() => handleEditOrder(order.id)}
                             title="Edit Order"
                           >
@@ -1097,7 +1097,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 gap-1 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                            className="h-7 gap-1 text-xs px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                             onClick={() => handleCopyOrder(order.id, order.order_no)}
                             title="Copy Order"
                           >
@@ -1109,7 +1109,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <Button
                             variant="default"
                             size="sm"
-                            className="h-8 gap-1 bg-green-600 hover:bg-green-700 text-white"
+                            className="h-7 gap-1 text-xs px-2 bg-green-600 hover:bg-green-700 text-white"
                             onClick={() => handleApproveOrder(order.id, order.order_no)}
                             title="Approve Order"
                           >
@@ -1273,7 +1273,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 text-xs h-8"
+                        className="flex-1 gap-1 text-xs h-7 px-2"
                         title="View Details"
                         onClick={() => handleViewOrderDetails(order.id)}
                       >
@@ -1284,7 +1284,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-8"
+                          className="flex-1 gap-1 text-xs h-7 px-2"
                           title="Edit Order"
                           onClick={() => handleEditOrder(order.id)}
                         >
@@ -1296,7 +1296,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-8 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                          className="flex-1 gap-1 text-xs h-7 px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                           title="Copy Order"
                           onClick={() => handleCopyOrder(order.id, order.order_no)}
                         >
@@ -1308,7 +1308,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="default"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-8 bg-green-600 hover:bg-green-700 text-white"
+                          className="flex-1 gap-1 text-xs h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
                           onClick={() => handleApproveOrder(order.id, order.order_no)}
                           title="Approve Order"
                         >

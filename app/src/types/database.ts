@@ -8042,6 +8042,7 @@ export type Database = {
           variant_name: string
         }[]
       }
+      check_organization_dependencies: { Args: { p_org_id: string }; Returns: Json }
       hard_delete_organization: { Args: { p_org_id: string }; Returns: Json }
       has_role_level: { Args: { required_level: number }; Returns: boolean }
       invoice_acknowledge: {

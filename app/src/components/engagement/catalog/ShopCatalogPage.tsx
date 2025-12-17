@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
+import { getStorageUrl } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -819,7 +820,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                   <div className="relative h-48 w-full bg-muted">
                     {reward.item_image_url ? (
                       <Image
-                        src={reward.item_image_url}
+                        src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
                         alt={reward.item_name}
                         fill
                         className="object-contain p-2"
@@ -1091,7 +1092,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
               <div className="relative h-80 w-full bg-muted md:h-auto md:min-h-[500px]">
                 {selectedReward.item_image_url ? (
                   <Image
-                    src={selectedReward.item_image_url}
+                    src={getStorageUrl(selectedReward.item_image_url) || selectedReward.item_image_url}
                     alt={selectedReward.item_name}
                     fill
                     className="object-contain p-4"

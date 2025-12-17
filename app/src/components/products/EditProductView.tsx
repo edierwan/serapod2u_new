@@ -192,12 +192,15 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
 
       const { error: uploadError } = await supabase.storage
         .from('product-images')
-        .upload(filePath, compressionResult.compressedFile, {
-          contentType: file.type,
+        .upload(filePath, compressionResult.file, {
+          contentType: compressionResult.file.type,
           upsert: false
         })
 
-      if (uploadError) throw uploadError
+      if (uploadError) {
+        console.error('Storage upload error:', JSON.stringify(uploadError, null, 2))
+        throw new Error(uploadError.message || 'Failed to upload file to storage')
+      }
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
@@ -213,13 +216,15 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         .insert({
           product_id: productId,
           image_url: publicUrl,
-          is_primary: isPrimary,
-          created_by: userProfile?.id
+          is_primary: isPrimary
         })
         .select()
         .single()
 
-      if (dbError) throw dbError
+      if (dbError) {
+        console.error('Database error:', JSON.stringify(dbError, null, 2))
+        throw new Error(dbError.message || 'Failed to save image to database')
+      }
 
       // Update local state
       setProductImages(prev => [...prev, newImage])
@@ -229,10 +234,13 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         description: 'Product image uploaded successfully',
       })
     } catch (error: any) {
-      console.error('Error uploading image:', error)
+      console.error('Error uploading image:', error instanceof Error ? error.message : JSON.stringify(error, null, 2))
+      const errorMessage = error instanceof Error ? error.message : 
+                          error?.message || 
+                          (typeof error === 'string' ? error : 'Failed to upload image')
       toast({
         title: 'Error',
-        description: error.message || 'Failed to upload image',
+        description: errorMessage,
         variant: 'destructive'
       })
     } finally {
@@ -485,7 +493,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                       e.stopPropagation()
                       setDeletingImageId(image.id)
                     }}
-                    className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                    className="absolute top-2 right-2 z-10 bg-red-600 text-white p-2 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

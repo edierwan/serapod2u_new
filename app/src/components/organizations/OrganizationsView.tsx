@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getStorageUrl } from '@/lib/utils'
 import { 
   Building2, 
   Search, 
@@ -29,8 +30,23 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  AlertTriangle,
+  X,
+  Loader2,
+  CheckCircle,
+  XCircle,
+  Info
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import ShopDistributorsManager from '@/components/shops/ShopDistributorsManager'
 import DistributorShopsManager from '@/components/distributors/DistributorShopsManager'
 
@@ -99,6 +115,39 @@ interface OrganizationsViewProps {
 type SortField = 'org_name' | 'org_type_code' | 'contact_name' | 'city' | 'is_active'
 type SortDirection = 'asc' | 'desc'
 
+interface BlockingRecord {
+  table_name: string
+  display_name: string
+  count: number
+  description: string
+  action: string
+  priority: number
+  auto_delete?: boolean
+  can_force_delete?: boolean
+  records?: Array<{
+    id: string
+    reference: string
+    code?: string
+    status?: string
+    type?: string
+    role?: string
+  }> | null
+}
+
+interface DependencyCheckResult {
+  success: boolean
+  org_id?: string
+  org_name?: string
+  org_code?: string
+  org_type?: string
+  can_delete?: boolean
+  has_blocking_records?: boolean
+  blocking_records?: BlockingRecord[]
+  deletion_order?: string
+  error?: string
+  error_code?: string
+}
+
 export default function OrganizationsView({ userProfile, onViewChange }: OrganizationsViewProps) {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
@@ -118,6 +167,14 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [editingField, setEditingField] = useState<{ orgId: string; field: 'name' | 'phone' } | null>(null)
   const [editValue, setEditValue] = useState('')
   const [isSavingQuickEdit, setIsSavingQuickEdit] = useState(false)
+  // Delete dependencies modal state
+  const [deleteDependenciesModal, setDeleteDependenciesModal] = useState<{
+    show: boolean
+    loading: boolean
+    deleting: boolean
+    orgId: string | null
+    data: DependencyCheckResult | null
+  }>({ show: false, loading: false, deleting: false, orgId: null, data: null })
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -127,6 +184,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       const needsRefresh = sessionStorage.getItem('needsLinkRefresh')
       if (needsRefresh === 'true') {
         console.log('🔄 Refresh flag detected, will refresh link data...')
+
         sessionStorage.removeItem('needsLinkRefresh')
         
         // Longer delay to ensure DB writes are complete and indexes updated (1.5 seconds)
@@ -496,7 +554,11 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
       if (error) {
         console.error('Delete function error:', error)
-        alert(`Error deleting organization: ${error.message}`)
+        toast({
+          title: "Delete Failed",
+          description: error.message || 'Failed to delete organization',
+          variant: "destructive"
+        })
         return
       }
 
@@ -506,35 +568,45 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         
         // Handle null or missing data
         if (!data) {
-          alert(
-            `Delete Failed\n\n` +
-            `No response received from server. The organization may have related data that prevents deletion.\n\n` +
-            `Please check:\n` +
-            `• Orders associated with this organization\n` +
-            `• Child organizations\n` +
-            `• QR batches or inventory records\n\n` +
-            `You may need to delete related data first or contact support.`
-          )
+          toast({
+            title: "Delete Failed",
+            description: 'No response received from server. There may be related records blocking deletion.',
+            variant: "destructive"
+          })
           return
         }
         
         // Show user-friendly error messages based on error code
         if (data.error_code === 'HAS_ORDERS') {
-          alert(
-            `Cannot Delete ${orgName} (${orgCode})\n\n` +
-            `This organization has ${data.order_count} order(s) in the system.\n\n` +
-            `Organizations with orders cannot be permanently deleted to maintain data integrity.`
-          )
+          toast({
+            title: "Cannot Delete",
+            description: `${orgName} has ${data.order_count} order(s). Organizations with orders cannot be deleted.`,
+            variant: "destructive"
+          })
         } else if (data.error_code === 'HAS_CHILDREN') {
-          alert(
-            `Cannot Delete ${orgName} (${orgCode})\n\n` +
-            `This organization has ${data.child_count} active child organization(s).\n\n` +
-            `Please delete or reassign child organizations first.`
-          )
+          toast({
+            title: "Cannot Delete",
+            description: `${orgName} has ${data.child_count} active child organization(s). Delete them first.`,
+            variant: "destructive"
+          })
         } else if (data.error_code === 'ORG_NOT_FOUND') {
-          alert(`Organization not found. It may have already been deleted.`)
+          toast({
+            title: "Not Found",
+            description: 'Organization not found. It may have already been deleted.',
+            variant: "destructive"
+          })
+        } else if (data.error_code === 'FOREIGN_KEY_VIOLATION') {
+          toast({
+            title: "Cannot Delete",
+            description: 'There are related records that must be deleted first. Use the delete button to see details.',
+            variant: "destructive"
+          })
         } else {
-          alert(`Cannot delete organization: ${data.error || 'Unknown error occurred'}`)
+          toast({
+            title: "Delete Failed",
+            description: data.error || 'Unknown error occurred',
+            variant: "destructive"
+          })
         }
         return
       }
@@ -549,13 +621,13 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       if (deletedRecords.inventory_records > 0) summary.push(`${deletedRecords.inventory_records} inventory record(s)`)
 
       const summaryText = summary.length > 0 
-        ? `\n\nAlso removed:\n${summary.join('\n')}` 
+        ? ` Also removed: ${summary.join(', ')}.` 
         : ''
 
-      alert(
-        `✓ Successfully Deleted\n\n` +
-        `${orgName} (${orgCode}) has been permanently removed from the system.${summaryText}`
-      )
+      toast({
+        title: "✓ Successfully Deleted",
+        description: `${orgName} (${orgCode}) has been permanently removed.${summaryText}`
+      })
 
       setDeleteConfirmation({ show: false, orgId: null })
       
@@ -567,7 +639,11 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       checkDistributorShopLinks()
     } catch (error: any) {
       console.error('Error deleting organization:', error)
-      alert(`Failed to delete organization: ${error.message || 'Unknown error'}`)
+      toast({
+        title: "Delete Failed",
+        description: error.message || 'Unknown error',
+        variant: "destructive"
+      })
     }
   }
 
@@ -627,11 +703,63 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     }
   }
 
-  const confirmDelete = (orgId: string) => {
-    const org = organizations.find(o => o.id === orgId)
-    if (window.confirm(`Are you sure you want to delete "${org?.org_name}"? This action cannot be undone.`)) {
-      handleDeleteOrganization(orgId)
+  // Check organization dependencies before deleting
+  const checkDependencies = async (orgId: string) => {
+    setDeleteDependenciesModal({ show: true, loading: true, deleting: false, orgId, data: null })
+    
+    try {
+      const { data, error } = await (supabase as any)
+        .rpc('check_organization_dependencies', { p_org_id: orgId })
+      
+      if (error) {
+        console.error('Error checking dependencies:', error)
+        setDeleteDependenciesModal(prev => ({
+          ...prev,
+          loading: false,
+          data: {
+            success: false,
+            error: error.message || 'Failed to check dependencies'
+          }
+        }))
+        return
+      }
+      
+      setDeleteDependenciesModal(prev => ({
+        ...prev,
+        loading: false,
+        data: data as DependencyCheckResult
+      }))
+    } catch (err: any) {
+      console.error('Error checking dependencies:', err)
+      setDeleteDependenciesModal(prev => ({
+        ...prev,
+        loading: false,
+        data: {
+          success: false,
+          error: err.message || 'Failed to check dependencies'
+        }
+      }))
     }
+  }
+
+  const confirmDelete = (orgId: string) => {
+    // Instead of simple confirm, check dependencies first
+    checkDependencies(orgId)
+  }
+
+  // Proceed with deletion after user confirms
+  const proceedWithDeletion = async () => {
+    const orgId = deleteDependenciesModal.orgId
+    if (!orgId) return
+    
+    setDeleteDependenciesModal(prev => ({ ...prev, deleting: true }))
+    await handleDeleteOrganization(orgId)
+    setDeleteDependenciesModal({ show: false, loading: false, deleting: false, orgId: null, data: null })
+  }
+
+  // Close the dependencies modal
+  const closeDependenciesModal = () => {
+    setDeleteDependenciesModal({ show: false, loading: false, deleting: false, orgId: null, data: null })
   }
 
   if (loading) {
@@ -738,58 +866,73 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       {viewMode === 'card' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {filteredOrganizations.map((org) => (
-            <Card key={org.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    {/* Organization Logo/Avatar */}
-                    <Avatar className="w-12 h-12 rounded-lg" key={org.logo_url || org.id}>
-                      <AvatarImage 
-                        src={org.logo_url || undefined} 
-                        alt={`${org.org_name} logo`}
-                        className="object-cover"
-                      />
-                      <AvatarFallback className="rounded-lg bg-blue-100 text-blue-600 font-semibold">
-                        {getOrgInitials(org.org_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 flex items-center gap-2 flex-wrap">
-                      <Badge className={getOrgTypeColor(org.org_type_code)}>
-                        {org.org_types?.type_name || org.org_type_code}
-                      </Badge>
-                      {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') && 
-                       (org as any).payment_terms && (
-                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-                          💰 {(org as any).payment_terms.term_name}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <Badge className={getStatusColor(org.is_active, org.is_verified)}>
+            <Card key={org.id} className="hover:shadow-md transition-all duration-200 border border-gray-200 overflow-hidden">
+              {/* Card Header with Status Badge */}
+              <div className="relative px-5 pt-5 pb-4">
+                {/* Status Badge - Top Right */}
+                <div className="absolute top-3 right-3">
+                  <Badge className={`${getStatusColor(org.is_active, org.is_verified)} text-xs font-medium`}>
                     {getStatusText(org.is_active, org.is_verified)}
                   </Badge>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-lg">{org.org_name}</CardTitle>
+                
+                {/* Logo and Type Badges Row */}
+                <div className="flex items-start gap-4">
+                  {/* Organization Logo - Fixed size container with contain */}
+                  <div className="w-14 h-14 rounded-lg border border-gray-200 bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {org.logo_url ? (
+                      <img 
+                        src={getStorageUrl(org.logo_url) || org.logo_url} 
+                        alt={`${org.org_name} logo`}
+                        className="w-full h-full object-contain p-1"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+                        <span className="text-blue-600 font-semibold text-sm">
+                          {getOrgInitials(org.org_name)}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <CardDescription className="flex items-center gap-2">
+                  
+                  {/* Type and Payment Badges */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <Badge className={`${getOrgTypeColor(org.org_type_code)} text-xs`}>
+                      {org.org_types?.type_name || org.org_type_code}
+                    </Badge>
+                    {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') && 
+                     (org as any).payment_terms && (
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                        💰 {(org as any).payment_terms.deposit_percentage}/{(org as any).payment_terms.balance_percentage} Split
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Organization Name and Code */}
+                <div className="mt-4">
+                  <h3 className="font-semibold text-gray-900 text-base leading-tight line-clamp-1">
+                    {org.org_name}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">
                     {org.org_code}
                     {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') && 
                      (org as any).payment_terms && (
-                      <span className="text-xs text-purple-600">
+                      <span className="text-purple-600 ml-1.5">
                         • {(org as any).payment_terms.deposit_percentage}% / {(org as any).payment_terms.balance_percentage}% split
                       </span>
                     )}
-                  </CardDescription>
+                  </p>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Contact Info */}
-                <div className="space-y-2 text-sm">
-                  {/* Contact Name - Editable for SHOP, DIST, WH, and MFG */}
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Users className="w-4 h-4 flex-shrink-0" />
+              </div>
+              
+              {/* Card Content */}
+              <CardContent className="px-5 pb-5 pt-0 space-y-3">
+                {/* Contact Info - Compact Grid */}
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                  {/* Contact Name */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                     {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && 
                      editingField?.orgId === org.id && editingField?.field === 'name' ? (
                       <div className="flex items-center gap-2 flex-1">
@@ -805,44 +948,24 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             if (e.key === 'Escape') handleCancelQuickEdit()
                           }}
                         />
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveQuickEdit(org)}
-                          disabled={isSavingQuickEdit}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleCancelQuickEdit}
-                          disabled={isSavingQuickEdit}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Cancel
-                        </Button>
+                        <Button size="sm" onClick={() => handleSaveQuickEdit(org)} disabled={isSavingQuickEdit} className="h-7 px-2 text-xs">Save</Button>
+                        <Button size="sm" variant="ghost" onClick={handleCancelQuickEdit} disabled={isSavingQuickEdit} className="h-7 px-2 text-xs">Cancel</Button>
                       </div>
                     ) : (
-                      <>
-                        <span className={!org.contact_name ? 'text-gray-400 italic' : ''}>
+                      <div className="flex items-center gap-1 flex-1 min-w-0">
+                        <span className={`truncate ${!org.contact_name ? 'text-gray-400 italic' : 'text-gray-700'}`}>
                           {org.contact_name || 'Not updated'}
                         </span>
                         {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && (
-                          <button
-                            onClick={() => handleQuickEdit(org.id, 'name', org.contact_name)}
-                            className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline ml-1"
-                          >
-                            [Edit]
-                          </button>
+                          <button onClick={() => handleQuickEdit(org.id, 'name', org.contact_name)} className="text-xs text-blue-600 hover:text-blue-700 hover:underline flex-shrink-0">[Edit]</button>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
 
-                  {/* Contact Phone - Editable for SHOP, DIST, WH, and MFG */}
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Phone className="w-4 h-4 flex-shrink-0" />
+                  {/* Contact Phone */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                     {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && 
                      editingField?.orgId === org.id && editingField?.field === 'phone' ? (
                       <div className="flex items-center gap-2 flex-1">
@@ -858,49 +981,33 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             if (e.key === 'Escape') handleCancelQuickEdit()
                           }}
                         />
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveQuickEdit(org)}
-                          disabled={isSavingQuickEdit}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleCancelQuickEdit}
-                          disabled={isSavingQuickEdit}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Cancel
-                        </Button>
+                        <Button size="sm" onClick={() => handleSaveQuickEdit(org)} disabled={isSavingQuickEdit} className="h-7 px-2 text-xs">Save</Button>
+                        <Button size="sm" variant="ghost" onClick={handleCancelQuickEdit} disabled={isSavingQuickEdit} className="h-7 px-2 text-xs">Cancel</Button>
                       </div>
                     ) : (
-                      <>
-                        <span className={!org.contact_phone ? 'text-gray-400 italic' : ''}>
+                      <div className="flex items-center gap-1 flex-1 min-w-0">
+                        <span className={`truncate ${!org.contact_phone ? 'text-gray-400 italic' : 'text-gray-700'}`}>
                           {org.contact_phone || 'Not updated'}
                         </span>
                         {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && (
-                          <button
-                            onClick={() => handleQuickEdit(org.id, 'phone', org.contact_phone)}
-                            className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline ml-1"
-                          >
-                            [Edit]
-                          </button>
+                          <button onClick={() => handleQuickEdit(org.id, 'phone', org.contact_phone)} className="text-xs text-blue-600 hover:text-blue-700 hover:underline flex-shrink-0">[Edit]</button>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Mail className="w-4 h-4" />
-                    <span className={!org.contact_email ? 'text-gray-400 italic truncate' : 'truncate'}>
+
+                  {/* Email */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                    <span className={`truncate ${!org.contact_email ? 'text-gray-400 italic' : 'text-gray-700'}`}>
                       {org.contact_email || 'Not updated'}
                     </span>
                   </div>
-                  <div className="flex items-start gap-2 text-gray-600">
-                    <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    <span className={!org.city ? 'text-gray-400 italic text-xs' : 'text-xs'}>
+
+                  {/* Location */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                    <span className={`truncate ${!org.city ? 'text-gray-400 italic' : 'text-gray-700'}`}>
                       {org.city || 'Not updated'}
                     </span>
                   </div>
@@ -912,17 +1019,17 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   (org.org_type_code === 'SHOP' && shopLinkedDistributors.has(org.id)) ||
                   (org.org_type_code === 'DIST' && distributorLinkedShops.has(org.id))
                 ) && (
-                  <div className="pt-2 border-t">
-                    {/* Shop's Parent Distributor - only show for SHOP */}
+                  <div className="text-xs text-gray-500 bg-blue-50 rounded-lg px-3 py-2">
+                    {/* Shop's Parent Distributor */}
                     {org.parent_org && org.org_type_code === 'SHOP' && (
-                      <p className="text-xs text-gray-500 mb-1">
+                      <p className="mb-1">
                         Ordering From: <span className="font-medium text-blue-600">{org.parent_org.org_name}</span>
                       </p>
                     )}
                     
-                    {/* Shop's Additional Distributors from shop_distributors table */}
+                    {/* Shop's Additional Distributors */}
                     {org.org_type_code === 'SHOP' && shopLinkedDistributors.has(org.id) && (
-                      <p className="text-xs text-gray-500">
+                      <p>
                         Additional Distributors: <span className="font-medium">
                           {shopLinkedDistributors.get(org.id)?.join(', ') || 'None'}
                         </span>
@@ -931,7 +1038,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     
                     {/* Distributor's Linked Shops */}
                     {org.org_type_code === 'DIST' && distributorLinkedShops.has(org.id) && (
-                      <p className="text-xs text-gray-500">
+                      <p>
                         Supplying To: <span className="font-medium text-green-600">
                           {distributorLinkedShops.get(org.id)?.join(', ') || 'None'}
                         </span>
@@ -940,42 +1047,42 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   </div>
                 )}
 
-                {/* Stats */}
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+                {/* Stats - Compact Design */}
+                <div className="grid grid-cols-3 gap-1 py-3 bg-gray-50 rounded-lg">
                   {org.org_type_code === 'SHOP' ? (
                     <>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.distributors_count || 0}</div>
+                      <div className="text-center px-2">
+                        <div className="text-xl font-bold text-gray-900">{org.distributors_count || 0}</div>
                         <div className="text-xs text-gray-500">Distributors</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.users_count || 0}</div>
+                      <div className="text-center px-2 border-x border-gray-200">
+                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.orders_count || 0}</div>
+                      <div className="text-center px-2">
+                        <div className="text-xl font-bold text-gray-900">{org.orders_count || 0}</div>
                         <div className="text-xs text-gray-500">Orders</div>
                       </div>
                     </>
                   ) : org.org_type_code === 'DIST' ? (
                     <>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.shops_count || 0}</div>
+                      <div className="text-center px-2">
+                        <div className="text-xl font-bold text-gray-900">{org.shops_count || 0}</div>
                         <div className="text-xs text-gray-500">Shops</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.users_count || 0}</div>
+                      <div className="text-center px-2 border-x border-gray-200">
+                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.orders_count || 0}</div>
+                      <div className="text-center px-2">
+                        <div className="text-xl font-bold text-gray-900">{org.orders_count || 0}</div>
                         <div className="text-xs text-gray-500">Orders</div>
                       </div>
                     </>
                   ) : org.org_type_code === 'WH' ? (
                     <>
-                      <div className="text-center" title="This warehouse automatically receives orders from its parent HQ">
-                        <div className="text-sm font-semibold">
+                      <div className="text-center px-2" title="This warehouse automatically receives orders from its parent HQ">
+                        <div className="text-sm font-bold">
                           {org.parent_org && organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? (
                             <span className="text-blue-600">Yes</span>
                           ) : (
@@ -984,48 +1091,46 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         </div>
                         <div className="text-xs text-gray-500">Default</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.users_count || 0}</div>
+                      <div className="text-center px-2 border-x border-gray-200">
+                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.products_count || 0}</div>
+                      <div className="text-center px-2">
+                        <div className="text-xl font-bold text-gray-900">{org.products_count || 0}</div>
                         <div className="text-xs text-gray-500">Products</div>
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.children_count || 0}</div>
+                      <div className="text-center px-2">
+                        <div className="text-xl font-bold text-gray-900">{org.children_count || 0}</div>
                         <div className="text-xs text-gray-500">Children</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.users_count || 0}</div>
+                      <div className="text-center px-2 border-x border-gray-200">
+                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-lg font-semibold text-gray-900">{org.products_count || 0}</div>
+                      <div className="text-center px-2">
+                        <div className="text-xl font-bold text-gray-900">{org.products_count || 0}</div>
                         <div className="text-xs text-gray-500">Products</div>
                       </div>
                     </>
                   )}
                 </div>
 
-                {/* Actions */}
-                <div className="flex gap-2 pt-2">
+                {/* Actions - Clean Button Row */}
+                <div className="flex gap-2 pt-3 border-t border-gray-100">
                   {org.org_type_code === 'SHOP' && (
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="flex-1"
+                      className="flex-1 h-9 text-xs font-medium hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
                       onClick={() => {
                         setSelectedShopForDistributors(org)
-                        checkShopDistributorLinks() // Refresh on open
+                        checkShopDistributorLinks()
                       }}
                     >
-                      <LinkIcon 
-                        className={`w-4 h-4 mr-2 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`} 
-                      />
+                      <LinkIcon className={`w-3.5 h-3.5 mr-1.5 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : ''}`} />
                       Distributors
                     </Button>
                   )}
@@ -1033,15 +1138,13 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="flex-1"
+                      className="flex-1 h-9 text-xs font-medium hover:bg-green-50 hover:text-green-700 hover:border-green-300"
                       onClick={() => {
                         setSelectedDistributorForShops(org)
-                        checkDistributorShopLinks() // Refresh on open
+                        checkDistributorShopLinks()
                       }}
                     >
-                      <LinkIcon 
-                        className={`w-4 h-4 mr-2 ${distributorsWithShops.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`} 
-                      />
+                      <LinkIcon className={`w-3.5 h-3.5 mr-1.5 ${distributorsWithShops.has(org.id) ? 'text-green-600' : ''}`} />
                       Shops
                     </Button>
                   )}
@@ -1049,30 +1152,34 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="flex-1"
+                      className={`flex-1 h-9 text-xs font-medium ${
+                        organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id 
+                          ? 'bg-blue-50 text-blue-700 border-blue-300' 
+                          : 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                      }`}
                       onClick={() => handleSetDefaultWarehouse(org)}
                       disabled={organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id}
                     >
-                      <Building2 className="w-4 h-4 mr-2" />
-                      {organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? 'Default ✓' : 'Set Default'}
+                      <Building2 className="w-3.5 h-3.5 mr-1.5" />
+                      {organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? 'Default ✓' : 'Default'}
                     </Button>
                   )}
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="flex-1"
+                    className="flex-1 h-9 text-xs font-medium hover:bg-gray-100"
                     onClick={() => handleEditOrganization(org)}
                   >
-                    <Edit className="w-4 h-4 mr-2" />
+                    <Edit className="w-3.5 h-3.5 mr-1.5" />
                     Edit
                   </Button>
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="flex-1 text-red-600 hover:text-red-700 border-red-300"
+                    className="flex-1 h-9 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200 hover:border-red-300"
                     onClick={() => confirmDelete(org.id)}
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
                     Delete
                   </Button>
                 </div>
@@ -1169,7 +1276,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         {/* Organization Logo/Avatar */}
                         <Avatar className="w-10 h-10 rounded-lg flex-shrink-0">
                           <AvatarImage 
-                            src={org.logo_url || undefined} 
+                            src={getStorageUrl(org.logo_url) || org.logo_url || undefined} 
                             alt={`${org.org_name} logo`}
                             className="object-cover"
                           />
@@ -1403,6 +1510,178 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           </div>
         </div>
       )}
+
+      {/* Delete Dependencies Modal */}
+      <Dialog open={deleteDependenciesModal.show} onOpenChange={(open) => !open && closeDependenciesModal()}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {deleteDependenciesModal.loading ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                  Checking Dependencies...
+                </>
+              ) : deleteDependenciesModal.data?.can_delete ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  Ready to Delete
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  Cannot Delete Organization
+                </>
+              )}
+            </DialogTitle>
+            {deleteDependenciesModal.data && (
+              <DialogDescription>
+                <span className="font-semibold">{deleteDependenciesModal.data.org_name}</span>
+                {' '}({deleteDependenciesModal.data.org_code}) - {deleteDependenciesModal.data.org_type}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+
+          <ScrollArea className="flex-1 pr-4">
+            {deleteDependenciesModal.loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+              </div>
+            ) : deleteDependenciesModal.data?.error ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-red-700">
+                  <XCircle className="h-5 w-5" />
+                  <span className="font-medium">Error</span>
+                </div>
+                <p className="text-red-600 mt-2">{deleteDependenciesModal.data.error}</p>
+              </div>
+            ) : deleteDependenciesModal.data?.can_delete ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-green-700">
+                    This organization has no blocking dependencies and can be safely deleted.
+                  </p>
+                </div>
+                {deleteDependenciesModal.data.blocking_records && deleteDependenciesModal.data.blocking_records.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-600">The following will be automatically removed:</p>
+                    {deleteDependenciesModal.data.blocking_records
+                      .filter(r => r.auto_delete)
+                      .map((record, index) => (
+                        <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-700">{record.display_name}</span>
+                            <Badge variant="secondary">{record.count} record(s)</Badge>
+                          </div>
+                          <p className="text-sm text-gray-500 mt-1">{record.action}</p>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            ) : deleteDependenciesModal.data?.has_blocking_records ? (
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <p className="text-amber-700">
+                    This organization cannot be deleted because it has related records that must be removed first.
+                    Please delete the following records in order:
+                  </p>
+                </div>
+                
+                <div className="space-y-3">
+                  {deleteDependenciesModal.data.blocking_records
+                    ?.filter(r => !r.auto_delete)
+                    .sort((a, b) => a.priority - b.priority)
+                    .map((record, index) => (
+                      <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">
+                              Step {index + 1}
+                            </span>
+                            <span className="font-semibold text-gray-800">{record.display_name}</span>
+                          </div>
+                          <Badge variant={record.count > 0 ? "destructive" : "secondary"}>
+                            {record.count} record(s)
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{record.description}</p>
+                        <div className="flex items-start gap-2 bg-blue-50 rounded p-2">
+                          <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                          <p className="text-sm text-blue-700">{record.action}</p>
+                        </div>
+                        
+                        {/* Show sample records if available */}
+                        {record.records && record.records.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-xs text-gray-500 mb-2">Sample records:</p>
+                            <div className="space-y-1">
+                              {record.records.slice(0, 5).map((r, i) => (
+                                <div key={i} className="text-xs bg-gray-50 rounded px-2 py-1 flex items-center gap-2">
+                                  <span className="font-mono text-gray-600">{r.reference}</span>
+                                  {r.code && <span className="text-gray-400">({r.code})</span>}
+                                  {r.status && (
+                                    <Badge variant="outline" className="text-xs px-1 py-0">
+                                      {r.status}
+                                    </Badge>
+                                  )}
+                                </div>
+                              ))}
+                              {record.count > 5 && (
+                                <p className="text-xs text-gray-400 italic">
+                                  ... and {record.count - 5} more
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                </div>
+
+                {/* Show auto-delete items */}
+                {deleteDependenciesModal.data.blocking_records?.filter(r => r.auto_delete).length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-sm text-gray-500 mb-2">These will be automatically removed when deleting:</p>
+                    {deleteDependenciesModal.data.blocking_records
+                      ?.filter(r => r.auto_delete)
+                      .map((record, index) => (
+                        <div key={index} className="flex items-center justify-between py-1">
+                          <span className="text-sm text-gray-600">{record.display_name}</span>
+                          <Badge variant="secondary">{record.count}</Badge>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </ScrollArea>
+
+          <DialogFooter className="mt-4 pt-4 border-t">
+            <Button variant="outline" onClick={closeDependenciesModal} disabled={deleteDependenciesModal.deleting}>
+              Cancel
+            </Button>
+            {deleteDependenciesModal.data?.can_delete && (
+              <Button 
+                variant="destructive" 
+                onClick={proceedWithDeletion}
+                disabled={deleteDependenciesModal.deleting}
+              >
+                {deleteDependenciesModal.deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Organization
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

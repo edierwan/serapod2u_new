@@ -39,8 +39,8 @@ export default function ProductManagement({ userProfile, onViewChange }: Product
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="space-y-1">
-            <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">Product Management</h1>
-            <p className="text-sm text-gray-600 sm:text-base">
+            <h1 className="text-lg font-semibold text-gray-900 sm:text-xl">Product Management</h1>
+            <p className="text-xs text-gray-600 sm:text-sm">
               Manage categories, brands, groups, variants, and create products
             </p>
           </div>

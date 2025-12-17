@@ -9,6 +9,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { createClient } from '@/lib/supabase/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { User, Mail, Building2, Shield, Calendar, Phone, Edit2, Save, X, Loader2, Camera, Upload } from 'lucide-react'
+import { getStorageUrl } from '@/lib/utils'
+import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
 interface MyProfileViewProps {
   userProfile: any
@@ -104,6 +106,14 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
       // Handle avatar upload if file is selected
       if (avatarFile) {
         try {
+          // Compress the avatar first
+          const compressionResult = await compressAvatar(avatarFile)
+          
+          toast({
+            title: '🖼️ Avatar Compressed',
+            description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+          })
+
           // Delete old avatar if exists
           if (localProfile.avatar_url) {
             const oldPath = localProfile.avatar_url.split('/').pop()?.split('?')[0]
@@ -113,13 +123,13 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
             }
           }
           
-          const fileExtension = avatarFile.name.split('.').pop()
-          const fileName = `${Date.now()}.${fileExtension}`
+          const fileName = `${Date.now()}.jpg`
           const filePath = `${userProfile.id}/${fileName}`
           
           const { error: uploadError } = await supabase.storage
             .from('avatars')
-            .upload(filePath, avatarFile, {
+            .upload(filePath, compressionResult.file, {
+              contentType: compressionResult.file.type,
               cacheControl: '3600',
               upsert: true
             })
@@ -227,7 +237,7 @@ export default function MyProfileView({ userProfile }: MyProfileViewProps) {
               <Avatar className="h-20 w-20 cursor-pointer" onClick={handleAvatarClick}>
                 {(avatarPreview || localProfile?.avatar_url) && (
                   <AvatarImage 
-                    src={avatarPreview || `${localProfile?.avatar_url?.split('?')[0]}?v=${avatarRefresh}`} 
+                    src={avatarPreview || getStorageUrl(`${localProfile?.avatar_url?.split('?')[0]}?v=${avatarRefresh}`) || localProfile?.avatar_url} 
                     alt={localProfile?.full_name || 'User'} 
                   />
                 )}

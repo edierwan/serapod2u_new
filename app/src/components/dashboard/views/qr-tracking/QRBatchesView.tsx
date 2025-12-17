@@ -137,19 +137,19 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       // Progress counts master codes that are packed or beyond (warehouse_packed, ready_to_ship, completed, received_warehouse, shipped_distributor, opened)
       const batchesWithProgress = await Promise.all(
         (data || []).map(async (batch) => {
-          const { data: packedData } = await supabase
+          // Use head:true to get count without fetching data (more efficient for large batches)
+          const { count: packedCount } = await supabase
             .from('qr_master_codes')
-            .select('id', { count: 'exact' })
+            .select('*', { count: 'exact', head: true })
             .eq('batch_id', batch.id)
             .in('status', ['packed', 'warehouse_packed', 'ready_to_ship', 'completed', 'received_warehouse', 'shipped_distributor', 'opened'])
           
-          const packedCount = packedData?.length || 0
           const totalCount = batch.total_master_codes || 0
-          const progressPercentage = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
+          const progressPercentage = totalCount > 0 ? Math.round(((packedCount || 0) / totalCount) * 100) : 0
           
           return {
             ...batch,
-            packed_master_codes: packedCount,
+            packed_master_codes: packedCount || 0,
             progress_percentage: progressPercentage
           }
         })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -76,6 +76,9 @@ const formatCurrency = (amount: number): string => {
 export default function DistributorOrderView({ userProfile, onViewChange }: DistributorOrderViewProps) {
   const supabase = createClient()
   const { toast } = useToast()
+  
+  // Ref to prevent duplicate toasts in React Strict Mode
+  const toastShownRef = useRef(false)
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -189,7 +192,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       
       setAvailableDistributors(data || [])
       
-      if (data && data.length === 0) {
+      if (data && data.length === 0 && !toastShownRef.current) {
+        toastShownRef.current = true
         toast({
           title: 'No Distributors Found',
           description: 'No active distributors found under HQ. Please contact administrator.',
@@ -677,8 +681,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             Back
           </Button>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900">Order to HQ (D2H)</h2>
-        <p className="text-gray-600 text-sm mt-1">Create a D2H order to headquarters using distributor pricing</p>
+        <h2 className="text-xl font-bold text-gray-900">Order to HQ (D2H)</h2>
+        <p className="text-gray-600 text-xs mt-1">Create a D2H order to headquarters using distributor pricing</p>
       </div>
 
       {/* Main Layout - Two Columns */}

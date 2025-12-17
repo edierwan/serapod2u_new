@@ -151,7 +151,7 @@ export default function OrgLogoUpload({
             <AvatarImage 
               src={logoPreview} 
               alt="Organization logo"
-              className="object-cover"
+              className="object-contain"
             />
           ) : (
             <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50 text-blue-600">

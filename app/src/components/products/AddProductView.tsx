@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
+import { compressProductImage, formatFileSize } from '@/lib/utils/imageCompression'
 import { 
   ArrowLeft,
   Package,
@@ -285,7 +286,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     return `${brandCode}${categoryCode}${timestamp}`
   }
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       if (!file.type.startsWith('image/')) {
@@ -310,15 +311,32 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
         return
       }
 
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        setImagePreview({
-          file,
-          url: event.target?.result as string
+      try {
+        // Compress the image
+        const compressionResult = await compressProductImage(file)
+        
+        toast({
+          title: '\ud83d\uddbc\ufe0f Image Compressed',
+          description: `${formatFileSize(compressionResult.originalSize)} \u2192 ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
         })
-        setFormData(prev => ({ ...prev, image_file: file }))
+
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          setImagePreview({
+            file: compressionResult.file,
+            url: event.target?.result as string
+          })
+          setFormData(prev => ({ ...prev, image_file: compressionResult.file }))
+        }
+        reader.readAsDataURL(compressionResult.file)
+      } catch (error) {
+        console.error('Error compressing image:', error)
+        toast({
+          title: 'Error',
+          description: 'Failed to process image',
+          variant: 'destructive'
+        })
       }
-      reader.readAsDataURL(file)
     }
   }
 
@@ -481,8 +499,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                 product_id: productId,
                 image_url: urlData.publicUrl,
                 image_type: 'PRODUCT',
-                is_primary: true,
-                uploaded_by: userProfile.id
+                is_primary: true
               }
             ])
         }

@@ -345,13 +345,13 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
 
     try {
       setUploadingImage(true)
-      const fileExt = imageFile.name.split('.').pop()
-      const fileName = `reward-${userProfile.organizations.id}-${Date.now()}.${fileExt}`
+      const fileName = `reward-${userProfile.organizations.id}-${Date.now()}.jpg`
 
       // Upload to avatars bucket
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, imageFile, {
+          contentType: imageFile.type,
           cacheControl: '3600',
           upsert: false
         })

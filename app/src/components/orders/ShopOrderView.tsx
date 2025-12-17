@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -77,6 +77,9 @@ const formatCurrency = (amount: number): string => {
 export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderViewProps) {
   const supabase = createClient()
   const { toast } = useToast()
+  
+  // Ref to prevent duplicate toasts in React Strict Mode
+  const toastShownRef = useRef(false)
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -176,11 +179,14 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
       const distributorIds = distributors?.map(d => d.id) || []
       
       if (distributorIds.length === 0) {
-        toast({
-          title: 'No Distributors Found',
-          description: 'No distributors found under HQ.',
-          variant: 'destructive'
-        })
+        if (!toastShownRef.current) {
+          toastShownRef.current = true
+          toast({
+            title: 'No Distributors Found',
+            description: 'No distributors found under HQ.',
+            variant: 'destructive'
+          })
+        }
         return
       }
 
@@ -197,7 +203,8 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
       
       setAvailableShops(shops || [])
       
-      if (shops && shops.length === 0) {
+      if (shops && shops.length === 0 && !toastShownRef.current) {
+        toastShownRef.current = true
         toast({
           title: 'No Shops Found',
           description: 'No active shops found under distributors.',
@@ -206,11 +213,14 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
       }
     } catch (error: any) {
       console.error('Error loading shops:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load shops',
-        variant: 'destructive'
-      })
+      if (!toastShownRef.current) {
+        toastShownRef.current = true
+        toast({
+          title: 'Error',
+          description: 'Failed to load shops',
+          variant: 'destructive'
+        })
+      }
     }
   }
 
@@ -653,8 +663,8 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
             Back
           </Button>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900">Create Shop Order (S2D)</h2>
-        <p className="text-gray-600 text-sm mt-1">Create a new order for a Shop using retailer pricing</p>
+        <h2 className="text-xl font-bold text-gray-900">Create Shop Order (S2D)</h2>
+        <p className="text-gray-600 text-xs mt-1">Create a new order for a Shop using retailer pricing</p>
       </div>
 
       {/* Main Layout - Two Columns */}

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { getStorageUrl } from '@/lib/utils'
 import { 
   Trophy, 
   Plus, 
@@ -683,7 +684,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                       <div className="w-10 h-10 rounded-md overflow-hidden border bg-gray-100 flex-shrink-0 mt-0.5">
                         {item.image_url ? (
                           <Image
-                            src={item.image_url}
+                            src={getStorageUrl(item.image_url) || item.image_url}
                             alt={item.variant_name || 'Product'}
                             width={40}
                             height={40}
@@ -788,7 +789,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                         <div className="w-12 h-12 rounded-lg border bg-white overflow-hidden">
                                           {prize.image_url ? (
                                             <Image
-                                              src={prize.image_url}
+                                              src={getStorageUrl(prize.image_url) || prize.image_url}
                                               alt={prize.name}
                                               width={48}
                                               height={48}
@@ -1000,7 +1001,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                   {prize.image_url && (
                                     <div className="flex-shrink-0 bg-white rounded-lg overflow-hidden border w-20 h-20">
                                       <Image
-                                        src={prize.image_url}
+                                        src={getStorageUrl(prize.image_url) || prize.image_url}
                                         alt={prize.name}
                                         width={80}
                                         height={80}
@@ -1289,7 +1290,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         {prize.image_url && (
                           <div className="w-10 h-10 rounded overflow-hidden border bg-white flex-shrink-0">
                             <Image
-                              src={prize.image_url}
+                              src={getStorageUrl(prize.image_url) || prize.image_url}
                               alt={prize.name}
                               width={40}
                               height={40}

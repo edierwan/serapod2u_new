@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { X, Loader2, Upload, Image as ImageIcon } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
 interface Brand {
   id?: string
@@ -147,16 +148,24 @@ export default function BrandDialog({
     try {
       setUploading(true)
 
+      // Compress the image first
+      const compressionResult = await compressAvatar(file)
+      
+      toast({
+        title: '🖼️ Image Compressed',
+        description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+      })
+
       // Create unique filename
-      const fileExt = file.name.split('.').pop()
-      const fileName = `brand-${Date.now()}.${fileExt}`
+      const fileName = `brand-${Date.now()}.jpg`
       const filePath = `brands/${fileName}`
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase
         .storage
         .from('product-images')
-        .upload(filePath, file, {
+        .upload(filePath, compressionResult.file, {
+          contentType: compressionResult.file.type,
           cacheControl: '3600',
           upsert: false
         })

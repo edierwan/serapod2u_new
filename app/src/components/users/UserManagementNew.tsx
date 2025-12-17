@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Users, Search, Plus, Loader2, Edit, CheckCircle, XCircle, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Power } from 'lucide-react'
 import UserDialogNew from './UserDialogNew'
 import type { User as UserType, Role, Organization } from '@/types/user'
+import { getStorageUrl } from '@/lib/utils'
+import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
 const formatRelativeTime = (dateString: string | null): string => {
   if (!dateString) return 'Never'
@@ -211,6 +213,14 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         // Handle avatar upload
         if (avatarFile) {
           try {
+            // Compress avatar first
+            const compressionResult = await compressAvatar(avatarFile)
+            
+            toast({
+              title: '🖼️ Avatar Compressed',
+              description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+            })
+
             // Delete old avatar if exists
             if (editingUser.avatar_url) {
               const oldPath = editingUser.avatar_url.split('/').pop()?.split('?')[0]
@@ -220,13 +230,13 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
             }
             
             // Upload new avatar
-            const fileExt = avatarFile.name.split('.').pop()
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
             const filePath = `${editingUser.id}/${fileName}`
             
             const { error: uploadError } = await supabase.storage
               .from('avatars')
-              .upload(filePath, avatarFile, { 
+              .upload(filePath, compressionResult.file, { 
+                contentType: compressionResult.file.type,
                 cacheControl: '3600',
                 upsert: true 
               })
@@ -256,7 +266,10 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         }
         
         // Update user in database
-        const result = await updateUserWithAuth(editingUser.id, updateData)
+        const result = await updateUserWithAuth(editingUser.id, updateData, {
+          id: userProfile.id,
+          role_code: userProfile.role_code
+        })
         
         if (!result.success) throw new Error(result.error || 'Failed to update user')
         
@@ -296,11 +309,19 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         // Upload avatar if provided
         if (avatarFile) {
           try {
-            const fileExt = avatarFile.name.split('.').pop()
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+            // Compress avatar first
+            const compressionResult = await compressAvatar(avatarFile)
+            
+            toast({
+              title: '🖼️ Avatar Compressed',
+              description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+            })
+
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
             const filePath = `${result.user_id}/${fileName}`
             
-            const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, { 
+            const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, compressionResult.file, { 
+              contentType: compressionResult.file.type,
               cacheControl: '3600',
               upsert: true 
             })
@@ -788,7 +809,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                           <Avatar className="w-10 h-10">
                             {user.avatar_url && (
                               <AvatarImage
-                                src={`${user.avatar_url.split('?')[0]}?t=${new Date(user.updated_at).getTime()}`}
+                                src={getStorageUrl(`${user.avatar_url.split('?')[0]}?t=${new Date(user.updated_at).getTime()}`) || user.avatar_url}
                                 alt={user.full_name || 'User'}
                                 key={`avatar-${user.id}-${user.updated_at}`}
                               />

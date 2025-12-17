@@ -364,11 +364,11 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
             {getSortedSubGroups().length > 0 ? (
               getSortedSubGroups().map((subgroup) => (
                 <TableRow key={subgroup.id} className="hover:bg-gray-50">
-                  <TableCell>{subgroup.subgroup_name}</TableCell>
-                  <TableCell className="text-sm text-gray-600">{subgroup.group_name}</TableCell>
-                  <TableCell className="text-sm text-gray-600 truncate max-w-xs">{subgroup.subgroup_description || '-'}</TableCell>
+                  <TableCell className="text-sm">{subgroup.subgroup_name}</TableCell>
+                  <TableCell className="text-xs text-gray-600">{subgroup.group_name}</TableCell>
+                  <TableCell className="text-xs text-gray-600 truncate max-w-xs">{subgroup.subgroup_description || '-'}</TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={subgroup.is_active ? 'default' : 'secondary'}>
+                    <Badge variant={subgroup.is_active ? 'default' : 'secondary'} className="text-xs">
                       {subgroup.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
@@ -407,7 +407,7 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
         </Table>
       </div>
 
-      <div className="text-sm text-gray-600">
+      <div className="text-xs text-gray-600">
         Showing {getSortedSubGroups().length} of {subgroups.filter(s => s.is_active).length} sub-groups
       </div>
     </div>
