@@ -321,7 +321,9 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         .eq('id', shopOrgId)
         .single()
 
-      const companyId = shopOrg?.parent_org_id || shopOrg?.id || shopOrgId
+      // company_id should be the shop's ID, NOT the parent company ID
+      // The ledger view uses company_id as shop_id
+      const companyId = shopOrgId
       
       // Use shop org contact info or user profile info
       const consumerPhone = shopOrg?.contact_phone || userProfile.phone || 'SHOP-' + shopOrgId.slice(0, 8)
