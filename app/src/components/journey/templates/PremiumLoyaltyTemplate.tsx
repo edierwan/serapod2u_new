@@ -198,6 +198,7 @@ export default function PremiumLoyaltyTemplate({
     
     // Points collection modal states
     const [showPointsLoginModal, setShowPointsLoginModal] = useState(false)
+    const [showShopPassword, setShowShopPassword] = useState(false)
     const [shopId, setShopId] = useState('')
     const [shopPassword, setShopPassword] = useState('')
     const [showShopPassword, setShowShopPassword] = useState(false)
@@ -1417,12 +1418,50 @@ export default function PremiumLoyaltyTemplate({
         setPointsError('')
 
         try {
+            let emailToUse = shopId
+            
+            // Check if input looks like a phone number (doesn't contain @)
+            if (!shopId.includes('@')) {
+                // Normalize and lookup email by phone
+                const normalizedPhone = normalizePhone(shopId)
+                
+                const { data: userEmailData, error: lookupError } = await supabase
+                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                
+                if (lookupError) {
+                    console.error('Phone lookup error:', lookupError)
+                    setPointsError('Error verifying phone number. Please try again.')
+                    setCollectingPoints(false)
+                    return
+                }
+                
+                // Handle different response formats safely
+                let userEmail = userEmailData
+                if (Array.isArray(userEmailData)) {
+                    if (userEmailData.length > 0) {
+                        userEmail = userEmailData[0].email || userEmailData[0]
+                    } else {
+                        userEmail = null
+                    }
+                } else if (typeof userEmailData === 'object' && userEmailData !== null) {
+                    userEmail = (userEmailData as any).email || userEmailData
+                }
+
+                if (!userEmail) {
+                    setPointsError('Phone number not found')
+                    setCollectingPoints(false)
+                    return
+                }
+                
+                emailToUse = userEmail
+            }
+
             const response = await fetch('/api/consumer/collect-points', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     qr_code: qrCode,
-                    shop_id: shopId,
+                    shop_id: emailToUse,
                     password: shopPassword
                 })
             })
@@ -4203,15 +4242,28 @@ export default function PremiumLoyaltyTemplate({
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                <input
-                                    type="password"
-                                    value={shopPassword}
-                                    onChange={(e) => setShopPassword(e.target.value)}
-                                    placeholder="Enter your password"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2"
-                                    style={{ '--tw-ring-color': config.primary_color } as any}
-                                    disabled={collectingPoints}
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showShopPassword ? 'text' : 'password'}
+                                        value={shopPassword}
+                                        onChange={(e) => setShopPassword(e.target.value)}
+                                        placeholder="Enter your password"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 pr-10"
+                                        style={{ '--tw-ring-color': config.primary_color } as any}
+                                        disabled={collectingPoints}
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowShopPassword(!showShopPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2"
+                                    >
+                                        {showShopPassword ? (
+                                            <EyeOff className="w-5 h-5 text-gray-400" />
+                                        ) : (
+                                            <Eye className="w-5 h-5 text-gray-400" />
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         </div>
 

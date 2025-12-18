@@ -53,7 +53,10 @@ import {
   History,
   TrendingUp,
   TrendingDown,
-  Settings
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown
 } from "lucide-react"
 import Link from "next/link"
 
@@ -98,6 +101,13 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null)
   const [productSummary, setProductSummary] = useState<{product: string, variant: string, count: number, points: number, imageUrl?: string | null}[]>([])
   const [redeeming, setRedeeming] = useState(false)
+  
+  // Product Summary Table State
+  const [productSearchTerm, setProductSearchTerm] = useState("")
+  const [productSortColumn, setProductSortColumn] = useState<'product' | 'variant' | 'count' | 'points'>('points')
+  const [productSortDirection, setProductSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [productCurrentPage, setProductCurrentPage] = useState(1)
+  const [productItemsPerPage] = useState(10)
   
   // Pagination states
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(12)
@@ -505,6 +515,53 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     return counts
   }, [enrichedRewards])
 
+  const filteredAndSortedProducts = useMemo(() => {
+    let result = [...productSummary]
+
+    // Filter
+    if (productSearchTerm) {
+      const lowerTerm = productSearchTerm.toLowerCase()
+      result = result.filter(item => 
+        item.product.toLowerCase().includes(lowerTerm) || 
+        item.variant.toLowerCase().includes(lowerTerm)
+      )
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      let valA = a[productSortColumn]
+      let valB = b[productSortColumn]
+      
+      // Handle string comparison
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        valA = valA.toLowerCase()
+        valB = valB.toLowerCase()
+      }
+
+      if (valA < valB) return productSortDirection === 'asc' ? -1 : 1
+      if (valA > valB) return productSortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [productSummary, productSearchTerm, productSortColumn, productSortDirection])
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (productCurrentPage - 1) * productItemsPerPage
+    return filteredAndSortedProducts.slice(startIndex, startIndex + productItemsPerPage)
+  }, [filteredAndSortedProducts, productCurrentPage, productItemsPerPage])
+
+  const totalProductPages = Math.ceil(filteredAndSortedProducts.length / productItemsPerPage)
+
+  const handleProductSort = (column: 'product' | 'variant' | 'count' | 'points') => {
+    if (productSortColumn === column) {
+      setProductSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setProductSortColumn(column)
+      setProductSortDirection('desc') // Default to desc for new column (usually better for numbers)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -605,10 +662,26 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Controls */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 justify-between items-center">
+                <div className="relative w-full sm:w-72">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search products..."
+                        value={productSearchTerm}
+                        onChange={(e) => {
+                            setProductSearchTerm(e.target.value)
+                            setProductCurrentPage(1) // Reset to first page on search
+                        }}
+                        className="pl-8"
+                    />
+                </div>
+            </div>
+
             <div className="overflow-hidden rounded-lg border border-slate-200">
               {/* Mobile View (Cards) */}
               <div className="block md:hidden divide-y divide-slate-100">
-                {productSummary.slice(0, visibleProductCount).map((item, idx) => (
+                {paginatedProducts.map((item, idx) => (
                   <div key={idx} className="p-4 flex items-start gap-3">
                     <div className="flex-shrink-0 w-12 h-12 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center">
                       {item.imageUrl ? (
@@ -637,32 +710,52 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                     </div>
                   </div>
                 ))}
-                {productSummary.length > visibleProductCount && (
-                  <div className="p-3 text-center border-t border-slate-50">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="w-full text-xs text-muted-foreground h-8"
-                      onClick={() => setVisibleProductCount(prev => prev + 5)}
-                    >
-                      Show more products ({productSummary.length - visibleProductCount} remaining)
-                    </Button>
-                  </div>
-                )}
               </div>
 
               {/* Desktop View (Table) */}
               <table className="hidden md:table w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3">Product</th>
-                    <th className="px-4 py-3">Variant</th>
-                    <th className="px-4 py-3 text-center">Scans</th>
-                    <th className="px-4 py-3 text-right">Points Earned</th>
+                    <th 
+                        className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                        onClick={() => handleProductSort('product')}
+                    >
+                        <div className="flex items-center gap-1">
+                            Product
+                            {productSortColumn === 'product' && <ArrowUpDown className="h-3 w-3" />}
+                        </div>
+                    </th>
+                    <th 
+                        className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                        onClick={() => handleProductSort('variant')}
+                    >
+                        <div className="flex items-center gap-1">
+                            Variant
+                            {productSortColumn === 'variant' && <ArrowUpDown className="h-3 w-3" />}
+                        </div>
+                    </th>
+                    <th 
+                        className="px-4 py-3 text-center cursor-pointer hover:bg-slate-100"
+                        onClick={() => handleProductSort('count')}
+                    >
+                        <div className="flex items-center justify-center gap-1">
+                            Scans
+                            {productSortColumn === 'count' && <ArrowUpDown className="h-3 w-3" />}
+                        </div>
+                    </th>
+                    <th 
+                        className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                        onClick={() => handleProductSort('points')}
+                    >
+                        <div className="flex items-center justify-end gap-1">
+                            Points Earned
+                            {productSortColumn === 'points' && <ArrowUpDown className="h-3 w-3" />}
+                        </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {productSummary.map((item, idx) => (
+                  {paginatedProducts.map((item, idx) => (
                     <tr key={idx} className="border-t border-slate-100">
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-800">{item.product}</div>
@@ -698,6 +791,35 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalProductPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-muted-foreground">
+                        Showing {(productCurrentPage - 1) * productItemsPerPage + 1} to {Math.min(productCurrentPage * productItemsPerPage, filteredAndSortedProducts.length)} of {filteredAndSortedProducts.length} results
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setProductCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={productCurrentPage === 1}
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                            Previous
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setProductCurrentPage(prev => Math.min(totalProductPages, prev + 1))}
+                            disabled={productCurrentPage === totalProductPages}
+                        >
+                            Next
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            )}
           </CardContent>
         </Card>
       )}
