@@ -517,12 +517,14 @@ export default function PremiumLoyaltyTemplate({
                             return
                         }
                         
+                        // Set authenticated status immediately if we have a valid Supabase session
+                        // Don't wait for profile fetch to complete
+                        setIsAuthenticated(true)
+                        setUserEmail(user.email || '')
+                        setUserId(user.id)
+                        
                         if (success) {
                             console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
-                            
-                            setIsAuthenticated(true)
-                            setUserEmail(user.email || '')
-                            setUserId(user.id)
                             
                             console.log('🔐 Setting isShopUser =', isShop)
                             setIsShopUser(isShop)
@@ -539,15 +541,17 @@ export default function PremiumLoyaltyTemplate({
                                 setUserPoints(pointsBalance)
                             }
                         } else {
-                            console.warn('🔐 Profile fetch failed (success=false), treating as not authenticated')
-                            await supabase.auth.signOut()
-                            setIsAuthenticated(false)
+                            // Profile fetch failed, but user has valid session - show basic info
+                            console.warn('🔐 Profile fetch failed, but keeping user authenticated with basic info')
+                            setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
+                            setIsShopUser(false)
                         }
                     } catch (profileError) {
                         console.error('🔐 Profile fetch error/timeout:', profileError)
-                        // On timeout/error, also treat as not authenticated to avoid broken state
-                        await supabase.auth.signOut()
-                        setIsAuthenticated(false)
+                        // Keep user authenticated with basic info - don't sign them out
+                        console.log('🔐 Keeping user authenticated despite profile fetch error')
+                        setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
+                        setIsShopUser(false)
                     }
                 } else {
                     console.log('🔐 No authenticated user found')
@@ -563,15 +567,18 @@ export default function PremiumLoyaltyTemplate({
         
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log('🔐 Auth state changed:', event, '| Has session:', !!session?.user)
+            
             if (session?.user) {
-                // Check if user is from SHOP organization
+                // User has valid session - set authenticated immediately
+                setIsAuthenticated(true)
+                setUserEmail(session.user.email || '')
+                setUserId(session.user.id)
+                
+                // Try to fetch profile info, but don't block on it
                 const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(session.user.id)
                 
                 if (success) {
-                    setIsAuthenticated(true)
-                    setUserEmail(session.user.email || '')
-                    setUserId(session.user.id)
-                    
                     setIsShopUser(isShop)
                     setUserName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                     setUserAvatarUrl(avatarUrl)
@@ -585,9 +592,9 @@ export default function PremiumLoyaltyTemplate({
                         setUserPoints(pointsBalance)
                     }
                 } else {
-                    console.warn('🔐 Auth state changed but profile fetch failed')
-                    // If profile fetch fails, we treat as not authenticated to avoid broken UI
-                    setIsAuthenticated(false)
+                    console.warn('🔐 Auth state changed but profile fetch failed - keeping user authenticated with basic info')
+                    setUserName(session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User')
+                    setIsShopUser(false)
                 }
             } else {
                 setIsAuthenticated(false)
@@ -743,6 +750,18 @@ export default function PremiumLoyaltyTemplate({
         setLoginLoading(false)
         setShowLoginForm(false)
     }, [qrCode])
+
+    // Clear login form when user becomes authenticated
+    useEffect(() => {
+        if (isAuthenticated) {
+            console.log('🔐 User authenticated, clearing login form')
+            setLoginEmail('')
+            setLoginPassword('')
+            setLoginError('')
+            setLoginLoading(false)
+            setShowLoginForm(false)
+        }
+    }, [isAuthenticated])
 
     // Re-check QR status when navigating to lucky-draw tab (bulletproof double-check)
     useEffect(() => {
@@ -3508,6 +3527,9 @@ export default function PremiumLoyaltyTemplate({
                                             value={loginEmail}
                                             onChange={(e) => setLoginEmail(e.target.value)}
                                             className="h-11 pl-10"
+                                            autoComplete="off"
+                                            autoCorrect="off"
+                                            autoCapitalize="off"
                                         />
                                     </div>
                                     <p className="text-xs text-gray-500 mt-1">You can log in using your email or phone number.</p>
@@ -3524,6 +3546,7 @@ export default function PremiumLoyaltyTemplate({
                                             value={loginPassword}
                                             onChange={(e) => setLoginPassword(e.target.value)}
                                             className="h-11 pr-10"
+                                            autoComplete="off"
                                         />
                                         <button 
                                             type="button"
