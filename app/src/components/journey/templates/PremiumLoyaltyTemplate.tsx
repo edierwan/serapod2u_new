@@ -397,6 +397,8 @@ export default function PremiumLoyaltyTemplate({
             const { data: { session }, error: sessionError } = await supabase.auth.getSession()
             if (sessionError) {
                 console.error('🔐 Session error:', sessionError)
+                // If session error, clear auth state
+                return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, sessionInvalid: true }
             }
             const token = session?.access_token
             console.log('🔐 Got session token:', !!token)
@@ -411,6 +413,14 @@ export default function PremiumLoyaltyTemplate({
             })
             
             console.log('🔐 Profile API response status:', response.status)
+            
+            // Handle 401 - session is invalid/expired
+            if (response.status === 401) {
+                console.log('🔐 Session expired/invalid (401), clearing auth...')
+                await supabase.auth.signOut()
+                return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, sessionInvalid: true }
+            }
+            
             const result = await response.json()
             console.log('🔐 Profile API result:', result)
             
@@ -448,10 +458,34 @@ export default function PremiumLoyaltyTemplate({
     // Check auth status on mount
     useEffect(() => {
         const checkAuth = async () => {
+            // Set a timeout to ensure authLoading becomes false even if API hangs
+            const authTimeout = setTimeout(() => {
+                console.log('🔐 Auth check timeout - forcing authLoading to false')
+                setAuthLoading(false)
+            }, 5000) // 5 second timeout
+            
             try {
                 console.log('🔐 Checking auth status...')
                 const { data: { user }, error: authError } = await supabase.auth.getUser()
                 console.log('🔐 Auth user:', user?.id, user?.email, 'Error:', authError)
+                
+                // If there's an auth error (expired/invalid session), sign out and clear state
+                if (authError) {
+                    console.log('🔐 Auth error detected, clearing session:', authError.message)
+                    await supabase.auth.signOut()
+                    setIsAuthenticated(false)
+                    setIsShopUser(false)
+                    setUserEmail('')
+                    setUserName('')
+                    setUserPoints(0)
+                    setUserAvatarUrl(null)
+                    setShopName('')
+                    setUserPhone('')
+                    setUserId(null)
+                    clearTimeout(authTimeout)
+                    setAuthLoading(false)
+                    return
+                }
                 
                 if (user) {
                     console.log('🔐 User found, setting isAuthenticated = true')
@@ -459,24 +493,52 @@ export default function PremiumLoyaltyTemplate({
                     setUserEmail(user.email || '')
                     setUserId(user.id)
                     
-                    // Check if user is from SHOP organization
+                    // Check if user is from SHOP organization with timeout
                     console.log('🔐 Fetching profile data...')
-                    const { isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(user.id)
-                    console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
-                    
-                    console.log('🔐 Setting isShopUser =', isShop)
-                    setIsShopUser(isShop)
-                    setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                    setUserAvatarUrl(avatarUrl)
-                    setShopName(orgName)
-                    setUserPhone(phone)
-                    setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                    setNewPhone(phone)
-                    
-                    // Set points balance from API (already fetched for shop users)
-                    if (isShop) {
-                        console.log('🔐 Setting shop user points balance:', pointsBalance)
-                        setUserPoints(pointsBalance)
+                    try {
+                        const profilePromise = checkUserOrganization(user.id)
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Profile fetch timeout')), 4000)
+                        )
+                        
+                        const profileResult = await Promise.race([profilePromise, timeoutPromise]) as any
+                        const { isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid } = profileResult
+                        
+                        // If session was invalid (401), clear auth state
+                        if (sessionInvalid) {
+                            console.log('🔐 Session was invalid, clearing auth state')
+                            setIsAuthenticated(false)
+                            setIsShopUser(false)
+                            setUserEmail('')
+                            setUserName('')
+                            setUserPoints(0)
+                            setUserAvatarUrl(null)
+                            setShopName('')
+                            setUserPhone('')
+                            setUserId(null)
+                            return
+                        }
+                        
+                        console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
+                        
+                        console.log('🔐 Setting isShopUser =', isShop)
+                        setIsShopUser(isShop)
+                        setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                        setUserAvatarUrl(avatarUrl)
+                        setShopName(orgName)
+                        setUserPhone(phone)
+                        setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                        setNewPhone(phone)
+                        
+                        // Set points balance from API (already fetched for shop users)
+                        if (isShop) {
+                            console.log('🔐 Setting shop user points balance:', pointsBalance)
+                            setUserPoints(pointsBalance)
+                        }
+                    } catch (profileError) {
+                        console.error('🔐 Profile fetch error/timeout:', profileError)
+                        // Still set basic user info even if profile fails
+                        setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                     }
                 } else {
                     console.log('🔐 No authenticated user found')
@@ -484,6 +546,7 @@ export default function PremiumLoyaltyTemplate({
             } catch (error) {
                 console.error('Auth check error:', error)
             } finally {
+                clearTimeout(authTimeout)
                 setAuthLoading(false)
             }
         }
@@ -939,20 +1002,45 @@ export default function PremiumLoyaltyTemplate({
 
     // Handle logout
     const handleLogout = async () => {
-        console.log('Logging out...')
-        await supabase.auth.signOut()
-        setIsAuthenticated(false)
-        setIsShopUser(false)
-        setUserEmail('')
-        setUserName('')
-        setUserPoints(0)
-        setUserAvatarUrl(null)
-        setShopName('')
-        setUserPhone('')
-        setUserId(null)
-        // Navigate to profile tab after logout
-        setActiveTab('profile')
-        console.log('Logged out successfully')
+        console.log('🔐 Logging out...')
+        try {
+            // Clear state first to ensure UI updates immediately
+            setIsAuthenticated(false)
+            setIsShopUser(false)
+            setUserEmail('')
+            setUserName('')
+            setUserPoints(0)
+            setUserAvatarUrl(null)
+            setShopName('')
+            setUserPhone('')
+            setUserId(null)
+            
+            // Then sign out from Supabase (with timeout)
+            const signOutPromise = supabase.auth.signOut()
+            const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000))
+            await Promise.race([signOutPromise, timeoutPromise])
+            
+            // Clear any cached session data
+            if (typeof window !== 'undefined') {
+                // Clear localStorage keys related to Supabase
+                const keysToRemove = Object.keys(localStorage).filter(key => 
+                    key.startsWith('sb-') || key.includes('supabase')
+                )
+                keysToRemove.forEach(key => localStorage.removeItem(key))
+            }
+            
+            console.log('🔐 Logged out successfully')
+            
+            // Navigate to profile tab after logout
+            setActiveTab('profile')
+            
+            // Show toast confirmation
+            toast({ title: 'Signed Out', description: 'You have been signed out successfully.' })
+        } catch (error) {
+            console.error('🔐 Logout error:', error)
+            // Even if there's an error, state is already cleared
+            toast({ title: 'Signed Out', description: 'Session cleared.' })
+        }
     }
 
     // Handle profile update (name and phone)
@@ -1130,11 +1218,16 @@ export default function PremiumLoyaltyTemplate({
             case 'collect-points':
                 // If user is authenticated AND is a shop user, collect points with session
                 console.log('🔐 Collect points action - isAuthenticated:', isAuthenticated, 'isShopUser:', isShopUser, 'authLoading:', authLoading)
+                
+                // If auth is still loading after 2 seconds, just show login modal
                 if (authLoading) {
-                    console.log('🔐 Auth still loading, waiting...')
-                    toast({ title: 'Loading...', description: 'Please wait while we verify your session.' })
+                    console.log('🔐 Auth still loading, showing shop login modal anyway')
+                    // Don't wait forever - show login modal so user can proceed
+                    setPointsError('')
+                    setShowPointsLoginModal(true)
                     return
                 }
+                
                 if (isAuthenticated && isShopUser) {
                     console.log('🔐 Shop user authenticated, collecting points with session')
                     handleCollectPointsWithSession()
