@@ -391,25 +391,36 @@ export default function PremiumLoyaltyTemplate({
     // Helper function to check if user is from SHOP organization (uses API to bypass RLS)
     const checkUserOrganization = async (userId: string) => {
         try {
+            console.log('🔐 checkUserOrganization - Starting for userId:', userId)
+            
             // Get current session to pass token
-            const { data: { session } } = await supabase.auth.getSession()
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+            if (sessionError) {
+                console.error('🔐 Session error:', sessionError)
+            }
             const token = session?.access_token
+            console.log('🔐 Got session token:', !!token)
 
             // Use API endpoint to fetch profile (bypasses RLS issues)
             const response = await fetch('/api/user/profile', {
                 headers: {
-                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                }
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include' // Important: include cookies for auth
             })
+            
+            console.log('🔐 Profile API response status:', response.status)
             const result = await response.json()
+            console.log('🔐 Profile API result:', result)
             
             if (!result.success || !result.profile) {
-                console.error('Error fetching user profile via API:', result.error)
+                console.error('🔐 Error fetching user profile via API:', result.error)
                 return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
             }
             
             const profile = result.profile
-            console.log('User profile fetched via API:', { 
+            console.log('🔐 User profile fetched via API:', { 
                 fullName: profile.fullName, 
                 avatarUrl: profile.avatarUrl,
                 phone: profile.phone,
@@ -420,7 +431,7 @@ export default function PremiumLoyaltyTemplate({
             })
             
             return { 
-                isShop: profile.isShop, 
+                isShop: profile.isShop === true, // Explicit boolean conversion
                 fullName: profile.fullName || '',
                 organizationId: profile.organizationId,
                 avatarUrl: profile.avatarUrl,
@@ -429,7 +440,7 @@ export default function PremiumLoyaltyTemplate({
                 pointsBalance: profile.pointsBalance || 0
             }
         } catch (error) {
-            console.error('Error checking user organization:', error)
+            console.error('🔐 Error checking user organization:', error)
             return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
         }
     }
@@ -438,19 +449,22 @@ export default function PremiumLoyaltyTemplate({
     useEffect(() => {
         const checkAuth = async () => {
             try {
-                console.log('Checking auth status...')
-                const { data: { user } } = await supabase.auth.getUser()
-                console.log('Auth user:', user?.id, user?.email)
+                console.log('🔐 Checking auth status...')
+                const { data: { user }, error: authError } = await supabase.auth.getUser()
+                console.log('🔐 Auth user:', user?.id, user?.email, 'Error:', authError)
                 
                 if (user) {
+                    console.log('🔐 User found, setting isAuthenticated = true')
                     setIsAuthenticated(true)
                     setUserEmail(user.email || '')
                     setUserId(user.id)
                     
                     // Check if user is from SHOP organization
+                    console.log('🔐 Fetching profile data...')
                     const { isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(user.id)
-                    console.log('Profile data:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
+                    console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
                     
+                    console.log('🔐 Setting isShopUser =', isShop)
                     setIsShopUser(isShop)
                     setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                     setUserAvatarUrl(avatarUrl)
@@ -461,10 +475,11 @@ export default function PremiumLoyaltyTemplate({
                     
                     // Set points balance from API (already fetched for shop users)
                     if (isShop) {
+                        console.log('🔐 Setting shop user points balance:', pointsBalance)
                         setUserPoints(pointsBalance)
                     }
                 } else {
-                    console.log('No authenticated user found')
+                    console.log('🔐 No authenticated user found')
                 }
             } catch (error) {
                 console.error('Auth check error:', error)
@@ -1114,6 +1129,12 @@ export default function PremiumLoyaltyTemplate({
         switch (action) {
             case 'collect-points':
                 // If user is authenticated AND is a shop user, collect points with session
+                console.log('🔐 Collect points action - isAuthenticated:', isAuthenticated, 'isShopUser:', isShopUser, 'authLoading:', authLoading)
+                if (authLoading) {
+                    console.log('🔐 Auth still loading, waiting...')
+                    toast({ title: 'Loading...', description: 'Please wait while we verify your session.' })
+                    return
+                }
                 if (isAuthenticated && isShopUser) {
                     console.log('🔐 Shop user authenticated, collecting points with session')
                     handleCollectPointsWithSession()
@@ -3256,9 +3277,9 @@ export default function PremiumLoyaltyTemplate({
                 className="px-5 pt-6 pb-16 text-white text-center relative"
                 style={{ backgroundColor: config.primary_color }}
             >
-                {/* Settings Icon Button */}
+                {/* Settings Icon Buttons - Top Right */}
                 {isAuthenticated && (
-                    <div className="absolute top-4 right-4 flex items-center gap-2 z-50" style={{ pointerEvents: 'auto' }}>
+                    <div className="absolute top-3 right-3 flex items-center gap-1 z-50" style={{ pointerEvents: 'auto' }}>
                         <button
                             type="button"
                             onClick={(e) => {
@@ -3267,11 +3288,11 @@ export default function PremiumLoyaltyTemplate({
                                 console.log('Settings button clicked')
                                 setActiveTab('account-settings')
                             }}
-                            className="p-3 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
+                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
                             title="Account Settings"
                             aria-label="Account Settings"
                         >
-                            <Settings className="w-5 h-5" />
+                            <Settings className="w-4 h-4" />
                         </button>
                         <button
                             type="button"
@@ -3283,11 +3304,11 @@ export default function PremiumLoyaltyTemplate({
                                 setFeedbackError('')
                                 setFeedbackSuccess(false)
                             }}
-                            className="p-3 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
+                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
                             title="Send Feedback"
                             aria-label="Send Feedback"
                         >
-                            <MessageSquare className="w-5 h-5" />
+                            <MessageSquare className="w-4 h-4" />
                         </button>
                         <button
                             type="button"
@@ -3297,11 +3318,11 @@ export default function PremiumLoyaltyTemplate({
                                 console.log('Logout button clicked')
                                 handleLogout()
                             }}
-                            className="p-3 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
+                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
                             title="Sign Out"
                             aria-label="Sign Out"
                         >
-                            <LogOut className="w-5 h-5" />
+                            <LogOut className="w-4 h-4" />
                         </button>
                     </div>
                 )}
