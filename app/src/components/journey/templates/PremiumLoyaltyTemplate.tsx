@@ -2940,8 +2940,26 @@ export default function PremiumLoyaltyTemplate({
                 setPointsEarned(points)
                 setShowPointsSuccessModal(true)
                 
-                // Update balance
+                // Update local balance immediately for UI
                 setUserPoints(prev => prev + points)
+                
+                // Also refresh balance from server to ensure sync
+                // (The DB function now adds points automatically)
+                if (isShopUser && userId) {
+                    try {
+                        const response = await fetch('/api/user/profile', {
+                            credentials: 'include'
+                        })
+                        const result = await response.json()
+                        if (result.success && result.profile?.pointsBalance !== undefined) {
+                            console.log('Refreshed points balance from server:', result.profile.pointsBalance)
+                            setUserPoints(result.profile.pointsBalance)
+                            setTotalBalance(result.profile.pointsBalance)
+                        }
+                    } catch (refreshErr) {
+                        console.error('Error refreshing balance:', refreshErr)
+                    }
+                }
             }
 
         } catch (err: any) {
@@ -3274,61 +3292,10 @@ export default function PremiumLoyaltyTemplate({
     const renderProfileTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
             <div 
-                className="px-5 pt-6 pb-16 text-white text-center relative isolate"
+                className="px-5 pt-6 pb-16 text-white text-center relative"
                 style={{ backgroundColor: config.primary_color }}
             >
-                {/* Settings Icon Buttons - Top Right */}
-                {isAuthenticated && (
-                    <div 
-                        className="absolute top-3 right-3 flex items-center gap-1 z-[100]" 
-                        style={{ pointerEvents: 'auto' }}
-                    >
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                console.log('Settings button clicked')
-                                setActiveTab('account-settings')
-                            }}
-                            className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
-                            title="Account Settings"
-                            aria-label="Account Settings"
-                        >
-                            <Settings className="w-4 h-4 pointer-events-none" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                console.log('Feedback button clicked')
-                                setShowFeedbackModal(true)
-                                setFeedbackError('')
-                                setFeedbackSuccess(false)
-                            }}
-                            className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
-                            title="Send Feedback"
-                            aria-label="Send Feedback"
-                        >
-                            <MessageSquare className="w-4 h-4 pointer-events-none" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                console.log('Logout button clicked')
-                                handleLogout()
-                            }}
-                            className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
-                            title="Sign Out"
-                            aria-label="Sign Out"
-                        >
-                            <LogOut className="w-4 h-4 pointer-events-none" />
-                        </button>
-                    </div>
-                )}
+                {/* Buttons moved to fixed position outside scroll container */}
                 
                 <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
                     {userAvatarUrl ? (
@@ -3825,6 +3792,62 @@ export default function PremiumLoyaltyTemplate({
 
     return (
         <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
+            {/* Profile Header Buttons - Fixed position outside scroll container */}
+            {activeTab === 'profile' && isAuthenticated && (
+                <div 
+                    className="fixed top-3 right-3 flex items-center gap-1 z-[9998]"
+                    style={{ pointerEvents: 'auto' }}
+                >
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            console.log('Settings button clicked (fixed)')
+                            setActiveTab('account-settings')
+                        }}
+                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+                        title="Account Settings"
+                        aria-label="Account Settings"
+                    >
+                        <Settings className="w-4 h-4 text-white pointer-events-none" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            console.log('Feedback button clicked (fixed)')
+                            setShowFeedbackModal(true)
+                            setFeedbackError('')
+                            setFeedbackSuccess(false)
+                        }}
+                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+                        title="Send Feedback"
+                        aria-label="Send Feedback"
+                    >
+                        <MessageSquare className="w-4 h-4 text-white pointer-events-none" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            console.log('Logout button clicked (fixed)')
+                            handleLogout()
+                        }}
+                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+                        title="Sign Out"
+                        aria-label="Sign Out"
+                    >
+                        <LogOut className="w-4 h-4 text-white pointer-events-none" />
+                    </button>
+                </div>
+            )}
+
             {/* Main Content */}
             {renderContent()}
 
