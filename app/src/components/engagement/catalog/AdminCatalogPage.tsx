@@ -1337,7 +1337,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                       const StatusIcon = statusIcons[redemption.fulfillment_status || "pending"] || AlertCircle
 
                       return (
-                        <Card key={redemption.transaction_id} className="border-l-4 border-l-purple-500">
+                        <Card key={redemption.id} className="border-l-4 border-l-purple-500">
                           <CardContent className="pt-6">
                             <div className="grid gap-4 md:grid-cols-2">
                               {/* Left: Redemption Info */}
@@ -1422,7 +1422,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "processing")}
+                                          onClick={() => updateRedemptionStatus(redemption.id, "processing")}
                                           className="gap-1"
                                         >
                                           <Truck className="h-3 w-3" />
@@ -1431,7 +1431,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "cancelled")}
+                                          onClick={() => updateRedemptionStatus(redemption.id, "cancelled")}
                                           className="gap-1"
                                         >
                                           <XCircle className="h-3 w-3" />
@@ -1444,7 +1444,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                         <Button
                                           size="sm"
                                           variant="default"
-                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "fulfilled")}
+                                          onClick={() => updateRedemptionStatus(redemption.id, "fulfilled")}
                                           className="gap-1 bg-green-600 hover:bg-green-700"
                                         >
                                           <CheckCircle className="h-3 w-3" />
@@ -1453,7 +1453,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "cancelled")}
+                                          onClick={() => updateRedemptionStatus(redemption.id, "cancelled")}
                                           className="gap-1"
                                         >
                                           <XCircle className="h-3 w-3" />
