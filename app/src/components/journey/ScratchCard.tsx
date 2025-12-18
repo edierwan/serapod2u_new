@@ -206,14 +206,20 @@ export default function ScratchCard({
 
     // Auto-reveal if result is present
     useEffect(() => {
+        console.log('ScratchCard useEffect - result:', result, 'isRevealed:', isRevealed, 'isPreview:', isPreview)
         if (result && !isRevealed && !isPreview) {
              // If we have a result, we can fade out the canvas
              const canvas = canvasRef.current
              if (canvas) {
+                 canvas.style.transition = 'opacity 0.7s ease-out'
                  canvas.style.opacity = '0'
                  setTimeout(() => {
                      setIsRevealed(true)
+                     console.log('ScratchCard revealed!')
                  }, 700)
+             } else {
+                 // No canvas, reveal immediately
+                 setIsRevealed(true)
              }
         }
     }, [result, isRevealed, isPreview])

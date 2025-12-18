@@ -120,11 +120,28 @@ export async function GET(request: NextRequest) {
       isGiftRedeemed = true
     }
 
+    // Check if scratch card already played from this QR
+    let isScratchCardPlayed = false
+    let scratchCardReward: string | null = null
+    const { data: scratchPlay } = await supabase
+      .from('scratch_card_plays')
+      .select('id, scratch_card_rewards(name)')
+      .eq('qr_code_id', qrData.id)
+      .maybeSingle()
+    
+    if (scratchPlay) {
+      isScratchCardPlayed = true
+      scratchCardReward = (scratchPlay as any).scratch_card_rewards?.name || null
+    }
+
     return NextResponse.json({
       success: true,
+      qr_code_id: qrData.id,
       is_lucky_draw_entered: isLuckyDrawEntered,
       is_points_collected: qrData.is_points_collected || false,
       is_gift_redeemed: isGiftRedeemed,
+      is_scratch_card_played: isScratchCardPlayed,
+      scratch_card_reward: scratchCardReward,
       entry_details: entryDetails
     })
 

@@ -169,6 +169,9 @@ export default function PremiumLoyaltyTemplate({
     const [scratchResult, setScratchResult] = useState<{isWin: boolean, rewardName: string} | null>(null)
     const [isScratching, setIsScratching] = useState(false)
     const [scratchError, setScratchError] = useState<string | null>(null)
+    const [scratchCardAlreadyPlayed, setScratchCardAlreadyPlayed] = useState(false)
+    const [scratchCardPreviousReward, setScratchCardPreviousReward] = useState<string | null>(null)
+    const [qrCodeDbId, setQrCodeDbId] = useState<string | null>(null)
 
     const [userPoints, setUserPoints] = useState(0)
     const [userName, setUserName] = useState('')
@@ -609,6 +612,19 @@ export default function PremiumLoyaltyTemplate({
                     if (data.is_gift_redeemed) {
                         setGiftQrUsed(true)
                         setGiftRedeemed(true)
+                    }
+
+                    // Check if scratch card already played from this QR
+                    if (data.is_scratch_card_played) {
+                        setScratchCardAlreadyPlayed(true)
+                        if (data.scratch_card_reward) {
+                            setScratchCardPreviousReward(data.scratch_card_reward)
+                        }
+                    }
+                    
+                    // Store the QR code DB ID for scratch card plays
+                    if (data.qr_code_id) {
+                        setQrCodeDbId(data.qr_code_id)
                     }
                 }
             } catch (error) {
@@ -2825,7 +2841,8 @@ export default function PremiumLoyaltyTemplate({
     )
 
     const handlePlayScratchCard = async () => {
-        if (isScratching || scratchResult) return
+        // Prevent re-scratching
+        if (isScratching || scratchResult || scratchCardAlreadyPlayed) return
         
         setIsScratching(true)
         setScratchError(null)
@@ -2845,30 +2862,50 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
 
+            console.log('Playing scratch card with:', { 
+                journeyConfigId: config.id, 
+                phone, 
+                qrCodeId: qrCodeDbId 
+            })
+
             const { data, error } = await supabase.rpc('play_scratch_card_turn', {
                 p_journey_config_id: config.id,
                 p_consumer_phone: phone,
-                p_qr_code_id: null // QR code tracking not yet implemented
+                p_qr_code_id: qrCodeDbId // Pass the QR code ID for per-QR limit tracking
             })
+
+            console.log('Scratch card RPC response:', { data, error })
 
             if (error) throw error
             
-            // Handle both old format (data.error) and new format (data.success)
-            if (data.error) {
+            // Handle error response from RPC
+            if (data?.error) {
+                // Check for specific error codes
+                if (data.code === 'QR_LIMIT_REACHED') {
+                    setScratchCardAlreadyPlayed(true)
+                    throw new Error('This QR code has already been used for scratch card.')
+                }
                 throw new Error(data.error)
             }
 
             // RPC returns: { success: true, reward: { name, type, value_points, ... }, play_id }
-            // OR old format: { status, reward_name, reward_type, points_value, reward_image_url, play_id }
             const isWin = data.success === true || data.status === 'win'
             const rewardName = data.reward?.name || data.reward_name || 'No Prize'
             const points = data.reward?.value_points || data.points_value || 0
             const rewardType = data.reward?.type || data.reward_type || 'no_prize'
 
-            setScratchResult({
+            console.log('Scratch card result:', { isWin, rewardName, points, rewardType })
+
+            // Set result - this will trigger UI update
+            const result = {
                 isWin: isWin && rewardType !== 'no_prize',
                 rewardName
-            })
+            }
+            setScratchResult(result)
+            
+            // Mark as played so user can't play again
+            setScratchCardAlreadyPlayed(true)
+            setScratchCardPreviousReward(rewardName)
 
             // Handle Win
             if (isWin && points > 0) {
@@ -2908,41 +2945,88 @@ export default function PremiumLoyaltyTemplate({
                 <h1 className="text-lg font-bold">Scratch & Win</h1>
             </div>
             <div className="flex-1 p-6 flex items-center justify-center flex-col gap-4">
-                {scratchError && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center w-full max-w-sm">
-                        {scratchError}
-                        {!isAuthenticated && scratchError.includes('login') && (
-                            <button 
-                                onClick={() => setActiveTab('profile')}
-                                className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                            >
-                                Go to Login
-                            </button>
+                {/* Show "Already Played" message with nice animation */}
+                {scratchCardAlreadyPlayed && !scratchResult ? (
+                    <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-6 text-center animate-in fade-in zoom-in duration-500">
+                        {/* Animated gift box icon */}
+                        <div className="mb-4 relative">
+                            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg animate-bounce">
+                                <Gift className="w-12 h-12 text-white" />
+                            </div>
+                            {/* Sparkle effects */}
+                            <div className="absolute -top-2 -right-2 w-6 h-6 text-yellow-400 animate-ping">✨</div>
+                            <div className="absolute -bottom-1 -left-2 w-5 h-5 text-yellow-400 animate-pulse">⭐</div>
+                        </div>
+                        
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">
+                            🎉 You've Already Played!
+                        </h3>
+                        
+                        {scratchCardPreviousReward && (
+                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 mb-4">
+                                <p className="text-sm text-green-700 mb-1">Your prize:</p>
+                                <p className="text-lg font-bold text-green-800">{scratchCardPreviousReward}</p>
+                            </div>
                         )}
-                        {isAuthenticated && scratchError.includes('phone') && (
-                            <button 
-                                onClick={() => setActiveTab('account-settings')}
-                                className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                            >
-                                Update Profile
-                            </button>
-                        )}
+                        
+                        <p className="text-gray-600 mb-4 leading-relaxed">
+                            This QR code has already been used for the scratch card game.
+                            <br />
+                            <span className="text-sm text-gray-500">Scan a new QR code to play again!</span>
+                        </p>
+                        
+                        {/* Fun illustration */}
+                        <div className="text-4xl mb-4 animate-pulse">
+                            🎁 → 📱 → 🎰
+                        </div>
+                        
+                        <button 
+                            onClick={() => setActiveTab('home')}
+                            className="w-full py-3 px-4 rounded-xl font-semibold text-white transition-all duration-300 hover:scale-105 active:scale-95"
+                            style={{ backgroundColor: config.primary_color }}
+                        >
+                            Back to Home
+                        </button>
                     </div>
-                )}
-                <ScratchCard 
-                    primaryColor={config.primary_color}
-                    titleText={config.scratch_card_title || 'Scratch & Win'}
-                    successMessage="You won: {{reward_name}}"
-                    noPrizeMessage="Better luck next time!"
-                    result={scratchResult}
-                    isScratching={isScratching}
-                    onScratchComplete={handlePlayScratchCard}
-                    theme="modern"
-                />
-                {!scratchResult && !isScratching && (
-                    <p className="text-sm text-gray-500 text-center animate-pulse">
-                        Tap or scratch to play!
-                    </p>
+                ) : (
+                    <>
+                        {scratchError && (
+                            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center w-full max-w-sm">
+                                {scratchError}
+                                {!isAuthenticated && scratchError.includes('login') && (
+                                    <button 
+                                        onClick={() => setActiveTab('profile')}
+                                        className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                    >
+                                        Go to Login
+                                    </button>
+                                )}
+                                {isAuthenticated && scratchError.includes('phone') && (
+                                    <button 
+                                        onClick={() => setActiveTab('account-settings')}
+                                        className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                    >
+                                        Update Profile
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        <ScratchCard 
+                            primaryColor={config.primary_color}
+                            titleText={config.scratch_card_title || 'Scratch & Win'}
+                            successMessage="You won: {{reward_name}}"
+                            noPrizeMessage="Better luck next time!"
+                            result={scratchResult}
+                            isScratching={isScratching}
+                            onScratchComplete={handlePlayScratchCard}
+                            theme="modern"
+                        />
+                        {!scratchResult && !isScratching && (
+                            <p className="text-sm text-gray-500 text-center animate-pulse">
+                                Tap or scratch to play!
+                            </p>
+                        )}
+                    </>
                 )}
             </div>
         </div>
@@ -3174,16 +3258,18 @@ export default function PremiumLoyaltyTemplate({
             >
                 {/* Settings Icon Button */}
                 {isAuthenticated && (
-                    <div className="absolute top-4 right-4 flex items-center gap-2 z-50">
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-50" style={{ pointerEvents: 'auto' }}>
                         <button
                             type="button"
                             onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
+                                console.log('Settings button clicked')
                                 setActiveTab('account-settings')
                             }}
-                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer"
+                            className="p-3 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
                             title="Account Settings"
+                            aria-label="Account Settings"
                         >
                             <Settings className="w-5 h-5" />
                         </button>
@@ -3192,12 +3278,14 @@ export default function PremiumLoyaltyTemplate({
                             onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
+                                console.log('Feedback button clicked')
                                 setShowFeedbackModal(true)
                                 setFeedbackError('')
                                 setFeedbackSuccess(false)
                             }}
-                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer"
+                            className="p-3 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
                             title="Send Feedback"
+                            aria-label="Send Feedback"
                         >
                             <MessageSquare className="w-5 h-5" />
                         </button>
@@ -3206,10 +3294,12 @@ export default function PremiumLoyaltyTemplate({
                             onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
+                                console.log('Logout button clicked')
                                 handleLogout()
                             }}
-                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer"
+                            className="p-3 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
                             title="Sign Out"
+                            aria-label="Sign Out"
                         >
                             <LogOut className="w-5 h-5" />
                         </button>
