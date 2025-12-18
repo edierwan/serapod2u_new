@@ -53,9 +53,26 @@ export async function POST(request: NextRequest) {
 
     const updateData: any = {}
     
-    // Handle name update
+    // Handle name update - also sync to Supabase Auth user_metadata
     if (full_name !== undefined) {
       updateData.full_name = full_name?.trim() || null
+      
+      // Sync full_name to Supabase Auth user_metadata (display_name)
+      try {
+        const { error: authMetaError } = await adminClient.auth.admin.updateUserById(userId, {
+          user_metadata: { full_name: full_name?.trim() || null }
+        })
+        
+        if (authMetaError) {
+          console.error('Auth user_metadata update failed:', authMetaError.message)
+          // Don't fail the whole operation for metadata sync failure
+        } else {
+          console.log('✅ Auth user_metadata.full_name synced to:', full_name?.trim())
+        }
+      } catch (metaErr) {
+        console.error('Auth metadata update exception:', metaErr)
+        // Don't fail the whole operation for metadata sync failure
+      }
     }
 
     // Handle phone update with Auth sync

@@ -1,6 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { PDFGenerator, type PDFCompressionStats } from '@/lib/pdf-generator'
 import { formatFileSize } from '@/lib/pdf-optimizer'
+import { 
+  getTemplateGenerator, 
+  getDocumentTitle,
+  type DocumentTemplateType,
+  type TemplateSignatureData
+} from '@/lib/pdf-templates'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Buffer } from 'buffer'
 
@@ -131,6 +137,27 @@ export async function generatePdfForOrderDocument(
       code: orderError?.code
     })
     throw new Error(orderError?.message || 'Order not found')
+  }
+
+  // Fetch organization's document template setting
+  let documentTemplate: DocumentTemplateType = 'detailed' // Default to current detailed format
+  try {
+    const { data: hqOrgData } = await supabase
+      .from('organizations')
+      .select('settings')
+      .eq('id', orderData.buyer_org_id)
+      .single()
+    
+    if (hqOrgData?.settings) {
+      const settings = typeof hqOrgData.settings === 'string' 
+        ? JSON.parse(hqOrgData.settings) 
+        : hqOrgData.settings
+      if (settings.document_template) {
+        documentTemplate = settings.document_template as DocumentTemplateType
+      }
+    }
+  } catch (e) {
+    console.warn('Could not fetch document template setting, using default:', e)
   }
 
   // Fetch approver data if order is approved
@@ -467,38 +494,87 @@ export async function generatePdfForOrderDocument(
     const generatorWithSigs = new PDFGenerator(signatures)
     let compressionStats = generatorWithSigs.getCompressionStats()
 
-    switch (type) {
-      case 'purchase_order':
-        pdfBlob = await generatorWithSigs.generatePurchaseOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
-        filename = `${orderData.order_no}-PO.pdf`
-        break
-      case 'sales_order':
-        pdfBlob = await generatorWithSigs.generateSalesOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
-        filename = `${orderData.order_no}-SO.pdf`
-        break
-      case 'delivery_order':
-        pdfBlob = await generatorWithSigs.generateDeliveryOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
-        filename = `${orderData.order_no}-DO.pdf`
-        break
-      case 'invoice':
-        pdfBlob = await generatorWithSigs.generateInvoicePDF(enrichedOrderData as any, enrichedDocumentData as any)
-        filename = `${orderData.order_no}-invoice.pdf`
-        break
-      case 'receipt':
-        pdfBlob = await generatorWithSigs.generateReceiptPDF(enrichedOrderData as any, enrichedDocumentData as any)
-        filename = `${orderData.order_no}-receipt.pdf`
-        break
-      case 'payment':
-        pdfBlob = await generatorWithSigs.generatePaymentPDF(enrichedOrderData as any, enrichedDocumentData as any)
-        filename = `${orderData.order_no}-payment.pdf`
-        break
-      case 'payment_request':
-        pdfBlob = await generatorWithSigs.generatePaymentRequestPDF(enrichedOrderData as any, enrichedDocumentData as any)
-        filename = `${orderData.order_no}-payment-request.pdf`
-        break
-      default:
-        pdfBlob = await generatorWithSigs.generateOrderPDF(enrichedOrderData as any)
-        filename = `${orderData.order_no}-order.pdf`
+    // Check if we should use an alternative template
+    const templateGenerator = getTemplateGenerator(
+      documentTemplate, 
+      signatures.map(s => ({
+        signer_name: s.signer_name,
+        signer_role: s.signer_role,
+        signed_at: s.signed_at,
+        signature_image_data: s.signature_image_data
+      })) as TemplateSignatureData[]
+    )
+
+    // Use alternative template if available (minimal or tax_invoice)
+    if (templateGenerator && documentTemplate !== 'detailed') {
+      const docTitle = getDocumentTitle(docType)
+      pdfBlob = await templateGenerator.generate(
+        enrichedOrderData as any,
+        enrichedDocumentData as any,
+        docTitle
+      )
+      
+      // Set filename based on document type
+      switch (type) {
+        case 'purchase_order':
+          filename = `${orderData.order_no}-PO.pdf`
+          break
+        case 'sales_order':
+          filename = `${orderData.order_no}-SO.pdf`
+          break
+        case 'delivery_order':
+          filename = `${orderData.order_no}-DO.pdf`
+          break
+        case 'invoice':
+          filename = `${orderData.order_no}-invoice.pdf`
+          break
+        case 'receipt':
+          filename = `${orderData.order_no}-receipt.pdf`
+          break
+        case 'payment':
+          filename = `${orderData.order_no}-payment.pdf`
+          break
+        case 'payment_request':
+          filename = `${orderData.order_no}-payment-request.pdf`
+          break
+        default:
+          filename = `${orderData.order_no}-order.pdf`
+      }
+    } else {
+      // Use the detailed PDFGenerator (current behavior)
+      switch (type) {
+        case 'purchase_order':
+          pdfBlob = await generatorWithSigs.generatePurchaseOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
+          filename = `${orderData.order_no}-PO.pdf`
+          break
+        case 'sales_order':
+          pdfBlob = await generatorWithSigs.generateSalesOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
+          filename = `${orderData.order_no}-SO.pdf`
+          break
+        case 'delivery_order':
+          pdfBlob = await generatorWithSigs.generateDeliveryOrderPDF(enrichedOrderData as any, enrichedDocumentData as any)
+          filename = `${orderData.order_no}-DO.pdf`
+          break
+        case 'invoice':
+          pdfBlob = await generatorWithSigs.generateInvoicePDF(enrichedOrderData as any, enrichedDocumentData as any)
+          filename = `${orderData.order_no}-invoice.pdf`
+          break
+        case 'receipt':
+          pdfBlob = await generatorWithSigs.generateReceiptPDF(enrichedOrderData as any, enrichedDocumentData as any)
+          filename = `${orderData.order_no}-receipt.pdf`
+          break
+        case 'payment':
+          pdfBlob = await generatorWithSigs.generatePaymentPDF(enrichedOrderData as any, enrichedDocumentData as any)
+          filename = `${orderData.order_no}-payment.pdf`
+          break
+        case 'payment_request':
+          pdfBlob = await generatorWithSigs.generatePaymentRequestPDF(enrichedOrderData as any, enrichedDocumentData as any)
+          filename = `${orderData.order_no}-payment-request.pdf`
+          break
+        default:
+          pdfBlob = await generatorWithSigs.generateOrderPDF(enrichedOrderData as any)
+          filename = `${orderData.order_no}-order.pdf`
+      }
     }
     
     // Get updated compression stats after PDF generation

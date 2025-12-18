@@ -847,25 +847,25 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 <CardContent>
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <p className="text-sm text-gray-600">On Hand</p>
-                      <p className="text-2xl font-bold text-gray-900">{currentInventory.quantity_on_hand}</p>
+                      <p className="text-xs text-gray-600">On Hand</p>
+                      <p className="text-xl font-bold text-gray-900">{currentInventory.quantity_on_hand.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Allocated</p>
-                      <p className="text-2xl font-bold text-orange-600">{currentInventory.quantity_allocated}</p>
+                      <p className="text-xs text-gray-600">Allocated</p>
+                      <p className="text-xl font-bold text-orange-600">{currentInventory.quantity_allocated.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Available</p>
-                      <p className="text-2xl font-bold text-green-600">{currentInventory.quantity_available}</p>
+                      <p className="text-xs text-gray-600">Available</p>
+                      <p className="text-xl font-bold text-green-600">{currentInventory.quantity_available.toLocaleString()}</p>
                     </div>
                   </div>
                   {currentInventory.warehouse_location && (
-                    <p className="text-sm text-gray-600 mt-3">
+                    <p className="text-xs text-gray-600 mt-3">
                       Location: <span className="font-medium">{currentInventory.warehouse_location}</span>
                     </p>
                   )}
                   {currentInventory.average_cost && (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-xs text-gray-600 mt-1">
                       Average Cost: <span className="font-medium">RM {currentInventory.average_cost.toFixed(2)}</span>
                     </p>
                   )}
@@ -917,16 +917,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                           )}
                           <span className="font-medium text-gray-700">Adjustment:</span>
                         </div>
-                        <span className={`text-2xl font-bold ${
+                        <span className={`text-xl font-bold ${
                           adjustment === 0 ? 'text-gray-600' :
                           adjustment > 0 ? 'text-green-600' :
                           'text-red-600'
                         }`}>
-                          {adjustment > 0 ? '+' : ''}{adjustment} units
+                          {adjustment > 0 ? '+' : ''}{adjustment.toLocaleString()} units
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600 mt-2">
-                        System: {currentInventory.quantity_on_hand} → Physical: {physicalCount}
+                      <p className="text-xs text-gray-600 mt-2">
+                        System: {currentInventory.quantity_on_hand.toLocaleString()} → Physical: {parseInt(physicalCount).toLocaleString()}
                       </p>
                       {adjustment !== 0 && (
                         <div>

@@ -15,6 +15,7 @@ import { toast } from '@/components/ui/use-toast'
 import DangerZoneTab from './DangerZoneTab'
 import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
+import DocumentTemplateTab from './DocumentTemplateTab'
 import MigrationView from '../migration/MigrationView'
 import { 
   Settings,
@@ -1683,10 +1684,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         {/* Preferences Settings */}
         {activeTab === 'preferences' && (
           <TabsComponent defaultValue="system" className="w-full">
-            <TabsList2 className="grid w-full grid-cols-3 mb-4">
+            <TabsList2 className="grid w-full grid-cols-4 mb-4">
               <TabsTrigger2 value="system">System Preferences</TabsTrigger2>
               <TabsTrigger2 value="journey">Journey Builder</TabsTrigger2>
               <TabsTrigger2 value="qr-tracking">QR Tracking</TabsTrigger2>
+              <TabsTrigger2 value="document-template">Document Template</TabsTrigger2>
             </TabsList2>
             
             <TabsContent2 value="system">
@@ -1914,6 +1916,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent2>
+
+            <TabsContent2 value="document-template">
+              <DocumentTemplateTab userProfile={userProfile} />
             </TabsContent2>
           </TabsComponent>
         )}

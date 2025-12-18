@@ -350,7 +350,8 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
         baseQuery.eq('manufacturer_org_id', userProfile.organization_id)
       }
 
-      const { data, error: queryError } = await baseQuery.limit(scope === 'manufacturer' ? 400 : 800)
+      // Increase limit to handle larger datasets (was 800, now 5000 for HQ, 2000 for manufacturer)
+      const { data, error: queryError } = await baseQuery.limit(scope === 'manufacturer' ? 2000 : 5000)
 
       if (queryError) {
         throw queryError

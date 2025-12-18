@@ -17,7 +17,7 @@ interface ScratchCardProps {
     onScratchComplete?: () => void
     isScratching?: boolean
     isPreview?: boolean
-    theme?: 'default' | 'modern' | 'classic'
+    theme?: 'default' | 'modern' | 'classic' | 'retro' | 'vip' | 'cyber'
 }
 
 export default function ScratchCard({
@@ -44,6 +44,27 @@ export default function ScratchCard({
                     title: 'text-white drop-shadow-md',
                     scratchArea: 'bg-white/10 backdrop-blur-sm border-white/20',
                     footer: 'text-white/70'
+                }
+            case 'retro':
+                return {
+                    container: 'bg-gradient-to-br from-red-500 via-orange-500 to-yellow-500 text-white border-4 border-yellow-300 shadow-2xl',
+                    title: 'text-white drop-shadow-lg font-black tracking-widest',
+                    scratchArea: 'bg-white/20 backdrop-blur-sm border-white/40 border-4 border-dashed',
+                    footer: 'text-yellow-100'
+                }
+            case 'vip':
+                return {
+                    container: 'bg-gradient-to-br from-amber-600 via-yellow-500 to-amber-700 text-black border-4 border-yellow-400 shadow-2xl',
+                    title: 'text-black drop-shadow-sm font-bold tracking-wide',
+                    scratchArea: 'bg-black/20 backdrop-blur-sm border-yellow-400/60 border-2',
+                    footer: 'text-black/70'
+                }
+            case 'cyber':
+                return {
+                    container: 'bg-gradient-to-br from-purple-900 via-indigo-800 to-blue-900 text-cyan-300 border-2 border-cyan-500 shadow-2xl shadow-cyan-500/20',
+                    title: 'text-cyan-300 drop-shadow-[0_0_10px_rgba(0,255,255,0.5)] font-bold tracking-widest uppercase',
+                    scratchArea: 'bg-cyan-500/10 backdrop-blur-sm border-cyan-500/40 border-2',
+                    footer: 'text-cyan-400/70'
                 }
             default:
                 return {
@@ -219,7 +240,14 @@ export default function ScratchCard({
                     >
                         {titleText}
                     </h3>
-                    <div className={cn("h-1 w-20 mx-auto rounded-full", theme === 'modern' ? "bg-white/30" : "bg-gray-200")} />
+                    <div className={cn(
+                        "h-1 w-20 mx-auto rounded-full",
+                        theme === 'modern' && "bg-white/30",
+                        theme === 'retro' && "bg-yellow-200/50",
+                        theme === 'vip' && "bg-yellow-400/60",
+                        theme === 'cyber' && "bg-cyan-500/40",
+                        theme === 'default' && "bg-gray-200"
+                    )} />
                 </div>
 
                 {/* Scratch Area Container */}
@@ -230,24 +258,59 @@ export default function ScratchCard({
                             <div className="space-y-3 animate-in zoom-in duration-500">
                                 {result.isWin ? (
                                     <>
-                                        <Trophy className={cn("w-16 h-16 mx-auto animate-bounce", theme === 'modern' ? "text-yellow-300" : "text-yellow-500")} />
+                                        <Trophy className={cn(
+                                            "w-16 h-16 mx-auto animate-bounce",
+                                            theme === 'modern' && "text-yellow-300",
+                                            theme === 'retro' && "text-yellow-200",
+                                            theme === 'vip' && "text-yellow-600",
+                                            theme === 'cyber' && "text-cyan-300",
+                                            theme === 'default' && "text-yellow-500"
+                                        )} />
                                         <div>
-                                            <p className={cn("font-bold text-lg", theme === 'modern' ? "text-white" : "text-gray-900")}>
+                                            <p className={cn(
+                                                "font-bold text-lg",
+                                                theme === 'modern' && "text-white",
+                                                theme === 'retro' && "text-white",
+                                                theme === 'vip' && "text-black",
+                                                theme === 'cyber' && "text-cyan-300",
+                                                theme === 'default' && "text-gray-900"
+                                            )}>
                                                 {successMessage.replace('{{reward_name}}', result.rewardName)}
                                             </p>
                                         </div>
                                     </>
                                 ) : (
                                     <>
-                                        <div className={cn("w-16 h-16 mx-auto rounded-full flex items-center justify-center", theme === 'modern' ? "bg-white/20" : "bg-gray-200")}>
+                                        <div className={cn(
+                                            "w-16 h-16 mx-auto rounded-full flex items-center justify-center",
+                                            theme === 'modern' && "bg-white/20",
+                                            theme === 'retro' && "bg-white/30",
+                                            theme === 'vip' && "bg-black/20",
+                                            theme === 'cyber' && "bg-cyan-500/20",
+                                            theme === 'default' && "bg-gray-200"
+                                        )}>
                                             <span className="text-2xl">😔</span>
                                         </div>
-                                        <p className={cn("font-medium", theme === 'modern' ? "text-white/80" : "text-gray-600")}>{noPrizeMessage}</p>
+                                        <p className={cn(
+                                            "font-medium",
+                                            theme === 'modern' && "text-white/80",
+                                            theme === 'retro' && "text-white/90",
+                                            theme === 'vip' && "text-black/70",
+                                            theme === 'cyber' && "text-cyan-400/80",
+                                            theme === 'default' && "text-gray-600"
+                                        )}>{noPrizeMessage}</p>
                                     </>
                                 )}
                             </div>
                         ) : (
-                            <div className={cn("font-medium text-sm", theme === 'modern' ? "text-white/50" : "text-gray-400")}>
+                            <div className={cn(
+                                "font-medium text-sm",
+                                theme === 'modern' && "text-white/50",
+                                theme === 'retro' && "text-white/60",
+                                theme === 'vip' && "text-black/50",
+                                theme === 'cyber' && "text-cyan-500/50",
+                                theme === 'default' && "text-gray-400"
+                            )}>
                                 Prize hidden here
                             </div>
                         )}

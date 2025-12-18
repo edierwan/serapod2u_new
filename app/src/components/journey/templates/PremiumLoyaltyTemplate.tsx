@@ -1652,11 +1652,9 @@ export default function PremiumLoyaltyTemplate({
                         </div>
                         <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
                             {userAvatarUrl ? (
-                                <Image 
+                                <img 
                                     src={userAvatarUrl} 
                                     alt="Profile" 
-                                    width={48} 
-                                    height={48} 
                                     className="object-cover w-full h-full"
                                 />
                             ) : (
@@ -2855,17 +2853,20 @@ export default function PremiumLoyaltyTemplate({
 
             if (error) throw error
             
+            // Handle both old format (data.error) and new format (data.success)
             if (data.error) {
                 throw new Error(data.error)
             }
 
-            // RPC returns: { status, reward_name, reward_type, points_value, reward_image_url, play_id }
-            const isWin = data.status === 'win'
-            const rewardName = data.reward_name || 'No Prize'
-            const points = data.points_value || 0
+            // RPC returns: { success: true, reward: { name, type, value_points, ... }, play_id }
+            // OR old format: { status, reward_name, reward_type, points_value, reward_image_url, play_id }
+            const isWin = data.success === true || data.status === 'win'
+            const rewardName = data.reward?.name || data.reward_name || 'No Prize'
+            const points = data.reward?.value_points || data.points_value || 0
+            const rewardType = data.reward?.type || data.reward_type || 'no_prize'
 
             setScratchResult({
-                isWin,
+                isWin: isWin && rewardType !== 'no_prize',
                 rewardName
             })
 
@@ -3173,7 +3174,7 @@ export default function PremiumLoyaltyTemplate({
             >
                 {/* Settings Icon Button */}
                 {isAuthenticated && (
-                    <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-50">
                         <button
                             type="button"
                             onClick={(e) => {
@@ -3181,10 +3182,10 @@ export default function PremiumLoyaltyTemplate({
                                 e.stopPropagation()
                                 setActiveTab('account-settings')
                             }}
-                            className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer"
                             title="Account Settings"
                         >
-                            <Settings className="w-4 h-4" />
+                            <Settings className="w-5 h-5" />
                         </button>
                         <button
                             type="button"
@@ -3195,10 +3196,10 @@ export default function PremiumLoyaltyTemplate({
                                 setFeedbackError('')
                                 setFeedbackSuccess(false)
                             }}
-                            className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer"
                             title="Send Feedback"
                         >
-                            <MessageSquare className="w-4 h-4" />
+                            <MessageSquare className="w-5 h-5" />
                         </button>
                         <button
                             type="button"
@@ -3207,21 +3208,19 @@ export default function PremiumLoyaltyTemplate({
                                 e.stopPropagation()
                                 handleLogout()
                             }}
-                            className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer"
                             title="Sign Out"
                         >
-                            <LogOut className="w-4 h-4" />
+                            <LogOut className="w-5 h-5" />
                         </button>
                     </div>
                 )}
                 
                 <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
                     {userAvatarUrl ? (
-                        <Image 
+                        <img 
                             src={userAvatarUrl} 
                             alt="Profile" 
-                            width={80} 
-                            height={80} 
                             className="object-cover w-full h-full"
                         />
                     ) : (

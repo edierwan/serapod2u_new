@@ -32,7 +32,10 @@ export async function createUserWithAuth(userData: {
       password: userData.password,
       email_confirm: true,
       phone: phone,
-      phone_confirm: !!phone
+      phone_confirm: !!phone,
+      user_metadata: {
+        full_name: userData.full_name // Set display_name in auth user_metadata
+      }
     })
 
     if (authError) {
@@ -157,6 +160,26 @@ export async function updateUserWithAuth(userId: string, userData: {
     
     if (!isAuthorized) {
        return { success: false, error: 'Unauthorized' }
+    }
+
+    // Update Auth User metadata (full_name/display_name) - sync to Supabase Auth user_metadata
+    if (userData.full_name !== undefined) {
+        try {
+          const { error: authMetaError } = await adminClient.auth.admin.updateUserById(userId, {
+              user_metadata: { full_name: userData.full_name }
+          })
+          
+          if (authMetaError) {
+              console.error('Auth user_metadata update failed:', authMetaError.message)
+              // Don't fail the whole operation for metadata sync failure
+              console.warn('Continuing despite metadata sync failure...')
+          } else {
+              console.log('✅ Auth user_metadata.full_name synced to:', userData.full_name)
+          }
+        } catch (metaErr) {
+          console.error('Auth metadata update exception:', metaErr)
+          // Don't fail the whole operation for metadata sync failure
+        }
     }
 
     // Update Auth User (Phone) - handle both setting and clearing phone

@@ -631,7 +631,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                     </Select>
                     {selectedVariant && availableStock > 0 && (
                       <p className="text-xs text-green-600 mt-1">
-                        Available: {availableStock} units
+                        Available: {availableStock.toLocaleString()} units
                       </p>
                     )}
                     {selectedVariant && availableStock === 0 && (
@@ -703,7 +703,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right font-semibold">{item.quantity}</TableCell>
+                          <TableCell className="text-right font-semibold">{item.quantity.toLocaleString()}</TableCell>
                           <TableCell className="text-right">
                             {item.unit_cost ? `RM ${item.unit_cost.toFixed(2)}` : '-'}
                           </TableCell>

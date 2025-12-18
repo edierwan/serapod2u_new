@@ -91,6 +91,14 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   const [notes, setNotes] = useState('')
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   
+  // Existing stock info
+  const [existingStock, setExistingStock] = useState<{
+    quantity_available: number
+    warehouse_name: string
+    warehouse_location: string | null
+    average_cost: number | null
+  } | null>(null)
+  
   const [loading, setLoading] = useState(false)
   const [productsLoading, setProductsLoading] = useState(true)
   
@@ -121,9 +129,58 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       setVariants([])
       setSelectedVariant('')
       setSelectedManufacturer('')
+      setExistingStock(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
+
+  // Fetch existing stock when variant changes
+  useEffect(() => {
+    const fetchExistingStock = async () => {
+      if (!selectedVariant) {
+        setExistingStock(null)
+        return
+      }
+
+      try {
+        // Get existing inventory for this variant across all warehouses
+        const { data, error } = await supabase
+          .from('product_inventory')
+          .select(`
+            quantity_on_hand,
+            quantity_allocated,
+            warehouse_location,
+            average_cost,
+            organization:organizations(org_name)
+          `)
+          .eq('variant_id', selectedVariant)
+          .eq('is_active', true)
+          .gt('quantity_on_hand', 0)
+          .order('quantity_on_hand', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (error) throw error
+
+        if (data) {
+          const orgData = data.organization as any
+          setExistingStock({
+            quantity_available: (data.quantity_on_hand || 0) - (data.quantity_allocated || 0),
+            warehouse_name: orgData?.org_name || 'Unknown',
+            warehouse_location: data.warehouse_location,
+            average_cost: data.average_cost
+          })
+        } else {
+          setExistingStock(null)
+        }
+      } catch (error) {
+        console.error('Failed to fetch existing stock:', error)
+        setExistingStock(null)
+      }
+    }
+
+    fetchExistingStock()
+  }, [selectedVariant, supabase])
 
   const addItem = () => {
     if (!selectedProduct || !selectedVariant || !quantity) {
@@ -527,15 +584,15 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
                 {/* Selected Product Summary */}
                 {selectedVariantData && selectedProductData && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                      <h4 className="font-semibold text-green-900">Selected Item</h4>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <h4 className="font-semibold text-green-900 text-sm">Selected Item</h4>
                     </div>
-                    <div className="flex gap-4">
+                    <div className="flex gap-3">
                       {/* Variant Image */}
                       <div className="flex-shrink-0">
-                        <div className="w-20 h-20 rounded-lg border-2 border-green-300 overflow-hidden bg-white">
+                        <div className="w-16 h-16 rounded-lg border-2 border-green-300 overflow-hidden bg-white">
                           {selectedVariantData.image_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -545,36 +602,68 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-400">
-                              <ImageIcon className="w-8 h-8" />
+                              <ImageIcon className="w-6 h-6" />
                             </div>
                           )}
                         </div>
                       </div>
                       
                       {/* Variant Details */}
-                      <div className="flex-1 grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex-1 grid grid-cols-2 gap-1.5 text-xs">
                         <div>
-                          <span className="text-gray-600">Product:</span>
-                          <p className="font-medium">{selectedProductData.product_name}</p>
+                          <span className="text-gray-500">Product:</span>
+                          <p className="font-medium text-gray-900">{selectedProductData.product_name}</p>
                         </div>
                         <div>
-                          <span className="text-gray-600">Variant:</span>
-                          <p className="font-medium">{selectedVariantData.variant_name}</p>
+                          <span className="text-gray-500">Variant:</span>
+                          <p className="font-medium text-gray-900">{selectedVariantData.variant_name}</p>
                         </div>
                         {selectedVariantData.base_cost && (
                           <div>
-                            <span className="text-gray-600">Base Cost:</span>
-                            <p className="font-medium">RM {selectedVariantData.base_cost.toFixed(2)}</p>
+                            <span className="text-gray-500">Base Cost:</span>
+                            <p className="font-medium text-gray-900">RM {selectedVariantData.base_cost.toFixed(2)}</p>
                           </div>
                         )}
                         {selectedVariantData.suggested_retail_price && (
                           <div>
-                            <span className="text-gray-600">Retail Price:</span>
-                            <p className="font-medium">RM {selectedVariantData.suggested_retail_price.toFixed(2)}</p>
+                            <span className="text-gray-500">Retail Price:</span>
+                            <p className="font-medium text-gray-900">RM {selectedVariantData.suggested_retail_price.toFixed(2)}</p>
                           </div>
                         )}
                       </div>
                     </div>
+
+                    {/* Existing Stock Info */}
+                    {existingStock && (
+                      <div className="mt-3 pt-3 border-t border-green-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Warehouse className="w-3.5 h-3.5 text-blue-600" />
+                          <span className="text-xs font-medium text-blue-700">Existing Stock</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-gray-500">Available:</span>
+                            <p className="font-semibold text-blue-600">{existingStock.quantity_available.toLocaleString()} units</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Warehouse:</span>
+                            <p className="font-medium text-gray-900">{existingStock.warehouse_name}</p>
+                          </div>
+                          {existingStock.warehouse_location && (
+                            <div>
+                              <span className="text-gray-500">Location:</span>
+                              <p className="font-medium text-gray-900">{existingStock.warehouse_location}</p>
+                            </div>
+                          )}
+                          {existingStock.average_cost && (
+                            <div>
+                              <span className="text-gray-500">Avg Cost:</span>
+                              <p className="font-medium text-gray-900">RM {existingStock.average_cost.toFixed(2)}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -632,7 +721,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       </span>
                     </div>
                     <p className="text-xs text-gray-600 mt-1">
-                      {quantity} units × RM {parseFloat(unitCost).toFixed(2)}
+                      {parseInt(quantity).toLocaleString()} units × RM {parseFloat(unitCost).toFixed(2)}
                     </p>
                   </div>
                 )}
@@ -689,7 +778,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right font-semibold text-sm">{item.quantity}</TableCell>
+                          <TableCell className="text-right font-semibold text-sm">{item.quantity.toLocaleString()}</TableCell>
                           <TableCell className="text-right text-sm">
                             {item.unit_cost ? `RM ${item.unit_cost.toFixed(2)}` : '-'}
                           </TableCell>
