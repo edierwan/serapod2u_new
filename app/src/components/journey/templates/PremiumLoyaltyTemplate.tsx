@@ -3530,11 +3530,12 @@ export default function PremiumLoyaltyTemplate({
                 {/* Buttons moved to fixed position outside scroll container */}
                 
                 <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
-                    {userAvatarUrl ? (
+                    {isAuthenticated && userAvatarUrl ? (
                         <img 
                             src={userAvatarUrl} 
                             alt="Profile" 
                             className="object-cover w-full h-full"
+                            key={userAvatarUrl} // Force re-render when avatar changes
                         />
                     ) : (
                         <User className="w-10 h-10" />
@@ -3542,12 +3543,12 @@ export default function PremiumLoyaltyTemplate({
                 </div>
                 <h1 className="text-xl font-bold">
                     {isAuthenticated 
-                        ? (isShopUser && shopName ? shopName : userName) 
+                        ? (isShopUser && shopName ? shopName : userName || 'User') 
                         : 'Guest User'}
                 </h1>
                 <p className="text-white/80 text-sm">
                     {isAuthenticated 
-                        ? userEmail
+                        ? (userEmail || 'No email')
                         : 'Sign in to track your rewards'}
                 </p>
             </div>
@@ -3677,16 +3678,18 @@ export default function PremiumLoyaltyTemplate({
                     </div>
                 ) : null}
 
-                {/* Stats Section */}
-                <div className="bg-white rounded-2xl shadow-lg divide-y divide-gray-100">
-                    <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Star className="w-5 h-5 text-amber-500" />
-                            <span className="font-medium">Total Points</span>
+                {/* Stats Section - Only show when authenticated */}
+                {isAuthenticated && isShopUser && (
+                    <div className="bg-white rounded-2xl shadow-lg divide-y divide-gray-100">
+                        <div className="p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Star className="w-5 h-5 text-amber-500" />
+                                <span className="font-medium">Total Points</span>
+                            </div>
+                            <span className="font-bold" style={{ color: config.primary_color }}>{userPoints}</span>
                         </div>
-                        <span className="font-bold" style={{ color: config.primary_color }}>{userPoints}</span>
                     </div>
-                </div>
+                )}
 
             </div>
         </div>
