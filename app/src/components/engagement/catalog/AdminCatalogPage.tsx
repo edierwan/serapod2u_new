@@ -41,6 +41,7 @@ import {
 import {
   BarChart3,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Edit,
@@ -154,6 +155,9 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [redemptionsLoading, setRedemptionsLoading] = useState(false)
   const [redemptionSearchTerm, setRedemptionSearchTerm] = useState("")
   const [redemptionStatusFilter, setRedemptionStatusFilter] = useState<"all" | "pending" | "processing" | "fulfilled" | "cancelled">("all")
+  const [redemptionPage, setRedemptionPage] = useState(1)
+  const [redemptionTotalPages, setRedemptionTotalPages] = useState(1)
+  const REDEMPTION_PAGE_SIZE = 10
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -408,14 +412,14 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     }
   }
 
-  async function loadRedemptions() {
+  async function loadRedemptions(page = 1) {
     setRedemptionsLoading(true)
 
     try {
       console.log("🎁 Loading redemptions for company:", companyId)
       
       // Use API endpoint to bypass RLS
-      const response = await fetch('/api/admin/redemption-history')
+      const response = await fetch(`/api/admin/redemption-history?page=${page}&limit=${REDEMPTION_PAGE_SIZE}`)
       const result = await response.json()
 
       if (!result.success) {
@@ -426,6 +430,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
       console.log("✅ Loaded redemptions:", result.redemptions?.length || 0)
       setRedemptions(result.redemptions || [])
+      setRedemptionTotalPages(result.totalPages || 1)
+      setRedemptionPage(page)
     } catch (error) {
       console.error("Error loading redemptions:", error)
     } finally {
@@ -466,7 +472,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       }
 
       // Reload redemptions
-      await loadRedemptions()
+      await loadRedemptions(redemptionPage)
       alert(`Status updated to ${newStatus}`)
     } catch (error) {
       console.error('Error updating redemption status:', error)
@@ -1244,7 +1250,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={loadRedemptions}
+                  onClick={() => loadRedemptions(1)}
                   className="gap-2"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1336,20 +1342,39 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                             <div className="grid gap-4 md:grid-cols-2">
                               {/* Left: Redemption Info */}
                               <div className="space-y-3">
-                                <div>
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <h3 className="font-semibold text-lg">{redemption.reward_name}</h3>
-                                      <p className="text-sm text-muted-foreground">
-                                        Code: {redemption.redemption_code || "N/A"}
-                                      </p>
+                                <div className="flex gap-4">
+                                  {/* Reward Image */}
+                                  <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+                                    {redemption.reward_image_url ? (
+                                      <Image
+                                        src={getStorageUrl(redemption.reward_image_url)}
+                                        alt={redemption.reward_name}
+                                        width={64}
+                                        height={64}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center bg-gray-100">
+                                        <Gift className="h-6 w-6 text-gray-400" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex-1">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <h3 className="font-semibold text-lg">{redemption.reward_name}</h3>
+                                        <p className="text-sm text-muted-foreground">
+                                          Code: {redemption.redemption_code || "N/A"}
+                                        </p>
+                                      </div>
+                                      <Badge 
+                                        className={`${statusColors[redemption.fulfillment_status || "pending"]} flex items-center gap-1`}
+                                      >
+                                        <StatusIcon className="h-3 w-3" />
+                                        {redemption.fulfillment_status || "pending"}
+                                      </Badge>
                                     </div>
-                                    <Badge 
-                                      className={`${statusColors[redemption.fulfillment_status || "pending"]} flex items-center gap-1`}
-                                    >
-                                      <StatusIcon className="h-3 w-3" />
-                                      {redemption.fulfillment_status || "pending"}
-                                    </Badge>
                                   </div>
                                 </div>
 
@@ -1381,7 +1406,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                 <div className="rounded-md bg-muted p-2">
                                   <p className="text-sm">
                                     <span className="font-semibold text-purple-700">
-                                      -{formatNumber(redemption.points_spent)} points
+                                      {formatNumber(Math.abs(redemption.points_amount || 0))} points
                                     </span>
                                   </p>
                                 </div>
@@ -1465,6 +1490,33 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                         </Card>
                       )
                     })}
+                  
+                  {/* Pagination Controls */}
+                  {redemptionTotalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 py-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadRedemptions(redemptionPage - 1)}
+                        disabled={redemptionPage <= 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        Page {redemptionPage} of {redemptionTotalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadRedemptions(redemptionPage + 1)}
+                        disabled={redemptionPage >= redemptionTotalPages}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

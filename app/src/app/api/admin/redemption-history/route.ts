@@ -73,7 +73,27 @@ export async function GET(request: NextRequest) {
 
     const companyId = organization.id
 
-    console.log('🎁 Loading redemptions for company:', companyId, organization.org_name)
+    // Pagination parameters
+    const searchParams = request.nextUrl.searchParams
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '10')
+    const offset = (page - 1) * limit
+
+    console.log('🎁 Loading redemptions for company:', companyId, organization.org_name, `Page: ${page}, Limit: ${limit}`)
+
+    // Get total count first
+    const { count, error: countError } = await supabaseAdmin
+      .from('v_admin_redemptions')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+
+    if (countError) {
+      console.error('❌ Error fetching redemption count:', countError)
+      return NextResponse.json(
+        { success: false, error: 'Failed to fetch redemption count' },
+        { status: 500 }
+      )
+    }
 
     // Query v_admin_redemptions view directly with service role (bypasses RLS)
     const { data: redemptions, error: redemptionsError } = await supabaseAdmin
@@ -81,6 +101,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('company_id', companyId)
       .order('redeemed_at', { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (redemptionsError) {
       console.error('❌ Error fetching redemptions from view:', redemptionsError)
@@ -90,12 +111,15 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log('✅ Loaded redemptions:', redemptions?.length || 0)
+    console.log('✅ Loaded redemptions:', redemptions?.length || 0, 'Total:', count)
 
     return NextResponse.json({
       success: true,
       redemptions: redemptions || [],
-      count: redemptions?.length || 0
+      count: count || 0,
+      page,
+      limit,
+      totalPages: Math.ceil((count || 0) / limit)
     })
 
   } catch (error) {
