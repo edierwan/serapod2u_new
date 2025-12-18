@@ -145,9 +145,15 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
-  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "settings">("rewards")
+  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "settings" | "redemptions">("rewards")
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
+  
+  // Redemption history states
+  const [redemptions, setRedemptions] = useState<any[]>([])
+  const [redemptionsLoading, setRedemptionsLoading] = useState(false)
+  const [redemptionSearchTerm, setRedemptionSearchTerm] = useState("")
+  const [redemptionStatusFilter, setRedemptionStatusFilter] = useState<"all" | "pending" | "processing" | "fulfilled" | "cancelled">("all")
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -230,6 +236,13 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   useEffect(() => {
     if (activeTab === 'users' && shopUsers.length === 0) {
       loadShopUsers()
+    }
+  }, [activeTab])
+
+  // Load redemptions when switching to redemptions tab
+  useEffect(() => {
+    if (activeTab === 'redemptions') {
+      loadRedemptions()
     }
   }, [activeTab])
 
@@ -392,6 +405,76 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       console.error("Error loading shop users:", error)
     } finally {
       setUsersLoading(false)
+    }
+  }
+
+  async function loadRedemptions() {
+    setRedemptionsLoading(true)
+    const supabaseClient = createClient()
+
+    try {
+      console.log("🎁 Loading redemptions for company:", companyId)
+      
+      // Query the v_admin_redemptions view
+      const { data: redemptionsData, error: redemptionsError } = await (supabaseClient as any)
+        .from("v_admin_redemptions")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("redeemed_at", { ascending: false })
+
+      if (redemptionsError) {
+        console.error("❌ Failed to load redemptions", redemptionsError)
+        setRedemptionsLoading(false)
+        return
+      }
+
+      console.log("✅ Loaded redemptions:", redemptionsData?.length || 0)
+      setRedemptions(redemptionsData || [])
+    } catch (error) {
+      console.error("Error loading redemptions:", error)
+    } finally {
+      setRedemptionsLoading(false)
+    }
+  }
+
+  async function updateRedemptionStatus(transactionId: string, newStatus: string, notes?: string) {
+    const supabaseClient = createClient()
+
+    try {
+      const updateData: any = {
+        fulfillment_status: newStatus,
+        updated_at: new Date().toISOString()
+      }
+
+      if (newStatus === 'fulfilled' || newStatus === 'processing') {
+        updateData.fulfilled_by = userProfile.id
+      }
+
+      if (newStatus === 'fulfilled') {
+        updateData.fulfilled_at = new Date().toISOString()
+      }
+
+      if (notes) {
+        updateData.fulfillment_notes = notes
+      }
+
+      const { error } = await supabaseClient
+        .from('points_transactions')
+        .update(updateData)
+        .eq('id', transactionId)
+
+      if (error) {
+        console.error('Error updating redemption status:', error)
+        alert('Failed to update status: ' + error.message)
+        return
+      }
+
+      // Reload redemptions
+      await loadRedemptions()
+      alert(`Status updated to ${newStatus}`)
+    } catch (error) {
+      console.error('Error updating redemption status:', error)
+      alert('Failed to update status')
     }
   }
 
@@ -650,13 +733,16 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "settings")} className="space-y-6" suppressHydrationWarning>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "settings" | "redemptions")} className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="rewards" className="gap-2">
             <Package className="h-4 w-4" /> Manage Rewards
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" /> Shop Points Monitor
+          </TabsTrigger>
+          <TabsTrigger value="redemptions" className="gap-2">
+            <Gift className="h-4 w-4" /> Redemption History
           </TabsTrigger>
           <TabsTrigger value="settings" className="gap-2">
             <Settings className="h-4 w-4" /> Point Settings
@@ -1139,6 +1225,250 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* REDEMPTION HISTORY TAB */}
+        <TabsContent value="redemptions" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Gift className="h-5 w-5 text-purple-500" />
+                    Redemption History
+                  </CardTitle>
+                  <CardDescription>
+                    View and manage all reward redemptions from shops
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadRedemptions}
+                  className="gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                  </svg>
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Filters */}
+              <div className="mb-4 flex gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by shop name, phone, or reward name..."
+                      value={redemptionSearchTerm}
+                      onChange={(e) => setRedemptionSearchTerm(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <Select
+                  value={redemptionStatusFilter}
+                  onValueChange={(value) => setRedemptionStatusFilter(value as any)}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="processing">Processing</SelectItem>
+                    <SelectItem value="fulfilled">Fulfilled</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Redemptions Table */}
+              {redemptionsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : redemptions.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <Gift className="mx-auto mb-4 h-12 w-12 opacity-20" />
+                  <p className="text-lg font-medium">No redemptions found</p>
+                  <p className="text-sm">Redemptions will appear here once shops start redeeming rewards</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {redemptions
+                    .filter((r) => {
+                      // Status filter
+                      if (redemptionStatusFilter !== "all" && r.fulfillment_status !== redemptionStatusFilter) {
+                        return false
+                      }
+                      // Search filter
+                      if (redemptionSearchTerm) {
+                        const search = redemptionSearchTerm.toLowerCase()
+                        return (
+                          r.shop_name?.toLowerCase().includes(search) ||
+                          r.shop_phone?.toLowerCase().includes(search) ||
+                          r.reward_name?.toLowerCase().includes(search)
+                        )
+                      }
+                      return true
+                    })
+                    .map((redemption) => {
+                      const statusColors: Record<string, string> = {
+                        pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+                        processing: "bg-blue-100 text-blue-800 border-blue-200",
+                        fulfilled: "bg-green-100 text-green-800 border-green-200",
+                        cancelled: "bg-gray-100 text-gray-800 border-gray-200"
+                      }
+                      const statusIcons: Record<string, any> = {
+                        pending: Clock,
+                        processing: Truck,
+                        fulfilled: CheckCircle,
+                        cancelled: XCircle
+                      }
+                      const StatusIcon = statusIcons[redemption.fulfillment_status || "pending"] || AlertCircle
+
+                      return (
+                        <Card key={redemption.transaction_id} className="border-l-4 border-l-purple-500">
+                          <CardContent className="pt-6">
+                            <div className="grid gap-4 md:grid-cols-2">
+                              {/* Left: Redemption Info */}
+                              <div className="space-y-3">
+                                <div>
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <h3 className="font-semibold text-lg">{redemption.reward_name}</h3>
+                                      <p className="text-sm text-muted-foreground">
+                                        Code: {redemption.redemption_code || "N/A"}
+                                      </p>
+                                    </div>
+                                    <Badge 
+                                      className={`${statusColors[redemption.fulfillment_status || "pending"]} flex items-center gap-1`}
+                                    >
+                                      <StatusIcon className="h-3 w-3" />
+                                      {redemption.fulfillment_status || "pending"}
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1 text-sm">
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <MapPin className="h-4 w-4" />
+                                    <span className="font-medium">{redemption.shop_name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <Phone className="h-4 w-4" />
+                                    <span>{redemption.shop_phone}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <Calendar className="h-4 w-4" />
+                                    <span>
+                                      Redeemed: {new Date(redemption.redeemed_at).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  {redemption.fulfilled_at && (
+                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                      <CheckCircle className="h-4 w-4" />
+                                      <span>
+                                        Fulfilled: {new Date(redemption.fulfilled_at).toLocaleString()}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="rounded-md bg-muted p-2">
+                                  <p className="text-sm">
+                                    <span className="font-semibold text-purple-700">
+                                      -{formatNumber(redemption.points_spent)} points
+                                    </span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Right: Actions & Notes */}
+                              <div className="space-y-3">
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">Update Status</Label>
+                                  <div className="mt-2 grid grid-cols-2 gap-2">
+                                    {redemption.fulfillment_status === "pending" && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "processing")}
+                                          className="gap-1"
+                                        >
+                                          <Truck className="h-3 w-3" />
+                                          Process
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "cancelled")}
+                                          className="gap-1"
+                                        >
+                                          <XCircle className="h-3 w-3" />
+                                          Cancel
+                                        </Button>
+                                      </>
+                                    )}
+                                    {redemption.fulfillment_status === "processing" && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="default"
+                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "fulfilled")}
+                                          className="gap-1 bg-green-600 hover:bg-green-700"
+                                        >
+                                          <CheckCircle className="h-3 w-3" />
+                                          Fulfill
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateRedemptionStatus(redemption.transaction_id, "cancelled")}
+                                          className="gap-1"
+                                        >
+                                          <XCircle className="h-3 w-3" />
+                                          Cancel
+                                        </Button>
+                                      </>
+                                    )}
+                                    {(redemption.fulfillment_status === "fulfilled" || redemption.fulfillment_status === "cancelled") && (
+                                      <div className="col-span-2 text-center text-sm text-muted-foreground">
+                                        Status is final
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {redemption.fulfillment_notes && (
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">Notes</Label>
+                                    <p className="mt-1 text-sm rounded-md bg-muted p-2">
+                                      {redemption.fulfillment_notes}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {redemption.fulfilled_by_name && (
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <User className="h-4 w-4" />
+                                    <span>By: {redemption.fulfilled_by_name}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
                 </div>
               )}
             </CardContent>

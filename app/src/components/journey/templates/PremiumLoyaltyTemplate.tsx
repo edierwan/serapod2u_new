@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -209,6 +209,9 @@ export default function PremiumLoyaltyTemplate({
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [isShopUser, setIsShopUser] = useState(false)
     const [authLoading, setAuthLoading] = useState(true)
+    
+    // Ref to track if we're currently fetching profile (prevents duplicate fetches)
+    const isFetchingProfileRef = useRef(false)
 
     // Game active states
     const [activeGames, setActiveGames] = useState({
@@ -389,7 +392,15 @@ export default function PremiumLoyaltyTemplate({
     const [claimedGiftName, setClaimedGiftName] = useState('')
 
     // Helper function to check if user is from SHOP organization (uses API to bypass RLS)
-    const checkUserOrganization = async (userId: string) => {
+    const checkUserOrganization = async (userId: string, force: boolean = false) => {
+        // Prevent duplicate simultaneous fetches unless forced
+        if (!force && isFetchingProfileRef.current) {
+            console.log('🔐 Profile fetch already in progress, skipping...')
+            return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, duplicate: true }
+        }
+        
+        isFetchingProfileRef.current = true
+        
         try {
             console.log('🔐 checkUserOrganization - Starting for userId:', userId)
             
@@ -453,6 +464,8 @@ export default function PremiumLoyaltyTemplate({
         } catch (error) {
             console.error('🔐 Error checking user organization:', error)
             return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
+        } finally {
+            isFetchingProfileRef.current = false
         }
     }
 
@@ -575,24 +588,54 @@ export default function PremiumLoyaltyTemplate({
                 setUserEmail(session.user.email || '')
                 setUserId(session.user.id)
                 
-                // Try to fetch profile info, but don't block on it
-                const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(session.user.id)
+                // Skip profile fetch if already in progress (e.g., from handleLogin)
+                if (isFetchingProfileRef.current) {
+                    console.log('🔐 Profile fetch already in progress, skipping onAuthStateChange fetch')
+                    return
+                }
                 
-                if (success) {
-                    setIsShopUser(isShop)
-                    setUserName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
-                    setUserAvatarUrl(avatarUrl)
-                    setShopName(orgName)
-                    setUserPhone(phone)
-                    setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
-                    setNewPhone(phone)
-                    
-                    // Set points balance from API (already fetched for shop users)
-                    if (isShop) {
-                        setUserPoints(pointsBalance)
+                // Try to fetch profile info with retry mechanism
+                let profileFetched = false
+                let retries = 0
+                const maxRetries = 3
+                
+                while (!profileFetched && retries < maxRetries) {
+                    try {
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(session.user.id)
+                        
+                        if (success) {
+                            console.log('🔐 Profile fetched successfully on attempt', retries + 1)
+                            setIsShopUser(isShop)
+                            setUserName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
+                            setUserAvatarUrl(avatarUrl)
+                            setShopName(orgName)
+                            setUserPhone(phone)
+                            setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
+                            setNewPhone(phone)
+                            
+                            // Set points balance from API (already fetched for shop users)
+                            if (isShop) {
+                                setUserPoints(pointsBalance)
+                            }
+                            profileFetched = true
+                        } else {
+                            retries++
+                            if (retries < maxRetries) {
+                                console.warn(`🔐 Profile fetch failed, retrying (${retries}/${maxRetries})...`)
+                                await new Promise(resolve => setTimeout(resolve, 1000 * retries))
+                            }
+                        }
+                    } catch (error) {
+                        retries++
+                        console.error(`🔐 Profile fetch error on attempt ${retries}:`, error)
+                        if (retries < maxRetries) {
+                            await new Promise(resolve => setTimeout(resolve, 1000 * retries))
+                        }
                     }
-                } else {
-                    console.warn('🔐 Auth state changed but profile fetch failed - keeping user authenticated with basic info')
+                }
+                
+                if (!profileFetched) {
+                    console.warn('🔐 All profile fetch attempts failed - showing basic info only')
                     setUserName(session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User')
                     setIsShopUser(false)
                 }
@@ -1039,16 +1082,42 @@ export default function PremiumLoyaltyTemplate({
                 setLoginEmail('')
                 setLoginPassword('')
             } else {
-                const { error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await supabase.auth.signInWithPassword({
                     email: emailToUse,
                     password: loginPassword,
                 })
                 if (error) throw error
-                console.log('🔐 Sign in successful')
+                console.log('🔐 Sign in successful, user:', data.user?.email)
                 setShowLoginForm(false)
                 // Clear form after successful login
                 setLoginEmail('')
                 setLoginPassword('')
+                
+                // IMPORTANT: Force profile fetch after successful login
+                if (data.user) {
+                    console.log('🔐 Forcing profile fetch after login...')
+                    try {
+                        const profileData = await checkUserOrganization(data.user.id, true) // Force fetch, bypass duplicate check
+                        const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance } = profileData
+                        
+                        if (success) {
+                            console.log('🔐 Profile loaded successfully after login')
+                            setIsAuthenticated(true)
+                            setUserEmail(data.user.email || '')
+                            setUserId(data.user.id)
+                            setIsShopUser(isShop)
+                            setUserName(fullName || data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || '')
+                            setUserAvatarUrl(avatarUrl)
+                            setShopName(orgName)
+                            setUserPhone(phone)
+                            if (isShop) {
+                                setUserPoints(pointsBalance)
+                            }
+                        }
+                    } catch (profileError) {
+                        console.error('🔐 Error fetching profile after login:', profileError)
+                    }
+                }
             }
         } catch (error: any) {
             console.error('🔐 Login error:', error)
