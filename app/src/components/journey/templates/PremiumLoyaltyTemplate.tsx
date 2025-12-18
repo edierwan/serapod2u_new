@@ -1774,6 +1774,9 @@ export default function PremiumLoyaltyTemplate({
 
                 // Refresh rewards list to update stock
                 fetchRewards()
+                
+                // IMPORTANT: Refresh redemption history to show new redemption
+                fetchRedemptionHistory()
             } else {
                 setRedeemError(data.error || 'Failed to redeem reward')
             }
@@ -2211,9 +2214,11 @@ export default function PremiumLoyaltyTemplate({
             setRewardCategory(cat)
             // Fetch data for the selected tab if authenticated
             if (isAuthenticated && isShopUser) {
-                if (cat === 'History' && redemptionHistory.length === 0) {
+                if (cat === 'History') {
+                    // Always fetch to ensure latest redemptions are shown
                     fetchRedemptionHistory()
-                } else if (cat === 'Point History' && pointsHistory.length === 0) {
+                } else if (cat === 'Point History') {
+                    // Always fetch to ensure latest points transactions are shown
                     fetchPointsHistory()
                 } else if (cat === 'Scanned' && scannedProducts.length === 0) {
                     fetchScannedProducts()

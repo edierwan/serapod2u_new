@@ -410,26 +410,22 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
   async function loadRedemptions() {
     setRedemptionsLoading(true)
-    const supabaseClient = createClient()
 
     try {
       console.log("🎁 Loading redemptions for company:", companyId)
       
-      // Query the v_admin_redemptions view
-      const { data: redemptionsData, error: redemptionsError } = await (supabaseClient as any)
-        .from("v_admin_redemptions")
-        .select("*")
-        .eq("company_id", companyId)
-        .order("redeemed_at", { ascending: false })
+      // Use API endpoint to bypass RLS
+      const response = await fetch('/api/admin/redemption-history')
+      const result = await response.json()
 
-      if (redemptionsError) {
-        console.error("❌ Failed to load redemptions", redemptionsError)
+      if (!result.success) {
+        console.error("❌ Failed to load redemptions", result.error)
         setRedemptionsLoading(false)
         return
       }
 
-      console.log("✅ Loaded redemptions:", redemptionsData?.length || 0)
-      setRedemptions(redemptionsData || [])
+      console.log("✅ Loaded redemptions:", result.redemptions?.length || 0)
+      setRedemptions(result.redemptions || [])
     } catch (error) {
       console.error("Error loading redemptions:", error)
     } finally {
