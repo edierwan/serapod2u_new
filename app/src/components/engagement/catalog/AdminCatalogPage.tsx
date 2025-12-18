@@ -444,8 +444,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
     try {
       const updateData: any = {
-        fulfillment_status: newStatus,
-        updated_at: new Date().toISOString()
+        fulfillment_status: newStatus
       }
 
       if (newStatus === 'fulfilled' || newStatus === 'processing') {
