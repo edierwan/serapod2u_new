@@ -3274,12 +3274,15 @@ export default function PremiumLoyaltyTemplate({
     const renderProfileTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
             <div 
-                className="px-5 pt-6 pb-16 text-white text-center relative"
+                className="px-5 pt-6 pb-16 text-white text-center relative isolate"
                 style={{ backgroundColor: config.primary_color }}
             >
                 {/* Settings Icon Buttons - Top Right */}
                 {isAuthenticated && (
-                    <div className="absolute top-3 right-3 flex items-center gap-1 z-50" style={{ pointerEvents: 'auto' }}>
+                    <div 
+                        className="absolute top-3 right-3 flex items-center gap-1 z-[100]" 
+                        style={{ pointerEvents: 'auto' }}
+                    >
                         <button
                             type="button"
                             onClick={(e) => {
@@ -3288,11 +3291,11 @@ export default function PremiumLoyaltyTemplate({
                                 console.log('Settings button clicked')
                                 setActiveTab('account-settings')
                             }}
-                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
+                            className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
                             title="Account Settings"
                             aria-label="Account Settings"
                         >
-                            <Settings className="w-4 h-4" />
+                            <Settings className="w-4 h-4 pointer-events-none" />
                         </button>
                         <button
                             type="button"
@@ -3304,11 +3307,11 @@ export default function PremiumLoyaltyTemplate({
                                 setFeedbackError('')
                                 setFeedbackSuccess(false)
                             }}
-                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
+                            className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
                             title="Send Feedback"
                             aria-label="Send Feedback"
                         >
-                            <MessageSquare className="w-4 h-4" />
+                            <MessageSquare className="w-4 h-4 pointer-events-none" />
                         </button>
                         <button
                             type="button"
@@ -3318,11 +3321,11 @@ export default function PremiumLoyaltyTemplate({
                                 console.log('Logout button clicked')
                                 handleLogout()
                             }}
-                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation"
+                            className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
                             title="Sign Out"
                             aria-label="Sign Out"
                         >
-                            <LogOut className="w-4 h-4" />
+                            <LogOut className="w-4 h-4 pointer-events-none" />
                         </button>
                     </div>
                 )}
@@ -3350,7 +3353,7 @@ export default function PremiumLoyaltyTemplate({
                 </p>
             </div>
 
-            <div className="px-5 -mt-8 relative z-20 space-y-4">
+            <div className="px-5 -mt-8 relative z-10 space-y-4">
                 {renderBanner('profile')}
                 {/* Login/Logout Section */}
                 {!isAuthenticated ? (
