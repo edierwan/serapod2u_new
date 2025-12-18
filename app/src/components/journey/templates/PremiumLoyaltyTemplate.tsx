@@ -201,7 +201,6 @@ export default function PremiumLoyaltyTemplate({
     const [showShopPassword, setShowShopPassword] = useState(false)
     const [shopId, setShopId] = useState('')
     const [shopPassword, setShopPassword] = useState('')
-    const [showShopPassword, setShowShopPassword] = useState(false)
     const [collectingPoints, setCollectingPoints] = useState(false)
     const [pointsError, setPointsError] = useState('')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
