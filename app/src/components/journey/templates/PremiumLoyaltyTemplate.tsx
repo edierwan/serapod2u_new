@@ -734,6 +734,16 @@ export default function PremiumLoyaltyTemplate({
         }
     }, [isLive, qrCode]) // Only run on mount and when qrCode changes
 
+    // Clear login form when QR code changes (new scan)
+    useEffect(() => {
+        console.log('🔐 QR code changed, clearing login form state')
+        setLoginEmail('')
+        setLoginPassword('')
+        setLoginError('')
+        setLoginLoading(false)
+        setShowLoginForm(false)
+    }, [qrCode])
+
     // Re-check QR status when navigating to lucky-draw tab (bulletproof double-check)
     useEffect(() => {
         const recheckStatus = async () => {
@@ -947,6 +957,12 @@ export default function PremiumLoyaltyTemplate({
             return
         }
         
+        // Prevent duplicate submissions
+        if (loginLoading) {
+            console.log('🔐 Login already in progress, ignoring duplicate request')
+            return
+        }
+        
         setLoginLoading(true)
         setLoginError('')
         
@@ -989,23 +1005,34 @@ export default function PremiumLoyaltyTemplate({
                 emailToUse = userEmail as string
             }
             
+            console.log('🔐 Attempting login with email:', emailToUse)
+            
             if (isSignUp) {
                 const { error } = await supabase.auth.signUp({
                     email: emailToUse,
                     password: loginPassword,
                 })
                 if (error) throw error
+                console.log('🔐 Sign up successful')
                 setLoginError('')
                 setShowLoginForm(false)
+                // Clear form after successful signup
+                setLoginEmail('')
+                setLoginPassword('')
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
                     email: emailToUse,
                     password: loginPassword,
                 })
                 if (error) throw error
+                console.log('🔐 Sign in successful')
                 setShowLoginForm(false)
+                // Clear form after successful login
+                setLoginEmail('')
+                setLoginPassword('')
             }
         } catch (error: any) {
+            console.error('🔐 Login error:', error)
             if (error.message?.includes('Invalid login credentials')) {
                 setLoginError('Invalid email/phone or password. Please check your credentials.')
             } else {
@@ -1030,6 +1057,12 @@ export default function PremiumLoyaltyTemplate({
             setShopName('')
             setUserPhone('')
             setUserId(null)
+            
+            // IMPORTANT: Clear login form fields to prevent auto-login on next visit
+            setLoginEmail('')
+            setLoginPassword('')
+            setLoginError('')
+            setShowLoginForm(false)
             
             // Then sign out from Supabase (with timeout)
             const signOutPromise = supabase.auth.signOut()
@@ -3446,6 +3479,10 @@ export default function PremiumLoyaltyTemplate({
                                         onClick={() => {
                                             setShowLoginForm(false)
                                             setLoginError('')
+                                            // Clear fields when closing form
+                                            setLoginEmail('')
+                                            setLoginPassword('')
+                                            setLoginLoading(false)
                                         }}
                                         className="p-1 rounded-full hover:bg-gray-100"
                                     >
@@ -3504,7 +3541,7 @@ export default function PremiumLoyaltyTemplate({
 
                                 <Button 
                                     onClick={handleLogin}
-                                    disabled={loginLoading}
+                                    disabled={loginLoading || !loginEmail || !loginPassword}
                                     className="w-full h-11 font-semibold"
                                     style={{ backgroundColor: config.button_color }}
                                 >
