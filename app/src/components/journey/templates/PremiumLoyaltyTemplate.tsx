@@ -418,7 +418,7 @@ export default function PremiumLoyaltyTemplate({
             if (response.status === 401) {
                 console.log('🔐 Session expired/invalid (401), clearing auth...')
                 await supabase.auth.signOut()
-                return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, sessionInvalid: true }
+                return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, sessionInvalid: true }
             }
             
             const result = await response.json()
@@ -426,7 +426,7 @@ export default function PremiumLoyaltyTemplate({
             
             if (!result.success || !result.profile) {
                 console.error('🔐 Error fetching user profile via API:', result.error)
-                return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
+                return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
             }
             
             const profile = result.profile
@@ -441,6 +441,7 @@ export default function PremiumLoyaltyTemplate({
             })
             
             return { 
+                success: true,
                 isShop: profile.isShop === true, // Explicit boolean conversion
                 fullName: profile.fullName || '',
                 organizationId: profile.organizationId,
@@ -451,7 +452,7 @@ export default function PremiumLoyaltyTemplate({
             }
         } catch (error) {
             console.error('🔐 Error checking user organization:', error)
-            return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
+            return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
         }
     }
 
@@ -488,13 +489,9 @@ export default function PremiumLoyaltyTemplate({
                 }
                 
                 if (user) {
-                    console.log('🔐 User found, setting isAuthenticated = true')
-                    setIsAuthenticated(true)
-                    setUserEmail(user.email || '')
-                    setUserId(user.id)
+                    console.log('🔐 User found, fetching profile data...')
                     
                     // Check if user is from SHOP organization with timeout
-                    console.log('🔐 Fetching profile data...')
                     try {
                         const profilePromise = checkUserOrganization(user.id)
                         const timeoutPromise = new Promise((_, reject) => 
@@ -502,11 +499,12 @@ export default function PremiumLoyaltyTemplate({
                         )
                         
                         const profileResult = await Promise.race([profilePromise, timeoutPromise]) as any
-                        const { isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid } = profileResult
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid } = profileResult
                         
                         // If session was invalid (401), clear auth state
                         if (sessionInvalid) {
                             console.log('🔐 Session was invalid, clearing auth state')
+                            await supabase.auth.signOut()
                             setIsAuthenticated(false)
                             setIsShopUser(false)
                             setUserEmail('')
@@ -519,26 +517,37 @@ export default function PremiumLoyaltyTemplate({
                             return
                         }
                         
-                        console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
-                        
-                        console.log('🔐 Setting isShopUser =', isShop)
-                        setIsShopUser(isShop)
-                        setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                        setUserAvatarUrl(avatarUrl)
-                        setShopName(orgName)
-                        setUserPhone(phone)
-                        setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                        setNewPhone(phone)
-                        
-                        // Set points balance from API (already fetched for shop users)
-                        if (isShop) {
-                            console.log('🔐 Setting shop user points balance:', pointsBalance)
-                            setUserPoints(pointsBalance)
+                        if (success) {
+                            console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
+                            
+                            setIsAuthenticated(true)
+                            setUserEmail(user.email || '')
+                            setUserId(user.id)
+                            
+                            console.log('🔐 Setting isShopUser =', isShop)
+                            setIsShopUser(isShop)
+                            setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                            setUserAvatarUrl(avatarUrl)
+                            setShopName(orgName)
+                            setUserPhone(phone)
+                            setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                            setNewPhone(phone)
+                            
+                            // Set points balance from API (already fetched for shop users)
+                            if (isShop) {
+                                console.log('🔐 Setting shop user points balance:', pointsBalance)
+                                setUserPoints(pointsBalance)
+                            }
+                        } else {
+                            console.warn('🔐 Profile fetch failed (success=false), treating as not authenticated')
+                            await supabase.auth.signOut()
+                            setIsAuthenticated(false)
                         }
                     } catch (profileError) {
                         console.error('🔐 Profile fetch error/timeout:', profileError)
-                        // Still set basic user info even if profile fails
-                        setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                        // On timeout/error, also treat as not authenticated to avoid broken state
+                        await supabase.auth.signOut()
+                        setIsAuthenticated(false)
                     }
                 } else {
                     console.log('🔐 No authenticated user found')
@@ -555,23 +564,30 @@ export default function PremiumLoyaltyTemplate({
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (session?.user) {
-                setIsAuthenticated(true)
-                setUserEmail(session.user.email || '')
-                setUserId(session.user.id)
-                
                 // Check if user is from SHOP organization
-                const { isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(session.user.id)
-                setIsShopUser(isShop)
-                setUserName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
-                setUserAvatarUrl(avatarUrl)
-                setShopName(orgName)
-                setUserPhone(phone)
-                setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
-                setNewPhone(phone)
+                const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(session.user.id)
                 
-                // Set points balance from API (already fetched for shop users)
-                if (isShop) {
-                    setUserPoints(pointsBalance)
+                if (success) {
+                    setIsAuthenticated(true)
+                    setUserEmail(session.user.email || '')
+                    setUserId(session.user.id)
+                    
+                    setIsShopUser(isShop)
+                    setUserName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
+                    setUserAvatarUrl(avatarUrl)
+                    setShopName(orgName)
+                    setUserPhone(phone)
+                    setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
+                    setNewPhone(phone)
+                    
+                    // Set points balance from API (already fetched for shop users)
+                    if (isShop) {
+                        setUserPoints(pointsBalance)
+                    }
+                } else {
+                    console.warn('🔐 Auth state changed but profile fetch failed')
+                    // If profile fetch fails, we treat as not authenticated to avoid broken UI
+                    setIsAuthenticated(false)
                 }
             } else {
                 setIsAuthenticated(false)
