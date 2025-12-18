@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
         email, 
         phone, 
         full_name,
+        avatar_url,
         organizations!fk_users_organization(
           id,
           org_type_code,
@@ -439,7 +440,8 @@ export async function POST(request: NextRequest) {
       shop_name: shopUser.full_name || shopUser.email,
       qr_code: qrCodeData.code,
       message: 'Points collected successfully!',
-      email: emailToAuth // Return email for client-side session handling
+      email: emailToAuth, // Return email for client-side session handling
+      avatar_url: shopUser.avatar_url
     })
 
   } catch (error) {

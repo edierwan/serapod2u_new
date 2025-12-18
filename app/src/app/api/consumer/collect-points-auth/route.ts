@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
         email, 
         phone, 
         full_name,
+        avatar_url,
         organizations!fk_users_organization(
           id,
           org_type_code,
@@ -324,7 +325,8 @@ export async function POST(request: NextRequest) {
       total_balance: totalBalance,
       shop_name: shopUser.full_name || shopUser.email,
       qr_code: qrCodeData.code,
-      message: 'Points collected successfully!'
+      message: 'Points collected successfully!',
+      avatar_url: shopUser.avatar_url
     })
 
   } catch (error) {

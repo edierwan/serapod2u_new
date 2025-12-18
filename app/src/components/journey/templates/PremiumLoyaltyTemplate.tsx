@@ -1336,6 +1336,7 @@ export default function PremiumLoyaltyTemplate({
                         setIsShopUser(true)
                         setUserEmail(data.email)
                         setShopName(data.shop_name || '')
+                        if (data.avatar_url) setUserAvatarUrl(data.avatar_url)
                     } else {
                         console.warn('⚠️ Could not establish session:', signInError.message)
                     }
@@ -1412,6 +1413,7 @@ export default function PremiumLoyaltyTemplate({
             setUserPoints(newBalance)
             setPointsCollected(true)
             setShowPointsSuccessModal(true)
+            if (data.avatar_url) setUserAvatarUrl(data.avatar_url)
             
         } catch (error: any) {
             console.error('Error collecting points with session:', error)
