@@ -1058,16 +1058,9 @@ export default function PremiumLoyaltyTemplate({
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(loginEmail)
                 
-                // Add timeout for phone lookup
-                const rpcPromise = supabase.rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Phone lookup timed out')), 10000)
-                )
-                
-                const { data: userEmailData, error: lookupError } = await Promise.race([
-                    rpcPromise,
-                    timeoutPromise
-                ]) as any
+                // Use the RPC function to find the email associated with this phone number
+                const { data: userEmailData, error: lookupError } = await supabase
+                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
                 
                 if (lookupError) {
                     console.error('Phone lookup error:', lookupError)
@@ -1464,16 +1457,9 @@ export default function PremiumLoyaltyTemplate({
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(shopId)
                 
-                // Add timeout for phone lookup
-                const rpcPromise = supabase.rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Phone lookup timed out')), 10000)
-                )
-                
-                const { data: userEmailData, error: lookupError } = await Promise.race([
-                    rpcPromise,
-                    timeoutPromise
-                ]) as any
+                // Use the RPC function to find the email associated with this phone number
+                const { data: userEmailData, error: lookupError } = await supabase
+                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
                 
                 if (lookupError) {
                     console.error('Phone lookup error:', lookupError)
