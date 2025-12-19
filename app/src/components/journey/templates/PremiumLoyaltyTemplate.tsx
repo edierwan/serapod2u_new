@@ -212,6 +212,7 @@ export default function PremiumLoyaltyTemplate({
     
     // Ref to track if we're currently fetching profile (prevents duplicate fetches)
     const isFetchingProfileRef = useRef(false)
+    const profileFetchPromiseRef = useRef<Promise<any> | null>(null)
 
     // Game active states
     const [activeGames, setActiveGames] = useState({
@@ -394,14 +395,15 @@ export default function PremiumLoyaltyTemplate({
     // Helper function to check if user is from SHOP organization (uses API to bypass RLS)
     const checkUserOrganization = async (userId: string, force: boolean = false) => {
         // Prevent duplicate simultaneous fetches unless forced
-        if (!force && isFetchingProfileRef.current) {
-            console.log('🔐 Profile fetch already in progress, skipping...')
-            return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, duplicate: true }
+        if (!force && profileFetchPromiseRef.current) {
+            console.log('🔐 Profile fetch already in progress, reusing promise...')
+            return profileFetchPromiseRef.current
         }
         
-        isFetchingProfileRef.current = true
-        
-        try {
+        const fetchPromise = (async () => {
+            isFetchingProfileRef.current = true
+            
+            try {
             console.log('🔐 checkUserOrganization - Starting for userId:', userId)
             
             // Get current session to pass token
@@ -466,7 +468,12 @@ export default function PremiumLoyaltyTemplate({
             return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
         } finally {
             isFetchingProfileRef.current = false
+            profileFetchPromiseRef.current = null
         }
+    })()
+
+    profileFetchPromiseRef.current = fetchPromise
+    return fetchPromise
     }
 
     // Check auth status on mount
@@ -508,7 +515,7 @@ export default function PremiumLoyaltyTemplate({
                     try {
                         const profilePromise = checkUserOrganization(user.id)
                         const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Profile fetch timeout')), 4000)
+                            setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
                         )
                         
                         const profileResult = await Promise.race([profilePromise, timeoutPromise]) as any
