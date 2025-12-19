@@ -1597,7 +1597,15 @@ export default function PremiumLoyaltyTemplate({
     // Handle points collection using existing session (for authenticated shop users)
     const handleCollectPointsWithSession = async () => {
         if (!qrCode) {
-            setPoicontroller = new AbortController()
+            setPointsError('QR code not available')
+            return
+        }
+
+        setCollectingPoints(true)
+        setPointsError('')
+
+        try {
+            const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
 
             const response = await fetch('/api/consumer/collect-points-auth', {
@@ -1608,15 +1616,7 @@ export default function PremiumLoyaltyTemplate({
                     qr_code: qrCode
                 }),
                 signal: controller.signal
-            }).finally(() => clearTimeout(timeoutId)
-            const response = await fetch('/api/consumer/collect-points-auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                    qr_code: qrCode
-                })
-            })
+            }).finally(() => clearTimeout(timeoutId))
 
             const data = await response.json()
 
