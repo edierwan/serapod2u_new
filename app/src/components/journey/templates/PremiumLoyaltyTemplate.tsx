@@ -414,14 +414,18 @@ export default function PremiumLoyaltyTemplate({
             const token = session?.access_token
             console.log('🔐 Got session token:', !!token)
 
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
             // Use API endpoint to fetch profile (bypasses RLS issues)
             const response = await fetch('/api/user/profile', {
                 headers: {
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                     'Content-Type': 'application/json'
                 },
-                credentials: 'include' // Important: include cookies for auth
-            })
+                credentials: 'include', // Important: include cookies for auth
+                signal: controller.signal
+            }).finally(() => clearTimeout(timeoutId))
             
             console.log('🔐 Profile API response status:', response.status)
             
@@ -1054,8 +1058,16 @@ export default function PremiumLoyaltyTemplate({
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(loginEmail)
                 
-                const { data: userEmailData, error: lookupError } = await supabase
-                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                // Add timeout for phone lookup
+                const rpcPromise = supabase.rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Phone lookup timed out')), 10000)
+                )
+                
+                const { data: userEmailData, error: lookupError } = await Promise.race([
+                    rpcPromise,
+                    timeoutPromise
+                ]) as any
                 
                 if (lookupError) {
                     console.error('Phone lookup error:', lookupError)
@@ -1100,10 +1112,20 @@ export default function PremiumLoyaltyTemplate({
                 setLoginEmail('')
                 setLoginPassword('')
             } else {
-                const { data, error } = await supabase.auth.signInWithPassword({
+                // Add timeout for sign in
+                const signInPromise = supabase.auth.signInWithPassword({
                     email: emailToUse,
                     password: loginPassword,
                 })
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Login timed out')), 15000)
+                )
+
+                const { data, error } = await Promise.race([
+                    signInPromise,
+                    timeoutPromise
+                ]) as any
+
                 if (error) throw error
                 console.log('🔐 Sign in successful, user:', data.user?.email)
                 setShowLoginForm(false)
