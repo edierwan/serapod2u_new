@@ -1059,12 +1059,30 @@ export default function PremiumLoyaltyTemplate({
                 const normalizedPhone = normalizePhone(loginEmail)
                 
                 // Use the RPC function to find the email associated with this phone number
-                const { data: userEmailData, error: lookupError } = await supabase
-                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                // Add retry logic for better reliability
+                let userEmailData = null
+                let lookupError = null
+                
+                for (let i = 0; i < 3; i++) {
+                    try {
+                        const result = await supabase
+                            .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                        
+                        if (!result.error) {
+                            userEmailData = result.data
+                            lookupError = null
+                            break
+                        }
+                        lookupError = result.error
+                    } catch (err) {
+                        lookupError = err as any
+                    }
+                    if (i < 2) await new Promise(resolve => setTimeout(resolve, 1000))
+                }
                 
                 if (lookupError) {
                     console.error('Phone lookup error:', lookupError)
-                    setLoginError('Error verifying phone number. Please try again.')
+                    setLoginError('Error verifying phone number. Please check your connection.')
                     setLoginLoading(false)
                     return
                 }
@@ -1458,12 +1476,35 @@ export default function PremiumLoyaltyTemplate({
                 const normalizedPhone = normalizePhone(shopId)
                 
                 // Use the RPC function to find the email associated with this phone number
-                const { data: userEmailData, error: lookupError } = await supabase
-                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                // Add retry logic for better reliability on mobile networks
+                let userEmailData = null
+                let lookupError = null
+                
+                for (let i = 0; i < 3; i++) {
+                    try {
+                        const result = await supabase
+                            .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                        
+                        if (!result.error) {
+                            userEmailData = result.data
+                            lookupError = null
+                            break
+                        }
+                        
+                        lookupError = result.error
+                        console.warn(`Phone lookup attempt ${i+1} failed:`, result.error)
+                    } catch (err) {
+                        console.warn(`Phone lookup attempt ${i+1} exception:`, err)
+                        lookupError = err as any
+                    }
+                    
+                    // Wait before retry if not the last attempt
+                    if (i < 2) await new Promise(resolve => setTimeout(resolve, 1000))
+                }
                 
                 if (lookupError) {
-                    console.error('Phone lookup error:', lookupError)
-                    setPointsError('Error verifying phone number. Please try again.')
+                    console.error('Phone lookup error after retries:', lookupError)
+                    setPointsError('Error verifying phone number. Please check your connection and try again.')
                     setCollectingPoints(false)
                     return
                 }
@@ -4330,9 +4371,10 @@ export default function PremiumLoyaltyTemplate({
                                     setPointsError('')
                                     setShopId('')
                                     setShopPassword('')
+                                    setCollectingPoints(false)
                                 }}
                                 className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                                disabled={collectingPoints}
+                                // Allow cancelling even during collection
                             >
                                 Cancel
                             </button>
