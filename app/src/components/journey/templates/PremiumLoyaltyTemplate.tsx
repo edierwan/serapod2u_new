@@ -1464,8 +1464,16 @@ export default function PremiumLoyaltyTemplate({
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(shopId)
                 
-                const { data: userEmailData, error: lookupError } = await supabase
-                    .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                // Add timeout for phone lookup
+                const rpcPromise = supabase.rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Phone lookup timed out')), 10000)
+                )
+                
+                const { data: userEmailData, error: lookupError } = await Promise.race([
+                    rpcPromise,
+                    timeoutPromise
+                ]) as any
                 
                 if (lookupError) {
                     console.error('Phone lookup error:', lookupError)
@@ -1543,10 +1551,19 @@ export default function PremiumLoyaltyTemplate({
             if (data.email && shopPassword) {
                 console.log('🔐 Establishing persistent session for shop user...')
                 try {
-                    const { error: signInError } = await supabase.auth.signInWithPassword({
+                    // Add timeout for session establishment
+                    const signInPromise = supabase.auth.signInWithPassword({
                         email: data.email,
                         password: shopPassword
                     })
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Session establishment timed out')), 10000)
+                    )
+
+                    const { error: signInError } = await Promise.race([
+                        signInPromise,
+                        timeoutPromise
+                    ]) as any
                     
                     if (!signInError) {
                         console.log('✅ Session established successfully')
@@ -1580,14 +1597,18 @@ export default function PremiumLoyaltyTemplate({
     // Handle points collection using existing session (for authenticated shop users)
     const handleCollectPointsWithSession = async () => {
         if (!qrCode) {
-            setPointsError('QR code not available')
-            return
-        }
+            setPoicontroller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
 
-        setCollectingPoints(true)
-        setPointsError('')
-
-        try {
+            const response = await fetch('/api/consumer/collect-points-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    qr_code: qrCode
+                }),
+                signal: controller.signal
+            }).finally(() => clearTimeout(timeoutId)
             const response = await fetch('/api/consumer/collect-points-auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
