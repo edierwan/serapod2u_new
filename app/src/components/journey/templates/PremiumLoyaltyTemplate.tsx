@@ -212,7 +212,6 @@ export default function PremiumLoyaltyTemplate({
     
     // Ref to track if we're currently fetching profile (prevents duplicate fetches)
     const isFetchingProfileRef = useRef(false)
-    const profileFetchPromiseRef = useRef<Promise<any> | null>(null)
 
     // Game active states
     const [activeGames, setActiveGames] = useState({
@@ -395,15 +394,14 @@ export default function PremiumLoyaltyTemplate({
     // Helper function to check if user is from SHOP organization (uses API to bypass RLS)
     const checkUserOrganization = async (userId: string, force: boolean = false) => {
         // Prevent duplicate simultaneous fetches unless forced
-        if (!force && profileFetchPromiseRef.current) {
-            console.log('🔐 Profile fetch already in progress, reusing promise...')
-            return profileFetchPromiseRef.current
+        if (!force && isFetchingProfileRef.current) {
+            console.log('🔐 Profile fetch already in progress, skipping...')
+            return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, duplicate: true }
         }
         
-        const fetchPromise = (async () => {
-            isFetchingProfileRef.current = true
-            
-            try {
+        isFetchingProfileRef.current = true
+        
+        try {
             console.log('🔐 checkUserOrganization - Starting for userId:', userId)
             
             // Get current session to pass token
@@ -468,12 +466,7 @@ export default function PremiumLoyaltyTemplate({
             return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
         } finally {
             isFetchingProfileRef.current = false
-            profileFetchPromiseRef.current = null
         }
-    })()
-
-    profileFetchPromiseRef.current = fetchPromise
-    return fetchPromise
     }
 
     // Check auth status on mount
@@ -514,8 +507,26 @@ export default function PremiumLoyaltyTemplate({
                     // Check if user is from SHOP organization with timeout
                     try {
                         const profilePromise = checkUserOrganization(user.id)
+                        
+                        // Handle late arrival of profile data (if timeout occurs first)
+                        profilePromise.then((result: any) => {
+                            if (result && result.success) {
+                                console.log('🔐 Late profile data received:', result)
+                                setIsShopUser(result.isShop)
+                                setUserName(result.fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                                setUserAvatarUrl(result.avatarUrl)
+                                setShopName(result.orgName)
+                                setUserPhone(result.phone)
+                                setNewName(result.fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                                setNewPhone(result.phone)
+                                if (result.isShop) {
+                                    setUserPoints(result.pointsBalance)
+                                }
+                            }
+                        }).catch(err => console.error('Background profile fetch error:', err))
+
                         const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
+                            setTimeout(() => reject(new Error('Profile fetch timeout')), 15000)
                         )
                         
                         const profileResult = await Promise.race([profilePromise, timeoutPromise]) as any
@@ -1462,6 +1473,9 @@ export default function PremiumLoyaltyTemplate({
                 emailToUse = userEmail
             }
 
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
             const response = await fetch('/api/consumer/collect-points', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1469,8 +1483,9 @@ export default function PremiumLoyaltyTemplate({
                     qr_code: qrCode,
                     shop_id: emailToUse,
                     password: shopPassword
-                })
-            })
+                }),
+                signal: controller.signal
+            }).finally(() => clearTimeout(timeoutId))
 
             const data = await response.json()
 
