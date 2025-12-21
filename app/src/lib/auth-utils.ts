@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/client'
+import { createClient, resetClient } from '@/lib/supabase/client'
 
 /**
  * Clear all Supabase session data from the browser
@@ -9,7 +9,7 @@ export async function clearSupabaseSession() {
     const supabase = createClient()
     
     // Sign out from Supabase
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope: 'local' })
     
     // Clear local storage items related to Supabase
     if (typeof window !== 'undefined') {
@@ -28,6 +28,9 @@ export async function clearSupabaseSession() {
         }
       })
     }
+    
+    // Reset the singleton client to ensure fresh state
+    resetClient()
     
     console.log('✅ Session cleared successfully')
     return true

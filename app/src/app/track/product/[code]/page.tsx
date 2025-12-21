@@ -144,7 +144,7 @@ async function getJourneyData(code: string) {
           )
         `)
         .eq('id', qrCode.variant_id)
-        .single()
+        .maybeSingle()
       
       if (v) {
         variant = v
@@ -165,7 +165,7 @@ async function getJourneyData(code: string) {
           product_images(image_url, is_primary)
         `)
         .eq('id', qrCode.product_id)
-        .single()
+        .maybeSingle()
       
       if (p) {
         product = p
@@ -174,14 +174,18 @@ async function getJourneyData(code: string) {
       }
     }
 
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select('order_no')
-      .eq('id', qrCode.order_id)
-      .single()
+    let order = null
+    if (qrCode.order_id) {
+      const { data: o, error: orderError } = await supabase
+        .from('orders')
+        .select('order_no')
+        .eq('id', qrCode.order_id)
+        .maybeSingle()
 
-    if (orderError) {
-      console.error('❌ Order query error:', orderError)
+      if (orderError) {
+        console.error('❌ Order query error:', orderError)
+      }
+      order = o
     }
 
     const brand = Array.isArray(product?.brands) ? product.brands[0] : product?.brands

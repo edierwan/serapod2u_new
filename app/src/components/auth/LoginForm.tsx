@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, resetClient, forceCleanStorage } from '@/lib/supabase/client'
 import { normalizePhone } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,12 +18,44 @@ export default function LoginForm() {
   const [error, setError] = useState('')
   const router = useRouter()
 
+  // Clear any stale session on component mount
+  useEffect(() => {
+    const clearStaleSession = async () => {
+      try {
+        const supabase = createClient()
+        // Use getUser() to validate session with server, not getSession() which can be stale
+        const { data: { user }, error } = await supabase.auth.getUser()
+        
+        if (error) {
+          console.log('🔄 Stale session detected on login page, clearing...')
+          // Clear stale session data
+          forceCleanStorage()
+          await supabase.auth.signOut({ scope: 'local' })
+          resetClient()
+        } else if (user) {
+          // User is already authenticated, redirect to dashboard
+          console.log('✅ User already authenticated, redirecting to dashboard')
+          router.push('/dashboard')
+        }
+      } catch (err) {
+        console.log('🔄 Error checking session, clearing storage')
+        forceCleanStorage()
+      }
+    }
+    clearStaleSession()
+  }, [router])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError('')
 
     try {
+      // Clear any existing stale session before login attempt
+      // This prevents the "Signing in..." stuck state when there's a stale token
+      forceCleanStorage()
+      resetClient()
+      
       const supabase = createClient()
 
       // Suppress Supabase console errors by temporarily overriding console.error
@@ -50,7 +82,7 @@ export default function LoginForm() {
         
         // Use the RPC function to find the email associated with this phone number
         const { data: userEmail, error: lookupError } = await supabase
-          .rpc('get_email_by_phone', { p_phone: normalizedPhone })
+          .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone } as any)
 
         if (lookupError) {
           console.error('Phone lookup error:', lookupError)
@@ -94,6 +126,7 @@ export default function LoginForm() {
         } else {
           setError(signInError.message)
         }
+        setIsLoading(false)
         return
       }
 
@@ -102,6 +135,7 @@ export default function LoginForm() {
 
       if (!authUser) {
         setError('Authentication failed. Please try again.')
+        setIsLoading(false)
         return
       }
 
@@ -122,6 +156,7 @@ export default function LoginForm() {
         console.error('Profile lookup error:', profileError)
         setError(`Database error: ${profileError.message}`)
         await supabase.auth.signOut()
+        setIsLoading(false)
         return
       }
 
@@ -140,6 +175,7 @@ export default function LoginForm() {
         if (retryError || !retryProfile) {
           setError(`User record not found. Please contact administrator to create user record for ID: ${authUser.id}`)
           await supabase.auth.signOut()
+          setIsLoading(false)
           return
         }
 
@@ -151,6 +187,7 @@ export default function LoginForm() {
       if (!profile || !profile.is_active) {
         await supabase.auth.signOut()
         setError('Your account is inactive or not found. Please contact your administrator.')
+        setIsLoading(false)
         return
       }
 
@@ -184,7 +221,10 @@ export default function LoginForm() {
             console.error('🌐 Failed to parse IP response:', parseError)
           }
         } else {
-          console.error('🌐 Failed to capture IP:', ipResponse.status)
+          // Ignore 401/403 errors as they might happen if session propagation is slow
+          if (ipResponse.status !== 401 && ipResponse.status !== 403) {
+            console.warn('🌐 Failed to capture IP:', ipResponse.status)
+          }
         }
       }).catch(ipError => {
         console.error('🌐 Exception capturing IP:', ipError)
@@ -192,12 +232,17 @@ export default function LoginForm() {
 
       // Successful login - force refresh and redirect to dashboard
       // This ensures server components fetch fresh data for the new user
+      
+      // Wait a moment for cookies to propagate
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
       router.refresh()
       router.push('/dashboard')
 
     } catch (err) {
       console.error('Login error:', err)
       setError('An unexpected error occurred. Please try again.')
+      setIsLoading(false)
     } finally {
       setIsLoading(false)
     }

@@ -22,6 +22,7 @@ export default async function DashboardPage({
   const { data: { user }, error } = await supabase.auth.getUser()
   
   if (error || !user) {
+    console.log('🔴 Dashboard - No user found, redirecting to login', error)
     redirect('/login')
   }
 
@@ -56,16 +57,17 @@ export default async function DashboardPage({
 
   if (userProfileError || !userProfile) {
     console.error('User profile error:', userProfileError)
-    redirect('/login')
+    // Don't redirect immediately on profile error, let the client handle it or show error
+    // redirect('/login')
   }
   
-  if (!userProfile.is_active) {
+  if (userProfile && !userProfile.is_active) {
     console.error('User account is inactive:', user.email)
     redirect('/login')
   }
 
   // Transform the data structure for nested relationships
-  const transformedUserProfile = {
+  const transformedUserProfile = userProfile ? {
     ...userProfile,
     organizations: Array.isArray(userProfile.organizations) 
       ? userProfile.organizations[0] 
@@ -73,6 +75,18 @@ export default async function DashboardPage({
     roles: Array.isArray(userProfile.roles) 
       ? userProfile.roles[0] 
       : userProfile.roles
+  } : null
+
+  if (!transformedUserProfile) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2">Profile Error</h1>
+          <p className="text-gray-600">Could not load user profile. Please contact support.</p>
+          <p className="text-xs text-gray-400 mt-2">User ID: {user.id}</p>
+        </div>
+      </div>
+    )
   }
 
   return (

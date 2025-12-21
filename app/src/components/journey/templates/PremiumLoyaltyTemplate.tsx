@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
+import { logoutConsumer } from '@/app/actions/consumer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -104,6 +105,7 @@ interface JourneyConfig {
             image_url: string
             link_to?: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
             expires_at?: string
+            page?: 'home' | 'rewards' | 'products' | 'profile'
         }>
     }
 }
@@ -136,7 +138,7 @@ interface ProductItem {
     }[]
 }
 
-type TabType = 'home' | 'rewards' | 'products' | 'games' | 'profile' | 'account-settings' | 'lucky-draw'
+type TabType = 'home' | 'rewards' | 'products' | 'games' | 'profile' | 'account-settings' | 'lucky-draw' | 'play-scratch-card' | 'spin-wheel' | 'daily-quiz'
 
 interface ProductInfo {
     product_name?: string
@@ -212,6 +214,7 @@ export default function PremiumLoyaltyTemplate({
     
     // Ref to track if we're currently fetching profile (prevents duplicate fetches)
     const isFetchingProfileRef = useRef(false)
+    const lastProfileRefreshRef = useRef(0)
 
     // Game active states
     const [activeGames, setActiveGames] = useState({
@@ -406,12 +409,12 @@ export default function PremiumLoyaltyTemplate({
             
             // Get current session to pass token
             const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-            if (sessionError) {
-                console.error('🔐 Session error:', sessionError)
-                // If session error, clear auth state
+            if (sessionError || !session || !session.access_token) {
+                console.error('🔐 Session missing/invalid:', sessionError)
+                // Treat missing session as invalid so caller can clear state
                 return { isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, sessionInvalid: true }
             }
-            const token = session?.access_token
+            const token = session.access_token
             console.log('🔐 Got session token:', !!token)
 
             const controller = new AbortController()
@@ -431,8 +434,25 @@ export default function PremiumLoyaltyTemplate({
             
             // Handle 401 - session is invalid/expired
             if (response.status === 401) {
-                console.log('🔐 Session expired/invalid (401), clearing auth...')
-                await supabase.auth.signOut()
+                console.log('🔐 Session expired/invalid (401), clearing auth and browser storage...')
+                
+                // Clear browser storage to remove stale session data
+                if (typeof window !== 'undefined') {
+                    const localKeys = Object.keys(localStorage)
+                    localKeys.forEach(key => {
+                        if (key.includes('supabase') || key.includes('sb-')) {
+                            localStorage.removeItem(key)
+                        }
+                    })
+                    const sessionKeys = Object.keys(sessionStorage)
+                    sessionKeys.forEach(key => {
+                        if (key.includes('supabase') || key.includes('sb-')) {
+                            sessionStorage.removeItem(key)
+                        }
+                    })
+                }
+                
+                await supabase.auth.signOut({ scope: 'local' })
                 return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, sessionInvalid: true }
             }
             
@@ -473,24 +493,55 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
+    // Ref to track if initial auth check completed (prevents double profile fetch)
+    const initialAuthCheckDoneRef = useRef(false)
+    
     // Check auth status on mount
     useEffect(() => {
+        // IMPORTANT: Mark that auth check is starting immediately
+        // This prevents onAuthStateChange from running before initial check is done
+        const isInitialCheck = !initialAuthCheckDoneRef.current
+        if (isInitialCheck) {
+            console.log('🔐 Starting initial auth check - blocking onAuthStateChange')
+        }
+        
         const checkAuth = async () => {
             // Set a timeout to ensure authLoading becomes false even if API hangs
             const authTimeout = setTimeout(() => {
                 console.log('🔐 Auth check timeout - forcing authLoading to false')
                 setAuthLoading(false)
+                initialAuthCheckDoneRef.current = true
             }, 5000) // 5 second timeout
             
             try {
                 console.log('🔐 Checking auth status...')
-                const { data: { user }, error: authError } = await supabase.auth.getUser()
-                console.log('🔐 Auth user:', user?.id, user?.email, 'Error:', authError)
                 
-                // If there's an auth error (expired/invalid session), sign out and clear state
-                if (authError) {
-                    console.log('🔐 Auth error detected, clearing session:', authError.message)
-                    await supabase.auth.signOut()
+                // CONSUMER QR PAGES FIX: Check if session was created for this specific page/session
+                // If no active session marker exists in sessionStorage, clear any old sessions
+                // This ensures each QR scan is a fresh experience
+                const activeSessionMarker = sessionStorage.getItem('serapod_active_session')
+                const currentQrCode = qrCode // The QR code being viewed
+                
+                if (!activeSessionMarker) {
+                    console.log('🔐 No active session marker - this is a fresh QR scan, clearing old sessions')
+                    
+                    // Clear localStorage sessions (these persist across browser sessions)
+                    if (typeof window !== 'undefined') {
+                        const localKeys = Object.keys(localStorage)
+                        localKeys.forEach(key => {
+                            if (key.includes('supabase') || key.includes('sb-')) {
+                                localStorage.removeItem(key)
+                            }
+                        })
+                    }
+                    
+                    // Sign out any existing session
+                    await supabase.auth.signOut({ scope: 'local' })
+                    
+                    // Mark that we've done initial cleanup for this session
+                    sessionStorage.setItem('serapod_active_session', 'checked')
+                    
+                    // No user after cleanup
                     setIsAuthenticated(false)
                     setIsShopUser(false)
                     setUserEmail('')
@@ -502,41 +553,67 @@ export default function PremiumLoyaltyTemplate({
                     setUserId(null)
                     clearTimeout(authTimeout)
                     setAuthLoading(false)
+                    initialAuthCheckDoneRef.current = true
                     return
                 }
                 
-                if (user) {
+                // Active session exists - validate with server using getUser()
+                const { data: userData, error: getUserError } = await supabase.auth.getUser()
+                let user = userData?.user || null
+                let authError = getUserError || null
+                
+                console.log('🔐 getUser result:', user?.id, user?.email, 'Error:', authError?.message)
+
+                // If getUser fails with auth error, clear session
+                if (authError) {
+                    console.log('🔐 Auth validation failed, clearing session:', authError.message)
+                    
+                    if (typeof window !== 'undefined') {
+                        const localKeys = Object.keys(localStorage)
+                        localKeys.forEach(key => {
+                            if (key.includes('supabase') || key.includes('sb-')) {
+                                localStorage.removeItem(key)
+                            }
+                        })
+                        const sessionKeys = Object.keys(sessionStorage)
+                        sessionKeys.forEach(key => {
+                            if (key.includes('supabase') || key.includes('sb-')) {
+                                sessionStorage.removeItem(key)
+                            }
+                        })
+                    }
+                    
+                    await supabase.auth.signOut({ scope: 'local' })
+                    setIsAuthenticated(false)
+                    setIsShopUser(false)
+                    setUserEmail('')
+                    setUserName('')
+                    setUserPoints(0)
+                    setUserAvatarUrl(null)
+                    setShopName('')
+                    setUserPhone('')
+                    setUserId(null)
+                    clearTimeout(authTimeout)
+                    setAuthLoading(false)
+                    initialAuthCheckDoneRef.current = true
+                    return
+                }
+
+                // User exists and is valid
+                if (user && !authError) {
+                    console.log('🔐 User session validated with server')
+                    setIsAuthenticated(true)
+                    setUserEmail(user.email || '')
+                    setUserId(user.id)
+                    setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
+                    
+                    // Fetch profile data
                     console.log('🔐 User found, fetching profile data...')
                     
-                    // Check if user is from SHOP organization with timeout
                     try {
-                        const profilePromise = checkUserOrganization(user.id)
-                        
-                        // Handle late arrival of profile data (if timeout occurs first)
-                        profilePromise.then((result: any) => {
-                            if (result && result.success) {
-                                console.log('🔐 Late profile data received:', result)
-                                setIsShopUser(result.isShop)
-                                setUserName(result.fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                                setUserAvatarUrl(result.avatarUrl)
-                                setShopName(result.orgName)
-                                setUserPhone(result.phone)
-                                setNewName(result.fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                                setNewPhone(result.phone)
-                                if (result.isShop) {
-                                    setUserPoints(result.pointsBalance)
-                                }
-                            }
-                        }).catch(err => console.error('Background profile fetch error:', err))
-
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Profile fetch timeout')), 15000)
-                        )
-                        
-                        const profileResult = await Promise.race([profilePromise, timeoutPromise]) as any
+                        const profileResult = await checkUserOrganization(user.id)
                         const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid } = profileResult
                         
-                        // If session was invalid (401), clear auth state
                         if (sessionInvalid) {
                             console.log('🔐 Session was invalid, clearing auth state')
                             await supabase.auth.signOut()
@@ -549,19 +626,12 @@ export default function PremiumLoyaltyTemplate({
                             setShopName('')
                             setUserPhone('')
                             setUserId(null)
+                            initialAuthCheckDoneRef.current = true
                             return
                         }
                         
-                        // Set authenticated status immediately if we have a valid Supabase session
-                        // Don't wait for profile fetch to complete
-                        setIsAuthenticated(true)
-                        setUserEmail(user.email || '')
-                        setUserId(user.id)
-                        
                         if (success) {
                             console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
-                            
-                            console.log('🔐 Setting isShopUser =', isShop)
                             setIsShopUser(isShop)
                             setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                             setUserAvatarUrl(avatarUrl)
@@ -570,21 +640,17 @@ export default function PremiumLoyaltyTemplate({
                             setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             
-                            // Set points balance from API (already fetched for shop users)
                             if (isShop) {
                                 console.log('🔐 Setting shop user points balance:', pointsBalance)
                                 setUserPoints(pointsBalance)
                             }
                         } else {
-                            // Profile fetch failed, but user has valid session - show basic info
-                            console.warn('🔐 Profile fetch failed, but keeping user authenticated with basic info')
+                            console.warn('🔐 Profile fetch failed, using basic info')
                             setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
                             setIsShopUser(false)
                         }
                     } catch (profileError) {
-                        console.error('🔐 Profile fetch error/timeout:', profileError)
-                        // Keep user authenticated with basic info - don't sign them out
-                        console.log('🔐 Keeping user authenticated despite profile fetch error')
+                        console.error('🔐 Profile fetch error:', profileError)
                         setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
                         setIsShopUser(false)
                     }
@@ -596,37 +662,60 @@ export default function PremiumLoyaltyTemplate({
             } finally {
                 clearTimeout(authTimeout)
                 setAuthLoading(false)
+                initialAuthCheckDoneRef.current = true
+                console.log('🔐 Initial auth check completed - onAuthStateChange now active')
             }
         }
+        
+        // Run initial auth check first
         checkAuth()
         
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log('🔐 Auth state changed:', event, '| Has session:', !!session?.user)
-            
-            if (session?.user) {
-                // User has valid session - set authenticated immediately
-                setIsAuthenticated(true)
-                setUserEmail(session.user.email || '')
-                setUserId(session.user.id)
+        // IMPORTANT: Set up auth listener AFTER a small delay to ensure initial check starts first
+        // This prevents race conditions where onAuthStateChange fires before checkAuth completes
+        const setupAuthListener = () => {
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+                console.log('🔐 Auth state changed:', event, '| Has session:', !!session?.user, '| Initial check done:', initialAuthCheckDoneRef.current)
                 
-                // Skip profile fetch if already in progress (e.g., from handleLogin)
-                if (isFetchingProfileRef.current) {
-                    console.log('🔐 Profile fetch already in progress, skipping onAuthStateChange fetch')
+                // CRITICAL: Skip ALL events until initial auth check is complete
+                if (!initialAuthCheckDoneRef.current) {
+                    console.log('🔐 Skipping auth state change - initial check not done yet')
                     return
                 }
                 
-                // Try to fetch profile info with retry mechanism
-                let profileFetched = false
-                let retries = 0
-                const maxRetries = 3
+                // Skip INITIAL_SESSION - this is just the first sync on page load
+                if (event === 'INITIAL_SESSION') {
+                    console.log('🔐 Skipping INITIAL_SESSION - already handled by checkAuth')
+                    return
+                }
                 
-                while (!profileFetched && retries < maxRetries) {
+                // Only process SIGNED_IN and SIGNED_OUT events to avoid duplicate fetches
+                if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT') {
+                    console.log('🔐 Skipping non-essential auth event:', event)
+                    return
+                }
+                
+                if (session?.user && event === 'SIGNED_IN') {
+                    console.log('🔐 Processing SIGNED_IN event')
+                    // User just signed in - set authenticated immediately
+                    setIsAuthenticated(true)
+                    setUserEmail(session.user.email || '')
+                    setUserId(session.user.id)
+                    
+                    // Mark active session
+                    sessionStorage.setItem('serapod_active_session', 'logged_in')
+                    
+                    // Skip profile fetch if already in progress
+                    if (isFetchingProfileRef.current) {
+                        console.log('🔐 Profile fetch already in progress, skipping')
+                        return
+                    }
+                    
+                    // Fetch profile
                     try {
                         const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(session.user.id)
                         
                         if (success) {
-                            console.log('🔐 Profile fetched successfully on attempt', retries + 1)
+                            console.log('🔐 Profile fetched on SIGNED_IN')
                             setIsShopUser(isShop)
                             setUserName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setUserAvatarUrl(avatarUrl)
@@ -635,47 +724,39 @@ export default function PremiumLoyaltyTemplate({
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             
-                            // Set points balance from API (already fetched for shop users)
                             if (isShop) {
                                 setUserPoints(pointsBalance)
                             }
-                            profileFetched = true
-                        } else {
-                            retries++
-                            if (retries < maxRetries) {
-                                console.warn(`🔐 Profile fetch failed, retrying (${retries}/${maxRetries})...`)
-                                await new Promise(resolve => setTimeout(resolve, 1000 * retries))
-                            }
                         }
                     } catch (error) {
-                        retries++
-                        console.error(`🔐 Profile fetch error on attempt ${retries}:`, error)
-                        if (retries < maxRetries) {
-                            await new Promise(resolve => setTimeout(resolve, 1000 * retries))
-                        }
+                        console.error('🔐 Profile fetch error on auth change:', error)
                     }
-                }
-                
-                if (!profileFetched) {
-                    console.warn('🔐 All profile fetch attempts failed - showing basic info only')
-                    setUserName(session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User')
+                } else if (event === 'SIGNED_OUT') {
+                    console.log('🔐 Processing SIGNED_OUT event')
+                    // User signed out - clear all state
+                    sessionStorage.removeItem('serapod_active_session')
+                    setIsAuthenticated(false)
                     setIsShopUser(false)
+                    setUserEmail('')
+                    setUserName('')
+                    setUserPoints(0)
+                    setUserAvatarUrl(null)
+                    setShopName('')
+                    setUserPhone('')
+                    setUserId(null)
                 }
-            } else {
-                setIsAuthenticated(false)
-                setIsShopUser(false)
-                setUserEmail('')
-                setUserName('')
-                setUserPoints(0)
-                setUserAvatarUrl(null)
-                setShopName('')
-                setUserPhone('')
-                setUserId(null)
-            }
-        })
+            })
+            
+            return subscription
+        }
         
-        return () => subscription.unsubscribe()
-    }, [supabase])
+        // Set up the auth listener
+        const subscription = setupAuthListener()
+        
+        return () => {
+            subscription.unsubscribe()
+        }
+    }, [supabase, qrCode])
 
     // Show genuine product verified animation on page load
     useEffect(() => {
@@ -725,6 +806,62 @@ export default function PremiumLoyaltyTemplate({
             fetchProducts()
         }
     }, [activeTab, isLive, orgId])
+
+    // Ensure profile state is fresh whenever user opens Profile tab (handles stale/expired sessions)
+    useEffect(() => {
+        const refreshProfileIfNeeded = async () => {
+            if (activeTab !== 'profile') return
+
+            // If not authenticated, show login form
+            if (!isAuthenticated) {
+                setShowLoginForm(true)
+                return
+            }
+
+            if (!userId) return
+
+            // Avoid duplicate / overly frequent fetches (5s cooldown)
+            const now = Date.now()
+            if (isFetchingProfileRef.current) return
+            if (now - lastProfileRefreshRef.current < 5000) return
+
+            isFetchingProfileRef.current = true
+            try {
+                const profile = await checkUserOrganization(userId, true)
+                lastProfileRefreshRef.current = Date.now()
+
+                if (!profile.success || profile.sessionInvalid) {
+                    await supabase.auth.signOut()
+                    setIsAuthenticated(false)
+                    setIsShopUser(false)
+                    setUserEmail('')
+                    setUserName('')
+                    setUserPoints(0)
+                    setUserAvatarUrl(null)
+                    setShopName('')
+                    setUserPhone('')
+                    setUserId(null)
+                    setShowLoginForm(true)
+                    return
+                }
+
+                setIsShopUser(profile.isShop)
+                setUserName(profile.fullName || userName)
+                setUserAvatarUrl(profile.avatarUrl)
+                setShopName(profile.orgName || shopName)
+                setUserPhone(profile.phone || userPhone)
+                if (profile.isShop) {
+                    setUserPoints(profile.pointsBalance)
+                }
+            } catch (err) {
+                console.error('🔐 Profile refresh on profile tab failed:', err)
+            } finally {
+                isFetchingProfileRef.current = false
+            }
+        }
+
+        refreshProfileIfNeeded()
+    }, [activeTab, isAuthenticated, userId, supabase, userName, shopName, userPhone])
 
     // Check QR status function - reusable for multiple calls
     const checkQrStatusFromApi = async (): Promise<{ isLuckyDrawEntered: boolean, isPointsCollected: boolean }> => {
@@ -1137,8 +1274,24 @@ export default function PremiumLoyaltyTemplate({
                     timeoutPromise
                 ]) as any
 
-                if (error) throw error
+                if (error) {
+                    const message = (error.message || '').toLowerCase()
+                    if (message.includes('invalid login credentials')) {
+                        setLoginError('Incorrect email/phone or password. Please try again.')
+                    } else if (message.includes('timeout')) {
+                        setLoginError('Login took too long. Please check your connection and try again.')
+                    } else {
+                        setLoginError(error.message || 'Login failed. Please try again.')
+                    }
+                    setLoginLoading(false)
+                    return
+                }
+
                 console.log('🔐 Sign in successful, user:', data.user?.email)
+                
+                // IMPORTANT: Mark this as an active session so it persists within this browser session
+                sessionStorage.setItem('serapod_active_session', 'logged_in')
+                
                 setShowLoginForm(false)
                 // Clear form after successful login
                 setLoginEmail('')
@@ -1203,18 +1356,30 @@ export default function PremiumLoyaltyTemplate({
             setLoginError('')
             setShowLoginForm(false)
             
+            // Call server action to clear cookies
+            await logoutConsumer()
+
             // Then sign out from Supabase (with timeout)
             const signOutPromise = supabase.auth.signOut()
             const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000))
             await Promise.race([signOutPromise, timeoutPromise])
             
-            // Clear any cached session data
+            // Clear any cached session data (both localStorage AND sessionStorage)
             if (typeof window !== 'undefined') {
                 // Clear localStorage keys related to Supabase
-                const keysToRemove = Object.keys(localStorage).filter(key => 
+                const localKeysToRemove = Object.keys(localStorage).filter(key => 
                     key.startsWith('sb-') || key.includes('supabase')
                 )
-                keysToRemove.forEach(key => localStorage.removeItem(key))
+                localKeysToRemove.forEach(key => localStorage.removeItem(key))
+                
+                // Also clear sessionStorage to prevent stale session issues
+                const sessionKeysToRemove = Object.keys(sessionStorage).filter(key => 
+                    key.startsWith('sb-') || key.includes('supabase')
+                )
+                sessionKeysToRemove.forEach(key => sessionStorage.removeItem(key))
+                
+                // IMPORTANT: Remove the active session marker so next QR scan is fresh
+                sessionStorage.removeItem('serapod_active_session')
             }
             
             console.log('🔐 Logged out successfully')
@@ -1327,25 +1492,42 @@ export default function PremiumLoyaltyTemplate({
         setPasswordSuccess(false)
         
         try {
-            // First verify current password by attempting re-auth
-            const { error: signInError } = await supabase.auth.signInWithPassword({
+            console.log('🔐 Starting password change...')
+            
+            // First verify current password by attempting re-auth with timeout
+            const signInPromise = supabase.auth.signInWithPassword({
                 email: userEmail,
                 password: currentPassword
             })
+            
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Password verification timeout')), 10000)
+            )
+            
+            const { error: signInError } = await Promise.race([signInPromise, timeoutPromise]) as any
             
             if (signInError) {
                 throw new Error('Current password is incorrect')
             }
             
-            // Update password
-            const { error: updateError } = await supabase.auth.updateUser({
+            console.log('🔐 Current password verified, updating...')
+            
+            // Update password with timeout
+            const updatePromise = supabase.auth.updateUser({
                 password: newPassword
             })
+            
+            const updateTimeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Password update timeout')), 10000)
+            )
+            
+            const { error: updateError } = await Promise.race([updatePromise, updateTimeoutPromise]) as any
             
             if (updateError) {
                 throw new Error(updateError.message)
             }
             
+            console.log('✅ Password changed successfully')
             setPasswordSuccess(true)
             setCurrentPassword('')
             setNewPassword('')
@@ -1356,7 +1538,7 @@ export default function PremiumLoyaltyTemplate({
             setTimeout(() => setPasswordSuccess(false), 3000)
             
         } catch (error: any) {
-            console.error('Error changing password:', error)
+            console.error('❌ Error changing password:', error)
             setPasswordError(error.message || 'Failed to change password')
         } finally {
             setChangingPassword(false)
@@ -1468,43 +1650,63 @@ export default function PremiumLoyaltyTemplate({
         setPointsError('')
 
         try {
+            console.log('🔐 handleCollectPoints - Starting...')
             let emailToUse = shopId
             
             // Check if input looks like a phone number (doesn't contain @)
             if (!shopId.includes('@')) {
+                console.log('📱 Phone detected, looking up email...')
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(shopId)
                 
                 // Use the RPC function to find the email associated with this phone number
-                // Add retry logic for better reliability on mobile networks
+                // Add retry logic with timeout
                 let userEmailData = null
                 let lookupError = null
                 
                 for (let i = 0; i < 3; i++) {
                     try {
-                        const result = await supabase
+                        console.log(`📱 Phone lookup attempt ${i+1}...`)
+                        
+                        const rpcPromise = supabase
                             .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
+                        
+                        // Increase timeout to 10 seconds (was 5s which is too short)
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Phone lookup timed out. Please try again.')), 10000)
+                        )
+                        
+                        const result = await Promise.race([rpcPromise, timeoutPromise]) as any
                         
                         if (!result.error) {
                             userEmailData = result.data
                             lookupError = null
+                            console.log('✅ Phone lookup successful')
                             break
                         }
                         
                         lookupError = result.error
                         console.warn(`Phone lookup attempt ${i+1} failed:`, result.error)
-                    } catch (err) {
+                    } catch (err: any) {
                         console.warn(`Phone lookup attempt ${i+1} exception:`, err)
-                        lookupError = err as any
+                        lookupError = err
+                        
+                        // If it's a timeout error, show user-friendly message
+                        if (err?.message?.includes('timed out')) {
+                            // Continue to retry
+                        }
                     }
                     
                     // Wait before retry if not the last attempt
-                    if (i < 2) await new Promise(resolve => setTimeout(resolve, 1000))
+                    if (i < 2) await new Promise(resolve => setTimeout(resolve, 1500))
                 }
                 
                 if (lookupError) {
-                    console.error('Phone lookup error after retries:', lookupError)
-                    setPointsError('Error verifying phone number. Please check your connection and try again.')
+                    console.error('❌ Phone lookup error after retries:', lookupError)
+                    const errorMsg = lookupError?.message?.includes('timed out') 
+                        ? 'Connection timed out. Please check your internet connection and try again.'
+                        : 'Error verifying phone number. Please check your connection and try again.'
+                    setPointsError(errorMsg)
                     setCollectingPoints(false)
                     return
                 }
@@ -1530,6 +1732,7 @@ export default function PremiumLoyaltyTemplate({
                 emailToUse = userEmail
             }
 
+            console.log('📡 Calling collect points API...')
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
 
@@ -2085,8 +2288,11 @@ export default function PremiumLoyaltyTemplate({
                         <div className="mt-4">
                             <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                                 <div 
-                                    className="h-full bg-yellow-400 rounded-full transition-all duration-[2000ms] ease-out"
-                                    style={{ width: showPointsAnimation ? `${Math.min((userPoints / 50000) * 100, 100)}%` : '0%' }}
+                                    className="h-full bg-yellow-400 rounded-full transition-all ease-out"
+                                    style={{ 
+                                        width: showPointsAnimation ? `${Math.min((userPoints / 50000) * 100, 100)}%` : '0%',
+                                        transitionDuration: '2000ms'
+                                    }}
                                 />
                             </div>
                             <div className="flex justify-between mt-2 text-xs text-white/60">
@@ -2445,7 +2651,7 @@ export default function PremiumLoyaltyTemplate({
                                     const remaining = gift.total_quantity === 0 
                                         ? 'Unlimited' 
                                         : gift.total_quantity - gift.claimed_quantity
-                                    const isAvailable = gift.total_quantity === 0 || remaining > 0
+                                    const isAvailable = gift.total_quantity === 0 || (typeof remaining === 'number' && remaining > 0)
                                     
                                     return (
                                         <div key={gift.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
@@ -3256,11 +3462,11 @@ export default function PremiumLoyaltyTemplate({
                 qrCodeId: qrCodeDbId 
             })
 
-            const { data, error } = await supabase.rpc('play_scratch_card_turn', {
+            const { data, error } = await supabase.rpc('play_scratch_card_turn' as any, {
                 p_journey_config_id: config.id,
                 p_consumer_phone: phone,
                 p_qr_code_id: qrCodeDbId // Pass the QR code ID for per-QR limit tracking
-            })
+            }) as { data: any, error: any }
 
             console.log('Scratch card RPC response:', { data, error })
 
