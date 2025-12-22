@@ -12,6 +12,14 @@ import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
 
+interface Bank {
+  id: string
+  short_name: string
+  min_account_length: number
+  max_account_length: number
+  is_numeric_only: boolean
+}
+
 // Image compression utility for avatars
 // Avatars are displayed very small (40-80px), so we aggressively compress to ~10KB
 const compressImage = (file: File): Promise<File> => {
@@ -97,7 +105,14 @@ export default function UserDialogNew({
   onSave
 }: UserDialogNewProps) {
   const { supabase } = useSupabaseAuth()
-  const [formData, setFormData] = useState<Partial<User> & { password?: string; confirmPassword?: string }>(
+  const [banks, setBanks] = useState<Bank[]>([])
+  const [formData, setFormData] = useState<Partial<User> & { 
+    password?: string; 
+    confirmPassword?: string;
+    bank_id?: string;
+    bank_account_number?: string;
+    bank_account_holder_name?: string;
+  }>(
     user || {
       email: '',
       full_name: '',
@@ -107,7 +122,10 @@ export default function UserDialogNew({
       role_code: '',
       organization_id: '',
       is_active: true,
-      avatar_url: null
+      avatar_url: null,
+      bank_id: '',
+      bank_account_number: '',
+      bank_account_holder_name: ''
     }
   )
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null)
@@ -130,6 +148,29 @@ export default function UserDialogNew({
 
   // Filter roles based on current user's role level
   const availableRoles = roles.filter(role => role.role_level >= currentUserRoleLevel)
+
+  // Check if selected organization is a Shop
+  const selectedOrg = organizations.find(o => o.id === formData.organization_id)
+  const selectedOrgIsShop = selectedOrg?.org_type_code === 'SHOP'
+
+  // Fetch banks
+  useEffect(() => {
+    const fetchBanks = async () => {
+      const { data, error } = await supabase
+        .from('msia_banks')
+        .select('*')
+        .eq('is_active', true)
+        .order('short_name')
+      
+      if (data) {
+        setBanks(data)
+      }
+    }
+    
+    if (open) {
+      fetchBanks()
+    }
+  }, [open, supabase])
 
   // Check if email exists in database
   const checkEmailAvailability = async (email: string) => {
@@ -280,7 +321,10 @@ export default function UserDialogNew({
           role_code: '',
           organization_id: '',
           is_active: true,
-          avatar_url: null
+          avatar_url: null,
+          bank_id: '',
+          bank_account_number: '',
+          bank_account_holder_name: ''
         })
         setAvatarPreview(null)
       }
@@ -460,6 +504,26 @@ export default function UserDialogNew({
 
     if (!user && formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match'
+    }
+
+    // Validate Bank Account for Shop
+    if (selectedOrgIsShop) {
+      if (formData.bank_id) {
+        const selectedBank = banks.find(b => b.id === formData.bank_id)
+        if (selectedBank) {
+          if (formData.bank_account_number) {
+            if (selectedBank.is_numeric_only && !/^\d+$/.test(formData.bank_account_number)) {
+              newErrors.bank_account_number = 'Account number must contain digits only'
+            }
+            if (formData.bank_account_number.length < selectedBank.min_account_length) {
+              newErrors.bank_account_number = `Account number must be at least ${selectedBank.min_account_length} digits`
+            }
+            if (formData.bank_account_number.length > selectedBank.max_account_length) {
+              newErrors.bank_account_number = `Account number must be at most ${selectedBank.max_account_length} digits`
+            }
+          }
+        }
+      }
     }
 
     // Validate password reset for existing users (Super Admin only)
@@ -803,6 +867,68 @@ export default function UserDialogNew({
               </div>
             </div>
           </div>
+
+          {/* Bank Account (Shop Only) */}
+          {selectedOrgIsShop && (
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="text-lg font-semibold text-gray-900">Bank Account</h3>
+              <p className="text-sm text-gray-500">Enter bank details for this shop.</p>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bank_account_holder_name">
+                    Full Name (Account Holder)
+                  </Label>
+                  <Input
+                    id="bank_account_holder_name"
+                    placeholder="e.g., ALI BIN ABU"
+                    value={formData.bank_account_holder_name || ''}
+                    onChange={(e) => handleInputChange('bank_account_holder_name', e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_id">
+                      Bank Name
+                    </Label>
+                    <Select 
+                      value={formData.bank_id || ''} 
+                      onValueChange={(value) => handleInputChange('bank_id', value)}
+                      disabled={isSaving}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Bank" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {banks.map(bank => (
+                          <SelectItem key={bank.id} value={bank.id}>
+                            {bank.short_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_account_number">
+                      Account Number
+                    </Label>
+                    <Input
+                      id="bank_account_number"
+                      placeholder="e.g., 1234567890"
+                      value={formData.bank_account_number || ''}
+                      onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
+                      disabled={isSaving}
+                      className={errors.bank_account_number ? 'border-red-500' : ''}
+                    />
+                    {errors.bank_account_number && <p className="text-xs text-red-500">{errors.bank_account_number}</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Password Reset (Super Admin only - for existing users) */}
           {user && isSuperAdmin && (

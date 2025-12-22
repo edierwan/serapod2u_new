@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone } = body
+    const { userId, full_name, phone, bank_id, bank_account_number, bank_account_holder_name } = body
 
     // Verify user is updating their own profile
     if (authUser.id !== userId) {
@@ -159,6 +159,69 @@ export async function POST(request: NextRequest) {
         
         updateData.phone = null
         updateData.phone_verified_at = null
+      }
+    }
+
+    // Handle Bank Details Update (for Shop users)
+    if (bank_id !== undefined || bank_account_number !== undefined || bank_account_holder_name !== undefined) {
+      // Get user's organization
+      const { data: userProfile, error: userError } = await adminClient
+        .from('users')
+        .select('organization_id')
+        .eq('id', userId)
+        .single()
+      
+      if (userProfile?.organization_id) {
+        // Check if organization is a SHOP
+        const { data: orgData } = await adminClient
+          .from('organizations')
+          .select('org_type_code')
+          .eq('id', userProfile.organization_id)
+          .single()
+        
+        if (orgData?.org_type_code === 'SHOP') {
+          const orgUpdateData: any = {}
+          
+          // If bank_id is provided, we need to fetch the bank name
+          if (bank_id) {
+            const { data: bankData } = await adminClient
+              .from('msia_banks')
+              .select('short_name')
+              .eq('id', bank_id)
+              .single()
+            
+            if (bankData) {
+              orgUpdateData.bank_name = bankData.short_name
+            }
+          }
+          
+          // Note: We don't save bank_id to organizations table as it doesn't have that column
+          // We only save the bank_name which is what the admin view uses
+          
+          if (bank_account_number !== undefined) orgUpdateData.bank_account_number = bank_account_number
+          if (bank_account_holder_name !== undefined) orgUpdateData.bank_account_holder_name = bank_account_holder_name
+          
+          if (Object.keys(orgUpdateData).length > 0) {
+            const { error: orgUpdateError } = await adminClient
+              .from('organizations')
+              .update(orgUpdateData)
+              .eq('id', userProfile.organization_id)
+            
+            if (orgUpdateError) {
+              console.error('Error updating organization bank details:', orgUpdateError)
+              // Return error if it's a validation error
+              if (orgUpdateError.message.includes('organizations_bank_account_valid_chk')) {
+                return NextResponse.json(
+                  { success: false, error: 'Invalid bank account number for the selected bank.' },
+                  { status: 400 }
+                )
+              }
+              // We continue to update user profile even if org update fails, but log it
+            } else {
+              console.log('✅ Organization bank details updated')
+            }
+          }
+        }
       }
     }
 

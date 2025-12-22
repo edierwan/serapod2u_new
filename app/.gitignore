@@ -54,3 +54,14 @@ debug-*.md
 # *.md
 # !README.md
 # !docs/**/*.md
+
+# Local only files
+*.log
+*.csv
+*.xlsx
+playground/
+local_test/
+sql_backup/
+experimental/
+tmp/
+

@@ -44,10 +44,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  CreditCard,
   Edit,
   Filter,
   ListChecks,
   Loader2,
+  User,
   Package,
   PlusCircle,
   Search,
@@ -63,11 +65,12 @@ import {
   Phone,
   Mail,
   Calendar,
-  User,
   CheckCircle,
   XCircle,
   AlertCircle,
-  Truck
+  Truck,
+  MessageSquare,
+  RefreshCw
 } from "lucide-react"
 import { PointsConfigurationSettings } from './PointsConfigurationSettings'
 import { CategorySettingsDialog } from './CategorySettingsDialog'
@@ -146,9 +149,17 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
-  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "settings" | "redemptions">("rewards")
+  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "settings" | "redemptions" | "feedback">("rewards")
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
+  
+  // Feedback states
+  const [feedback, setFeedback] = useState<any[]>([])
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [feedbackPage, setFeedbackPage] = useState(1)
+  const [feedbackTotalPages, setFeedbackTotalPages] = useState(1)
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<string>("all")
+  const FEEDBACK_PAGE_SIZE = 10
   
   // Redemption history states
   const [redemptions, setRedemptions] = useState<any[]>([])
@@ -249,6 +260,57 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       loadRedemptions()
     }
   }, [activeTab])
+
+  // Load feedback when switching to feedback tab
+  useEffect(() => {
+    if (activeTab === 'feedback') {
+      loadFeedback()
+    }
+  }, [activeTab])
+
+  async function loadFeedback(page = 1) {
+    setFeedbackLoading(true)
+    try {
+      const response = await fetch(`/api/admin/feedback?page=${page}&limit=${FEEDBACK_PAGE_SIZE}&status=${feedbackStatusFilter}`)
+      const result = await response.json()
+
+      if (result.success) {
+        setFeedback(result.feedback || [])
+        setFeedbackTotalPages(result.totalPages || 1)
+        setFeedbackPage(page)
+      } else {
+        console.error("Failed to load feedback:", result.error)
+      }
+    } catch (error) {
+      console.error("Error loading feedback:", error)
+    } finally {
+      setFeedbackLoading(false)
+    }
+  }
+
+  async function updateFeedbackStatus(id: string, newStatus: string) {
+    try {
+      const response = await fetch('/api/admin/feedback', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id, status: newStatus }),
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update status')
+      }
+
+      // Reload feedback
+      loadFeedback(feedbackPage)
+    } catch (error) {
+      console.error("Error updating feedback status:", error)
+      alert("Failed to update status")
+    }
+  }
 
   async function loadShopUsers() {
     setUsersLoading(true)
@@ -734,7 +796,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "settings" | "redemptions")} className="space-y-6" suppressHydrationWarning>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "settings" | "redemptions" | "feedback")} className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="rewards" className="gap-2">
             <Package className="h-4 w-4" /> Manage Rewards
@@ -744,6 +806,9 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           </TabsTrigger>
           <TabsTrigger value="redemptions" className="gap-2">
             <Gift className="h-4 w-4" /> Redemption History
+          </TabsTrigger>
+          <TabsTrigger value="feedback" className="gap-2">
+            <MessageSquare className="h-4 w-4" /> User Feedback
           </TabsTrigger>
           <TabsTrigger value="settings" className="gap-2">
             <Settings className="h-4 w-4" /> Point Settings
@@ -1383,6 +1448,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                     <span className="font-medium">{redemption.shop_name}</span>
                                   </div>
                                   <div className="flex items-center gap-2 text-muted-foreground">
+                                    <User className="h-4 w-4" />
+                                    <span>{redemption.staff_name || 'Unknown User'}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-muted-foreground">
                                     <Phone className="h-4 w-4" />
                                     <span>{redemption.shop_phone}</span>
                                   </div>
@@ -1401,6 +1470,26 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Bank Details for Cashback */}
+                                {redemption.reward_code?.toLowerCase().includes('cashback') && (
+                                  <div className="mt-3 p-3 bg-blue-50 rounded-md border border-blue-100 text-xs space-y-2">
+                                    <div className="flex items-center gap-2 text-blue-800 font-semibold border-b border-blue-200 pb-1">
+                                      <CreditCard className="h-3 w-3" />
+                                      <span>Bank Details</span>
+                                    </div>
+                                    <div className="grid grid-cols-[80px_1fr] gap-y-1 gap-x-2">
+                                      <span className="text-blue-600">Bank:</span>
+                                      <span className="font-medium text-blue-900">{redemption.shop_bank_name || '-'}</span>
+                                      
+                                      <span className="text-blue-600">Account:</span>
+                                      <span className="font-medium text-blue-900">{redemption.shop_bank_account_number || '-'}</span>
+                                      
+                                      <span className="text-blue-600">Holder:</span>
+                                      <span className="font-medium text-blue-900">{redemption.shop_bank_account_holder_name || '-'}</span>
+                                    </div>
+                                  </div>
+                                )}
 
                                 <div className="rounded-md bg-muted p-2">
                                   <p className="text-sm">
@@ -1523,6 +1612,145 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </TabsContent>
 
         {/* POINT SETTINGS TAB */}
+        {/* USER FEEDBACK TAB */}
+        <TabsContent value="feedback" className="space-y-4">
+          <Card>
+            <CardHeader className="gap-4 border-b border-border/50 pb-6">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <MessageSquare className="h-4 w-4" /> User Feedback
+                  </CardTitle>
+                  <CardDescription>Monitor and respond to user feedback and inquiries.</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select 
+                    value={feedbackStatusFilter} 
+                    onValueChange={(val) => {
+                      setFeedbackStatusFilter(val)
+                      // Trigger reload with new filter
+                      setTimeout(() => loadFeedback(1), 0)
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="reviewed">Reviewed</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="icon" onClick={() => loadFeedback(feedbackPage)}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {feedbackLoading ? (
+                <div className="flex items-center justify-center py-16 text-muted-foreground">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading feedback...
+                </div>
+              ) : feedback.length === 0 ? (
+                <div className="py-16 text-center text-sm text-muted-foreground">
+                  No feedback found.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-border text-sm">
+                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">User</th>
+                        <th className="px-4 py-3">Subject</th>
+                        <th className="px-4 py-3">Message</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {feedback.map((item) => (
+                        <tr key={item.id} className="hover:bg-muted/40">
+                          <td className="px-4 py-4 whitespace-nowrap text-muted-foreground">
+                            {new Date(item.created_at).toLocaleDateString()}
+                            <div className="text-xs">{new Date(item.created_at).toLocaleTimeString()}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="font-medium">{item.consumer_name || 'Anonymous'}</div>
+                            <div className="text-xs text-muted-foreground">{item.consumer_phone}</div>
+                            {item.consumer_email && <div className="text-xs text-muted-foreground">{item.consumer_email}</div>}
+                          </td>
+                          <td className="px-4 py-4 font-medium">
+                            {item.title}
+                          </td>
+                          <td className="px-4 py-4 max-w-md">
+                            <div className="line-clamp-3">{item.message}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <Badge variant={
+                              item.status === 'resolved' ? 'default' : 
+                              item.status === 'reviewed' ? 'secondary' : 'outline'
+                            } className={
+                              item.status === 'resolved' ? 'bg-green-600' : 
+                              item.status === 'reviewed' ? 'bg-blue-600 text-white' : 'bg-yellow-500 text-white'
+                            }>
+                              {item.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-4">
+                            <Select 
+                              value={item.status} 
+                              onValueChange={(val) => updateFeedbackStatus(item.id, val)}
+                            >
+                              <SelectTrigger className="h-8 w-[110px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="reviewed">Reviewed</SelectItem>
+                                <SelectItem value="resolved">Resolved</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              
+              {/* Pagination */}
+              {feedbackTotalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-border px-4 py-4">
+                  <div className="text-xs text-muted-foreground">
+                    Page {feedbackPage} of {feedbackTotalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => loadFeedback(feedbackPage - 1)}
+                      disabled={feedbackPage <= 1 || feedbackLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4" /> Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => loadFeedback(feedbackPage + 1)}
+                      disabled={feedbackPage >= feedbackTotalPages || feedbackLoading}
+                    >
+                      Next <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="settings" className="space-y-4">
           <PointsConfigurationSettings userProfile={userProfile} />
         </TabsContent>

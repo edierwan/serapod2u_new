@@ -88,17 +88,39 @@ export async function GET(request: NextRequest) {
     // Fetch organization info if organization_id exists
     let isShop = false
     let orgName = ''
+    let bankId = null
+    let bankName = null
+    let bankAccountNumber = null
+    let bankAccountHolderName = null
 
     if (userProfile.organization_id) {
       const { data: orgData, error: orgError } = await supabaseAdmin
         .from('organizations')
-        .select('org_type_code, org_name')
+        .select(`
+          org_type_code, 
+          org_name, 
+          bank_id,
+          bank_account_number, 
+          bank_account_holder_name,
+          msia_banks (
+            id,
+            short_name
+          )
+        `)
         .eq('id', userProfile.organization_id)
         .single()
 
       if (orgData && !orgError) {
         isShop = orgData.org_type_code === 'SHOP'
         orgName = orgData.org_name || ''
+        
+        if (isShop) {
+          bankId = orgData.bank_id
+          // Prefer the joined bank name, fallback to legacy if needed (though we are moving away from it)
+          bankName = (orgData.msia_banks as any)?.short_name || null
+          bankAccountNumber = orgData.bank_account_number
+          bankAccountHolderName = orgData.bank_account_holder_name
+        }
       }
     }
 
@@ -130,6 +152,10 @@ export async function GET(request: NextRequest) {
         organizationId: userProfile.organization_id,
         isShop,
         orgName,
+        bankId,
+        bankName,
+        bankAccountNumber,
+        bankAccountHolderName,
         pointsBalance
       }
     })

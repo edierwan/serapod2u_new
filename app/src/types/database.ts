@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      msia_banks: {
+        Row: {
+          id: string
+          short_name: string
+          full_name: string | null
+          min_account_length: number
+          max_account_length: number
+          is_numeric_only: boolean
+          is_active: boolean
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          short_name: string
+          full_name?: string | null
+          min_account_length?: number
+          max_account_length?: number
+          is_numeric_only?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          short_name?: string
+          full_name?: string | null
+          min_account_length?: number
+          max_account_length?: number
+          is_numeric_only?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      },
       scratch_card_plays: {
         Row: {
           id: string
@@ -2298,6 +2334,9 @@ export type Database = {
         Row: {
           address: string | null
           address_line2: string | null
+          bank_account_holder_name: string | null
+          bank_account_number: string | null
+          bank_id: string | null
           city: string | null
           contact_email: string | null
           contact_name: string | null
@@ -2331,6 +2370,9 @@ export type Database = {
         Insert: {
           address?: string | null
           address_line2?: string | null
+          bank_account_holder_name?: string | null
+          bank_account_number?: string | null
+          bank_id?: string | null
           city?: string | null
           contact_email?: string | null
           contact_name?: string | null
@@ -2364,6 +2406,9 @@ export type Database = {
         Update: {
           address?: string | null
           address_line2?: string | null
+          bank_account_holder_name?: string | null
+          bank_account_number?: string | null
+          bank_id?: string | null
           city?: string | null
           contact_email?: string | null
           contact_name?: string | null
@@ -2395,6 +2440,13 @@ export type Database = {
           website?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "organizations_bank_id_fkey"
+            columns: ["bank_id"]
+            isOneToOne: false
+            referencedRelation: "msia_banks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "organizations_created_by_fkey"
             columns: ["created_by"]

@@ -28,6 +28,7 @@ import {
     Zap,
     Package,
     LogIn,
+    CreditCard,
     LogOut,
     Eye,
     EyeOff,
@@ -45,7 +46,9 @@ import {
     TrendingUp,
     Grid3x3,
     List,
-    Ghost
+    Ghost,
+    AlertTriangle,
+    AlertCircle
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { AnnouncementBanner } from '../AnnouncementBanner'
@@ -214,6 +217,7 @@ export default function PremiumLoyaltyTemplate({
     
     // Ref to track if we're currently fetching profile (prevents duplicate fetches)
     const isFetchingProfileRef = useRef(false)
+    const lastProfileFetchTimeRef = useRef(0)
     const lastProfileRefreshRef = useRef(0)
 
     // Game active states
@@ -250,6 +254,24 @@ export default function PremiumLoyaltyTemplate({
             console.error('Error checking active games:', error)
         }
     }
+
+    // Fetch banks
+    useEffect(() => {
+        const fetchBanks = async () => {
+            const { data, error } = await supabase
+                .from('msia_banks')
+                .select('*')
+                .eq('is_active', true)
+                .order('short_name')
+            
+            if (data) {
+                setBanks(data)
+            }
+        }
+        
+        fetchBanks()
+    }, [])
+
     const [showLoginForm, setShowLoginForm] = useState(false)
     const [loginEmail, setLoginEmail] = useState('')
     const [loginPassword, setLoginPassword] = useState('')
@@ -278,11 +300,29 @@ export default function PremiumLoyaltyTemplate({
     const [userId, setUserId] = useState<string | null>(null)
     const [editingName, setEditingName] = useState(false)
     const [editingPhone, setEditingPhone] = useState(false)
+
+    // Bank details state
+    const [bankDetails, setBankDetails] = useState<{
+        bankId: string | null
+        bankName: string | null
+        accountNumber: string | null
+        holderName: string | null
+    }>({ bankId: null, bankName: null, accountNumber: null, holderName: null })
+    const [showBankDetailsModal, setShowBankDetailsModal] = useState(false)
     const [newName, setNewName] = useState('')
     const [newPhone, setNewPhone] = useState('')
     const [savingProfile, setSavingProfile] = useState(false)
     const [profileSaveError, setProfileSaveError] = useState('')
     const [profileSaveSuccess, setProfileSaveSuccess] = useState(false)
+    
+    // Bank Account states
+    const [banks, setBanks] = useState<any[]>([])
+    const [bankId, setBankId] = useState('')
+    const [bankAccountNumber, setBankAccountNumber] = useState('')
+    const [bankAccountHolderName, setBankAccountHolderName] = useState('')
+    const [showBankInfo, setShowBankInfo] = useState(false)
+    const [bankError, setBankError] = useState('')
+    
     // Password change states
     const [showChangePassword, setShowChangePassword] = useState(false)
     const [currentPassword, setCurrentPassword] = useState('')
@@ -298,6 +338,7 @@ export default function PremiumLoyaltyTemplate({
     
     // Genuine product verified animation state
     const [showGenuineVerified, setShowGenuineVerified] = useState(false)
+
     // Points animation state
     const [showPointsAnimation, setShowPointsAnimation] = useState(false)
     const [displayPoints, setDisplayPoints] = useState(0)
@@ -402,6 +443,12 @@ export default function PremiumLoyaltyTemplate({
             return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, duplicate: true }
         }
         
+        // Prevent duplicate fetches if fetched recently (within 2 seconds)
+        if (!force && Date.now() - lastProfileFetchTimeRef.current < 2000) {
+            console.log('🔐 Profile fetched recently, skipping...')
+            return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, duplicate: true }
+        }
+        
         isFetchingProfileRef.current = true
         
         try {
@@ -475,6 +522,9 @@ export default function PremiumLoyaltyTemplate({
                 pointsBalance: profile.pointsBalance
             })
             
+            // Update last fetch time
+            lastProfileFetchTimeRef.current = Date.now()
+            
             return { 
                 success: true,
                 isShop: profile.isShop === true, // Explicit boolean conversion
@@ -483,7 +533,11 @@ export default function PremiumLoyaltyTemplate({
                 avatarUrl: profile.avatarUrl,
                 orgName: profile.orgName || '',
                 phone: profile.phone || '',
-                pointsBalance: profile.pointsBalance || 0
+                pointsBalance: profile.pointsBalance || 0,
+                bankId: profile.bankId || '',
+                bankName: profile.bankName || '',
+                bankAccountNumber: profile.bankAccountNumber || '',
+                bankAccountHolderName: profile.bankAccountHolderName || ''
             }
         } catch (error) {
             console.error('🔐 Error checking user organization:', error)
@@ -612,7 +666,7 @@ export default function PremiumLoyaltyTemplate({
                     
                     try {
                         const profileResult = await checkUserOrganization(user.id)
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid } = profileResult
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
                         
                         if (sessionInvalid) {
                             console.log('🔐 Session was invalid, clearing auth state')
@@ -643,6 +697,10 @@ export default function PremiumLoyaltyTemplate({
                             if (isShop) {
                                 console.log('🔐 Setting shop user points balance:', pointsBalance)
                                 setUserPoints(pointsBalance)
+                                // Set bank details
+                                setBankId(bankId || '')
+                                setBankAccountNumber(bankAccountNumber || '')
+                                setBankAccountHolderName(bankAccountHolderName || '')
                             }
                         } else {
                             console.warn('🔐 Profile fetch failed, using basic info')
@@ -712,7 +770,7 @@ export default function PremiumLoyaltyTemplate({
                     
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance } = await checkUserOrganization(session.user.id)
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
                         
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -726,6 +784,9 @@ export default function PremiumLoyaltyTemplate({
                             
                             if (isShop) {
                                 setUserPoints(pointsBalance)
+                                setBankId(bankId || '')
+                                setBankAccountNumber(bankAccountNumber || '')
+                                setBankAccountHolderName(bankAccountHolderName || '')
                             }
                         }
                     } catch (error) {
@@ -1423,6 +1484,51 @@ export default function PremiumLoyaltyTemplate({
                     }
                 }
                 updateData.phone = newPhone.trim() || null
+            }
+            
+            // Add bank details if shop user
+            if (isShopUser) {
+                // If any bank field is filled, validate all required fields
+                if (bankId || bankAccountNumber || bankAccountHolderName) {
+                    if (!bankId) {
+                        setProfileSaveError('Please select a bank')
+                        setSavingProfile(false)
+                        return
+                    }
+                    if (!bankAccountNumber) {
+                        setProfileSaveError('Please enter account number')
+                        setSavingProfile(false)
+                        return
+                    }
+                    if (!bankAccountHolderName) {
+                        setProfileSaveError('Please enter account holder name')
+                        setSavingProfile(false)
+                        return
+                    }
+
+                    const selectedBank = banks.find(b => b.id === bankId)
+                    if (selectedBank) {
+                        if (selectedBank.is_numeric_only && !/^\d+$/.test(bankAccountNumber)) {
+                            setProfileSaveError('Account number must contain digits only')
+                            setSavingProfile(false)
+                            return
+                        }
+                        if (bankAccountNumber.length < selectedBank.min_account_length) {
+                            setProfileSaveError(`Account number must be at least ${selectedBank.min_account_length} digits`)
+                            setSavingProfile(false)
+                            return
+                        }
+                        if (bankAccountNumber.length > selectedBank.max_account_length) {
+                            setProfileSaveError(`Account number must be at most ${selectedBank.max_account_length} digits`)
+                            setSavingProfile(false)
+                            return
+                        }
+                    }
+                }
+                
+                updateData.bank_id = bankId
+                updateData.bank_account_number = bankAccountNumber
+                updateData.bank_account_holder_name = bankAccountHolderName
             }
             
             if (Object.keys(updateData).length === 0) {
@@ -4342,6 +4448,95 @@ export default function PremiumLoyaltyTemplate({
                         </div>
                     )}
                 </div>
+
+                {/* Bank Account Section (Shop Users Only) */}
+                {isShopUser && (
+                    <div className="bg-transparent">
+                        <button
+                            onClick={() => setShowBankInfo(!showBankInfo)}
+                            className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors bg-white rounded-xl mb-3"
+                        >
+                            <div className="flex items-center gap-3">
+                                <CreditCard className="w-5 h-5 text-gray-600" />
+                                <span className="font-medium text-gray-900">Bank Account</span>
+                            </div>
+                            <ChevronRight className={`w-5 h-5 text-gray-400 transition-transform ${showBankInfo ? 'rotate-90' : ''}`} />
+                        </button>
+
+                        {showBankInfo && (
+                            <div className="bg-gray-50 rounded-xl mb-3 overflow-hidden p-4 space-y-4">
+                                <p className="text-sm text-gray-500 mb-2">Update your shop's bank account details for payouts.</p>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name (Account Holder)</label>
+                                    <Input 
+                                        value={bankAccountHolderName}
+                                        onChange={(e) => setBankAccountHolderName(e.target.value)}
+                                        placeholder="e.g., ALI BIN ABU"
+                                        className="bg-white"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
+                                    <select 
+                                        value={bankId}
+                                        onChange={(e) => setBankId(e.target.value)}
+                                        className="w-full h-10 px-3 rounded-md border border-input bg-white text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    >
+                                        <option value="">Select Bank</option>
+                                        {banks.map(bank => (
+                                            <option key={bank.id} value={bank.id}>{bank.short_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
+                                    <Input 
+                                        value={bankAccountNumber}
+                                        onChange={(e) => setBankAccountNumber(e.target.value)}
+                                        placeholder="e.g., 1234567890"
+                                        className="bg-white"
+                                    />
+                                </div>
+
+                                {profileSaveError && (
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                                        <p className="text-sm text-red-600">{profileSaveError}</p>
+                                    </div>
+                                )}
+
+                                {profileSaveSuccess && (
+                                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
+                                        <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                                        <p className="text-sm text-green-600">Bank details saved successfully!</p>
+                                    </div>
+                                )}
+
+                                <Button 
+                                    onClick={handleSaveProfile}
+                                    disabled={savingProfile}
+                                    className="w-full h-11 font-semibold mt-2"
+                                    style={{ backgroundColor: config.button_color }}
+                                >
+                                    {savingProfile ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save className="w-4 h-4 mr-2" />
+                                            Save Bank Details
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     )
@@ -4697,6 +4892,32 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                             </div>
                         </div>
+
+                        {/* Cashback Bank Info Warning */}
+                        {selectedReward.item_code.toLowerCase().includes('cashback') && (!bankId || !bankAccountNumber || !bankAccountHolderName) && (
+                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
+                                <div className="flex items-start gap-3">
+                                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-medium text-amber-900">Bank Details Required</p>
+                                        <p className="text-xs text-amber-700 leading-relaxed">
+                                            To ensure smooth processing of your cashback claim, please update your bank account information. Missing details may cause delays.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="w-full bg-white border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                                    onClick={() => {
+                                        setShowRedeemConfirm(false)
+                                        setActiveTab('account-settings')
+                                    }}
+                                >
+                                    Update Bank Details
+                                </Button>
+                            </div>
+                        )}
 
                         {redeemError && (
                             <div className="p-3 bg-red-50 border border-red-200 rounded-xl">

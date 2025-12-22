@@ -209,6 +209,35 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
             // Don't throw - continue with other updates
           }
         }
+
+        // Handle Bank Details Update (if provided)
+        if ((userData as any).bank_id || (userData as any).bank_account_number) {
+          try {
+            const bankResponse = await fetch('/api/organization/update-bank-details', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                organizationId: userData.organization_id,
+                bankId: (userData as any).bank_id,
+                bankAccountNumber: (userData as any).bank_account_number,
+                bankAccountHolderName: (userData as any).bank_account_holder_name
+              })
+            })
+            
+            if (!bankResponse.ok) {
+              const errorData = await bankResponse.json()
+              throw new Error(errorData.error || 'Failed to update bank details')
+            }
+          } catch (bankError: any) {
+            console.error('Error updating bank details:', bankError)
+            toast({ 
+              title: 'Bank Details Update Failed', 
+              description: bankError.message || 'Failed to update bank details', 
+              variant: 'destructive' 
+            })
+            // Continue with user update
+          }
+        }
         
         // Handle avatar upload
         if (avatarFile) {
@@ -304,6 +333,34 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
           }
           
           throw new Error(errorMessage)
+        }
+        
+        // Handle Bank Details Update (if provided)
+        if ((userData as any).bank_id || (userData as any).bank_account_number) {
+          try {
+            const bankResponse = await fetch('/api/organization/update-bank-details', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                organizationId: userData.organization_id || userProfile.organization_id,
+                bankId: (userData as any).bank_id,
+                bankAccountNumber: (userData as any).bank_account_number,
+                bankAccountHolderName: (userData as any).bank_account_holder_name
+              })
+            })
+            
+            if (!bankResponse.ok) {
+              const errorData = await bankResponse.json()
+              throw new Error(errorData.error || 'Failed to update bank details')
+            }
+          } catch (bankError: any) {
+            console.error('Error updating bank details:', bankError)
+            toast({ 
+              title: 'Bank Details Update Failed', 
+              description: bankError.message || 'Failed to update bank details', 
+              variant: 'destructive' 
+            })
+          }
         }
         
         // Upload avatar if provided
