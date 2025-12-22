@@ -39,6 +39,7 @@ import {
   Loader2,
   ShieldCheck,
   Sparkles,
+  Star,
   UploadCloud,
   Wand2,
   X
@@ -124,7 +125,15 @@ type RewardFormState = {
   validFrom: string
   validUntil: string
   imageUrl: string
+  additionalImages: string[]
   isActive: boolean
+}
+
+interface ImageItem {
+  id: string
+  url: string
+  file?: File
+  isDefault: boolean
 }
 
 interface AdminRewardEditorProps {
@@ -169,6 +178,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     validFrom: "",
     validUntil: "",
     imageUrl: "",
+    additionalImages: [],
     isActive: true
   })
   const [category, setCategory] = useState<RewardCategory>("other")
@@ -177,8 +187,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   const [loading, setLoading] = useState(mode === "edit")
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [images, setImages] = useState<ImageItem[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [pointValueRM, setPointValueRM] = useState<number>(0)
@@ -240,16 +249,39 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
           validFrom: data.valid_from ? formatDateForInput(data.valid_from) : "",
           validUntil: data.valid_until ? formatDateForInput(data.valid_until) : "",
           imageUrl: data.item_image_url ?? "",
+          additionalImages: (data as any).additional_images ?? [],
           isActive: data.is_active ?? true
         })
         setCategory(deriveCategory(data))
         setRequiresVerification(Boolean(data.max_redemptions_per_consumer && data.max_redemptions_per_consumer <= 1))
         setCodeManuallyEdited(true)
         
-        // Set image preview if URL exists
-        if (data.item_image_url) {
-          setImagePreview(data.item_image_url)
+        // Initialize images state
+        const loadedImages: ImageItem[] = []
+        const additionalImages = (data as any).additional_images as string[] || []
+        
+        // If we have additional_images, use them. Otherwise fallback to item_image_url
+        if (additionalImages.length > 0) {
+            additionalImages.forEach((url, index) => {
+                loadedImages.push({
+                    id: `loaded-${index}`,
+                    url,
+                    isDefault: url === data.item_image_url
+                })
+            })
+            // Ensure one is default if none matched (e.g. url changed)
+            if (!loadedImages.some(img => img.isDefault) && loadedImages.length > 0) {
+                loadedImages[0].isDefault = true
+            }
+        } else if (data.item_image_url) {
+            loadedImages.push({
+                id: 'loaded-default',
+                url: data.item_image_url,
+                isDefault: true
+            })
         }
+        setImages(loadedImages)
+
       } catch (error: any) {
         console.error("Error loading reward:", error)
         toast({
@@ -279,79 +311,106 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   }
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: "Invalid file type",
-        description: "Please select an image file (JPG, PNG, GIF, or WebP).",
-        variant: "destructive"
-      })
-      return
+    if (images.length + files.length > 5) {
+        toast({
+            title: "Too many images",
+            description: "You can only upload a maximum of 5 images.",
+            variant: "destructive"
+        })
+        return
     }
 
-    // Validate file size (5MB max before compression)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: "Image must be less than 5MB.",
-        variant: "destructive"
-      })
-      return
+    const newImages: ImageItem[] = []
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            toast({
+                title: "Invalid file type",
+                description: "Please select an image file (JPG, PNG, GIF, or WebP).",
+                variant: "destructive"
+            })
+            continue
+        }
+
+        // Validate file size (5MB max before compression)
+        if (file.size > 5 * 1024 * 1024) {
+            toast({
+                title: "File too large",
+                description: "Image must be less than 5MB.",
+                variant: "destructive"
+            })
+            continue
+        }
+
+        try {
+            // Compress the image
+            const compressedFile = await compressImage(file)
+            
+            // Create preview
+            const previewUrl = await new Promise<string>((resolve) => {
+                const reader = new FileReader()
+                reader.onloadend = () => resolve(reader.result as string)
+                reader.readAsDataURL(compressedFile)
+            })
+
+            newImages.push({
+                id: `new-${Date.now()}-${i}`,
+                url: previewUrl,
+                file: compressedFile,
+                isDefault: images.length === 0 && i === 0 // First image is default if no images exist
+            })
+
+        } catch (error) {
+            console.error('Image compression failed:', error)
+            toast({
+                title: "Compression failed",
+                description: "Could not process image. Please try a different file.",
+                variant: "destructive"
+            })
+        }
     }
 
-    try {
-      // Compress the image
-      const compressedFile = await compressImage(file)
-      setImageFile(compressedFile)
-
-      // Create preview
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        const previewUrl = reader.result as string
-        setImagePreview(previewUrl)
-        // Update form.imageUrl for live preview
-        updateForm("imageUrl", previewUrl)
-      }
-      reader.readAsDataURL(compressedFile)
-
-      toast({
-        title: "Image ready",
-        description: `Compressed from ${(file.size / 1024).toFixed(0)}KB to ${(compressedFile.size / 1024).toFixed(0)}KB`,
-      })
-    } catch (error) {
-      console.error('Image compression failed:', error)
-      toast({
-        title: "Compression failed",
-        description: "Could not process image. Please try a different file.",
-        variant: "destructive"
-      })
-    }
-  }
-
-  const handleRemoveImage = () => {
-    setImageFile(null)
-    setImagePreview(null)
-    updateForm("imageUrl", "")
+    setImages(prev => [...prev, ...newImages])
+    
+    // Reset input
     if (imageInputRef.current) {
-      imageInputRef.current.value = ''
+        imageInputRef.current.value = ''
     }
   }
 
-  const uploadImageToStorage = async (): Promise<string | null> => {
-    if (!imageFile) return null
+  const handleRemoveImage = (id: string) => {
+    setImages(prev => {
+        const newImages = prev.filter(img => img.id !== id)
+        // If we removed the default image, make the first one default
+        if (prev.find(img => img.id === id)?.isDefault && newImages.length > 0) {
+            newImages[0].isDefault = true
+        }
+        return newImages
+    })
+  }
 
+  const handleSetDefault = (id: string) => {
+    setImages(prev => prev.map(img => ({
+        ...img,
+        isDefault: img.id === id
+    })))
+  }
+
+  const uploadImageToStorage = async (file: File): Promise<string | null> => {
     try {
-      setUploadingImage(true)
-      const fileName = `reward-${userProfile.organizations.id}-${Date.now()}.jpg`
+      const fileName = `reward-${userProfile.organizations.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
 
       // Upload to avatars bucket
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, imageFile, {
-          contentType: imageFile.type,
+        .upload(fileName, file, {
+          contentType: file.type,
           cacheControl: '3600',
           upsert: false
         })
@@ -367,14 +426,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       return `${publicUrl}?v=${Date.now()}`
     } catch (error: any) {
       console.error('Failed to upload image', error)
-      toast({
-        title: "Upload failed",
-        description: error?.message ?? "Could not upload image. Please try again.",
-        variant: "destructive"
-      })
       return null
-    } finally {
-      setUploadingImage(false)
     }
   }
 
@@ -384,13 +436,14 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   const parsedMaxPerConsumer = form.maxPerConsumer.trim() === "" ? null : Number(form.maxPerConsumer)
 
   const previewReward = useMemo(() => {
+    const defaultImage = images.find(img => img.isDefault) || images[0]
     const draft: RedeemItemRow & { point_offer?: number | null } = {
       id: rewardId ?? "preview",
       company_id: userProfile.organizations.id,
       item_code: form.itemCode || "PREVIEW-REWARD",
       item_name: form.itemName || "Reward name",
       item_description: form.description || null,
-      item_image_url: imagePreview || form.imageUrl || null,
+      item_image_url: defaultImage?.url || null,
       points_required: Number.isFinite(parsedPoints) ? parsedPoints : 0,
       point_offer: parsedPointOffer,
       stock_quantity: parsedStock ?? null,
@@ -406,7 +459,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       created_by: userProfile.id
     }
     return enrichReward(draft)
-  }, [form, parsedMaxPerConsumer, parsedPoints, parsedPointOffer, parsedStock, requiresVerification, rewardId, userProfile.id, userProfile.organizations.id])
+  }, [form, parsedMaxPerConsumer, parsedPoints, parsedPointOffer, parsedStock, requiresVerification, rewardId, userProfile.id, userProfile.organizations.id, images])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -444,26 +497,54 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     }
 
     setSaving(true)
+    setUploadingImage(true)
 
-    // Upload image if a new file was selected
-    let finalImageUrl = form.imageUrl.trim() ? form.imageUrl.trim() : null
-    if (imageFile) {
-      const uploadedUrl = await uploadImageToStorage()
-      if (uploadedUrl) {
-        finalImageUrl = uploadedUrl
-      } else {
-        // Upload failed, abort save
+    // Upload images
+    const finalImages: string[] = []
+    let defaultImageUrl: string | null = null
+
+    try {
+        for (const img of images) {
+            let url = img.url
+            if (img.file) {
+                const uploadedUrl = await uploadImageToStorage(img.file)
+                if (uploadedUrl) {
+                    url = uploadedUrl
+                } else {
+                    throw new Error("Failed to upload image")
+                }
+            }
+            finalImages.push(url)
+            if (img.isDefault) {
+                defaultImageUrl = url
+            }
+        }
+        
+        // If no default set but we have images, use the first one
+        if (!defaultImageUrl && finalImages.length > 0) {
+            defaultImageUrl = finalImages[0]
+        }
+
+    } catch (error) {
         setSaving(false)
+        setUploadingImage(false)
+        toast({
+            title: "Upload failed",
+            description: "Failed to upload one or more images.",
+            variant: "destructive"
+        })
         return
-      }
     }
+    
+    setUploadingImage(false)
 
     const normalizedCode = form.itemCode.trim().toUpperCase()
     const payload = {
       item_name: form.itemName.trim(),
       item_code: normalizedCode,
       item_description: form.description.trim() ? form.description.trim() : null,
-      item_image_url: finalImageUrl,
+      item_image_url: defaultImageUrl,
+      additional_images: finalImages, // Store all images here
       points_required: parsedPoints,
       point_offer: parsedPointOffer,
       stock_quantity: parsedStock,
@@ -711,78 +792,69 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                 </div>
 
                 <div>
-                  <Label>Reward Image</Label>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      {(imagePreview || form.imageUrl) && (
-                        <div className="relative h-32 w-full overflow-hidden rounded-lg border border-muted-foreground/20 bg-muted">
-                          <NextImage 
-                            src={imagePreview || form.imageUrl} 
-                            alt="Reward preview" 
-                            fill 
-                            className="object-contain"
-                            unoptimized={(imagePreview || form.imageUrl).startsWith('data:')}
-                          />
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 gap-2"
-                          onClick={() => imageInputRef.current?.click()}
-                          disabled={uploadingImage}
-                        >
-                          {uploadingImage ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <UploadCloud className="h-4 w-4" />
-                          )}
-                          {imagePreview || form.imageUrl ? 'Change Image' : 'Upload Image'}
-                        </Button>
-                        {(imagePreview || imageFile) && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleRemoveImage}
-                            disabled={uploadingImage}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                  <Label>Reward Images (Max 5)</Label>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        {images.map((img, index) => (
+                            <div key={img.id} className="relative group aspect-square rounded-lg border border-muted-foreground/20 bg-muted overflow-hidden">
+                                <NextImage 
+                                    src={img.url} 
+                                    alt={`Reward image ${index + 1}`} 
+                                    fill 
+                                    className="object-cover"
+                                    unoptimized={img.url.startsWith('data:')}
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => handleSetDefault(img.id)}
+                                        title="Set as default"
+                                    >
+                                        <Star className={`h-4 w-4 ${img.isDefault ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`} />
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => handleRemoveImage(img.id)}
+                                        title="Remove image"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                                {img.isDefault && (
+                                    <div className="absolute top-2 right-2 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                        Default
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                        {images.length < 5 && (
+                            <div 
+                                className="aspect-square rounded-lg border-2 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/50 transition-colors flex flex-col items-center justify-center cursor-pointer"
+                                onClick={() => imageInputRef.current?.click()}
+                            >
+                                <UploadCloud className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                                <span className="text-xs text-muted-foreground font-medium">Add Image</span>
+                            </div>
                         )}
-                      </div>
-                      <input
+                    </div>
+
+                    <input
                         ref={imageInputRef}
                         type="file"
                         accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                        multiple
                         onChange={handleImageFileChange}
                         className="hidden"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Recommended: 1:1 ratio, max 5MB (JPG, PNG, GIF, WebP)
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="imageUrl" className="text-xs text-muted-foreground">Or paste image URL</Label>
-                      <Input
-                        id="imageUrl"
-                        placeholder="https://…"
-                        value={form.imageUrl}
-                        onChange={(event) => {
-                          updateForm("imageUrl", event.target.value)
-                          // Clear file selection if URL is manually entered
-                          if (event.target.value.trim()) {
-                            handleRemoveImage()
-                          }
-                        }}
-                        className="text-sm"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Alternative: Enter an external image URL
-                      </p>
-                    </div>
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Recommended: 1:1 ratio, max 5MB per image. First image or marked default will be shown in lists.
+                    </p>
                   </div>
                 </div>
 
