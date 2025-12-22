@@ -1488,10 +1488,14 @@ export default function JourneyDesignerV2({
                                                     <div className="space-y-2">
                                                         <Label>Link Destination</Label>
                                                         <Select
-                                                            value={item.link_to}
+                                                            value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
                                                             onValueChange={(value: string) => {
                                                                 const newItems = [...config.banner_config!.items]
-                                                                newItems[actualIndex].link_to = value
+                                                                if (value === 'external') {
+                                                                    newItems[actualIndex].link_to = ''
+                                                                } else {
+                                                                    newItems[actualIndex].link_to = value
+                                                                }
                                                                 setConfig({
                                                                     ...config,
                                                                     banner_config: {
@@ -1509,8 +1513,28 @@ export default function JourneyDesignerV2({
                                                                 <SelectItem value="products">Product Page</SelectItem>
                                                                 <SelectItem value="contact-us">Contact Us</SelectItem>
                                                                 <SelectItem value="no-link">No Link</SelectItem>
+                                                                <SelectItem value="external">Link</SelectItem>
                                                             </SelectContent>
                                                         </Select>
+                                                        {(!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to)) && (
+                                                            <div className="mt-2">
+                                                                <Input
+                                                                    value={item.link_to}
+                                                                    onChange={(e) => {
+                                                                        const newItems = [...config.banner_config!.items]
+                                                                        newItems[actualIndex].link_to = e.target.value
+                                                                        setConfig({
+                                                                            ...config,
+                                                                            banner_config: {
+                                                                                ...config.banner_config!,
+                                                                                items: newItems
+                                                                            }
+                                                                        })
+                                                                    }}
+                                                                    placeholder="https://example.com"
+                                                                />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label>Expiration Date</Label>

@@ -7,6 +7,7 @@ import { logoutConsumer } from '@/app/actions/consumer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { 
     Home, 
     Gift, 
@@ -186,6 +187,8 @@ export default function PremiumLoyaltyTemplate({
     const [rewards, setRewards] = useState<RewardItem[]>([])
     const [products, setProducts] = useState<ProductItem[]>([])
     const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
+    const [selectedRewardForDetail, setSelectedRewardForDetail] = useState<RewardItem | null>(null)
+    const [showRewardDetailModal, setShowRewardDetailModal] = useState(false)
     const [loadingRewards, setLoadingRewards] = useState(false)
     const [loadingProducts, setLoadingProducts] = useState(false)
     const [pointsCollected, setPointsCollected] = useState(false)
@@ -2820,13 +2823,13 @@ export default function PremiumLoyaltyTemplate({
                         ) : rewards.length > 0 ? (
                             rewards.map((reward) => (
                                 <div key={reward.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                                    <div className="h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative">
+                                    <div className="h-28 bg-white flex items-center justify-center relative p-2">
                                         {reward.item_image_url ? (
                                             <Image 
                                                 src={getStorageUrl(reward.item_image_url) || reward.item_image_url} 
                                                 alt={reward.item_name}
                                                 fill
-                                                className="object-cover"
+                                                className="object-contain"
                                             />
                                         ) : (
                                             <Gift className="w-12 h-12 text-gray-400" />
@@ -2854,36 +2857,19 @@ export default function PremiumLoyaltyTemplate({
                                                     </span>
                                                 )}
                                             </div>
-                                            {userPoints < (reward.point_offer || reward.points_required) ? (
-                                                <button 
-                                                    onClick={() => {
-                                                        setInsufficientPointsData({
-                                                            needed: reward.point_offer || reward.points_required,
-                                                            available: userPoints
-                                                        })
-                                                        setShowInsufficientPoints(true)
-                                                    }}
-                                                    className="text-xs font-medium px-2 py-1 rounded-lg transition-all hover:scale-105 active:scale-95"
-                                                    style={{ 
-                                                        backgroundColor: '#FEE2E2',
-                                                        color: '#DC2626'
-                                                    }}
-                                                >
-                                                    Need more
-                                                </button>
-                                            ) : (
-                                                <button 
-                                                    onClick={() => handleRedeemReward(reward)}
-                                                    disabled={!isAuthenticated || !isShopUser}
-                                                    className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
-                                                    style={{ 
-                                                        backgroundColor: `${config.button_color}15`,
-                                                        color: config.button_color
-                                                    }}
-                                                >
-                                                    Redeem
-                                                </button>
-                                            )}
+                                            <button 
+                                                onClick={() => {
+                                                    setSelectedRewardForDetail(reward)
+                                                    setShowRewardDetailModal(true)
+                                                }}
+                                                className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:scale-105 active:scale-95"
+                                                style={{ 
+                                                    backgroundColor: `${config.button_color}15`,
+                                                    color: config.button_color
+                                                }}
+                                            >
+                                                View details
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -5175,6 +5161,107 @@ export default function PremiumLoyaltyTemplate({
                     </div>
                 </div>
             )}
+            {/* Reward Detail Modal */}
+            <Dialog open={showRewardDetailModal} onOpenChange={setShowRewardDetailModal}>
+                <DialogContent className="max-w-[90vw] w-full rounded-2xl p-0 overflow-hidden bg-white">
+                    <div className="relative h-64 w-full bg-white p-4 flex items-center justify-center">
+                        <button 
+                            onClick={() => setShowRewardDetailModal(false)}
+                            className="absolute top-4 right-4 z-10 p-2 bg-black/10 hover:bg-black/20 rounded-full transition-colors"
+                        >
+                            <X className="w-5 h-5 text-gray-600" />
+                        </button>
+                        {selectedRewardForDetail?.item_image_url ? (
+                            <Image
+                                src={getStorageUrl(selectedRewardForDetail.item_image_url) || selectedRewardForDetail.item_image_url}
+                                alt={selectedRewardForDetail.item_name}
+                                fill
+                                className="object-contain p-4"
+                            />
+                        ) : (
+                            <Gift className="w-20 h-20 text-gray-300" />
+                        )}
+                    </div>
+                    
+                    <div className="p-6 space-y-4">
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-900">{selectedRewardForDetail?.item_name}</h3>
+                            <p className="text-sm text-gray-500 mt-1">{selectedRewardForDetail?.item_description || 'No description available'}</p>
+                        </div>
+
+                        <div className="flex items-center justify-between py-4 border-t border-b border-gray-100">
+                            <div className="space-y-1">
+                                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Points Required</p>
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-amber-100 rounded-full">
+                                        <Star className="w-4 h-4 text-amber-600 fill-amber-600" />
+                                    </div>
+                                    <span className="text-2xl font-bold text-gray-900">
+                                        {selectedRewardForDetail?.point_offer || selectedRewardForDetail?.points_required}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="space-y-1 text-right">
+                                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Stock</p>
+                                <p className="text-lg font-semibold text-gray-900">
+                                    {selectedRewardForDetail?.stock_quantity === null ? 'Unlimited' : selectedRewardForDetail?.stock_quantity}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2">
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <span>Staff verification not required</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <span>No per-consumer limit set</span>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 flex gap-3">
+                            <Button
+                                variant="outline"
+                                className="flex-1 h-12 rounded-xl border-gray-200"
+                                onClick={() => setShowRewardDetailModal(false)}
+                            >
+                                Close
+                            </Button>
+                            {selectedRewardForDetail && (
+                                userPoints < (selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required) ? (
+                                    <Button
+                                        className="flex-1 h-12 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-200 border-none shadow-none"
+                                        onClick={() => {
+                                            setShowRewardDetailModal(false)
+                                            setInsufficientPointsData({
+                                                needed: selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required,
+                                                available: userPoints
+                                            })
+                                            setShowInsufficientPoints(true)
+                                        }}
+                                    >
+                                        <Coins className="w-4 h-4 mr-2" />
+                                        Need more points
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        className="flex-1 h-12 rounded-xl text-white shadow-lg shadow-blue-500/20"
+                                        style={{ backgroundColor: config.button_color }}
+                                        onClick={() => {
+                                            setShowRewardDetailModal(false)
+                                            handleRedeemReward(selectedRewardForDetail)
+                                        }}
+                                        disabled={!isAuthenticated || !isShopUser}
+                                    >
+                                        Redeem Now
+                                    </Button>
+                                )
+                            )}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
