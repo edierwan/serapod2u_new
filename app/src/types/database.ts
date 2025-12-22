@@ -1002,6 +1002,8 @@ export type Database = {
           primary_color: string | null
           product_image_source: string | null
           redemption_enabled: boolean | null
+          require_security_code: boolean
+          require_security_code_for_features: boolean | null
           require_customer_otp_for_lucky_draw: boolean | null
           require_customer_otp_for_redemption: boolean | null
           require_staff_otp_for_points: boolean | null
@@ -1030,6 +1032,8 @@ export type Database = {
           primary_color?: string | null
           product_image_source?: string | null
           redemption_enabled?: boolean | null
+          require_security_code?: boolean
+          require_security_code_for_features?: boolean | null
           require_customer_otp_for_lucky_draw?: boolean | null
           require_customer_otp_for_redemption?: boolean | null
           require_staff_otp_for_points?: boolean | null
@@ -1058,6 +1062,8 @@ export type Database = {
           primary_color?: string | null
           product_image_source?: string | null
           redemption_enabled?: boolean | null
+          require_security_code?: boolean
+          require_security_code_for_features?: boolean | null
           require_customer_otp_for_lucky_draw?: boolean | null
           require_customer_otp_for_redemption?: boolean | null
           require_staff_otp_for_points?: boolean | null
