@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
+import { formatNumber } from '@/lib/utils/formatters'
 import { createClient } from '@/lib/supabase/client'
 import { logoutConsumer } from '@/app/actions/consumer'
 import { Button } from '@/components/ui/button'
@@ -135,6 +136,7 @@ interface ProductItem {
     product_code: string
     brand_name?: string
     category_name?: string
+    hide_price?: boolean
     primary_image_url?: string | null
     variants?: {
         id: string
@@ -2851,12 +2853,12 @@ export default function PremiumLoyaltyTemplate({
                                                 <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
                                                 {reward.point_offer ? (
                                                     <div className="flex flex-col leading-none">
-                                                        <span className="text-[10px] text-gray-400 line-through">{reward.points_required}</span>
-                                                        <span className="text-sm font-bold text-red-500">{reward.point_offer}</span>
+                                                        <span className="text-[10px] text-gray-400 line-through">{formatNumber(reward.points_required)}</span>
+                                                        <span className="text-sm font-bold text-red-500">{formatNumber(reward.point_offer)}</span>
                                                     </div>
                                                 ) : (
                                                     <span className="text-sm font-bold" style={{ color: config.primary_color }}>
-                                                        {reward.points_required}
+                                                        {formatNumber(reward.points_required)}
                                                     </span>
                                                 )}
                                             </div>
@@ -2872,7 +2874,7 @@ export default function PremiumLoyaltyTemplate({
                                                     color: config.button_color
                                                 }}
                                             >
-                                                View details
+                                                View
                                             </button>
                                         </div>
                                     </div>
@@ -3859,7 +3861,7 @@ export default function PremiumLoyaltyTemplate({
                                                 variant.variant_name
                                             )}
                                         </div>
-                                        {variant.suggested_retail_price && (
+                                        {variant.suggested_retail_price && !selectedProduct.hide_price && (
                                             <p className="text-sm font-bold mt-auto" style={{ color: config.primary_color }}>
                                                 RM {variant.suggested_retail_price.toFixed(2)}
                                             </p>
@@ -3933,7 +3935,7 @@ export default function PremiumLoyaltyTemplate({
                                             {product.variants && product.variants.length > 0 && (
                                                 <div className="mt-2 flex items-center gap-2">
                                                     <span className="text-xs text-gray-500">{product.variants.length} variant{product.variants.length > 1 ? 's' : ''}</span>
-                                                    {product.variants[0].suggested_retail_price && (
+                                                    {product.variants[0].suggested_retail_price && !product.hide_price && (
                                                         <span className="text-sm font-bold" style={{ color: config.primary_color }}>
                                                             RM {product.variants[0].suggested_retail_price.toFixed(2)}
                                                         </span>
@@ -5188,7 +5190,7 @@ export default function PremiumLoyaltyTemplate({
                                         style={{ width: `${images.length * 100}%` }}
                                         animate={{ x: `-${currentRewardImageIndex * (100 / images.length)}%` }}
                                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        drag="x"
+                                        drag={images.length > 1 ? "x" : false}
                                         dragElastic={0.2}
                                         onDragEnd={(e, { offset, velocity }) => {
                                             const swipe = offset.x
@@ -5241,7 +5243,7 @@ export default function PremiumLoyaltyTemplate({
                                         <Star className="w-4 h-4 text-amber-600 fill-amber-600" />
                                     </div>
                                     <span className="text-2xl font-bold text-gray-900">
-                                        {selectedRewardForDetail?.point_offer || selectedRewardForDetail?.points_required}
+                                        {formatNumber(selectedRewardForDetail?.point_offer || selectedRewardForDetail?.points_required)}
                                     </span>
                                 </div>
                             </div>

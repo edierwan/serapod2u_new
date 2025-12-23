@@ -16,6 +16,7 @@ interface Category {
   is_vape: boolean
   image_url: string | null
   is_active: boolean
+  hide_price?: boolean
 }
 
 interface CategoryDialogProps {
@@ -38,7 +39,8 @@ export default function CategoryDialog({
     category_description: '',
     is_vape: false,
     image_url: '',
-    is_active: true
+    is_active: true,
+    hide_price: false
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -50,8 +52,8 @@ export default function CategoryDialog({
           category_name: category.category_name,
           category_description: category.category_description || '',
           is_vape: category.is_vape,
-          image_url: category.image_url || '',
-          is_active: category.is_active
+          image_url: category.image_url,
+          hide_price: category.hide_price || false
         })
       } else {
         setFormData({
@@ -59,6 +61,8 @@ export default function CategoryDialog({
           category_description: '',
           is_vape: false,
           image_url: '',
+          is_active: true,
+          hide_price: fals
           is_active: true
         })
       }
@@ -144,7 +148,22 @@ export default function CategoryDialog({
               onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_vape: Boolean(checked) }))}
             />
             <Label htmlFor="is_vape" className="font-normal cursor-pointer">This is a Vape category</Label>
+          </div>start gap-2">
+            <Checkbox
+              id="hide_price"
+              checked={formData.hide_price || false}
+              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, hide_price: Boolean(checked) }))}
+              className="mt-1"
+            />
+            <div className="grid gap-1.5 leading-none">
+              <Label htmlFor="hide_price" className="font-normal cursor-pointer">Hide Price</Label>
+              <p className="text-xs text-gray-500">
+                If enabled, prices will be hidden in the mobile app for products in this category.
+              </p>
+            </div>
           </div>
+
+          <div className="flex items-
 
           <div className="flex items-center gap-2">
             <Checkbox

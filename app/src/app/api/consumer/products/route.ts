@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
         product_name,
         product_description,
         brands (brand_name),
-        product_categories (category_name),
+        product_categories (category_name, hide_price),
         product_images (
           image_url,
           is_primary
@@ -86,6 +86,7 @@ export async function GET(request: NextRequest) {
       product_description: item.product_description,
       brand_name: item.brands?.brand_name || 'No Brand',
       category_name: item.product_categories?.category_name || 'Uncategorized',
+      hide_price: item.product_categories?.hide_price || false,
       primary_image_url: item.product_images?.find((img: any) => img.is_primary)?.image_url || 
                         item.product_images?.[0]?.image_url || null,
       variants: item.product_variants || []
