@@ -142,6 +142,7 @@ interface ProductItem {
         id: string
         variant_name: string
         suggested_retail_price: number | null
+        other_price?: number | null
         image_url?: string | null
     }[]
 }
