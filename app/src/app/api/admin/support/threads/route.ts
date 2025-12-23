@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         .eq('id', user.id)
         .single()
         
-    if (userError || !userData || !['admin', 'super_admin', 'hq_admin'].includes(userData.role_code)) {
+    if (userError || !userData || !['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)) {
          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
