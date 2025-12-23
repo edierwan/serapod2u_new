@@ -29,12 +29,74 @@ import {
     Info,
     Truck,
     Clock,
-    Building2
+    Building2,
+    ChevronLeft,
+    ChevronRight,
+    Palette
 } from 'lucide-react'
 import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
 
 const PRODUCT_CONSUMER_READY_STATUSES = ['shipped_distributor', 'activated', 'redeemed'] as const
 const MASTER_CONSUMER_READY_STATUSES = ['shipped_distributor', 'opened'] as const
+
+// Color themes configuration
+const COLOR_THEMES = [
+    {
+        name: 'Spanish Orange',
+        primary: '#F06105',
+        button: '#F06105'
+    },
+    {
+        name: 'Tangerine',
+        primary: '#F78702',
+        button: '#F78702'
+    },
+    {
+        name: 'Dark Orange',
+        primary: '#FF8C00',
+        button: '#FF8C00'
+    },
+    {
+        name: 'Vivid Orange',
+        primary: '#FF5E0E',
+        button: '#FF5E0E'
+    },
+    {
+        name: 'Yellow-Orange',
+        primary: '#FFA836',
+        button: '#FFA836'
+    },
+    {
+        name: 'Carrot Orange',
+        primary: '#ED9121',
+        button: '#ED9121'
+    },
+    {
+        name: 'Princeton Orange',
+        primary: '#FF8F00',
+        button: '#FF8F00'
+    },
+    {
+        name: 'Deep Saffron',
+        primary: '#FFA52C',
+        button: '#FFA52C'
+    },
+    {
+        name: 'Gamboge',
+        primary: '#E89611',
+        button: '#E89611'
+    },
+    {
+        name: 'Pastel Orange',
+        primary: '#FEBA4F',
+        button: '#FEBA4F'
+    },
+    {
+        name: 'Vivid Tangelo',
+        primary: '#EC7625',
+        button: '#EC7625'
+    }
+]
 
 interface Order {
     id: string
@@ -154,6 +216,42 @@ export default function JourneyDesignerV2({
     const { toast } = useToast()
     const [activationTrigger, setActivationTrigger] = useState<'shipped_distributor' | 'received_warehouse'>('shipped_distributor')
     const [activeBannerTab, setActiveBannerTab] = useState<'home' | 'rewards' | 'products' | 'profile'>('home')
+    const [selectedColorThemeIndex, setSelectedColorThemeIndex] = useState(0)
+
+    // Find initial theme index based on primary color
+    useEffect(() => {
+        if (config.primary_color) {
+            const themeIndex = COLOR_THEMES.findIndex(theme => 
+                theme.primary.toLowerCase() === config.primary_color.toLowerCase()
+            )
+            if (themeIndex !== -1) {
+                setSelectedColorThemeIndex(themeIndex)
+            }
+        }
+    }, [])
+
+    // Handler for theme navigation
+    const handlePreviousTheme = () => {
+        const newIndex = selectedColorThemeIndex === 0 ? COLOR_THEMES.length - 1 : selectedColorThemeIndex - 1
+        setSelectedColorThemeIndex(newIndex)
+        const newTheme = COLOR_THEMES[newIndex]
+        setConfig({
+            ...config,
+            primary_color: newTheme.primary,
+            button_color: newTheme.button
+        })
+    }
+
+    const handleNextTheme = () => {
+        const newIndex = (selectedColorThemeIndex + 1) % COLOR_THEMES.length
+        setSelectedColorThemeIndex(newIndex)
+        const newTheme = COLOR_THEMES[newIndex]
+        setConfig({
+            ...config,
+            primary_color: newTheme.primary,
+            button_color: newTheme.button
+        })
+    }
 
     useEffect(() => {
         const fetchOrgSettings = async () => {
@@ -214,8 +312,8 @@ export default function JourneyDesignerV2({
         welcome_title: journey?.welcome_title || 'Welcome!',
         welcome_message: journey?.welcome_message || 'Thank you for scanning our QR code. Enjoy exclusive rewards and benefits!',
         thank_you_message: journey?.thank_you_message || 'Thank you for your participation!',
-        primary_color: journey?.primary_color || '#3B82F6',
-        button_color: journey?.button_color || '#10B981',
+        primary_color: journey?.primary_color || COLOR_THEMES[0].primary,
+        button_color: journey?.button_color || COLOR_THEMES[0].button,
         show_product_image: journey?.show_product_image ?? false,
         product_image_source: journey?.product_image_source ?? 'variant',
         custom_image_url: journey?.custom_image_url ?? '',
@@ -907,6 +1005,97 @@ export default function JourneyDesignerV2({
                                     onChange={(e) => setConfig({ ...config, name: e.target.value })}
                                     placeholder="Enter journey name"
                                 />
+                            </div>
+
+                            {/* Template Selection */}
+                            <div className="space-y-2">
+                                <Label htmlFor="template">Template</Label>
+                                <Select
+                                    value={config.template_type || 'premium'}
+                                    onValueChange={(value: 'premium') => setConfig({ ...config, template_type: value })}
+                                >
+                                    <SelectTrigger id="template">
+                                        <SelectValue placeholder="Select template" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="premium">Premium Template</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-gray-500">More templates coming soon!</p>
+                            </div>
+
+                            {/* Color Theme Selector */}
+                            <div className="space-y-3">
+                                <Label>Color Theme</Label>
+                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                                    {/* Theme Name Display */}
+                                    <div className="text-center mb-4">
+                                        <h4 className="text-lg font-semibold text-gray-900">
+                                            {COLOR_THEMES[selectedColorThemeIndex].name}
+                                        </h4>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {COLOR_THEMES[selectedColorThemeIndex].primary}
+                                        </p>
+                                    </div>
+
+                                    {/* Color Preview */}
+                                    <div className="flex items-center justify-center gap-3 mb-4">
+                                        <div 
+                                            className="w-20 h-20 rounded-2xl shadow-lg border-4 border-white"
+                                            style={{ backgroundColor: COLOR_THEMES[selectedColorThemeIndex].primary }}
+                                        />
+                                    </div>
+
+                                    {/* Navigation Arrows */}
+                                    <div className="flex items-center justify-center gap-4">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            onClick={handlePreviousTheme}
+                                            className="rounded-full"
+                                        >
+                                            <ChevronLeft className="w-5 h-5" />
+                                        </Button>
+                                        <div className="flex gap-1.5">
+                                            {COLOR_THEMES.map((_, index) => (
+                                                <button
+                                                    key={index}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedColorThemeIndex(index)
+                                                        const newTheme = COLOR_THEMES[index]
+                                                        setConfig({
+                                                            ...config,
+                                                            primary_color: newTheme.primary,
+                                                            button_color: newTheme.button
+                                                        })
+                                                    }}
+                                                    className={`w-2 h-2 rounded-full transition-all ${
+                                                        index === selectedColorThemeIndex 
+                                                            ? 'w-6 bg-gray-800' 
+                                                            : 'bg-gray-300 hover:bg-gray-400'
+                                                    }`}
+                                                />
+                                            ))}
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            onClick={handleNextTheme}
+                                            className="rounded-full"
+                                        >
+                                            <ChevronRight className="w-5 h-5" />
+                                        </Button>
+                                    </div>
+
+                                    {/* Theme Info */}
+                                    <div className="mt-4 flex items-center gap-2 text-xs text-gray-600 bg-white rounded-lg p-3">
+                                        <Palette className="w-4 h-4 flex-shrink-0" />
+                                        <span>Theme affects header, buttons, and accent colors throughout the app</span>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
