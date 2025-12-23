@@ -164,8 +164,6 @@ export default function CategoryDialog({
             </div>
           </div>
 
-          <div className="flex items-
-
           <div className="flex items-center gap-2">
             <Checkbox
               id="is_active"
