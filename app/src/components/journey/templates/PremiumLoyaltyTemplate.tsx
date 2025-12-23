@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
+import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
 import { logoutConsumer } from '@/app/actions/consumer'
 import { Button } from '@/components/ui/button'
@@ -190,43 +191,12 @@ export default function PremiumLoyaltyTemplate({
     const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
     const [selectedRewardForDetail, setSelectedRewardForDetail] = useState<RewardItem | null>(null)
     const [currentRewardImageIndex, setCurrentRewardImageIndex] = useState(0)
-    const [touchStart, setTouchStart] = useState(0)
-    const [touchEnd, setTouchEnd] = useState(0)
     const [showRewardDetailModal, setShowRewardDetailModal] = useState(false)
     const [loadingRewards, setLoadingRewards] = useState(false)
     const [loadingProducts, setLoadingProducts] = useState(false)
     const [pointsCollected, setPointsCollected] = useState(false)
     const [qrPointsCollected, setQrPointsCollected] = useState(false) // From DB - persists across sessions
     const [pointsEarned, setPointsEarned] = useState(0)
-
-    const handleTouchStart = (e: React.TouchEvent) => {
-        setTouchStart(e.targetTouches[0].clientX)
-    }
-
-    const handleTouchMove = (e: React.TouchEvent) => {
-        setTouchEnd(e.targetTouches[0].clientX)
-    }
-
-    const handleTouchEnd = () => {
-        if (!touchStart || !touchEnd) return
-        const distance = touchStart - touchEnd
-        const isLeftSwipe = distance > 50
-        const isRightSwipe = distance < -50
-        
-        const images = (selectedRewardForDetail?.additional_images && selectedRewardForDetail.additional_images.length > 0)
-            ? selectedRewardForDetail.additional_images 
-            : [selectedRewardForDetail?.item_image_url].filter(Boolean) as string[]
-            
-        if (isLeftSwipe && currentRewardImageIndex < images.length - 1) {
-            setCurrentRewardImageIndex(prev => prev + 1)
-        }
-        if (isRightSwipe && currentRewardImageIndex > 0) {
-            setCurrentRewardImageIndex(prev => prev - 1)
-        }
-        
-        setTouchStart(0)
-        setTouchEnd(0)
-    }
     const [lastEarnedPoints, setLastEarnedPoints] = useState(0) // Persists after modal closes
     const [totalBalance, setTotalBalance] = useState(0)
     const [previousBalance, setPreviousBalance] = useState(0)
@@ -5204,12 +5174,7 @@ export default function PremiumLoyaltyTemplate({
                             : [selectedRewardForDetail?.item_image_url].filter(Boolean) as string[]
                         
                         return (
-                            <div 
-                                className="relative h-64 w-full bg-white p-4 flex items-center justify-center overflow-hidden"
-                                onTouchStart={handleTouchStart}
-                                onTouchMove={handleTouchMove}
-                                onTouchEnd={handleTouchEnd}
-                            >
+                            <div className="relative h-64 w-full bg-white overflow-hidden">
                                 <button 
                                     onClick={() => setShowRewardDetailModal(false)}
                                     className="absolute top-4 right-4 z-20 p-2 bg-black/10 hover:bg-black/20 rounded-full transition-colors"
@@ -5218,53 +5183,45 @@ export default function PremiumLoyaltyTemplate({
                                 </button>
                                 
                                 {images.length > 0 ? (
-                                    <div className="relative w-full h-full">
-                                        <Image
-                                            src={getStorageUrl(images[currentRewardImageIndex]) || images[currentRewardImageIndex]}
-                                            alt={selectedRewardForDetail?.item_name || 'Reward'}
-                                            fill
-                                            className="object-contain p-4 transition-opacity duration-300"
-                                            priority
-                                        />
-                                        
-                                        {/* Navigation Arrows */}
-                                        {images.length > 1 && (
-                                            <>
-                                                <button 
-                                                    className="absolute left-0 top-1/2 -translate-y-1/2 p-2 bg-black/5 hover:bg-black/10 rounded-full disabled:opacity-0 transition-opacity z-10"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setCurrentRewardImageIndex(prev => Math.max(0, prev - 1))
-                                                    }}
-                                                    disabled={currentRewardImageIndex === 0}
-                                                >
-                                                    <ChevronLeft className="w-6 h-6 text-gray-600" />
-                                                </button>
-                                                <button 
-                                                    className="absolute right-0 top-1/2 -translate-y-1/2 p-2 bg-black/5 hover:bg-black/10 rounded-full disabled:opacity-0 transition-opacity z-10"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setCurrentRewardImageIndex(prev => Math.min(images.length - 1, prev + 1))
-                                                    }}
-                                                    disabled={currentRewardImageIndex === images.length - 1}
-                                                >
-                                                    <ChevronRight className="w-6 h-6 text-gray-600" />
-                                                </button>
-                                                
-                                                {/* Dots */}
-                                                <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-1.5 pb-2 z-10">
-                                                    {images.map((_, idx) => (
-                                                        <div 
-                                                            key={idx}
-                                                            className={`w-1.5 h-1.5 rounded-full transition-colors ${idx === currentRewardImageIndex ? 'bg-gray-800' : 'bg-gray-300'}`}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
+                                    <motion.div
+                                        className="flex h-full"
+                                        style={{ width: `${images.length * 100}%` }}
+                                        animate={{ x: `-${currentRewardImageIndex * (100 / images.length)}%` }}
+                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                        drag="x"
+                                        dragElastic={0.2}
+                                        onDragEnd={(e, { offset, velocity }) => {
+                                            const swipe = offset.x
+                                            const swipeThreshold = 50
+                                            
+                                            if (swipe < -swipeThreshold && currentRewardImageIndex < images.length - 1) {
+                                                setCurrentRewardImageIndex(currentRewardImageIndex + 1)
+                                            } else if (swipe > swipeThreshold && currentRewardImageIndex > 0) {
+                                                setCurrentRewardImageIndex(currentRewardImageIndex - 1)
+                                            }
+                                        }}
+                                    >
+                                        {images.map((img, idx) => (
+                                            <div 
+                                                key={idx} 
+                                                className="relative h-full"
+                                                style={{ width: `${100 / images.length}%` }}
+                                            >
+                                                <Image
+                                                    src={getStorageUrl(img) || img}
+                                                    alt={selectedRewardForDetail?.item_name || 'Reward'}
+                                                    fill
+                                                    className="object-contain p-4"
+                                                    priority={idx === currentRewardImageIndex}
+                                                    draggable={false}
+                                                />
+                                            </div>
+                                        ))}
+                                    </motion.div>
                                 ) : (
-                                    <Gift className="w-20 h-20 text-gray-300" />
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <Gift className="w-20 h-20 text-gray-300" />
+                                    </div>
                                 )}
                             </div>
                         )
