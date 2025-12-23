@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
           id,
           variant_name,
           suggested_retail_price,
+          other_price,
           image_url
         )
       `)
