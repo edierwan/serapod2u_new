@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStorageUrl } from "@/lib/utils"
+import { AdminSupportInbox } from '@/components/support/AdminSupportInbox'
 import {
   Select,
   SelectContent,
@@ -1619,134 +1620,14 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <MessageSquare className="h-4 w-4" /> User Feedback
+                    <MessageSquare className="h-4 w-4" /> Support Inbox
                   </CardTitle>
-                  <CardDescription>Monitor and respond to user feedback and inquiries.</CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Select 
-                    value={feedbackStatusFilter} 
-                    onValueChange={(val) => {
-                      setFeedbackStatusFilter(val)
-                      // Trigger reload with new filter
-                      setTimeout(() => loadFeedback(1), 0)
-                    }}
-                  >
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="reviewed">Reviewed</SelectItem>
-                      <SelectItem value="resolved">Resolved</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" size="icon" onClick={() => loadFeedback(feedbackPage)}>
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
+                  <CardDescription>Monitor and respond to user support threads and inquiries.</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {feedbackLoading ? (
-                <div className="flex items-center justify-center py-16 text-muted-foreground">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading feedback...
-                </div>
-              ) : feedback.length === 0 ? (
-                <div className="py-16 text-center text-sm text-muted-foreground">
-                  No feedback found.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-border text-sm">
-                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3">User</th>
-                        <th className="px-4 py-3">Subject</th>
-                        <th className="px-4 py-3">Message</th>
-                        <th className="px-4 py-3">Status</th>
-                        <th className="px-4 py-3">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {feedback.map((item) => (
-                        <tr key={item.id} className="hover:bg-muted/40">
-                          <td className="px-4 py-4 whitespace-nowrap text-muted-foreground">
-                            {new Date(item.created_at).toLocaleDateString()}
-                            <div className="text-xs">{new Date(item.created_at).toLocaleTimeString()}</div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="font-medium">{item.consumer_name || 'Anonymous'}</div>
-                            <div className="text-xs text-muted-foreground">{item.consumer_phone}</div>
-                            {item.consumer_email && <div className="text-xs text-muted-foreground">{item.consumer_email}</div>}
-                          </td>
-                          <td className="px-4 py-4 font-medium">
-                            {item.title}
-                          </td>
-                          <td className="px-4 py-4 max-w-md">
-                            <div className="line-clamp-3">{item.message}</div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <Badge variant={
-                              item.status === 'resolved' ? 'default' : 
-                              item.status === 'reviewed' ? 'secondary' : 'outline'
-                            } className={
-                              item.status === 'resolved' ? 'bg-green-600' : 
-                              item.status === 'reviewed' ? 'bg-blue-600 text-white' : 'bg-yellow-500 text-white'
-                            }>
-                              {item.status}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-4">
-                            <Select 
-                              value={item.status} 
-                              onValueChange={(val) => updateFeedbackStatus(item.id, val)}
-                            >
-                              <SelectTrigger className="h-8 w-[110px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="reviewed">Reviewed</SelectItem>
-                                <SelectItem value="resolved">Resolved</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              
-              {/* Pagination */}
-              {feedbackTotalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-border px-4 py-4">
-                  <div className="text-xs text-muted-foreground">
-                    Page {feedbackPage} of {feedbackTotalPages}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => loadFeedback(feedbackPage - 1)}
-                      disabled={feedbackPage <= 1 || feedbackLoading}
-                    >
-                      <ChevronLeft className="h-4 w-4" /> Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => loadFeedback(feedbackPage + 1)}
-                      disabled={feedbackPage >= feedbackTotalPages || feedbackLoading}
-                    >
-                      Next <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+                <AdminSupportInbox />
             </CardContent>
           </Card>
         </TabsContent>
