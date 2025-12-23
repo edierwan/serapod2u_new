@@ -586,12 +586,12 @@ export default function PointCatalogViewNew({ userProfile, onViewChange }: Point
                             <Label>Reward Image</Label>
                             <div className="mt-2 space-y-3">
                                 {rewardImageUrl ? (
-                                    <div className="relative w-full h-48 border rounded-lg overflow-hidden">
+                                    <div className="relative w-full h-48 border rounded-lg overflow-hidden bg-gray-50">
                                         <Image
                                             src={rewardImageUrl}
                                             alt="Reward preview"
                                             layout="fill"
-                                            objectFit="cover"
+                                            objectFit="contain"
                                         />
                                         <Button
                                             variant="destructive"
@@ -672,13 +672,13 @@ export default function PointCatalogViewNew({ userProfile, onViewChange }: Point
                     {filteredRewards.map((reward) => (
                         <Card key={reward.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                             {/* Reward Image */}
-                            <div className="relative h-48 bg-gray-100">
+                            <div className="relative h-48 bg-white">
                                 {reward.reward_image_url ? (
                                     <Image
                                         src={reward.reward_image_url}
                                         alt={reward.reward_name}
                                         layout="fill"
-                                        objectFit="cover"
+                                        objectFit="contain"
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">

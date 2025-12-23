@@ -826,13 +826,13 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
               {filteredRewards.map((reward) => (
                 <Card key={reward.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                   {/* Reward Image */}
-                  <div className="relative h-48 bg-gray-100">
+                  <div className="relative h-48 bg-white">
                     {reward.reward_image_url ? (
                       <Image
                         src={getStorageUrl(reward.reward_image_url) || reward.reward_image_url}
                         alt={reward.reward_name}
                         layout="fill"
-                        objectFit="cover"
+                        objectFit="contain"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">

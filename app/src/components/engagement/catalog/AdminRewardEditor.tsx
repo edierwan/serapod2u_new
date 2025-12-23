@@ -62,8 +62,8 @@ const compressImage = (file: File): Promise<File> => {
         let height = img.height
         
         // Aggressive compression for mobile optimization (< 5KB target)
-        const MAX_WIDTH = 150 // Reduced from 300 to match avatar size
-        const MAX_HEIGHT = 150 // Reduced from 300 to match avatar size
+        const MAX_WIDTH = 800 // Increased from 150 to 800 for better quality
+        const MAX_HEIGHT = 800 // Increased from 150 to 800 for better quality
         
         // Calculate new dimensions while maintaining aspect ratio
         if (width > height) {
@@ -104,7 +104,7 @@ const compressImage = (file: File): Promise<File> => {
             }
           },
           'image/jpeg',
-          0.6 // Aggressive compression
+          0.8 // Better quality (80%)
         )
       }
       img.onerror = () => reject(new Error('Image loading failed'))
@@ -801,7 +801,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                                     src={img.url} 
                                     alt={`Reward image ${index + 1}`} 
                                     fill 
-                                    className="object-cover"
+                                    className="object-contain"
                                     unoptimized={img.url.startsWith('data:')}
                                 />
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
