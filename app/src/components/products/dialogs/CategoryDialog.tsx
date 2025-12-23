@@ -147,7 +147,9 @@ export default function CategoryDialog({
               onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_vape: Boolean(checked) }))}
             />
             <Label htmlFor="is_vape" className="font-normal cursor-pointer">This is a Vape category</Label>
-          </div>start gap-2">
+          </div>
+
+          <div className="flex items-start gap-2">
             <Checkbox
               id="hide_price"
               checked={formData.hide_price || false}
