@@ -27,6 +27,7 @@ interface Variant {
   manufacturer_sku: string | null
   base_cost: number | null
   suggested_retail_price: number | null
+  other_price: number | null
   is_active: boolean
   is_default: boolean
   created_at: string
@@ -359,11 +360,11 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                 </div>
               </TableHead>
               <TableHead 
-                className="text-center cursor-pointer hover:bg-gray-100 select-none"
-                onClick={() => handleSort('is_default')}
+                className="text-right cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('other_price')}
               >
-                <div className="flex items-center justify-center gap-2">
-                  Default {renderSortIcon('is_default')}
+                <div className="flex items-center justify-end gap-2">
+                  Promo Price {renderSortIcon('other_price')}
                 </div>
               </TableHead>
               <TableHead 
@@ -399,10 +400,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                   <TableCell className="text-xs text-gray-600">{variant.product_name}</TableCell>
                   <TableCell className="text-right text-xs">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>
                   <TableCell className="text-right text-xs">{variant.suggested_retail_price ? `$${variant.suggested_retail_price.toFixed(2)}` : '-'}</TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant={variant.is_default ? 'default' : 'secondary'} className="text-xs">
-                      {variant.is_default ? 'Yes' : 'No'}
-                    </Badge>
+                  <TableCell className="text-right text-xs">
+                    {variant.other_price ? `$${variant.other_price.toFixed(2)}` : '-'}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant={variant.is_active ? 'default' : 'secondary'} className="text-xs">
