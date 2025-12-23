@@ -497,7 +497,7 @@ export default function VariantDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="otherPrice">Other Price (RM)</Label>
+            <Label htmlFor="otherPrice">Promo Price (RM)</Label>
             <div className="flex items-center">
               <span className="text-gray-600 mr-2">RM</span>
               <Input
