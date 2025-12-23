@@ -62,8 +62,7 @@ export default function CategoryDialog({
           is_vape: false,
           image_url: '',
           is_active: true,
-          hide_price: fals
-          is_active: true
+          hide_price: false
         })
       }
       setErrors({})
