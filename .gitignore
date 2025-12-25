@@ -138,172 +138,46 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# ========================================
-# Documentation (internal reference only)
-# ========================================
-*_SUMMARY.md
-*_FIX*.md
-*_FIXED.md
-*_REFERENCE.md
-*_GUIDE.md
-*_REPORT.md
-*_COMPARISON.md
-*_QUICK*.md
-ACTION_REQUIRED_*.md
-ADD_*.md
-ACTUAL_*.md
-ALL_*.md
-AUTH_*.md
-AVATAR_*.md
-BEFORE_AFTER_*.md
-BUG_*.md
-BUILD_*.md
-CHANGES_*.md
-CLICKABLE_*.md
-CODE_*.md
-COMPLETE_*.md
-COMPLETION_*.md
-COMPONENT_*.md
-CREATE_*.md
-CRITICAL_*.md
-CRUD_*.md
-DASHBOARD_*.md
-DATABASE_*.md
-DEEP_*.md
-DEFINITIVE_*.md
-DELETE_*.md
-DELETION_*.md
-DEPLOYMENT_*.md
-DIAGNOSTIC_*.md
-DIAGNOSE_*.md
-DOCUMENT_*.md
-DOCUMENTATION_*.md
-DO_THIS_*.md
-DUPLICATE_*.md
-EXECUTIVE_*.md
-FIELD_*.md
-FINAL_*.md
-FIXES_*.md
-FIX_*.md
-FOUR_*.md
-HOW_TO_*.md
-IMPLEMENTATION_*.md
-INVESTIGATE_*.md
-INVOICE_*.md
-ISSUES_*.md
-ISSUE_*.md
-LAST_LOGIN_*.md
-LOGOUT_*.md
-MANUFACTURER_*.md
-MASTER_DATA_*.md
-MENU_*.md
-MY_PROFILE_*.md
-NOTIFICATION_*.md
-ORDER_*.md
-ORGANIZATIONS_*.md
-ORGANIZATION_*.md
-ORG_*.md
-PAGES_*.md
-PAYMENT_PROOF_*.md
-PHASE*.md
-PLACEHOLDER_*.md
-PRODUCT_*.md
-QR_*.md
-QUICK_*.md
-README_DOCUMENT_*.md
-READY_*.md
-REALTIME_*.md
-REDESIGN_*.md
-ROLE_*.md
-SESSION_*.md
-SETTINGS_*.md
-SHOP_*.md
-SIX_*.md
-SQL_*.md
-STATUS*.md
-TECHNICAL_*.md
-TESTING_*.md
-TEST_*.md
-THEME_*.md
-THREE_*.md
-TOAST_*.md
-TRACK_*.md
-USER_*.md
-VALIDATION_*.md
-VERIFY_*.md
-VISUAL_*.md
-WHICH_*.md
+# macOS
+.DS_Store
 
 # ========================================
-# LOCAL-ONLY / DEV-ONLY FILES
+# USER REQUESTED EXCLUSIONS (LOCAL ONLY)
 # ========================================
 
-# SQL files (development/reference only - keep local, don't commit)
+# SQL files (Keep local only)
 *.sql
-# Exception: Allow SQL in production Supabase migrations only
-!supabase/migrations/**/*.sql
-!supabase/seed/**/*.sql
 
-# Shell scripts (development only - DO NOT COMMIT)
-apply-*.sh
-fix-*.sh
-run_*.sh
-restart-clean.sh
-check_*.sh
-diagnose*.sh
+# Markdown files (Keep local only, except essential)
+*.md
+!README.md
+!CHANGELOG.md
+!LICENSE.md
 
-# Development/debug JS files (DO NOT COMMIT)
-apply-*.js
-diagnose*.js
-check_*.js
-find_*.js
-fix_*.js
-test-*.js
-test_*.js
-
-# Text files (internal notes)
-*.txt
-!package.txt
-!robots.txt
-
-# Log files (DO NOT COMMIT)
-*.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-
-# Local CSV/Excel data files (DO NOT COMMIT)
+# Data files
 *.csv
 *.xlsx
 *.xls
-!supabase/seed/**/*.csv
-# Exception: Allow specific seed data if needed
 
-# Playground & Experimental folders (DO NOT COMMIT)
-/playground/
-/local_test/
-/sql_backup/
-/experimental/
-/tmp/
-/temp/
-/z_*
+# Log files
+*.log
 
-# Root-level package files (use app/package.json instead)
-/package.json
-/package-lock.json
-/vercel.json
+# Local/Temp folders
+playground/
+local_test/
+sql_backup/
+experimental/
+tmp/
+temp/
+z_*
 
-# Scripts folder at root (keep app-specific only)
+# Scripts and Docs at root (Keep local/organized)
 /scripts/
-
-# Docs folder at root (keep app/docs or specific system docs only)
 /docs/
+*.sh
+*.py
 
-# ========================================
-# TEST FILES (DO NOT COMMIT)
-# ========================================
+# Test files
 *.test.ts
 *.test.js
 *.spec.ts
@@ -312,56 +186,5 @@ lerna-debug.log*
 **/tests/**
 **/__mocks__/**
 
-# macOS
-.DS_Store
-
-# Keep only essential docs
-!README.md
-!CHANGELOG.md
-!LICENSE.md
+# Vercel
 .vercel
-*.md
-*.dll
-
-# User requested exclusions
-*.log
-*.csv
-*.xlsx
-playground/
-local_test/
-sql_backup/
-experimental/
-tmp/
-
-# User requested exclusions
-*.sql
-*.md
-*.csv
-*.xlsx
-playground/
-local_test/
-sql_backup/
-experimental/
-tmp/
-
-# Local-only files
-*.sql
-*.md
-*.csv
-*.xlsx
-playground/
-local_test/
-sql_backup/
-experimental/
-tmp/
-
-# Local-only files
-*.sql
-*.md
-*.csv
-*.xlsx
-playground/
-local_test/
-sql_backup/
-experimental/
-tmp/

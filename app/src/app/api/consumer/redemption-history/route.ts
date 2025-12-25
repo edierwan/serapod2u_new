@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json(
         { success: false, error: 'Please log in to view redemption history' },
@@ -86,14 +86,22 @@ export async function GET(request: NextRequest) {
     }
 
     // Get redemption history (transaction_type = 'redeem')
-    // Use simple select without join to avoid TypeScript issues
-    const { data: redemptions, error: redemptionsError } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('points_transactions')
       .select('*')
-      .eq('company_id', shopId)
       .eq('transaction_type', 'redeem')
       .order('transaction_date', { ascending: false })
       .limit(50)
+
+    if (userProfile.organization_id) {
+      // Shop user: filter by company_id (shop ID)
+      query = query.eq('company_id', shopId)
+    } else {
+      // Independent consumer: filter by user_id
+      query = query.eq('user_id', user.id)
+    }
+
+    const { data: redemptions, error: redemptionsError } = await query
 
     if (redemptionsError) {
       console.error('❌ Error fetching redemption history:', redemptionsError)
@@ -107,7 +115,7 @@ export async function GET(request: NextRequest) {
     const redeemItemIds = (redemptions || [])
       .map((txn: any) => txn.redeem_item_id)
       .filter(Boolean)
-    
+
     let redeemItemsMap: { [key: string]: any } = {}
     if (redeemItemIds.length > 0) {
       const { data: redeemItems } = await supabaseAdmin

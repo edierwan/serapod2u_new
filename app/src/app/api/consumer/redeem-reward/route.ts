@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    
+
     const { reward_id, consumer_phone, consumer_email } = await request.json()
 
     // Validate required fields
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json(
         { success: false, error: 'Please log in to redeem rewards' },
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       }
 
       const totalRedeemed = redeemedData?.reduce((sum, item) => sum + Math.abs(item.points_amount || 0), 0) || 0
-      
+
       currentBalance = totalCollected - totalRedeemed
     }
 
@@ -175,8 +175,8 @@ export async function POST(request: NextRequest) {
     // 5. Check if user has enough points
     if (currentBalance < pointsRequired) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: `Insufficient points. You need ${pointsRequired} points but have ${currentBalance}.`,
           current_balance: currentBalance,
           required: pointsRequired
@@ -197,9 +197,9 @@ export async function POST(request: NextRequest) {
 
         if (!countError && count && count >= reward.max_redemptions_per_consumer) {
           return NextResponse.json(
-            { 
-              success: false, 
-              error: `You have reached the maximum redemption limit for this item (${reward.max_redemptions_per_consumer})` 
+            {
+              success: false,
+              error: `You have reached the maximum redemption limit for this item (${reward.max_redemptions_per_consumer})`
             },
             { status: 400 }
           )
@@ -212,10 +212,10 @@ export async function POST(request: NextRequest) {
     // so the shop_points_ledger view can properly filter by shop_id
     const consumerPhone = userProfile.phone || ''
     const newBalance = currentBalance - pointsRequired
-    
+
     // Generate redemption code (will be finalized after insert with transaction ID)
     const tempRedemptionCode = `RED-${Date.now().toString(36).toUpperCase()}`
-    
+
     console.log('📝 Recording redemption:', {
       shop_id: shopId,
       consumer_phone: consumerPhone,
@@ -223,11 +223,11 @@ export async function POST(request: NextRequest) {
       balance_after: newBalance,
       reward_name: reward.item_name
     })
-    
+
     const { data: transaction, error: txnError } = await supabase
       .from('points_transactions')
       .insert({
-        company_id: shopId, // Use shop's org ID so shop_points_ledger view can find it
+        company_id: isIndependent ? null : shopId, // Use shop's org ID if available, else null
         consumer_phone: consumerPhone,
         consumer_email: consumer_email || userProfile.email || null,
         transaction_type: 'redeem',
@@ -237,7 +237,8 @@ export async function POST(request: NextRequest) {
         description: `Redeemed: ${reward.item_name}`,
         transaction_date: new Date().toISOString(),
         fulfillment_status: 'pending',
-        redemption_code: tempRedemptionCode
+        redemption_code: tempRedemptionCode,
+        user_id: user.id // Record the user ID for independent consumers
       } as any)
       .select()
       .single()
@@ -254,7 +255,7 @@ export async function POST(request: NextRequest) {
 
     // Generate final redemption code using transaction ID
     const redemptionCode = `RED-${transaction.id.split('-')[0].toUpperCase()}`
-    
+
     // Update the transaction with the final redemption code
     await supabase
       .from('points_transactions')
@@ -265,7 +266,7 @@ export async function POST(request: NextRequest) {
     if (typeof reward.stock_quantity === 'number' && reward.stock_quantity > 0) {
       const { error: stockError } = await supabase
         .from('redeem_items')
-        .update({ 
+        .update({
           stock_quantity: reward.stock_quantity - 1,
           updated_at: new Date().toISOString()
         })

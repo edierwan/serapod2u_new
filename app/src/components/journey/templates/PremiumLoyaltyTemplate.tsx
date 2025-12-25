@@ -12,11 +12,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { 
-    Home, 
-    Gift, 
-    Star, 
-    Gamepad2, 
+import {
+    Home,
+    Gift,
+    Star,
+    Gamepad2,
     User,
     ChevronRight,
     ChevronLeft,
@@ -167,9 +167,9 @@ interface PremiumLoyaltyTemplateProps {
     productInfo?: ProductInfo
 }
 
-export default function PremiumLoyaltyTemplate({ 
-    config, 
-    qrCode, 
+export default function PremiumLoyaltyTemplate({
+    config,
+    qrCode,
     orgId,
     isLive = false,
     consumerPhone,
@@ -178,9 +178,9 @@ export default function PremiumLoyaltyTemplate({
     const supabase = createClient()
     const { toast } = useToast()
     const [activeTab, setActiveTab] = useState<TabType>('home')
-    
+
     // Scratch Card State
-    const [scratchResult, setScratchResult] = useState<{isWin: boolean, rewardName: string} | null>(null)
+    const [scratchResult, setScratchResult] = useState<{ isWin: boolean, rewardName: string } | null>(null)
     const [isScratching, setIsScratching] = useState(false)
     const [scratchError, setScratchError] = useState<string | null>(null)
     const [scratchCardAlreadyPlayed, setScratchCardAlreadyPlayed] = useState(false)
@@ -198,7 +198,7 @@ export default function PremiumLoyaltyTemplate({
     const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
     const [selectedRewardForDetail, setSelectedRewardForDetail] = useState<RewardItem | null>(null)
     const [currentRewardImageIndex, setCurrentRewardImageIndex] = useState(0)
-    
+
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const handleAvatarClick = () => {
@@ -294,10 +294,10 @@ export default function PremiumLoyaltyTemplate({
     const [luckyDrawEntered, setLuckyDrawEntered] = useState(false)
     const [luckyDrawQrUsed, setLuckyDrawQrUsed] = useState(false) // Track if QR already used for lucky draw
     const [checkingQrStatus, setCheckingQrStatus] = useState(true) // Start true to show loading
-    
+
     // Control visibility of Free Gifts section in Rewards tab
     const [showFreeGifts, setShowFreeGifts] = useState(false)
-    
+
     // Points collection modal states
     const [showPointsLoginModal, setShowPointsLoginModal] = useState(false)
     const [showShopPassword, setShowShopPassword] = useState(false)
@@ -306,12 +306,12 @@ export default function PremiumLoyaltyTemplate({
     const [collectingPoints, setCollectingPoints] = useState(false)
     const [pointsError, setPointsError] = useState('')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
-    
+
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [isShopUser, setIsShopUser] = useState(false)
     const [authLoading, setAuthLoading] = useState(true)
-    
+
     // Ref to track if we're currently fetching profile (prevents duplicate fetches)
     const isFetchingProfileRef = useRef(false)
     const lastProfileFetchTimeRef = useRef(0)
@@ -337,7 +337,7 @@ export default function PremiumLoyaltyTemplate({
             // Use API route to bypass RLS for public consumer access
             const response = await fetch(`/api/consumer/active-games?journey_config_id=${config.id}`)
             const result = await response.json()
-            
+
             if (result.success) {
                 setActiveGames({
                     scratch: result.activeGames?.scratch || false,
@@ -360,12 +360,12 @@ export default function PremiumLoyaltyTemplate({
                 .select('*')
                 .eq('is_active', true)
                 .order('short_name')
-            
+
             if (data) {
                 setBanks(data)
             }
         }
-        
+
         fetchBanks()
     }, [])
 
@@ -379,12 +379,12 @@ export default function PremiumLoyaltyTemplate({
     const [emailError, setEmailError] = useState('')
     const [phoneError, setPhoneError] = useState('')
     const [isSignUp, setIsSignUp] = useState(false)
-    
+
     // Signup states
     const [signUpName, setSignUpName] = useState('')
     const [signUpPhone, setSignUpPhone] = useState('')
     const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('')
-    
+
     // Security modal states
     const [showSecurityModal, setShowSecurityModal] = useState(false)
     const [securityVerified, setSecurityVerified] = useState(false)
@@ -419,7 +419,7 @@ export default function PremiumLoyaltyTemplate({
     const [savingProfile, setSavingProfile] = useState(false)
     const [profileSaveError, setProfileSaveError] = useState('')
     const [profileSaveSuccess, setProfileSaveSuccess] = useState(false)
-    
+
     // Bank Account states
     const [banks, setBanks] = useState<any[]>([])
     const [bankId, setBankId] = useState('')
@@ -427,7 +427,7 @@ export default function PremiumLoyaltyTemplate({
     const [bankAccountHolderName, setBankAccountHolderName] = useState('')
     const [showBankInfo, setShowBankInfo] = useState(false)
     const [bankError, setBankError] = useState('')
-    
+
     // Password change states
     const [showChangePassword, setShowChangePassword] = useState(false)
     const [currentPassword, setCurrentPassword] = useState('')
@@ -440,7 +440,7 @@ export default function PremiumLoyaltyTemplate({
     const [passwordError, setPasswordError] = useState('')
     const [passwordSuccess, setPasswordSuccess] = useState(false)
     const [showProfileInfo, setShowProfileInfo] = useState(false)
-    
+
     // Genuine product verified animation state
     const [showGenuineVerified, setShowGenuineVerified] = useState(false)
 
@@ -460,20 +460,20 @@ export default function PremiumLoyaltyTemplate({
                 const now = Date.now()
                 const progress = Math.min((now - startTime) / duration, 1)
                 const easeOutQuart = 1 - Math.pow(1 - progress, 4)
-                
+
                 setDisplayPoints(Math.floor(start + (end - start) * easeOutQuart))
 
                 if (progress < 1) {
                     requestAnimationFrame(animate)
                 }
             }
-            
+
             requestAnimationFrame(animate)
         } else {
             setDisplayPoints(0)
         }
     }, [showPointsAnimation, userPoints])
-    
+
     // Reward redemption states
     const [selectedReward, setSelectedReward] = useState<RewardItem | null>(null)
     const [showRedeemConfirm, setShowRedeemConfirm] = useState(false)
@@ -493,7 +493,7 @@ export default function PremiumLoyaltyTemplate({
     } | null>(null)
 
     const [showInsufficientPoints, setShowInsufficientPoints] = useState(false)
-    const [insufficientPointsData, setInsufficientPointsData] = useState<{needed: number, available: number} | null>(null)
+    const [insufficientPointsData, setInsufficientPointsData] = useState<{ needed: number, available: number } | null>(null)
 
     // Rewards tab category states
     type RewardCategoryType = 'All' | 'Scanned' | 'Point History' | 'History'
@@ -504,7 +504,7 @@ export default function PremiumLoyaltyTemplate({
     const [loadingRedemptionHistory, setLoadingRedemptionHistory] = useState(false)
     const [loadingPointsHistory, setLoadingPointsHistory] = useState(false)
     const [loadingScannedProducts, setLoadingScannedProducts] = useState(false)
-    
+
     // Pagination states
     const [redemptionPage, setRedemptionPage] = useState(1)
     const [pointsPage, setPointsPage] = useState(1)
@@ -547,18 +547,18 @@ export default function PremiumLoyaltyTemplate({
             console.log('🔐 Profile fetch already in progress, skipping...')
             return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, duplicate: true }
         }
-        
+
         // Prevent duplicate fetches if fetched recently (within 2 seconds)
         if (!force && Date.now() - lastProfileFetchTimeRef.current < 2000) {
             console.log('🔐 Profile fetched recently, skipping...')
             return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, duplicate: true }
         }
-        
+
         isFetchingProfileRef.current = true
-        
+
         try {
             console.log('🔐 checkUserOrganization - Starting for userId:', userId)
-            
+
             // Get current session to pass token
             const { data: { session }, error: sessionError } = await supabase.auth.getSession()
             if (sessionError || !session || !session.access_token) {
@@ -581,13 +581,13 @@ export default function PremiumLoyaltyTemplate({
                 credentials: 'include', // Important: include cookies for auth
                 signal: controller.signal
             }).finally(() => clearTimeout(timeoutId))
-            
+
             console.log('🔐 Profile API response status:', response.status)
-            
+
             // Handle 401 - session is invalid/expired
             if (response.status === 401) {
                 console.log('🔐 Session expired/invalid (401), clearing auth and browser storage...')
-                
+
                 // Clear browser storage to remove stale session data
                 if (typeof window !== 'undefined') {
                     const localKeys = Object.keys(localStorage)
@@ -603,22 +603,22 @@ export default function PremiumLoyaltyTemplate({
                         }
                     })
                 }
-                
+
                 await supabase.auth.signOut({ scope: 'local' })
                 return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0, sessionInvalid: true }
             }
-            
+
             const result = await response.json()
             console.log('🔐 Profile API result:', result)
-            
+
             if (!result.success || !result.profile) {
                 console.error('🔐 Error fetching user profile via API:', result.error)
                 return { success: false, isShop: false, fullName: '', organizationId: null, avatarUrl: null, orgName: '', phone: '', pointsBalance: 0 }
             }
-            
+
             const profile = result.profile
-            console.log('🔐 User profile fetched via API:', { 
-                fullName: profile.fullName, 
+            console.log('🔐 User profile fetched via API:', {
+                fullName: profile.fullName,
                 avatarUrl: profile.avatarUrl,
                 phone: profile.phone,
                 organizationId: profile.organizationId,
@@ -626,11 +626,11 @@ export default function PremiumLoyaltyTemplate({
                 orgName: profile.orgName,
                 pointsBalance: profile.pointsBalance
             })
-            
+
             // Update last fetch time
             lastProfileFetchTimeRef.current = Date.now()
-            
-            return { 
+
+            return {
                 success: true,
                 isShop: profile.isShop === true, // Explicit boolean conversion
                 fullName: profile.fullName || '',
@@ -654,7 +654,7 @@ export default function PremiumLoyaltyTemplate({
 
     // Ref to track if initial auth check completed (prevents double profile fetch)
     const initialAuthCheckDoneRef = useRef(false)
-    
+
     // Check auth status on mount
     useEffect(() => {
         // IMPORTANT: Mark that auth check is starting immediately
@@ -663,7 +663,7 @@ export default function PremiumLoyaltyTemplate({
         if (isInitialCheck) {
             console.log('🔐 Starting initial auth check - blocking onAuthStateChange')
         }
-        
+
         const checkAuth = async () => {
             // Set a timeout to ensure authLoading becomes false even if API hangs
             const authTimeout = setTimeout(() => {
@@ -671,19 +671,19 @@ export default function PremiumLoyaltyTemplate({
                 setAuthLoading(false)
                 initialAuthCheckDoneRef.current = true
             }, 5000) // 5 second timeout
-            
+
             try {
                 console.log('🔐 Checking auth status...')
-                
+
                 // CONSUMER QR PAGES FIX: Check if session was created for this specific page/session
                 // If no active session marker exists in sessionStorage, clear any old sessions
                 // This ensures each QR scan is a fresh experience
                 const activeSessionMarker = sessionStorage.getItem('serapod_active_session')
                 const currentQrCode = qrCode // The QR code being viewed
-                
+
                 if (!activeSessionMarker) {
                     console.log('🔐 No active session marker - this is a fresh QR scan, clearing old sessions')
-                    
+
                     // Clear localStorage sessions (these persist across browser sessions)
                     if (typeof window !== 'undefined') {
                         const localKeys = Object.keys(localStorage)
@@ -693,13 +693,13 @@ export default function PremiumLoyaltyTemplate({
                             }
                         })
                     }
-                    
+
                     // Sign out any existing session
                     await supabase.auth.signOut({ scope: 'local' })
-                    
+
                     // Mark that we've done initial cleanup for this session
                     sessionStorage.setItem('serapod_active_session', 'checked')
-                    
+
                     // No user after cleanup
                     setIsAuthenticated(false)
                     setIsShopUser(false)
@@ -715,18 +715,18 @@ export default function PremiumLoyaltyTemplate({
                     initialAuthCheckDoneRef.current = true
                     return
                 }
-                
+
                 // Active session exists - validate with server using getUser()
                 const { data: userData, error: getUserError } = await supabase.auth.getUser()
                 let user = userData?.user || null
                 let authError = getUserError || null
-                
+
                 console.log('🔐 getUser result:', user?.id, user?.email, 'Error:', authError?.message)
 
                 // If getUser fails with auth error, clear session
                 if (authError) {
                     console.log('🔐 Auth validation failed, clearing session:', authError.message)
-                    
+
                     if (typeof window !== 'undefined') {
                         const localKeys = Object.keys(localStorage)
                         localKeys.forEach(key => {
@@ -741,7 +741,7 @@ export default function PremiumLoyaltyTemplate({
                             }
                         })
                     }
-                    
+
                     await supabase.auth.signOut({ scope: 'local' })
                     setIsAuthenticated(false)
                     setIsShopUser(false)
@@ -765,14 +765,14 @@ export default function PremiumLoyaltyTemplate({
                     setUserEmail(user.email || '')
                     setUserId(user.id)
                     setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
-                    
+
                     // Fetch profile data
                     console.log('🔐 User found, fetching profile data...')
-                    
+
                     try {
                         const profileResult = await checkUserOrganization(user.id)
                         const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
-                        
+
                         if (sessionInvalid) {
                             console.log('🔐 Session was invalid, clearing auth state')
                             await supabase.auth.signOut()
@@ -788,7 +788,7 @@ export default function PremiumLoyaltyTemplate({
                             initialAuthCheckDoneRef.current = true
                             return
                         }
-                        
+
                         if (success) {
                             console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
                             setIsShopUser(isShop)
@@ -798,7 +798,7 @@ export default function PremiumLoyaltyTemplate({
                             setUserPhone(phone)
                             setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                             setNewPhone(phone)
-                            
+
                             // Set points and bank details for ALL users (Shop and Independent)
                             console.log('🔐 Setting user points balance:', pointsBalance)
                             setUserPoints(pointsBalance)
@@ -828,54 +828,54 @@ export default function PremiumLoyaltyTemplate({
                 console.log('🔐 Initial auth check completed - onAuthStateChange now active')
             }
         }
-        
+
         // Run initial auth check first
         checkAuth()
-        
+
         // IMPORTANT: Set up auth listener AFTER a small delay to ensure initial check starts first
         // This prevents race conditions where onAuthStateChange fires before checkAuth completes
         const setupAuthListener = () => {
             const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
                 console.log('🔐 Auth state changed:', event, '| Has session:', !!session?.user, '| Initial check done:', initialAuthCheckDoneRef.current)
-                
+
                 // CRITICAL: Skip ALL events until initial auth check is complete
                 if (!initialAuthCheckDoneRef.current) {
                     console.log('🔐 Skipping auth state change - initial check not done yet')
                     return
                 }
-                
+
                 // Skip INITIAL_SESSION - this is just the first sync on page load
                 if (event === 'INITIAL_SESSION') {
                     console.log('🔐 Skipping INITIAL_SESSION - already handled by checkAuth')
                     return
                 }
-                
+
                 // Only process SIGNED_IN and SIGNED_OUT events to avoid duplicate fetches
                 if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT') {
                     console.log('🔐 Skipping non-essential auth event:', event)
                     return
                 }
-                
+
                 if (session?.user && event === 'SIGNED_IN') {
                     console.log('🔐 Processing SIGNED_IN event')
                     // User just signed in - set authenticated immediately
                     setIsAuthenticated(true)
                     setUserEmail(session.user.email || '')
                     setUserId(session.user.id)
-                    
+
                     // Mark active session
                     sessionStorage.setItem('serapod_active_session', 'logged_in')
-                    
+
                     // Skip profile fetch if already in progress
                     if (isFetchingProfileRef.current) {
                         console.log('🔐 Profile fetch already in progress, skipping')
                         return
                     }
-                    
+
                     // Fetch profile
                     try {
                         const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
-                        
+
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
                             setIsShopUser(isShop)
@@ -885,7 +885,7 @@ export default function PremiumLoyaltyTemplate({
                             setUserPhone(phone)
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
-                            
+
                             // Set points and bank details for ALL users
                             setUserPoints(pointsBalance)
                             setBankId(bankId || '')
@@ -910,13 +910,13 @@ export default function PremiumLoyaltyTemplate({
                     setUserId(null)
                 }
             })
-            
+
             return subscription
         }
-        
+
         // Set up the auth listener
         const subscription = setupAuthListener()
-        
+
         return () => {
             subscription.unsubscribe()
         }
@@ -963,6 +963,21 @@ export default function PremiumLoyaltyTemplate({
             checkGiftRedeemStatus()
         }
     }, [activeTab, isLive, qrCode, config.redemption_enabled])
+
+    // Fetch rewards tab data when user logs in while on rewards tab
+    useEffect(() => {
+        if (activeTab === 'rewards' && isAuthenticated && isLive) {
+            console.log('🔐 User authenticated on rewards tab, fetching data for category:', rewardCategory)
+            // Fetch data based on current category
+            if (rewardCategory === 'History') {
+                fetchRedemptionHistory()
+            } else if (rewardCategory === 'Point History') {
+                fetchPointsHistory()
+            } else if (rewardCategory === 'Scanned') {
+                fetchScannedProducts()
+            }
+        }
+    }, [isAuthenticated, activeTab, isLive])
 
     // Fetch products from API when products tab is active
     useEffect(() => {
@@ -1030,11 +1045,11 @@ export default function PremiumLoyaltyTemplate({
     // Check QR status function - reusable for multiple calls
     const checkQrStatusFromApi = async (): Promise<{ isLuckyDrawEntered: boolean, isPointsCollected: boolean }> => {
         if (!qrCode) return { isLuckyDrawEntered: false, isPointsCollected: false }
-        
+
         try {
             const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
             const data = await response.json()
-            
+
             if (data.success) {
                 return {
                     isLuckyDrawEntered: data.is_lucky_draw_entered || false,
@@ -1051,19 +1066,19 @@ export default function PremiumLoyaltyTemplate({
     useEffect(() => {
         const checkQrStatus = async () => {
             if (!qrCode) return
-            
+
             setCheckingQrStatus(true)
             try {
                 const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
                 const data = await response.json()
-                
+
                 if (data.success) {
                     // Check if points already collected from this QR
                     if (data.is_points_collected) {
                         setQrPointsCollected(true)
                         setPointsCollected(true)
                     }
-                    
+
                     // Check if lucky draw already entered from this QR
                     if (data.is_lucky_draw_entered) {
                         setLuckyDrawQrUsed(true)
@@ -1088,7 +1103,7 @@ export default function PremiumLoyaltyTemplate({
                             setScratchCardPreviousReward(data.scratch_card_reward)
                         }
                     }
-                    
+
                     // Store the QR code DB ID for scratch card plays
                     if (data.qr_code_id) {
                         setQrCodeDbId(data.qr_code_id)
@@ -1156,7 +1171,7 @@ export default function PremiumLoyaltyTemplate({
             // Use API route to bypass RLS for public consumer access
             const response = await fetch(`/api/consumer/rewards?org_id=${orgId}`)
             const result = await response.json()
-            
+
             if (result.success) {
                 setRewards(result.rewards || [])
             } else {
@@ -1178,7 +1193,7 @@ export default function PremiumLoyaltyTemplate({
             // Use API route to bypass RLS for public consumer access
             const response = await fetch(`/api/consumer/products?org_id=${orgId}`)
             const result = await response.json()
-            
+
             if (result.success) {
                 setProducts(result.products || [])
             } else {
@@ -1200,7 +1215,7 @@ export default function PremiumLoyaltyTemplate({
         try {
             const response = await fetch('/api/consumer/redemption-history')
             const result = await response.json()
-            
+
             if (result.success) {
                 setRedemptionHistory(result.redemptions || [])
             } else {
@@ -1222,7 +1237,7 @@ export default function PremiumLoyaltyTemplate({
         try {
             const response = await fetch('/api/consumer/points-history')
             const result = await response.json()
-            
+
             if (result.success) {
                 setPointsHistory(result.transactions || [])
             } else {
@@ -1244,7 +1259,7 @@ export default function PremiumLoyaltyTemplate({
         try {
             const response = await fetch('/api/consumer/scanned-products')
             const result = await response.json()
-            
+
             if (result.success) {
                 setScannedProducts(result.scans || [])
             } else {
@@ -1266,7 +1281,7 @@ export default function PremiumLoyaltyTemplate({
         try {
             const response = await fetch(`/api/consumer/redeem-gifts?qr_code=${encodeURIComponent(qrCode)}`)
             const result = await response.json()
-            
+
             if (result.success) {
                 setFreeGifts(result.gifts || [])
             } else {
@@ -1299,10 +1314,10 @@ export default function PremiumLoyaltyTemplate({
     // Handle gift claim
     const handleClaimGift = async () => {
         if (!selectedGift || !qrCode) return
-        
+
         setClaimingGift(true)
         setGiftError('')
-        
+
         try {
             const response = await fetch('/api/consumer/claim-gift', {
                 method: 'POST',
@@ -1315,9 +1330,9 @@ export default function PremiumLoyaltyTemplate({
                     consumer_email: customerEmail || null
                 })
             })
-            
+
             const data = await response.json()
-            
+
             if (data.success) {
                 setClaimedGiftName(selectedGift.gift_name)
                 setGiftRedeemed(true)
@@ -1365,20 +1380,20 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
         }
-        
+
         // Prevent duplicate submissions
         if (loginLoading) {
             console.log('🔐 Login already in progress, ignoring duplicate request')
             return
         }
-        
+
         setLoginLoading(true)
         setLoginError('')
-        
+
         try {
             // Remove all whitespace from email
             let emailToUse = loginEmail.replace(/\s/g, '')
-            
+
             // Check if input looks like a phone number (doesn't contain @)
             if (!emailToUse.includes('@')) {
                 // If signing up, we require a valid email in this field
@@ -1390,17 +1405,17 @@ export default function PremiumLoyaltyTemplate({
 
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(emailToUse)
-                
+
                 // Use the RPC function to find the email associated with this phone number
                 // Add retry logic for better reliability
                 let userEmailData = null
                 let lookupError = null
-                
+
                 for (let i = 0; i < 3; i++) {
                     try {
                         const result = await supabase
                             .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
-                        
+
                         if (!result.error) {
                             userEmailData = result.data
                             lookupError = null
@@ -1412,14 +1427,14 @@ export default function PremiumLoyaltyTemplate({
                     }
                     if (i < 2) await new Promise(resolve => setTimeout(resolve, 1000))
                 }
-                
+
                 if (lookupError) {
                     console.error('Phone lookup error:', lookupError)
                     setLoginError('Error verifying phone number. Please check your connection.')
                     setLoginLoading(false)
                     return
                 }
-                
+
                 // Handle different response formats safely
                 let userEmail = userEmailData
                 if (Array.isArray(userEmailData)) {
@@ -1437,12 +1452,12 @@ export default function PremiumLoyaltyTemplate({
                     setLoginLoading(false)
                     return
                 }
-                
+
                 emailToUse = userEmail as string
             }
-            
+
             console.log('🔐 Attempting login with email:', emailToUse)
-            
+
             if (isSignUp) {
                 // Validate email format before sending to Supabase
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -1465,7 +1480,7 @@ export default function PremiumLoyaltyTemplate({
                 }
 
                 console.log('🔐 Sign up successful via server action')
-                
+
                 // Auto-login after successful registration
                 const { data, error } = await supabase.auth.signInWithPassword({
                     email: emailToUse,
@@ -1474,10 +1489,10 @@ export default function PremiumLoyaltyTemplate({
 
                 if (error) throw error
                 console.log('🔐 Sign up successful')
-                
+
                 if (data.session && data.user) {
                     console.log('🔐 Auto-logging in after signup...', data.user.id)
-                    
+
                     // Update phone in public.users via API (bypasses RLS)
                     if (signUpPhone) {
                         try {
@@ -1490,7 +1505,7 @@ export default function PremiumLoyaltyTemplate({
                                     phone: signUpPhone
                                 })
                             })
-                            
+
                             const result = await response.json()
                             if (result.success) {
                                 console.log('🔐 Phone number updated successfully in public.users')
@@ -1504,7 +1519,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // IMPORTANT: Mark this as an active session so it persists within this browser session
                     sessionStorage.setItem('serapod_active_session', 'logged_in')
-                    
+
                     setShowLoginForm(false)
                     // Clear form after successful login
                     setLoginEmail('')
@@ -1512,14 +1527,14 @@ export default function PremiumLoyaltyTemplate({
                     setSignUpName('')
                     setSignUpPhone('')
                     setSignUpConfirmPassword('')
-                    
+
                     // IMPORTANT: Force profile fetch after successful login
                     if (data.user) {
                         console.log('🔐 Forcing profile fetch after signup...')
                         try {
                             const profileData = await checkUserOrganization(data.user.id, true) // Force fetch, bypass duplicate check
                             const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance } = profileData
-                            
+
                             if (success) {
                                 console.log('🔐 Profile loaded successfully after signup')
                                 setIsAuthenticated(true)
@@ -1551,7 +1566,7 @@ export default function PremiumLoyaltyTemplate({
                     setSignUpName('')
                     setSignUpPhone('')
                     setSignUpConfirmPassword('')
-                    
+
                     toast({
                         title: "Account Created",
                         description: "Your account has been created successfully. Please check your email for confirmation if required.",
@@ -1563,7 +1578,7 @@ export default function PremiumLoyaltyTemplate({
                     email: emailToUse,
                     password: loginPassword,
                 })
-                const timeoutPromise = new Promise((_, reject) => 
+                const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Login timed out')), 15000)
                 )
 
@@ -1586,22 +1601,22 @@ export default function PremiumLoyaltyTemplate({
                 }
 
                 console.log('🔐 Sign in successful, user:', data.user?.email)
-                
+
                 // IMPORTANT: Mark this as an active session so it persists within this browser session
                 sessionStorage.setItem('serapod_active_session', 'logged_in')
-                
+
                 setShowLoginForm(false)
                 // Clear form after successful login
                 setLoginEmail('')
                 setLoginPassword('')
-                
+
                 // IMPORTANT: Force profile fetch after successful login
                 if (data.user) {
                     console.log('🔐 Forcing profile fetch after login...')
                     try {
                         const profileData = await checkUserOrganization(data.user.id, true) // Force fetch, bypass duplicate check
                         const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance } = profileData
-                        
+
                         if (success) {
                             console.log('🔐 Profile loaded successfully after login')
                             setIsAuthenticated(true)
@@ -1646,13 +1661,13 @@ export default function PremiumLoyaltyTemplate({
             setShopName('')
             setUserPhone('')
             setUserId(null)
-            
+
             // IMPORTANT: Clear login form fields to prevent auto-login on next visit
             setLoginEmail('')
             setLoginPassword('')
             setLoginError('')
             setShowLoginForm(false)
-            
+
             // Call server action to clear cookies
             await logoutConsumer()
 
@@ -1660,30 +1675,30 @@ export default function PremiumLoyaltyTemplate({
             const signOutPromise = supabase.auth.signOut()
             const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000))
             await Promise.race([signOutPromise, timeoutPromise])
-            
+
             // Clear any cached session data (both localStorage AND sessionStorage)
             if (typeof window !== 'undefined') {
                 // Clear localStorage keys related to Supabase
-                const localKeysToRemove = Object.keys(localStorage).filter(key => 
+                const localKeysToRemove = Object.keys(localStorage).filter(key =>
                     key.startsWith('sb-') || key.includes('supabase')
                 )
                 localKeysToRemove.forEach(key => localStorage.removeItem(key))
-                
+
                 // Also clear sessionStorage to prevent stale session issues
-                const sessionKeysToRemove = Object.keys(sessionStorage).filter(key => 
+                const sessionKeysToRemove = Object.keys(sessionStorage).filter(key =>
                     key.startsWith('sb-') || key.includes('supabase')
                 )
                 sessionKeysToRemove.forEach(key => sessionStorage.removeItem(key))
-                
+
                 // IMPORTANT: Remove the active session marker so next QR scan is fresh
                 sessionStorage.removeItem('serapod_active_session')
             }
-            
+
             console.log('🔐 Logged out successfully')
-            
+
             // Navigate to profile tab after logout
             setActiveTab('profile')
-            
+
             // Show toast confirmation
             toast({ title: 'Signed Out', description: 'You have been signed out successfully.' })
         } catch (error) {
@@ -1696,19 +1711,19 @@ export default function PremiumLoyaltyTemplate({
     // Handle profile update (name and phone)
     const handleSaveProfile = async () => {
         if (!userId) return
-        
+
         setSavingProfile(true)
         setProfileSaveError('')
         setProfileSaveSuccess(false)
-        
+
         try {
             // Prepare update data
             const updateData: any = {}
-            
+
             if (newName !== userName) {
                 updateData.full_name = newName.trim()
             }
-            
+
             if (newPhone !== userPhone) {
                 // Validate phone number format (Malaysia/China)
                 if (newPhone && newPhone.trim()) {
@@ -1721,7 +1736,7 @@ export default function PremiumLoyaltyTemplate({
                 }
                 updateData.phone = newPhone.trim() || null
             }
-            
+
             // Add bank details if shop user or independent consumer
             if (isShopUser || !shopName) {
                 // If any bank field is filled, validate all required fields
@@ -1761,18 +1776,18 @@ export default function PremiumLoyaltyTemplate({
                         }
                     }
                 }
-                
+
                 updateData.bank_id = bankId
                 updateData.bank_account_number = bankAccountNumber
                 updateData.bank_account_holder_name = bankAccountHolderName
             }
-            
+
             if (Object.keys(updateData).length === 0) {
                 setProfileSaveError('No changes to save')
                 setSavingProfile(false)
                 return
             }
-            
+
             // Call API to update profile (this will sync phone with Supabase Auth)
             const response = await fetch('/api/user/update-profile', {
                 method: 'POST',
@@ -1782,13 +1797,13 @@ export default function PremiumLoyaltyTemplate({
                     ...updateData
                 })
             })
-            
+
             const data = await response.json()
-            
+
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to update profile')
             }
-            
+
             // Update local state
             if (updateData.full_name) {
                 setUserName(updateData.full_name)
@@ -1796,14 +1811,14 @@ export default function PremiumLoyaltyTemplate({
             if (updateData.phone !== undefined) {
                 setUserPhone(updateData.phone || '')
             }
-            
+
             setProfileSaveSuccess(true)
             setEditingName(false)
             setEditingPhone(false)
-            
+
             // Clear success message after 3 seconds
             setTimeout(() => setProfileSaveSuccess(false), 3000)
-            
+
         } catch (error: any) {
             console.error('Error saving profile:', error)
             setProfileSaveError(error.message || 'Failed to save profile')
@@ -1818,67 +1833,67 @@ export default function PremiumLoyaltyTemplate({
             setPasswordError('All fields are required')
             return
         }
-        
+
         if (newPassword.length < 6) {
             setPasswordError('New password must be at least 6 characters')
             return
         }
-        
+
         if (newPassword !== confirmPassword) {
             setPasswordError('Passwords do not match')
             return
         }
-        
+
         setChangingPassword(true)
         setPasswordError('')
         setPasswordSuccess(false)
-        
+
         try {
             console.log('🔐 Starting password change...')
-            
+
             // First verify current password by attempting re-auth with timeout
             const signInPromise = supabase.auth.signInWithPassword({
                 email: userEmail,
                 password: currentPassword
             })
-            
-            const timeoutPromise = new Promise((_, reject) => 
+
+            const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Password verification timeout')), 10000)
             )
-            
+
             const { error: signInError } = await Promise.race([signInPromise, timeoutPromise]) as any
-            
+
             if (signInError) {
                 throw new Error('Current password is incorrect')
             }
-            
+
             console.log('🔐 Current password verified, updating...')
-            
+
             // Update password with timeout
             const updatePromise = supabase.auth.updateUser({
                 password: newPassword
             })
-            
-            const updateTimeoutPromise = new Promise((_, reject) => 
+
+            const updateTimeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Password update timeout')), 10000)
             )
-            
+
             const { error: updateError } = await Promise.race([updatePromise, updateTimeoutPromise]) as any
-            
+
             if (updateError) {
                 throw new Error(updateError.message)
             }
-            
+
             console.log('✅ Password changed successfully')
             setPasswordSuccess(true)
             setCurrentPassword('')
             setNewPassword('')
             setConfirmPassword('')
             setShowChangePassword(false)
-            
+
             // Clear success message after 3 seconds
             setTimeout(() => setPasswordSuccess(false), 3000)
-            
+
         } catch (error: any) {
             console.error('❌ Error changing password:', error)
             setPasswordError(error.message || 'Failed to change password')
@@ -1891,10 +1906,10 @@ export default function PremiumLoyaltyTemplate({
     const isSecurityCodeRequiredForFeature = (action: string): boolean => {
         // If main security code is OFF, no security code required for anything
         if (!config.require_security_code) return false
-        
+
         // If already verified, no need to check again
         if (securityVerified) return false
-        
+
         // Check per-feature bypass settings
         switch (action) {
             case 'collect-points':
@@ -1930,7 +1945,7 @@ export default function PremiumLoyaltyTemplate({
             case 'collect-points':
                 // If user is authenticated AND is a shop user, collect points with session
                 console.log('🔐 Collect points action - isAuthenticated:', isAuthenticated, 'isShopUser:', isShopUser, 'authLoading:', authLoading)
-                
+
                 // If auth is still loading after 2 seconds, just show login modal
                 if (authLoading) {
                     console.log('🔐 Auth still loading, showing shop login modal anyway')
@@ -1939,7 +1954,7 @@ export default function PremiumLoyaltyTemplate({
                     setShowPointsLoginModal(true)
                     return
                 }
-                
+
                 if (isAuthenticated && isShopUser) {
                     console.log('🔐 Shop user authenticated, collecting points with session')
                     handleCollectPointsWithSession()
@@ -1994,65 +2009,65 @@ export default function PremiumLoyaltyTemplate({
         try {
             console.log('🔐 handleCollectPoints - Starting...')
             let emailToUse = shopId
-            
+
             // Check if input looks like a phone number (doesn't contain @)
             if (!shopId.includes('@')) {
                 console.log('📱 Phone detected, looking up email...')
                 // Normalize and lookup email by phone
                 const normalizedPhone = normalizePhone(shopId)
-                
+
                 // Use the RPC function to find the email associated with this phone number
                 // Add retry logic with timeout
                 let userEmailData = null
                 let lookupError = null
-                
+
                 for (let i = 0; i < 3; i++) {
                     try {
-                        console.log(`📱 Phone lookup attempt ${i+1}...`)
-                        
+                        console.log(`📱 Phone lookup attempt ${i + 1}...`)
+
                         const rpcPromise = supabase
                             .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
-                        
+
                         // Increase timeout to 10 seconds (was 5s which is too short)
-                        const timeoutPromise = new Promise((_, reject) => 
+                        const timeoutPromise = new Promise((_, reject) =>
                             setTimeout(() => reject(new Error('Phone lookup timed out. Please try again.')), 10000)
                         )
-                        
+
                         const result = await Promise.race([rpcPromise, timeoutPromise]) as any
-                        
+
                         if (!result.error) {
                             userEmailData = result.data
                             lookupError = null
                             console.log('✅ Phone lookup successful')
                             break
                         }
-                        
+
                         lookupError = result.error
-                        console.warn(`Phone lookup attempt ${i+1} failed:`, result.error)
+                        console.warn(`Phone lookup attempt ${i + 1} failed:`, result.error)
                     } catch (err: any) {
-                        console.warn(`Phone lookup attempt ${i+1} exception:`, err)
+                        console.warn(`Phone lookup attempt ${i + 1} exception:`, err)
                         lookupError = err
-                        
+
                         // If it's a timeout error, show user-friendly message
                         if (err?.message?.includes('timed out')) {
                             // Continue to retry
                         }
                     }
-                    
+
                     // Wait before retry if not the last attempt
                     if (i < 2) await new Promise(resolve => setTimeout(resolve, 1500))
                 }
-                
+
                 if (lookupError) {
                     console.error('❌ Phone lookup error after retries:', lookupError)
-                    const errorMsg = lookupError?.message?.includes('timed out') 
+                    const errorMsg = lookupError?.message?.includes('timed out')
                         ? 'Connection timed out. Please check your internet connection and try again.'
                         : 'Error verifying phone number. Please check your connection and try again.'
                     setPointsError(errorMsg)
                     setCollectingPoints(false)
                     return
                 }
-                
+
                 // Handle different response formats safely
                 let userEmail = userEmailData
                 if (Array.isArray(userEmailData)) {
@@ -2070,7 +2085,7 @@ export default function PremiumLoyaltyTemplate({
                     setCollectingPoints(false)
                     return
                 }
-                
+
                 emailToUse = userEmail
             }
 
@@ -2118,7 +2133,7 @@ export default function PremiumLoyaltyTemplate({
             setPointsCollected(true)
             setShowPointsLoginModal(false)
             setShowPointsSuccessModal(true)
-            
+
             // IMPORTANT: Establish client-side session so next time user doesn't need to login again
             if (data.email && shopPassword) {
                 console.log('🔐 Establishing persistent session for shop user...')
@@ -2128,7 +2143,7 @@ export default function PremiumLoyaltyTemplate({
                         email: data.email,
                         password: shopPassword
                     })
-                    const timeoutPromise = new Promise((_, reject) => 
+                    const timeoutPromise = new Promise((_, reject) =>
                         setTimeout(() => reject(new Error('Session establishment timed out')), 10000)
                     )
 
@@ -2136,7 +2151,7 @@ export default function PremiumLoyaltyTemplate({
                         signInPromise,
                         timeoutPromise
                     ]) as any
-                    
+
                     if (!signInError) {
                         console.log('✅ Session established successfully')
                         // Update auth state so next point collection won't require login
@@ -2153,11 +2168,11 @@ export default function PremiumLoyaltyTemplate({
                     // Don't fail the point collection just because session couldn't be established
                 }
             }
-            
+
             // Clear form
             setShopId('')
             setShopPassword('')
-            
+
         } catch (error: any) {
             console.error('Error collecting points:', error)
             setPointsError(error.message || 'Failed to collect points')
@@ -2226,7 +2241,7 @@ export default function PremiumLoyaltyTemplate({
             setPointsCollected(true)
             setShowPointsSuccessModal(true)
             if (data.avatar_url) setUserAvatarUrl(data.avatar_url)
-            
+
         } catch (error: any) {
             console.error('Error collecting points with session:', error)
             const errorMessage = error.message || 'Failed to collect points'
@@ -2303,17 +2318,17 @@ export default function PremiumLoyaltyTemplate({
             setLuckyDrawError('Please fill in all required fields')
             return
         }
-        
+
         if (!validateMalaysiaPhone(customerPhone)) {
             setLuckyDrawPhoneError('Please enter a valid Malaysia phone number')
             return
         }
-        
+
         if (customerEmail && !validateEmail(customerEmail)) {
             setLuckyDrawEmailError('Please enter a valid email address')
             return
         }
-        
+
         setIsSubmitting(true)
         setLuckyDrawError('')
 
@@ -2331,9 +2346,9 @@ export default function PremiumLoyaltyTemplate({
             console.error('Pre-check failed, proceeding with submission:', error)
             // Continue with submission - the API will do final validation
         }
-        
+
         setLuckyDrawError('')
-        
+
         try {
             const response = await fetch('/api/consumer/lucky-draw-entry', {
                 method: 'POST',
@@ -2345,9 +2360,9 @@ export default function PremiumLoyaltyTemplate({
                     consumer_email: customerEmail || null
                 })
             })
-            
+
             const data = await response.json()
-            
+
             if (response.ok && data.success) {
                 // BULLETPROOF: Always set the flags on success
                 setLuckyDrawQrUsed(true)
@@ -2449,7 +2464,7 @@ export default function PremiumLoyaltyTemplate({
 
                 // Refresh rewards list to update stock
                 fetchRewards()
-                
+
                 // IMPORTANT: Refresh redemption history to show new redemption
                 fetchRedemptionHistory()
             } else {
@@ -2527,10 +2542,10 @@ export default function PremiumLoyaltyTemplate({
     // Helper to render banner based on location
     const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile') => {
         if (!config.banner_config?.enabled || config.banner_config.items.length === 0) return null
-        
+
         // Filter items by page (defaults to 'home' if page is not set)
         const pageItems = config.banner_config.items.filter(item => (item.page || 'home') === location)
-        
+
         if (pageItems.length === 0) return null
 
         return (
@@ -2553,16 +2568,16 @@ export default function PremiumLoyaltyTemplate({
     const renderHomeTab = () => (
         <div className="flex-1 overflow-y-auto pb-20">
             {/* Hero Section */}
-            <div 
+            <div
                 className="relative px-5 pt-8 pb-12 text-white"
-                style={{ 
+                style={{
                     background: `linear-gradient(135deg, ${config.primary_color} 0%, ${adjustColor(config.primary_color, -30)} 100%)`
                 }}
             >
                 {/* Decorative circles */}
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10 bg-white transform translate-x-10 -translate-y-10" />
                 <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full opacity-10 bg-white transform -translate-x-8 translate-y-8" />
-                
+
                 <div className="relative z-10">
                     <div className="flex items-center justify-between mb-6">
                         <div>
@@ -2587,8 +2602,8 @@ export default function PremiumLoyaltyTemplate({
                                 <>
                                     <p className="text-white/80 text-sm">Welcome back</p>
                                     <h1 className="text-2xl font-bold">
-                                        {isAuthenticated && isShopUser && shopName 
-                                            ? shopName 
+                                        {isAuthenticated && isShopUser && shopName
+                                            ? shopName
                                             : userName || 'Valued Member'} ✨
                                     </h1>
                                     {isAuthenticated && isShopUser && userName && shopName && (
@@ -2597,7 +2612,7 @@ export default function PremiumLoyaltyTemplate({
                                 </>
                             )}
                         </div>
-                        <div 
+                        <div
                             className={`w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden relative ${isAuthenticated ? 'cursor-pointer hover:opacity-80' : ''}`}
                             onClick={handleAvatarClick}
                         >
@@ -2606,26 +2621,26 @@ export default function PremiumLoyaltyTemplate({
                                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 </div>
                             ) : null}
-                            
+
                             {userAvatarUrl ? (
-                                <img 
-                                    src={userAvatarUrl} 
-                                    alt="Profile" 
+                                <img
+                                    src={userAvatarUrl}
+                                    alt="Profile"
                                     className="object-cover w-full h-full"
                                 />
                             ) : (
                                 <User className="w-6 h-6" />
                             )}
-                            <input 
-                                type="file" 
-                                ref={fileInputRef} 
-                                className="hidden" 
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
                                 accept="image/*"
                                 onChange={handleAvatarUpload}
                             />
                         </div>
                     </div>
-                    
+
                     {/* Points Card */}
                     <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                         <div className="flex items-center justify-between">
@@ -2641,13 +2656,13 @@ export default function PremiumLoyaltyTemplate({
                                 <p className="text-sm font-medium">100 pts away</p>
                             </div>
                         </div>
-                        
+
                         {/* Progress bar */}
                         <div className="mt-4">
                             <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-                                <div 
+                                <div
                                     className="h-full bg-yellow-400 rounded-full transition-all ease-out"
-                                    style={{ 
+                                    style={{
                                         width: showPointsAnimation ? `${Math.min((userPoints / 50000) * 100, 100)}%` : '0%',
                                         transitionDuration: '2000ms'
                                     }}
@@ -2668,14 +2683,13 @@ export default function PremiumLoyaltyTemplate({
             <div className="px-5 -mt-6 relative z-20">
                 <div className="bg-white rounded-2xl shadow-lg p-3 flex justify-between gap-2">
                     {config.points_enabled && (
-                        <button 
+                        <button
                             onClick={() => handleProtectedAction('collect-points')}
                             disabled={collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus}
-                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${
-                                (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                            }`}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${(pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                                }`}
                         >
-                            <div 
+                            <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: (pointsCollected || qrPointsCollected) ? '#dcfce7' : `${config.primary_color}15` }}
                             >
@@ -2692,16 +2706,15 @@ export default function PremiumLoyaltyTemplate({
                             </span>
                         </button>
                     )}
-                    
+
                     {config.lucky_draw_enabled && (
-                        <button 
+                        <button
                             onClick={() => handleProtectedAction('lucky-draw')}
                             disabled={checkingQrStatus || luckyDrawQrUsed || luckyDrawEntered}
-                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${
-                                (luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                            }`}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${(luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                                }`}
                         >
-                            <div 
+                            <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: (luckyDrawQrUsed || luckyDrawEntered) ? '#dcfce7' : '#fef3c7' }}
                             >
@@ -2718,19 +2731,18 @@ export default function PremiumLoyaltyTemplate({
                             </span>
                         </button>
                     )}
-                    
+
                     {config.redemption_enabled && (
-                        <button 
+                        <button
                             onClick={() => {
                                 handleProtectedAction('redeem')
                                 fetchFreeGifts()
                             }}
                             disabled={checkingQrStatus || giftQrUsed || giftRedeemed}
-                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${
-                                (giftQrUsed || giftRedeemed) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                            }`}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${(giftQrUsed || giftRedeemed) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                                }`}
                         >
-                            <div 
+                            <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: (giftQrUsed || giftRedeemed) ? '#dcfce7' : '#dcfce7' }}
                             >
@@ -2749,11 +2761,11 @@ export default function PremiumLoyaltyTemplate({
                     )}
 
                     {config.enable_scratch_card_game && (
-                        <button 
+                        <button
                             onClick={() => handleProtectedAction('scratch-card')}
                             className="flex-1 flex flex-col items-center p-2 rounded-xl hover:bg-gray-50 transition-colors"
                         >
-                            <div 
+                            <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
                                 style={{ backgroundColor: '#f3e8ff' }}
                             >
@@ -2769,7 +2781,7 @@ export default function PremiumLoyaltyTemplate({
             <div className="px-5 mt-6">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-gray-900">Featured Rewards</h2>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('rewards')}
                         className="text-sm font-medium flex items-center gap-1"
                         style={{ color: config.primary_color }}
@@ -2777,7 +2789,7 @@ export default function PremiumLoyaltyTemplate({
                         See all <ChevronRight className="w-4 h-4" />
                     </button>
                 </div>
-                
+
                 <div className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
                     {/* Show real rewards if available, otherwise show loading/placeholder */}
                     {loadingRewards ? (
@@ -2794,15 +2806,15 @@ export default function PremiumLoyaltyTemplate({
                     ) : rewards.length > 0 ? (
                         // Show real rewards (first 5)
                         rewards.slice(0, 5).map((reward) => (
-                            <div 
-                                key={reward.id} 
+                            <div
+                                key={reward.id}
                                 className="flex-shrink-0 w-36 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
                                 onClick={() => setActiveTab('rewards')}
                             >
                                 <div className="h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative overflow-hidden">
                                     {reward.item_image_url ? (
-                                        <Image 
-                                            src={getStorageUrl(reward.item_image_url) || reward.item_image_url} 
+                                        <Image
+                                            src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
                                             alt={reward.item_name}
                                             fill
                                             className="object-cover"
@@ -2875,7 +2887,7 @@ export default function PremiumLoyaltyTemplate({
                             <span className="text-sm font-bold text-purple-600">-{lastRedeemedReward.pointsDeducted} pts</span>
                         </div>
                     )}
-                    
+
                     {luckyDrawEntered && (
                         <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
                             <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
@@ -2888,7 +2900,7 @@ export default function PremiumLoyaltyTemplate({
                             <Badge className="bg-amber-100 text-amber-700">Entered</Badge>
                         </div>
                     )}
-                    
+
                     {!pointsCollected && !luckyDrawEntered && !lastRedeemedReward && (
                         <div className="text-center py-8 text-gray-500">
                             <Zap className="w-12 h-12 mx-auto mb-2 text-gray-300" />
@@ -2907,7 +2919,7 @@ export default function PremiumLoyaltyTemplate({
         const handleCategoryChange = (cat: RewardCategoryType) => {
             setRewardCategory(cat)
             // Fetch data for the selected tab if authenticated
-            if (isAuthenticated && isShopUser) {
+            if (isAuthenticated) {
                 if (cat === 'History') {
                     // Always fetch to ensure latest redemptions are shown
                     fetchRedemptionHistory()
@@ -2923,9 +2935,9 @@ export default function PremiumLoyaltyTemplate({
         // Format date helper
         const formatDate = (dateStr: string) => {
             const date = new Date(dateStr)
-            return date.toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric', 
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
                 year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit'
@@ -2946,545 +2958,542 @@ export default function PremiumLoyaltyTemplate({
         }
 
         return (
-        <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
-            {/* Header */}
-            <div 
-                className="px-5 pt-6 pb-8 text-white"
-                style={{ backgroundColor: config.primary_color }}
-            >
-                <h1 className="text-xl font-bold mb-2">Rewards Catalog</h1>
-                <p className="text-white/80 text-sm">Redeem your points for amazing rewards</p>
-                
-                <div className="mt-4 flex items-center gap-2 bg-white/15 rounded-xl p-3">
-                    <Star className="w-5 h-5 text-yellow-300 fill-yellow-300" />
-                    <span className="font-bold">{userPoints}</span>
-                    <span className="text-white/70 text-sm">points available</span>
-                </div>
-            </div>
+            <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
+                {/* Header */}
+                <div
+                    className="px-5 pt-6 pb-8 text-white"
+                    style={{ backgroundColor: config.primary_color }}
+                >
+                    <h1 className="text-xl font-bold mb-2">Rewards Catalog</h1>
+                    <p className="text-white/80 text-sm">Redeem your points for amazing rewards</p>
 
-            {/* Category Tabs - Renamed: All, Scanned, Point History, History */}
-            <div className="px-5 -mt-4">
-                <div className="bg-white rounded-xl shadow-sm p-1 flex gap-1">
-                    {(['All', 'Scanned', 'Point History', 'History'] as RewardCategoryType[]).map((cat) => (
-                        <button 
-                            key={cat}
-                            onClick={() => handleCategoryChange(cat)}
-                            className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors ${
-                                rewardCategory === cat 
-                                    ? 'text-white' 
-                                    : 'text-gray-600 hover:bg-gray-50'
-                            }`}
-                            style={rewardCategory === cat ? { backgroundColor: config.primary_color } : {}}
-                        >
-                            {cat}
-                        </button>
-                    ))}
+                    <div className="mt-4 flex items-center gap-2 bg-white/15 rounded-xl p-3">
+                        <Star className="w-5 h-5 text-yellow-300 fill-yellow-300" />
+                        <span className="font-bold">{userPoints}</span>
+                        <span className="text-white/70 text-sm">points available</span>
+                    </div>
                 </div>
-            </div>
 
-            {/* Tab Content */}
-            <div className="px-5 mt-4">
-                {renderBanner('rewards')}
-                {/* Free Gifts Section - Show when redemption is enabled and there are gifts */}
-                {config.redemption_enabled && showFreeGifts && (
-                    <div className="mb-6">
-                        <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                            <Gift className="w-5 h-5 text-green-500" />
-                            Free Gifts Available
-                        </h3>
-                        {loadingFreeGifts ? (
-                            <div className="text-center py-6">
-                                <Loader2 className="w-6 h-6 animate-spin mx-auto text-green-500" />
-                                <p className="text-sm text-gray-500 mt-2">Loading gifts...</p>
-                            </div>
-                        ) : giftQrUsed || giftRedeemed ? (
-                            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                                <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-2" />
-                                <p className="text-sm font-medium text-green-700">You've already claimed a gift with this QR code!</p>
-                                <p className="text-xs text-green-600 mt-1">Scan another product to claim more gifts.</p>
-                            </div>
-                        ) : freeGifts.length > 0 ? (
-                            <div className="grid grid-cols-2 gap-3">
-                                {freeGifts.map((gift) => {
-                                    const remaining = gift.total_quantity === 0 
-                                        ? 'Unlimited' 
-                                        : gift.total_quantity - gift.claimed_quantity
-                                    const isAvailable = gift.total_quantity === 0 || (typeof remaining === 'number' && remaining > 0)
-                                    
-                                    return (
-                                        <div key={gift.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                                            <div className="h-24 bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center relative overflow-hidden">
-                                                {gift.gift_image_url ? (
-                                                    <img 
-                                                        src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url} 
-                                                        alt={gift.gift_name}
-                                                        className="w-full h-full object-contain p-2"
-                                                    />
-                                                ) : (
-                                                    <Gift className="w-10 h-10 text-green-400" />
-                                                )}
-                                                {gift.total_quantity > 0 && remaining !== 'Unlimited' && (
-                                                    <Badge className="absolute top-1 right-1 bg-green-500 text-white text-[10px]">
-                                                        {remaining} left
-                                                    </Badge>
-                                                )}
+                {/* Category Tabs - Renamed: All, Scanned, Point History, History */}
+                <div className="px-5 -mt-4">
+                    <div className="bg-white rounded-xl shadow-sm p-1 flex gap-1">
+                        {(['All', 'Scanned', 'Point History', 'History'] as RewardCategoryType[]).map((cat) => (
+                            <button
+                                key={cat}
+                                onClick={() => handleCategoryChange(cat)}
+                                className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors ${rewardCategory === cat
+                                        ? 'text-white'
+                                        : 'text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                style={rewardCategory === cat ? { backgroundColor: config.primary_color } : {}}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Tab Content */}
+                <div className="px-5 mt-4">
+                    {renderBanner('rewards')}
+                    {/* Free Gifts Section - Show when redemption is enabled and there are gifts */}
+                    {config.redemption_enabled && showFreeGifts && (
+                        <div className="mb-6">
+                            <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <Gift className="w-5 h-5 text-green-500" />
+                                Free Gifts Available
+                            </h3>
+                            {loadingFreeGifts ? (
+                                <div className="text-center py-6">
+                                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-green-500" />
+                                    <p className="text-sm text-gray-500 mt-2">Loading gifts...</p>
+                                </div>
+                            ) : giftQrUsed || giftRedeemed ? (
+                                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                                    <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-2" />
+                                    <p className="text-sm font-medium text-green-700">You've already claimed a gift with this QR code!</p>
+                                    <p className="text-xs text-green-600 mt-1">Scan another product to claim more gifts.</p>
+                                </div>
+                            ) : freeGifts.length > 0 ? (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {freeGifts.map((gift) => {
+                                        const remaining = gift.total_quantity === 0
+                                            ? 'Unlimited'
+                                            : gift.total_quantity - gift.claimed_quantity
+                                        const isAvailable = gift.total_quantity === 0 || (typeof remaining === 'number' && remaining > 0)
+
+                                        return (
+                                            <div key={gift.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                                                <div className="h-24 bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center relative overflow-hidden">
+                                                    {gift.gift_image_url ? (
+                                                        <img
+                                                            src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url}
+                                                            alt={gift.gift_name}
+                                                            className="w-full h-full object-contain p-2"
+                                                        />
+                                                    ) : (
+                                                        <Gift className="w-10 h-10 text-green-400" />
+                                                    )}
+                                                    {gift.total_quantity > 0 && remaining !== 'Unlimited' && (
+                                                        <Badge className="absolute top-1 right-1 bg-green-500 text-white text-[10px]">
+                                                            {remaining} left
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <div className="p-3">
+                                                    <p className="text-sm font-medium text-gray-900 line-clamp-1">{gift.gift_name}</p>
+                                                    <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{gift.gift_description || 'Free gift for you!'}</p>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (isAvailable) {
+                                                                setSelectedGift(gift)
+                                                                setShowGiftConfirm(true)
+                                                            }
+                                                        }}
+                                                        disabled={!isAvailable}
+                                                        className="w-full mt-2 text-xs font-medium px-3 py-2 rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        style={{
+                                                            backgroundColor: isAvailable ? '#dcfce7' : '#e5e7eb',
+                                                            color: isAvailable ? '#16a34a' : '#6b7280'
+                                                        }}
+                                                    >
+                                                        {isAvailable ? 'Claim Free' : 'Out of Stock'}
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="p-3">
-                                                <p className="text-sm font-medium text-gray-900 line-clamp-1">{gift.gift_name}</p>
-                                                <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{gift.gift_description || 'Free gift for you!'}</p>
-                                                <button 
+                                        )
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                                    <Ghost className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-sm text-gray-500">No free gifts available for this product.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ALL - Show rewards grid */}
+                    {rewardCategory === 'All' && (
+                        <div className="grid grid-cols-2 gap-3">
+                            {loadingRewards ? (
+                                <div className="col-span-2 text-center py-12">
+                                    <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                                </div>
+                            ) : rewards.length > 0 ? (
+                                rewards.map((reward) => (
+                                    <div key={reward.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                                        <div className="h-28 bg-white flex items-center justify-center relative p-2">
+                                            {reward.item_image_url ? (
+                                                <Image
+                                                    src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
+                                                    alt={reward.item_name}
+                                                    fill
+                                                    className="object-contain"
+                                                />
+                                            ) : (
+                                                <Gift className="w-12 h-12 text-gray-400" />
+                                            )}
+                                            {reward.stock_quantity !== null && reward.stock_quantity < 10 && (
+                                                <Badge className="absolute top-2 right-2 bg-red-500 text-white text-[10px]">
+                                                    {reward.stock_quantity} left
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="p-3">
+                                            <p className="text-sm font-medium text-gray-900 line-clamp-1">{reward.item_name}</p>
+                                            <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{reward.item_description || 'Redeem your points'}</p>
+                                            <div className="flex items-center justify-between mt-2">
+                                                <div className="flex items-center gap-1">
+                                                    <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                                                    {reward.point_offer ? (
+                                                        <div className="flex flex-col leading-none">
+                                                            <span className="text-[10px] text-gray-400 line-through">{formatNumber(reward.points_required)}</span>
+                                                            <span className="text-sm font-bold text-red-500">{formatNumber(reward.point_offer)}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-sm font-bold" style={{ color: config.primary_color }}>
+                                                            {formatNumber(reward.points_required)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <button
                                                     onClick={() => {
-                                                        if (isAvailable) {
-                                                            setSelectedGift(gift)
-                                                            setShowGiftConfirm(true)
-                                                        }
+                                                        setSelectedRewardForDetail(reward)
+                                                        setCurrentRewardImageIndex(0)
+                                                        setShowRewardDetailModal(true)
                                                     }}
-                                                    disabled={!isAvailable}
-                                                    className="w-full mt-2 text-xs font-medium px-3 py-2 rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    style={{ 
-                                                        backgroundColor: isAvailable ? '#dcfce7' : '#e5e7eb',
-                                                        color: isAvailable ? '#16a34a' : '#6b7280'
+                                                    className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:scale-105 active:scale-95"
+                                                    style={{
+                                                        backgroundColor: `${config.button_color}15`,
+                                                        color: config.button_color
                                                     }}
                                                 >
-                                                    {isAvailable ? 'Claim Free' : 'Out of Stock'}
+                                                    View
                                                 </button>
                                             </div>
                                         </div>
-                                    )
-                                })}
-                            </div>
-                        ) : (
-                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
-                                <Ghost className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                                <p className="text-sm text-gray-500">No free gifts available for this product.</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* ALL - Show rewards grid */}
-                {rewardCategory === 'All' && (
-                    <div className="grid grid-cols-2 gap-3">
-                        {loadingRewards ? (
-                            <div className="col-span-2 text-center py-12">
-                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
-                            </div>
-                        ) : rewards.length > 0 ? (
-                            rewards.map((reward) => (
-                                <div key={reward.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                                    <div className="h-28 bg-white flex items-center justify-center relative p-2">
-                                        {reward.item_image_url ? (
-                                            <Image 
-                                                src={getStorageUrl(reward.item_image_url) || reward.item_image_url} 
-                                                alt={reward.item_name}
-                                                fill
-                                                className="object-contain"
-                                            />
-                                        ) : (
-                                            <Gift className="w-12 h-12 text-gray-400" />
-                                        )}
-                                        {reward.stock_quantity !== null && reward.stock_quantity < 10 && (
-                                            <Badge className="absolute top-2 right-2 bg-red-500 text-white text-[10px]">
-                                                {reward.stock_quantity} left
-                                            </Badge>
-                                        )}
                                     </div>
-                                    <div className="p-3">
-                                        <p className="text-sm font-medium text-gray-900 line-clamp-1">{reward.item_name}</p>
-                                        <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{reward.item_description || 'Redeem your points'}</p>
-                                        <div className="flex items-center justify-between mt-2">
-                                            <div className="flex items-center gap-1">
-                                                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                                {reward.point_offer ? (
-                                                    <div className="flex flex-col leading-none">
-                                                        <span className="text-[10px] text-gray-400 line-through">{formatNumber(reward.points_required)}</span>
-                                                        <span className="text-sm font-bold text-red-500">{formatNumber(reward.point_offer)}</span>
+                                ))
+                            ) : (
+                                <div className="col-span-2 text-center py-12 text-gray-500">
+                                    <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                    <p className="text-sm">No rewards available</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* SCANNED - Show scanned products */}
+                    {rewardCategory === 'Scanned' && (
+                        <div className="space-y-3">
+                            {!isAuthenticated ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                    <p className="text-sm">Please login to view scanned products</p>
+                                </div>
+                            ) : loadingScannedProducts ? (
+                                <div className="text-center py-12">
+                                    <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                                </div>
+                            ) : scannedProducts.length > 0 ? (
+                                <>
+                                    {/* View Toggle */}
+                                    <div className="flex justify-end gap-2 mb-3">
+                                        <button
+                                            onClick={() => setScannedViewMode('list')}
+                                            className={`p-2 rounded-lg transition-colors ${scannedViewMode === 'list'
+                                                    ? 'bg-gray-900 text-white'
+                                                    : 'bg-white text-gray-600 border border-gray-200'
+                                                }`}
+                                        >
+                                            <List className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => setScannedViewMode('grid')}
+                                            className={`p-2 rounded-lg transition-colors ${scannedViewMode === 'grid'
+                                                    ? 'bg-gray-900 text-white'
+                                                    : 'bg-white text-gray-600 border border-gray-200'
+                                                }`}
+                                        >
+                                            <Grid3x3 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+
+                                    {/* List View */}
+                                    {scannedViewMode === 'list' ? (
+                                        <div className="space-y-3">
+                                            {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan, idx) => (
+                                                <div key={`${scan.product_name}-${scan.variant_name}-${idx}`} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                                    <div className="flex gap-3">
+                                                        <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                            {scan.image_url ? (
+                                                                <Image
+                                                                    src={getStorageUrl(scan.image_url) || scan.image_url}
+                                                                    alt={scan.variant_name || 'Product'}
+                                                                    width={64}
+                                                                    height={64}
+                                                                    className="object-cover"
+                                                                />
+                                                            ) : (
+                                                                <Package className="w-8 h-8 text-gray-400" />
+                                                            )}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                                {scan.product_name}
+                                                            </p>
+                                                            <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                                                                {scan.variant_name}
+                                                            </p>
+                                                            <div className="flex items-center gap-2 mt-2">
+                                                                <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
+                                                                    {scan.scan_count} {scan.scan_count === 1 ? 'scan' : 'scans'}
+                                                                </Badge>
+                                                                <span className="text-xs font-semibold text-green-600">
+                                                                    +{scan.total_points} pts
+                                                                </span>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                ) : (
-                                                    <span className="text-sm font-bold" style={{ color: config.primary_color }}>
-                                                        {formatNumber(reward.points_required)}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <button 
-                                                onClick={() => {
-                                                    setSelectedRewardForDetail(reward)
-                                                    setCurrentRewardImageIndex(0)
-                                                    setShowRewardDetailModal(true)
-                                                }}
-                                                className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:scale-105 active:scale-95"
-                                                style={{ 
-                                                    backgroundColor: `${config.button_color}15`,
-                                                    color: config.button_color
-                                                }}
-                                            >
-                                                View
-                                            </button>
+                                                </div>
+                                            ))}
                                         </div>
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="col-span-2 text-center py-12 text-gray-500">
-                                <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">No rewards available</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* SCANNED - Show scanned products */}
-                {rewardCategory === 'Scanned' && (
-                    <div className="space-y-3">
-                        {!isAuthenticated ? (
-                            <div className="text-center py-12 text-gray-500">
-                                <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">Please login to view scanned products</p>
-                            </div>
-                        ) : loadingScannedProducts ? (
-                            <div className="text-center py-12">
-                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
-                            </div>
-                        ) : scannedProducts.length > 0 ? (
-                            <>
-                                {/* View Toggle */}
-                                <div className="flex justify-end gap-2 mb-3">
-                                    <button
-                                        onClick={() => setScannedViewMode('list')}
-                                        className={`p-2 rounded-lg transition-colors ${
-                                            scannedViewMode === 'list'
-                                                ? 'bg-gray-900 text-white'
-                                                : 'bg-white text-gray-600 border border-gray-200'
-                                        }`}
-                                    >
-                                        <List className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => setScannedViewMode('grid')}
-                                        className={`p-2 rounded-lg transition-colors ${
-                                            scannedViewMode === 'grid'
-                                                ? 'bg-gray-900 text-white'
-                                                : 'bg-white text-gray-600 border border-gray-200'
-                                        }`}
-                                    >
-                                        <Grid3x3 className="w-4 h-4" />
-                                    </button>
-                                </div>
-
-                                {/* List View */}
-                                {scannedViewMode === 'list' ? (
-                                    <div className="space-y-3">
-                                        {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan, idx) => (
-                                            <div key={`${scan.product_name}-${scan.variant_name}-${idx}`} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                                                <div className="flex gap-3">
-                                                    <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                    ) : (
+                                        /* Grid View */
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan, idx) => (
+                                                <div key={`${scan.product_name}-${scan.variant_name}-${idx}`} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                                                    <div className="h-32 bg-gray-100 flex items-center justify-center overflow-hidden">
                                                         {scan.image_url ? (
-                                                            <Image 
-                                                                src={getStorageUrl(scan.image_url) || scan.image_url} 
+                                                            <Image
+                                                                src={getStorageUrl(scan.image_url) || scan.image_url}
                                                                 alt={scan.variant_name || 'Product'}
-                                                                width={64}
-                                                                height={64}
-                                                                className="object-cover"
+                                                                width={128}
+                                                                height={128}
+                                                                className="object-cover w-full h-full"
                                                             />
                                                         ) : (
-                                                            <Package className="w-8 h-8 text-gray-400" />
+                                                            <Package className="w-12 h-12 text-gray-400" />
                                                         )}
                                                     </div>
-                                                    <div className="flex-1 min-w-0">
+                                                    <div className="p-3">
                                                         <p className="text-sm font-medium text-gray-900 line-clamp-1">
                                                             {scan.product_name}
                                                         </p>
                                                         <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
                                                             {scan.variant_name}
                                                         </p>
-                                                        <div className="flex items-center gap-2 mt-2">
+                                                        <div className="flex items-center justify-between mt-2">
                                                             <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
-                                                                {scan.scan_count} {scan.scan_count === 1 ? 'scan' : 'scans'}
+                                                                {scan.scan_count}x
                                                             </Badge>
                                                             <span className="text-xs font-semibold text-green-600">
-                                                                +{scan.total_points} pts
+                                                                +{scan.total_points}
                                                             </span>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    /* Grid View */
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {scannedProducts.slice((scannedPage - 1) * itemsPerPage, scannedPage * itemsPerPage).map((scan, idx) => (
-                                            <div key={`${scan.product_name}-${scan.variant_name}-${idx}`} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                                                <div className="h-32 bg-gray-100 flex items-center justify-center overflow-hidden">
-                                                    {scan.image_url ? (
-                                                        <Image 
-                                                            src={getStorageUrl(scan.image_url) || scan.image_url} 
-                                                            alt={scan.variant_name || 'Product'}
-                                                            width={128}
-                                                            height={128}
-                                                            className="object-cover w-full h-full"
-                                                        />
-                                                    ) : (
-                                                        <Package className="w-12 h-12 text-gray-400" />
-                                                    )}
-                                                </div>
-                                                <div className="p-3">
-                                                    <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                        {scan.product_name}
-                                                    </p>
-                                                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
-                                                        {scan.variant_name}
-                                                    </p>
-                                                    <div className="flex items-center justify-between mt-2">
-                                                        <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
-                                                            {scan.scan_count}x
-                                                        </Badge>
-                                                        <span className="text-xs font-semibold text-green-600">
-                                                            +{scan.total_points}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Pagination */}
-                                {scannedProducts.length > itemsPerPage && (
-                                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                                        <button
-                                            onClick={() => setScannedPage(Math.max(1, scannedPage - 1))}
-                                            disabled={scannedPage === 1}
-                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <ChevronLeft className="w-4 h-4" />
-                                            Previous
-                                        </button>
-                                        <span className="text-sm text-gray-600">
-                                            Page {scannedPage} of {Math.ceil(scannedProducts.length / itemsPerPage)}
-                                        </span>
-                                        <button
-                                            onClick={() => setScannedPage(Math.min(Math.ceil(scannedProducts.length / itemsPerPage), scannedPage + 1))}
-                                            disabled={scannedPage >= Math.ceil(scannedProducts.length / itemsPerPage)}
-                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            Next
-                                            <ChevronRight className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="text-center py-12 text-gray-500">
-                                <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">No scanned products yet</p>
-                                <p className="text-xs mt-1">Scan QR codes to see them here</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* POINT HISTORY - Show points transactions */}
-                {rewardCategory === 'Point History' && (
-                    <div className="space-y-3">
-                        {!isAuthenticated ? (
-                            <div className="text-center py-12 text-gray-500">
-                                <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">Please login to view points history</p>
-                            </div>
-                        ) : loadingPointsHistory ? (
-                            <div className="text-center py-12">
-                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
-                            </div>
-                        ) : pointsHistory.length > 0 ? (
-                            <>
-                                {pointsHistory.slice((pointsPage - 1) * itemsPerPage, pointsPage * itemsPerPage).map((txn) => (
-                                    <div key={txn.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                                {txn.image_url ? (
-                                                    <Image 
-                                                        src={getStorageUrl(txn.image_url) || txn.image_url} 
-                                                        alt={txn.product_name || 'Transaction'}
-                                                        width={48}
-                                                        height={48}
-                                                        className="object-cover"
-                                                    />
-                                                ) : txn.points > 0 ? (
-                                                    <TrendingUp className="w-6 h-6 text-green-600" />
-                                                ) : (
-                                                    <Gift className="w-6 h-6 text-purple-600" />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                    {txn.product_name || txn.description || (txn.points > 0 ? 'Points Earned' : 'Points Redeemed')}
-                                                </p>
-                                                {txn.variant_name && (
-                                                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
-                                                        {txn.variant_name}
-                                                    </p>
-                                                )}
-                                                <p className="text-xs text-gray-400 mt-1">
-                                                    {formatDate(txn.date)}
-                                                </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className={`text-sm font-bold ${
-                                                    txn.points > 0 ? 'text-green-600' : 'text-purple-600'
-                                                }`}>
-                                                    {txn.points > 0 ? '+' : ''}{txn.points} pts
-                                                </p>
-                                                {txn.balance_after !== null && txn.balance_after !== undefined && (
-                                                    <p className="text-xs text-gray-400">
-                                                        Balance: {txn.balance_after}
-                                                    </p>
-                                                )}
-                                            </div>
+                                            ))}
                                         </div>
-                                    </div>
-                                ))}
+                                    )}
 
-                                {/* Pagination */}
-                                {pointsHistory.length > itemsPerPage && (
-                                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                                        <button
-                                            onClick={() => setPointsPage(Math.max(1, pointsPage - 1))}
-                                            disabled={pointsPage === 1}
-                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <ChevronLeft className="w-4 h-4" />
-                                            Previous
-                                        </button>
-                                        <span className="text-sm text-gray-600">
-                                            Page {pointsPage} of {Math.ceil(pointsHistory.length / itemsPerPage)}
-                                        </span>
-                                        <button
-                                            onClick={() => setPointsPage(Math.min(Math.ceil(pointsHistory.length / itemsPerPage), pointsPage + 1))}
-                                            disabled={pointsPage >= Math.ceil(pointsHistory.length / itemsPerPage)}
-                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            Next
-                                            <ChevronRight className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="text-center py-12 text-gray-500">
-                                <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">No points history yet</p>
-                                <p className="text-xs mt-1">Collect points to see them here</p>
-                            </div>
-                        )}
-                    </div>
-                )}
+                                    {/* Pagination */}
+                                    {scannedProducts.length > itemsPerPage && (
+                                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                                            <button
+                                                onClick={() => setScannedPage(Math.max(1, scannedPage - 1))}
+                                                disabled={scannedPage === 1}
+                                                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                                Previous
+                                            </button>
+                                            <span className="text-sm text-gray-600">
+                                                Page {scannedPage} of {Math.ceil(scannedProducts.length / itemsPerPage)}
+                                            </span>
+                                            <button
+                                                onClick={() => setScannedPage(Math.min(Math.ceil(scannedProducts.length / itemsPerPage), scannedPage + 1))}
+                                                disabled={scannedPage >= Math.ceil(scannedProducts.length / itemsPerPage)}
+                                                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Next
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                    <p className="text-sm">No scanned products yet</p>
+                                    <p className="text-xs mt-1">Scan QR codes to see them here</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
-                {/* HISTORY - Show redemption history */}
-                {rewardCategory === 'History' && (
-                    <div className="space-y-3">
-                        {!isAuthenticated ? (
-                            <div className="text-center py-12 text-gray-500">
-                                <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">Please login to view redemption history</p>
-                            </div>
-                        ) : loadingRedemptionHistory ? (
-                            <div className="text-center py-12">
-                                <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
-                            </div>
-                        ) : redemptionHistory.length > 0 ? (
-                            <>
-                                {redemptionHistory.slice((redemptionPage - 1) * itemsPerPage, redemptionPage * itemsPerPage).map((redemption) => {
-                                    const statusColors = getStatusColor(redemption.status)
-                                    return (
-                                        <div key={redemption.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                                            <div className="flex gap-3">
-                                                <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                                    {redemption.reward?.image_url ? (
-                                                        <Image 
-                                                            src={getStorageUrl(redemption.reward.image_url) || redemption.reward.image_url} 
-                                                            alt={redemption.reward?.name || 'Reward'}
-                                                            width={64}
-                                                            height={64}
+                    {/* POINT HISTORY - Show points transactions */}
+                    {rewardCategory === 'Point History' && (
+                        <div className="space-y-3">
+                            {!isAuthenticated ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                    <p className="text-sm">Please login to view points history</p>
+                                </div>
+                            ) : loadingPointsHistory ? (
+                                <div className="text-center py-12">
+                                    <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                                </div>
+                            ) : pointsHistory.length > 0 ? (
+                                <>
+                                    {pointsHistory.slice((pointsPage - 1) * itemsPerPage, pointsPage * itemsPerPage).map((txn) => (
+                                        <div key={txn.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                    {txn.image_url ? (
+                                                        <Image
+                                                            src={getStorageUrl(txn.image_url) || txn.image_url}
+                                                            alt={txn.product_name || 'Transaction'}
+                                                            width={48}
+                                                            height={48}
                                                             className="object-cover"
                                                         />
+                                                    ) : txn.points > 0 ? (
+                                                        <TrendingUp className="w-6 h-6 text-green-600" />
                                                     ) : (
-                                                        <Gift className="w-8 h-8 text-gray-400" />
+                                                        <Gift className="w-6 h-6 text-purple-600" />
                                                     )}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                                                        {redemption.reward?.name || redemption.description || 'Reward Redeemed'}
+                                                        {txn.product_name || txn.description || (txn.points > 0 ? 'Points Earned' : 'Points Redeemed')}
                                                     </p>
-                                                    <p className="text-xs text-gray-500 mt-0.5">
-                                                        {formatDate(redemption.date)}
+                                                    {txn.variant_name && (
+                                                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                                                            {txn.variant_name}
+                                                        </p>
+                                                    )}
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        {formatDate(txn.date)}
                                                     </p>
-                                                    <div className="flex items-center gap-2 mt-2">
-                                                        <Badge className={`${statusColors.bg} ${statusColors.text} text-[10px] capitalize`}>
-                                                            {redemption.status}
-                                                        </Badge>
-                                                        {redemption.redemption_code && (
-                                                            <span className="text-xs text-gray-500 font-mono">
-                                                                {redemption.redemption_code}
-                                                            </span>
-                                                        )}
-                                                    </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-sm font-bold text-purple-600">
-                                                        -{redemption.points_deducted} pts
+                                                    <p className={`text-sm font-bold ${txn.points > 0 ? 'text-green-600' : 'text-purple-600'
+                                                        }`}>
+                                                        {txn.points > 0 ? '+' : ''}{txn.points} pts
                                                     </p>
+                                                    {txn.balance_after !== null && txn.balance_after !== undefined && (
+                                                        <p className="text-xs text-gray-400">
+                                                            Balance: {txn.balance_after}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
-                                    )
-                                })}
+                                    ))}
 
-                                {/* Pagination */}
-                                {redemptionHistory.length > itemsPerPage && (
-                                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                                        <button
-                                            onClick={() => setRedemptionPage(Math.max(1, redemptionPage - 1))}
-                                            disabled={redemptionPage === 1}
-                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <ChevronLeft className="w-4 h-4" />
-                                            Previous
-                                        </button>
-                                        <span className="text-sm text-gray-600">
-                                            Page {redemptionPage} of {Math.ceil(redemptionHistory.length / itemsPerPage)}
-                                        </span>
-                                        <button
-                                            onClick={() => setRedemptionPage(Math.min(Math.ceil(redemptionHistory.length / itemsPerPage), redemptionPage + 1))}
-                                            disabled={redemptionPage >= Math.ceil(redemptionHistory.length / itemsPerPage)}
-                                            className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            Next
-                                            <ChevronRight className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="text-center py-12 text-gray-500">
-                                <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm">No redemptions yet</p>
-                                <p className="text-xs mt-1">Redeem rewards to see them here</p>
-                            </div>
-                        )}
-                    </div>
-                )}
+                                    {/* Pagination */}
+                                    {pointsHistory.length > itemsPerPage && (
+                                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                                            <button
+                                                onClick={() => setPointsPage(Math.max(1, pointsPage - 1))}
+                                                disabled={pointsPage === 1}
+                                                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                                Previous
+                                            </button>
+                                            <span className="text-sm text-gray-600">
+                                                Page {pointsPage} of {Math.ceil(pointsHistory.length / itemsPerPage)}
+                                            </span>
+                                            <button
+                                                onClick={() => setPointsPage(Math.min(Math.ceil(pointsHistory.length / itemsPerPage), pointsPage + 1))}
+                                                disabled={pointsPage >= Math.ceil(pointsHistory.length / itemsPerPage)}
+                                                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Next
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                    <p className="text-sm">No points history yet</p>
+                                    <p className="text-xs mt-1">Collect points to see them here</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* HISTORY - Show redemption history */}
+                    {rewardCategory === 'History' && (
+                        <div className="space-y-3">
+                            {!isAuthenticated ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                    <p className="text-sm">Please login to view redemption history</p>
+                                </div>
+                            ) : loadingRedemptionHistory ? (
+                                <div className="text-center py-12">
+                                    <div className="w-8 h-8 border-2 border-gray-300 border-t-primary rounded-full animate-spin mx-auto" />
+                                </div>
+                            ) : redemptionHistory.length > 0 ? (
+                                <>
+                                    {redemptionHistory.slice((redemptionPage - 1) * itemsPerPage, redemptionPage * itemsPerPage).map((redemption) => {
+                                        const statusColors = getStatusColor(redemption.status)
+                                        return (
+                                            <div key={redemption.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                                <div className="flex gap-3">
+                                                    <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                        {redemption.reward?.image_url ? (
+                                                            <Image
+                                                                src={getStorageUrl(redemption.reward.image_url) || redemption.reward.image_url}
+                                                                alt={redemption.reward?.name || 'Reward'}
+                                                                width={64}
+                                                                height={64}
+                                                                className="object-cover"
+                                                            />
+                                                        ) : (
+                                                            <Gift className="w-8 h-8 text-gray-400" />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                                            {redemption.reward?.name || redemption.description || 'Reward Redeemed'}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 mt-0.5">
+                                                            {formatDate(redemption.date)}
+                                                        </p>
+                                                        <div className="flex items-center gap-2 mt-2">
+                                                            <Badge className={`${statusColors.bg} ${statusColors.text} text-[10px] capitalize`}>
+                                                                {redemption.status}
+                                                            </Badge>
+                                                            {redemption.redemption_code && (
+                                                                <span className="text-xs text-gray-500 font-mono">
+                                                                    {redemption.redemption_code}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-sm font-bold text-purple-600">
+                                                            -{redemption.points_deducted} pts
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+
+                                    {/* Pagination */}
+                                    {redemptionHistory.length > itemsPerPage && (
+                                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                                            <button
+                                                onClick={() => setRedemptionPage(Math.max(1, redemptionPage - 1))}
+                                                disabled={redemptionPage === 1}
+                                                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                                Previous
+                                            </button>
+                                            <span className="text-sm text-gray-600">
+                                                Page {redemptionPage} of {Math.ceil(redemptionHistory.length / itemsPerPage)}
+                                            </span>
+                                            <button
+                                                onClick={() => setRedemptionPage(Math.min(Math.ceil(redemptionHistory.length / itemsPerPage), redemptionPage + 1))}
+                                                disabled={redemptionPage >= Math.ceil(redemptionHistory.length / itemsPerPage)}
+                                                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Next
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                                    <p className="text-sm">No redemptions yet</p>
+                                    <p className="text-xs mt-1">Redeem rewards to see them here</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
-    )}
+        )
+    }
 
     // Render Lucky Draw Tab
     const renderLuckyDrawTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
             {/* Header with animated elements */}
-            <div 
+            <div
                 className="px-5 pt-6 pb-16 text-white text-center relative overflow-hidden"
-                style={{ 
+                style={{
                     background: `linear-gradient(135deg, #f59e0b 0%, #d97706 100%)`
                 }}
             >
@@ -3497,7 +3506,7 @@ export default function PremiumLoyaltyTemplate({
                     <div className="absolute top-1/2 left-1/4 w-3 h-3 rounded-full bg-yellow-300/40 animate-ping" style={{ animationDelay: '0.7s' }} />
                     <div className="absolute top-1/3 right-1/4 w-2 h-2 rounded-full bg-yellow-200/50 animate-ping" style={{ animationDelay: '1.2s' }} />
                 </div>
-                
+
                 <div className="relative z-10">
                     {/* Animated Trophy */}
                     <div className="relative inline-block">
@@ -3533,7 +3542,7 @@ export default function PremiumLoyaltyTemplate({
                             <div className="absolute top-0 left-1/3 w-1 h-1 bg-pink-400 rounded-full animate-bounce" style={{ animationDelay: '0.9s', animationDuration: '2.5s' }} />
                             <div className="absolute top-0 left-2/3 w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '1.2s', animationDuration: '2.1s' }} />
                         </div>
-                        
+
                         {/* Animated success icon */}
                         <div className="relative inline-block mb-4">
                             <div className="absolute inset-0 bg-green-400 rounded-full blur-xl opacity-30 animate-pulse" />
@@ -3543,12 +3552,12 @@ export default function PremiumLoyaltyTemplate({
                                 <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-amber-400 animate-pulse" />
                             </div>
                         </div>
-                        
+
                         <h2 className="text-xl font-bold text-gray-900 mb-2">You're Already In!</h2>
                         <p className="text-gray-600 text-sm mb-4">
                             This QR code has already been used to enter the lucky draw. Good luck!
                         </p>
-                        
+
                         {customerName && (
                             <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-4 text-left border border-amber-200">
                                 <p className="text-xs text-amber-700 font-medium mb-2 flex items-center gap-1">
@@ -3560,7 +3569,7 @@ export default function PremiumLoyaltyTemplate({
                                 {customerEmail && <p className="text-sm text-gray-500">{customerEmail}</p>}
                             </div>
                         )}
-                        
+
                         {!customerName && (
                             <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
                                 <p className="text-sm text-green-700 flex items-center justify-center gap-2">
@@ -3573,32 +3582,32 @@ export default function PremiumLoyaltyTemplate({
                 ) : (
                     <div className="bg-white rounded-2xl shadow-lg p-5 border border-gray-100">
                         <h2 className="text-lg font-bold text-gray-900 mb-4">Enter Your Details</h2>
-                        
+
                         {/* Error message */}
                         {luckyDrawError && (
                             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
                                 <p className="text-sm text-red-600">{luckyDrawError}</p>
                             </div>
                         )}
-                        
+
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     Full Name <span className="text-red-500">*</span>
                                 </label>
-                                <Input 
+                                <Input
                                     placeholder="Enter your full name"
                                     value={customerName}
                                     onChange={(e) => setCustomerName(e.target.value)}
                                     className="h-11"
                                 />
                             </div>
-                            
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     Phone Number <span className="text-red-500">*</span>
                                 </label>
-                                <Input 
+                                <Input
                                     placeholder="e.g., 0123456789"
                                     value={customerPhone}
                                     onChange={(e) => handlePhoneChange(e.target.value)}
@@ -3609,12 +3618,12 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                                 <p className="text-xs text-gray-400 mt-1">Malaysia mobile number format</p>
                             </div>
-                            
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     Email <span className="text-gray-400">(Optional)</span>
                                 </label>
-                                <Input 
+                                <Input
                                     type="email"
                                     placeholder="example@email.com"
                                     value={customerEmail}
@@ -3626,7 +3635,7 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                             </div>
 
-                            <Button 
+                            <Button
                                 onClick={handleLuckyDrawSubmit}
                                 disabled={!customerName || !customerPhone || isSubmitting || !!luckyDrawPhoneError || !!luckyDrawEmailError}
                                 className="w-full h-12 text-base font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg"
@@ -3660,8 +3669,8 @@ export default function PremiumLoyaltyTemplate({
                             <div key={index} className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
                                 <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center overflow-hidden flex-shrink-0 border border-amber-200">
                                     {prize.image_url ? (
-                                        <img 
-                                            src={getStorageUrl(prize.image_url) || prize.image_url} 
+                                        <img
+                                            src={getStorageUrl(prize.image_url) || prize.image_url}
                                             alt={prize.name || `Prize ${index + 1}`}
                                             className="w-full h-full object-contain p-1"
                                         />
@@ -3705,9 +3714,9 @@ export default function PremiumLoyaltyTemplate({
     const renderGamesTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
             {/* Header */}
-            <div 
+            <div
                 className="px-5 pt-6 pb-8 text-white"
-                style={{ 
+                style={{
                     background: `linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)`
                 }}
             >
@@ -3718,7 +3727,7 @@ export default function PremiumLoyaltyTemplate({
             {/* Games Grid */}
             <div className="px-5 -mt-4 grid gap-4 relative z-10">
                 {config.enable_scratch_card_game && activeGames.scratch && (
-                    <button 
+                    <button
                         onClick={() => handleProtectedAction('play-scratch-card')}
                         className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
                     >
@@ -3737,7 +3746,7 @@ export default function PremiumLoyaltyTemplate({
 
                 {/* Spin the Wheel */}
                 {activeGames.spin && (
-                    <button 
+                    <button
                         onClick={() => handleProtectedAction('spin-wheel')}
                         className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
                     >
@@ -3756,7 +3765,7 @@ export default function PremiumLoyaltyTemplate({
 
                 {/* Daily Quiz */}
                 {activeGames.quiz && (
-                    <button 
+                    <button
                         onClick={() => handleProtectedAction('daily-quiz')}
                         className="bg-white rounded-2xl shadow-lg p-5 text-left hover:shadow-xl transition-shadow"
                     >
@@ -3779,14 +3788,14 @@ export default function PremiumLoyaltyTemplate({
     const handlePlayScratchCard = async () => {
         // Prevent re-scratching
         if (isScratching || scratchResult || scratchCardAlreadyPlayed) return
-        
+
         setIsScratching(true)
         setScratchError(null)
 
         try {
             // Get phone from props or authenticated user
             const phone = consumerPhone || userPhone
-            
+
             if (!phone) {
                 // Check if user is authenticated but has no phone
                 if (isAuthenticated) {
@@ -3798,10 +3807,10 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
 
-            console.log('Playing scratch card with:', { 
-                journeyConfigId: config.id, 
-                phone, 
-                qrCodeId: qrCodeDbId 
+            console.log('Playing scratch card with:', {
+                journeyConfigId: config.id,
+                phone,
+                qrCodeId: qrCodeDbId
             })
 
             const { data, error } = await supabase.rpc('play_scratch_card_turn' as any, {
@@ -3813,7 +3822,7 @@ export default function PremiumLoyaltyTemplate({
             console.log('Scratch card RPC response:', { data, error })
 
             if (error) throw error
-            
+
             // Handle error response from RPC
             if (data?.error) {
                 // Check for specific error codes
@@ -3838,7 +3847,7 @@ export default function PremiumLoyaltyTemplate({
                 rewardName
             }
             setScratchResult(result)
-            
+
             // Mark as played so user can't play again
             setScratchCardAlreadyPlayed(true)
             setScratchCardPreviousReward(rewardName)
@@ -3854,10 +3863,10 @@ export default function PremiumLoyaltyTemplate({
                 setTotalBalance(userPoints + points)
                 setPointsEarned(points)
                 setShowPointsSuccessModal(true)
-                
+
                 // Update local balance immediately for UI
                 setUserPoints(prev => prev + points)
-                
+
                 // Also refresh balance from server to ensure sync
                 // (The DB function now adds points automatically)
                 if (isShopUser && userId) {
@@ -3911,30 +3920,30 @@ export default function PremiumLoyaltyTemplate({
                             <div className="absolute -top-2 -right-2 w-6 h-6 text-yellow-400 animate-ping">✨</div>
                             <div className="absolute -bottom-1 -left-2 w-5 h-5 text-yellow-400 animate-pulse">⭐</div>
                         </div>
-                        
+
                         <h3 className="text-xl font-bold text-gray-900 mb-2">
                             🎉 You've Already Played!
                         </h3>
-                        
+
                         {scratchCardPreviousReward && (
                             <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 mb-4">
                                 <p className="text-sm text-green-700 mb-1">Your prize:</p>
                                 <p className="text-lg font-bold text-green-800">{scratchCardPreviousReward}</p>
                             </div>
                         )}
-                        
+
                         <p className="text-gray-600 mb-4 leading-relaxed">
                             This QR code has already been used for the scratch card game.
                             <br />
                             <span className="text-sm text-gray-500">Scan a new QR code to play again!</span>
                         </p>
-                        
+
                         {/* Fun illustration */}
                         <div className="text-4xl mb-4 animate-pulse">
                             🎁 → 📱 → 🎰
                         </div>
-                        
-                        <button 
+
+                        <button
                             onClick={() => setActiveTab('home')}
                             className="w-full py-3 px-4 rounded-xl font-semibold text-white transition-all duration-300 hover:scale-105 active:scale-95"
                             style={{ backgroundColor: config.primary_color }}
@@ -3948,7 +3957,7 @@ export default function PremiumLoyaltyTemplate({
                             <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center w-full max-w-sm">
                                 {scratchError}
                                 {!isAuthenticated && scratchError.includes('login') && (
-                                    <button 
+                                    <button
                                         onClick={() => setActiveTab('profile')}
                                         className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                                     >
@@ -3956,7 +3965,7 @@ export default function PremiumLoyaltyTemplate({
                                     </button>
                                 )}
                                 {isAuthenticated && scratchError.includes('phone') && (
-                                    <button 
+                                    <button
                                         onClick={() => setActiveTab('account-settings')}
                                         className="mt-2 block w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                                     >
@@ -3965,7 +3974,7 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                             </div>
                         )}
-                        <ScratchCard 
+                        <ScratchCard
                             primaryColor={config.primary_color}
                             titleText={config.scratch_card_title || 'Scratch & Win'}
                             successMessage="You won: {{reward_name}}"
@@ -3995,7 +4004,7 @@ export default function PremiumLoyaltyTemplate({
                 <h1 className="text-lg font-bold">Spin the Wheel</h1>
             </div>
             <div className="flex-1 p-6 flex items-center justify-center">
-                <SpinWheelGame 
+                <SpinWheelGame
                     primaryColor={config.primary_color}
                     journeyId={config.id}
                     qrCode={qrCode}
@@ -4016,7 +4025,7 @@ export default function PremiumLoyaltyTemplate({
                 <h1 className="text-lg font-bold">Daily Quiz</h1>
             </div>
             <div className="flex-1 p-6">
-                <DailyQuizGame 
+                <DailyQuizGame
                     primaryColor={config.primary_color}
                     journeyId={config.id}
                     qrCode={qrCode}
@@ -4034,13 +4043,13 @@ export default function PremiumLoyaltyTemplate({
             return (
                 <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
                     {/* Header */}
-                    <div 
+                    <div
                         className="px-5 pt-6 pb-8 text-white sticky top-0 z-30"
-                        style={{ 
+                        style={{
                             background: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`
                         }}
                     >
-                        <button 
+                        <button
                             onClick={() => setSelectedProduct(null)}
                             className="flex items-center gap-2 text-white/90 hover:text-white mb-4 transition-colors"
                         >
@@ -4057,8 +4066,8 @@ export default function PremiumLoyaltyTemplate({
                         <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 p-4">
                             <div className="aspect-video relative rounded-xl overflow-hidden bg-gray-100 mb-4">
                                 {selectedProduct.primary_image_url ? (
-                                    <Image 
-                                        src={getStorageUrl(selectedProduct.primary_image_url) || selectedProduct.primary_image_url} 
+                                    <Image
+                                        src={getStorageUrl(selectedProduct.primary_image_url) || selectedProduct.primary_image_url}
                                         alt={selectedProduct.product_name}
                                         fill
                                         className="object-contain"
@@ -4076,14 +4085,14 @@ export default function PremiumLoyaltyTemplate({
                         <h3 className="text-lg font-bold text-gray-900 px-1">
                             Available Variants ({selectedProduct.variants?.length || 0})
                         </h3>
-                        
+
                         <div className="grid grid-cols-2 gap-3">
                             {selectedProduct.variants?.map((variant) => (
                                 <div key={variant.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
                                     <div className="aspect-square relative bg-gray-50">
                                         {variant.image_url ? (
-                                            <Image 
-                                                src={getStorageUrl(variant.image_url) || variant.image_url} 
+                                            <Image
+                                                src={getStorageUrl(variant.image_url) || variant.image_url}
                                                 alt={variant.variant_name}
                                                 fill
                                                 className="object-cover"
@@ -4117,7 +4126,7 @@ export default function PremiumLoyaltyTemplate({
                                                                 -{Math.round(((variant.suggested_retail_price - variant.other_price) / variant.suggested_retail_price) * 100)}%
                                                             </span>
                                                         </div>
-                                                        
+
                                                         <div className="flex items-center flex-wrap gap-1">
                                                             <span className="text-[10px] text-gray-400 line-through">
                                                                 RM {variant.suggested_retail_price.toFixed(2)}
@@ -4150,9 +4159,9 @@ export default function PremiumLoyaltyTemplate({
         return (
             <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
                 {/* Header */}
-                <div 
+                <div
                     className="px-5 pt-6 pb-8 text-white"
-                    style={{ 
+                    style={{
                         background: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`
                     }}
                 >
@@ -4171,16 +4180,16 @@ export default function PremiumLoyaltyTemplate({
                     ) : products.length > 0 ? (
                         <div className="space-y-4">
                             {products.map((product) => (
-                                <div 
-                                    key={product.id} 
+                                <div
+                                    key={product.id}
                                     className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 active:scale-[0.98] transition-transform cursor-pointer"
                                     onClick={() => setSelectedProduct(product)}
                                 >
                                     <div className="flex">
                                         <div className="w-28 h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0 flex items-center justify-center relative">
                                             {product.primary_image_url ? (
-                                                <Image 
-                                                    src={getStorageUrl(product.primary_image_url) || product.primary_image_url} 
+                                                <Image
+                                                    src={getStorageUrl(product.primary_image_url) || product.primary_image_url}
                                                     alt={product.product_name}
                                                     fill
                                                     className="object-cover"
@@ -4236,12 +4245,12 @@ export default function PremiumLoyaltyTemplate({
     // Render Profile Tab
     const renderProfileTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
-            <div 
+            <div
                 className="px-5 pt-6 pb-16 text-white text-center relative"
                 style={{ backgroundColor: config.primary_color }}
             >
                 {/* Buttons moved to fixed position outside scroll container */}
-                
+
                 <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden relative group">
                     {isAuthenticated && (
                         <>
@@ -4266,9 +4275,9 @@ export default function PremiumLoyaltyTemplate({
                         </>
                     )}
                     {isAuthenticated && userAvatarUrl ? (
-                        <img 
-                            src={userAvatarUrl} 
-                            alt="Profile" 
+                        <img
+                            src={userAvatarUrl}
+                            alt="Profile"
                             className="object-cover w-full h-full"
                             key={userAvatarUrl} // Force re-render when avatar changes
                         />
@@ -4277,12 +4286,12 @@ export default function PremiumLoyaltyTemplate({
                     )}
                 </div>
                 <h1 className="text-xl font-bold">
-                    {isAuthenticated 
-                        ? (isShopUser && shopName ? shopName : userName || 'User') 
+                    {isAuthenticated
+                        ? (isShopUser && shopName ? shopName : userName || 'User')
                         : 'Guest User'}
                 </h1>
                 <p className="text-white/80 text-sm">
-                    {isAuthenticated 
+                    {isAuthenticated
                         ? (userEmail || 'No email')
                         : 'Sign in to track your rewards'}
                 </p>
@@ -4299,7 +4308,7 @@ export default function PremiumLoyaltyTemplate({
                                     <h2 className="text-lg font-bold text-gray-900">
                                         {isSignUp ? 'Create Account' : 'Sign In'}
                                     </h2>
-                                    <button 
+                                    <button
                                         onClick={() => {
                                             setShowLoginForm(false)
                                             setLoginError('')
@@ -4315,20 +4324,20 @@ export default function PremiumLoyaltyTemplate({
                                         <X className="w-5 h-5 text-gray-500" />
                                     </button>
                                 </div>
-                                
+
                                 {loginError && (
                                     <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                                         <p className="text-sm text-red-600">{loginError}</p>
                                     </div>
                                 )}
-                                
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         {isSignUp ? 'Email' : 'Email or Phone Number'}
                                     </label>
                                     <div className="relative">
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                        <Input 
+                                        <Input
                                             type="text"
                                             placeholder={isSignUp ? "Enter your email address" : "Enter email or phone number"}
                                             value={loginEmail}
@@ -4344,7 +4353,7 @@ export default function PremiumLoyaltyTemplate({
                                                         .select('id')
                                                         .eq('email', e.target.value)
                                                         .single()
-                                                    
+
                                                     if (data) {
                                                         setEmailError('This email address is already registered. Please use a different email.')
                                                     }
@@ -4375,7 +4384,7 @@ export default function PremiumLoyaltyTemplate({
                                             </label>
                                             <div className="relative">
                                                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                                <Input 
+                                                <Input
                                                     type="text"
                                                     placeholder="Enter your full name"
                                                     value={signUpName}
@@ -4407,7 +4416,7 @@ export default function PremiumLoyaltyTemplate({
                                             </label>
                                             <div className="relative">
                                                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                                <Input 
+                                                <Input
                                                     type="tel"
                                                     placeholder="e.g., 0123456789"
                                                     value={signUpPhone}
@@ -4423,7 +4432,7 @@ export default function PremiumLoyaltyTemplate({
                                                                 .select('id')
                                                                 .eq('phone', e.target.value)
                                                                 .single()
-                                                            
+
                                                             if (data) {
                                                                 setPhoneError('This phone number is already registered to another user.')
                                                             }
@@ -4445,13 +4454,13 @@ export default function PremiumLoyaltyTemplate({
                                         </div>
                                     </>
                                 )}
-                                
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Password
                                     </label>
                                     <div className="relative">
-                                        <Input 
+                                        <Input
                                             type={showPassword ? 'text' : 'password'}
                                             placeholder="Enter your password"
                                             value={loginPassword}
@@ -4459,7 +4468,7 @@ export default function PremiumLoyaltyTemplate({
                                             className="h-11 pr-10"
                                             autoComplete="new-password"
                                         />
-                                        <button 
+                                        <button
                                             type="button"
                                             onClick={() => setShowPassword(!showPassword)}
                                             className="absolute right-3 top-1/2 -translate-y-1/2"
@@ -4480,19 +4489,18 @@ export default function PremiumLoyaltyTemplate({
                                             Confirm Password
                                         </label>
                                         <div className="relative">
-                                            <Input 
+                                            <Input
                                                 type={showConfirmPassword ? 'text' : 'password'}
                                                 placeholder="Re-enter your password"
                                                 value={signUpConfirmPassword}
                                                 onChange={(e) => setSignUpConfirmPassword(e.target.value)}
-                                                className={`h-11 pr-10 ${
-                                                    signUpConfirmPassword && loginPassword === signUpConfirmPassword 
-                                                        ? 'border-green-500 focus-visible:ring-green-500' 
+                                                className={`h-11 pr-10 ${signUpConfirmPassword && loginPassword === signUpConfirmPassword
+                                                        ? 'border-green-500 focus-visible:ring-green-500'
                                                         : ''
-                                                }`}
+                                                    }`}
                                                 autoComplete="new-password"
                                             />
-                                            <button 
+                                            <button
                                                 type="button"
                                                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                                                 className="absolute right-3 top-1/2 -translate-y-1/2"
@@ -4512,7 +4520,7 @@ export default function PremiumLoyaltyTemplate({
                                     </div>
                                 )}
 
-                                <Button 
+                                <Button
                                     onClick={handleLogin}
                                     disabled={loginLoading || !loginEmail || !loginPassword}
                                     className="w-full h-11 font-semibold"
@@ -4527,9 +4535,9 @@ export default function PremiumLoyaltyTemplate({
                                         isSignUp ? 'Create Account' : 'Sign In'
                                     )}
                                 </Button>
-                                
+
                                 <div className="text-center">
-                                    <button 
+                                    <button
                                         onClick={() => setIsSignUp(!isSignUp)}
                                         className="text-sm font-medium"
                                         style={{ color: config.primary_color }}
@@ -4545,7 +4553,7 @@ export default function PremiumLoyaltyTemplate({
                                 <p className="text-sm text-gray-500 mt-1 mb-4">
                                     Sign in to track your points and rewards
                                 </p>
-                                <Button 
+                                <Button
                                     onClick={() => setShowLoginForm(true)}
                                     className="w-full h-11 font-semibold"
                                     style={{ backgroundColor: config.button_color }}
@@ -4579,12 +4587,12 @@ export default function PremiumLoyaltyTemplate({
     const renderAccountSettingsTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
             {/* Header */}
-            <div 
+            <div
                 className="px-5 pt-6 pb-8 text-white"
                 style={{ backgroundColor: config.primary_color }}
             >
                 <div className="flex items-center gap-3 mb-4">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('profile')}
                         className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
                     >
@@ -4640,14 +4648,14 @@ export default function PremiumLoyaltyTemplate({
                                     Current Password <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <Input 
+                                    <Input
                                         type={showCurrentPassword ? 'text' : 'password'}
                                         placeholder="Enter current password"
                                         value={currentPassword}
                                         onChange={(e) => setCurrentPassword(e.target.value)}
                                         className="h-11 pr-10"
                                     />
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2"
@@ -4667,14 +4675,14 @@ export default function PremiumLoyaltyTemplate({
                                     New Password <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <Input 
+                                    <Input
                                         type={showNewPassword ? 'text' : 'password'}
                                         placeholder="Enter new password (min 6 characters)"
                                         value={newPassword}
                                         onChange={(e) => setNewPassword(e.target.value)}
                                         className="h-11 pr-10"
                                     />
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => setShowNewPassword(!showNewPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2"
@@ -4693,14 +4701,14 @@ export default function PremiumLoyaltyTemplate({
                                     Confirm New Password <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <Input 
+                                    <Input
                                         type={showChangeConfirmPassword ? 'text' : 'password'}
                                         placeholder="Confirm new password"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         className="h-11 pr-10"
                                     />
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => setShowChangeConfirmPassword(!showChangeConfirmPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2"
@@ -4714,7 +4722,7 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                             </div>
 
-                            <Button 
+                            <Button
                                 onClick={handleChangePassword}
                                 disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
                                 className="w-full h-11 font-semibold"
@@ -4761,7 +4769,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-sm font-medium text-gray-700">Name</label>
                                     {!editingName && (
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 setEditingName(true)
                                                 setNewName(userName)
@@ -4775,14 +4783,14 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                                 {editingName ? (
                                     <div className="flex gap-2">
-                                        <Input 
+                                        <Input
                                             type="text"
                                             value={newName}
                                             onChange={(e) => setNewName(e.target.value)}
                                             placeholder="Enter your name"
                                             className="h-10 flex-1"
                                         />
-                                        <Button 
+                                        <Button
                                             size="sm"
                                             variant="ghost"
                                             onClick={() => {
@@ -4806,7 +4814,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-sm font-medium text-gray-700">Phone Number</label>
                                     {!editingPhone && (
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 setEditingPhone(true)
                                                 setNewPhone(userPhone)
@@ -4820,14 +4828,14 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                                 {editingPhone ? (
                                     <div className="flex gap-2">
-                                        <Input 
+                                        <Input
                                             type="tel"
                                             value={newPhone}
                                             onChange={(e) => setNewPhone(e.target.value)}
                                             placeholder="e.g., +60123456789"
                                             className="h-10 flex-1"
                                         />
-                                        <Button 
+                                        <Button
                                             size="sm"
                                             variant="ghost"
                                             onClick={() => {
@@ -4858,7 +4866,7 @@ export default function PremiumLoyaltyTemplate({
                             {/* Save Button */}
                             {(editingName || editingPhone) && (newName !== userName || newPhone !== userPhone) && (
                                 <div className="p-4 border-t border-gray-100">
-                                    <Button 
+                                    <Button
                                         onClick={handleSaveProfile}
                                         disabled={savingProfile}
                                         className="w-full h-11 font-semibold"
@@ -4899,10 +4907,10 @@ export default function PremiumLoyaltyTemplate({
                         {showBankInfo && (
                             <div className="bg-gray-50 rounded-xl mb-3 overflow-hidden p-4 space-y-4">
                                 <p className="text-sm text-gray-500 mb-2">Update your bank account details for payouts.</p>
-                                
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Full Name (Account Holder)</label>
-                                    <Input 
+                                    <Input
                                         value={bankAccountHolderName}
                                         onChange={(e) => setBankAccountHolderName(e.target.value)}
                                         placeholder="e.g., ALI BIN ABU"
@@ -4912,7 +4920,7 @@ export default function PremiumLoyaltyTemplate({
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
-                                    <select 
+                                    <select
                                         value={bankId}
                                         onChange={(e) => setBankId(e.target.value)}
                                         className="w-full h-10 px-3 rounded-md border border-input bg-white text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -4926,7 +4934,7 @@ export default function PremiumLoyaltyTemplate({
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
-                                    <Input 
+                                    <Input
                                         value={bankAccountNumber}
                                         onChange={(e) => setBankAccountNumber(e.target.value)}
                                         placeholder="e.g., 1234567890"
@@ -4948,7 +4956,7 @@ export default function PremiumLoyaltyTemplate({
                                     </div>
                                 )}
 
-                                <Button 
+                                <Button
                                     onClick={handleSaveProfile}
                                     disabled={savingProfile}
                                     className="w-full h-11 font-semibold mt-2"
@@ -5006,7 +5014,7 @@ export default function PremiumLoyaltyTemplate({
         <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
             {/* Profile Header Buttons - Fixed position outside scroll container */}
             {activeTab === 'profile' && isAuthenticated && (
-                <div 
+                <div
                     className="fixed top-3 right-3 flex items-center gap-1 z-[9998]"
                     style={{ pointerEvents: 'auto' }}
                 >
@@ -5066,7 +5074,7 @@ export default function PremiumLoyaltyTemplate({
             {/* Bottom Navigation */}
             <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-1 safe-area-bottom z-50">
                 <div className="flex items-center justify-around max-w-md mx-auto">
-                    {[                        
+                    {[
                         { id: 'home' as TabType, icon: Home, label: 'Home' },
                         { id: 'rewards' as TabType, icon: Gift, label: 'Rewards' },
                         { id: 'products' as TabType, icon: Package, label: 'Product' },
@@ -5074,7 +5082,7 @@ export default function PremiumLoyaltyTemplate({
                     ].map((tab) => {
                         const Icon = tab.icon
                         const isActive = activeTab === tab.id
-                        
+
                         return (
                             <button
                                 key={tab.id}
@@ -5084,9 +5092,8 @@ export default function PremiumLoyaltyTemplate({
                                         setShowFreeGifts(false)
                                     }
                                 }}
-                                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
-                                    isActive ? 'text-white' : 'text-gray-500'
-                                }`}
+                                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${isActive ? 'text-white' : 'text-gray-500'
+                                    }`}
                                 style={isActive ? { backgroundColor: config.primary_color } : {}}
                             >
                                 <Icon className="w-5 h-5" />
@@ -5142,7 +5149,7 @@ export default function PremiumLoyaltyTemplate({
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
                         <div className="text-center">
-                            <div 
+                            <div
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
                                 style={{ backgroundColor: `${config.primary_color}15` }}
                             >
@@ -5177,7 +5184,7 @@ export default function PremiumLoyaltyTemplate({
                                         style={{ '--tw-ring-color': config.primary_color } as any}
                                         disabled={collectingPoints}
                                     />
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => setShowShopPassword(!showShopPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2"
@@ -5208,7 +5215,7 @@ export default function PremiumLoyaltyTemplate({
                                     setCollectingPoints(false)
                                 }}
                                 className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                                // Allow cancelling even during collection
+                            // Allow cancelling even during collection
                             >
                                 Cancel
                             </button>
@@ -5228,9 +5235,9 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                             </button>
                         </div>
-                        
+
                         <div className="text-center mt-2">
-                            <button 
+                            <button
                                 onClick={() => {
                                     setShowPointsLoginModal(false)
                                     setActiveTab('profile')
@@ -5291,7 +5298,7 @@ export default function PremiumLoyaltyTemplate({
                             {/* Animated Gift Icon */}
                             <div className="relative w-20 h-20 mx-auto mb-4">
                                 <div className="absolute inset-0 animate-ping rounded-full opacity-20" style={{ backgroundColor: config.primary_color }} />
-                                <div 
+                                <div
                                     className="relative w-20 h-20 rounded-full flex items-center justify-center animate-bounce"
                                     style={{ backgroundColor: `${config.primary_color}15` }}
                                 >
@@ -5306,8 +5313,8 @@ export default function PremiumLoyaltyTemplate({
                             {/* Reward Image & Name */}
                             <div className="flex items-center gap-3">
                                 {selectedReward.item_image_url ? (
-                                    <img 
-                                        src={getStorageUrl(selectedReward.item_image_url) || selectedReward.item_image_url} 
+                                    <img
+                                        src={getStorageUrl(selectedReward.item_image_url) || selectedReward.item_image_url}
                                         alt={selectedReward.item_name}
                                         className="w-16 h-16 object-cover rounded-lg"
                                     />
@@ -5353,9 +5360,9 @@ export default function PremiumLoyaltyTemplate({
                                         </p>
                                     </div>
                                 </div>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     className="w-full bg-white border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
                                     onClick={() => {
                                         setShowRedeemConfirm(false)
@@ -5444,8 +5451,8 @@ export default function PremiumLoyaltyTemplate({
                         <div className="bg-gray-50 rounded-xl p-4">
                             <div className="flex items-center gap-3">
                                 {selectedGift.gift_image_url ? (
-                                    <img 
-                                        src={getStorageUrl(selectedGift.gift_image_url) || selectedGift.gift_image_url} 
+                                    <img
+                                        src={getStorageUrl(selectedGift.gift_image_url) || selectedGift.gift_image_url}
                                         alt={selectedGift.gift_name}
                                         className="w-16 h-16 object-contain rounded-lg bg-white p-1"
                                     />
@@ -5507,7 +5514,7 @@ export default function PremiumLoyaltyTemplate({
             )}
 
             {/* Free Gift Success Modal */}
-            <GiftClaimedAnimation 
+            <GiftClaimedAnimation
                 isVisible={showGiftSuccess}
                 giftName={claimedGiftName}
                 onClose={() => {
@@ -5527,20 +5534,23 @@ export default function PremiumLoyaltyTemplate({
             {/* Reward Detail Modal */}
             <Dialog open={showRewardDetailModal} onOpenChange={setShowRewardDetailModal}>
                 <DialogContent className="max-w-[90vw] w-full rounded-2xl p-0 overflow-hidden bg-white">
+                    <DialogTitle className="sr-only">
+                        {selectedRewardForDetail?.item_name || 'Reward Details'}
+                    </DialogTitle>
                     {(() => {
                         const images = (selectedRewardForDetail?.additional_images && selectedRewardForDetail.additional_images.length > 0)
-                            ? selectedRewardForDetail.additional_images 
+                            ? selectedRewardForDetail.additional_images
                             : [selectedRewardForDetail?.item_image_url].filter(Boolean) as string[]
-                        
+
                         return (
                             <div className="relative h-64 w-full bg-white overflow-hidden">
-                                <button 
+                                <button
                                     onClick={() => setShowRewardDetailModal(false)}
                                     className="absolute top-4 right-4 z-20 p-2 bg-black/10 hover:bg-black/20 rounded-full transition-colors"
                                 >
                                     <X className="w-5 h-5 text-gray-600" />
                                 </button>
-                                
+
                                 {images.length > 0 ? (
                                     <motion.div
                                         className="flex h-full"
@@ -5552,7 +5562,7 @@ export default function PremiumLoyaltyTemplate({
                                         onDragEnd={(e, { offset, velocity }) => {
                                             const swipe = offset.x
                                             const swipeThreshold = 50
-                                            
+
                                             if (swipe < -swipeThreshold && currentRewardImageIndex < images.length - 1) {
                                                 setCurrentRewardImageIndex(currentRewardImageIndex + 1)
                                             } else if (swipe > swipeThreshold && currentRewardImageIndex > 0) {
@@ -5561,8 +5571,8 @@ export default function PremiumLoyaltyTemplate({
                                         }}
                                     >
                                         {images.map((img, idx) => (
-                                            <div 
-                                                key={idx} 
+                                            <div
+                                                key={idx}
                                                 className="relative h-full"
                                                 style={{ width: `${100 / images.length}%` }}
                                             >
@@ -5585,7 +5595,7 @@ export default function PremiumLoyaltyTemplate({
                             </div>
                         )
                     })()}
-                    
+
                     <div className="p-6 space-y-4">
                         <div>
                             <h3 className="text-xl font-bold text-gray-900">{selectedRewardForDetail?.item_name}</h3>

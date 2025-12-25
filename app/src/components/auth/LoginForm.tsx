@@ -25,7 +25,7 @@ export default function LoginForm() {
         const supabase = createClient()
         // Use getUser() to validate session with server, not getSession() which can be stale
         const { data: { user }, error } = await supabase.auth.getUser()
-        
+
         if (error) {
           console.log('🔄 Stale session detected on login page, clearing...')
           // Clear stale session data
@@ -55,7 +55,7 @@ export default function LoginForm() {
       // This prevents the "Signing in..." stuck state when there's a stale token
       forceCleanStorage()
       resetClient()
-      
+
       const supabase = createClient()
 
       // Suppress Supabase console errors by temporarily overriding console.error
@@ -72,14 +72,14 @@ export default function LoginForm() {
       }
 
       let credentials: any = { password }
-      
+
       // Check if input looks like an email
       if (email.includes('@')) {
         credentials.email = email
       } else {
         // Assume phone number - lookup email first
         const normalizedPhone = normalizePhone(email)
-        
+
         // Use the RPC function to find the email associated with this phone number
         const { data: userEmail, error: lookupError } = await supabase
           .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone } as any)
@@ -137,6 +137,19 @@ export default function LoginForm() {
         setError('Authentication failed. Please try again.')
         setIsLoading(false)
         return
+      }
+
+      // Update last_login_at
+      try {
+        await supabase
+          .from('users')
+          .update({
+            last_login_at: new Date().toISOString()
+          })
+          .eq('id', authUser.id)
+      } catch (updateError) {
+        console.error('Failed to update last_login_at:', updateError)
+        // Continue even if update fails
       }
 
       console.log('Auth User ID:', authUser.id)
@@ -232,10 +245,10 @@ export default function LoginForm() {
 
       // Successful login - force refresh and redirect to dashboard
       // This ensures server components fetch fresh data for the new user
-      
+
       // Wait a moment for cookies to propagate
       await new Promise(resolve => setTimeout(resolve, 500))
-      
+
       router.refresh()
       router.push('/dashboard')
 

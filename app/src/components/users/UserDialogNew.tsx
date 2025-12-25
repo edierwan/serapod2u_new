@@ -33,11 +33,11 @@ const compressImage = (file: File): Promise<File> => {
         const canvas = document.createElement('canvas')
         let width = img.width
         let height = img.height
-        
+
         // Avatar dimensions - small size since avatars are displayed at 40-80px
         const MAX_WIDTH = 200
         const MAX_HEIGHT = 200
-        
+
         // Calculate new dimensions while maintaining aspect ratio
         if (width > height) {
           if (width > MAX_WIDTH) {
@@ -50,13 +50,13 @@ const compressImage = (file: File): Promise<File> => {
             height = MAX_HEIGHT
           }
         }
-        
+
         canvas.width = width
         canvas.height = height
-        
+
         const ctx = canvas.getContext('2d')
         ctx?.drawImage(img, 0, 0, width, height)
-        
+
         // Convert to JPEG with aggressive compression (quality 0.6 = 60%)
         // This targets ~10KB file size for avatars
         canvas.toBlob(
@@ -106,8 +106,9 @@ export default function UserDialogNew({
 }: UserDialogNewProps) {
   const { supabase } = useSupabaseAuth()
   const [banks, setBanks] = useState<Bank[]>([])
-  const [formData, setFormData] = useState<Partial<User> & { 
-    password?: string; 
+  const [orgTypeFilter, setOrgTypeFilter] = useState<string>('')
+  const [formData, setFormData] = useState<Partial<User> & {
+    password?: string;
     confirmPassword?: string;
     bank_id?: string;
     bank_account_number?: string;
@@ -139,7 +140,7 @@ export default function UserDialogNew({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
+
   // Password reset for Super Admin only
   const [showPasswordReset, setShowPasswordReset] = useState(false)
   const [resetPassword, setResetPassword] = useState('')
@@ -161,12 +162,12 @@ export default function UserDialogNew({
         .select('*')
         .eq('is_active', true)
         .order('short_name')
-      
+
       if (data) {
         setBanks(data)
       }
     }
-    
+
     if (open) {
       fetchBanks()
     }
@@ -198,9 +199,9 @@ export default function UserDialogNew({
 
       if (data && data.length > 0) {
         setEmailCheckStatus('taken')
-        setErrors(prev => ({ 
-          ...prev, 
-          email: 'This email address is already registered. Please use a different email.' 
+        setErrors(prev => ({
+          ...prev,
+          email: 'This email address is already registered. Please use a different email.'
         }))
       } else {
         setEmailCheckStatus('available')
@@ -223,7 +224,7 @@ export default function UserDialogNew({
     // First validate the phone format
     const validation = validatePhoneNumber(phone)
     setPhoneValidation(validation)
-    
+
     // If phone is empty, reset status
     if (!phone || phone.trim() === '') {
       setPhoneCheckStatus('idle')
@@ -234,19 +235,19 @@ export default function UserDialogNew({
       })
       return
     }
-    
+
     // If phone format is invalid, show error and don't check availability
     if (!validation.isValid) {
       setPhoneCheckStatus('invalid')
-      setErrors(prev => ({ 
-        ...prev, 
-        phone: validation.error || 'Invalid phone number format' 
+      setErrors(prev => ({
+        ...prev,
+        phone: validation.error || 'Invalid phone number format'
       }))
       return
     }
-    
+
     const normalizedPhone = normalizePhone(phone)
-    
+
     if (!normalizedPhone || normalizedPhone.length < 10) {
       setPhoneCheckStatus('idle')
       return
@@ -269,7 +270,7 @@ export default function UserDialogNew({
     try {
       // Use RPC to check auth.users directly
       const { data: exists, error } = await supabase
-        .rpc('check_phone_exists', { 
+        .rpc('check_phone_exists', {
           p_phone: normalizedPhone,
           p_exclude_user_id: user?.id || null
         })
@@ -283,9 +284,9 @@ export default function UserDialogNew({
 
       if (exists) {
         setPhoneCheckStatus('taken')
-        setErrors(prev => ({ 
-          ...prev, 
-          phone: 'This phone number is already registered to another user.' 
+        setErrors(prev => ({
+          ...prev,
+          phone: 'This phone number is already registered to another user.'
         }))
       } else {
         setPhoneCheckStatus('available')
@@ -400,7 +401,7 @@ export default function UserDialogNew({
     }
 
     setAvatarFile(finalFile)
-    
+
     // Clear errors
     if (errors.avatar) {
       setErrors(prev => {
@@ -409,7 +410,7 @@ export default function UserDialogNew({
         return newErrors
       })
     }
-    
+
     // Create preview
     const reader = new FileReader()
     reader.onloadend = () => {
@@ -424,6 +425,18 @@ export default function UserDialogNew({
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
+  }
+
+  const getOrgTypeName = (orgTypeCode: string): string => {
+    const typeNames: Record<string, string> = {
+      'HQ': 'Headquarters',
+      'MANU': 'Manufacturer',
+      'MFG': 'Manufacturer',
+      'DIST': 'Distributor',
+      'WH': 'Warehouse',
+      'SHOP': 'Shop',
+    }
+    return typeNames[orgTypeCode] || orgTypeCode
   }
 
   const handleInputChange = (field: string, value: any) => {
@@ -568,12 +581,12 @@ export default function UserDialogNew({
     if (validateForm()) {
       // Remove confirmPassword before saving
       const { confirmPassword, ...dataToSave } = formData
-      
+
       // Include password reset if Super Admin is resetting password
-      const passwordReset = (user && showPasswordReset && resetPassword) 
+      const passwordReset = (user && showPasswordReset && resetPassword)
         ? { password: resetPassword }
         : undefined
-      
+
       onSave(dataToSave, avatarFile, passwordReset)
     }
   }
@@ -593,7 +606,7 @@ export default function UserDialogNew({
           <h2 className="text-lg font-bold text-gray-900">
             {user ? 'Edit User' : 'Add New User'}
           </h2>
-          <button 
+          <button
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
             disabled={isSaving}
@@ -606,7 +619,7 @@ export default function UserDialogNew({
           {/* Avatar Upload Section */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Profile Picture</h3>
-            
+
             <div className="flex items-start gap-6">
               {/* Avatar Preview */}
               <div className="flex-shrink-0">
@@ -627,7 +640,7 @@ export default function UserDialogNew({
                   onChange={handleAvatarChange}
                   className="hidden"
                 />
-                
+
                 <div className="space-y-3">
                   <div className="flex gap-2">
                     <Button
@@ -641,7 +654,7 @@ export default function UserDialogNew({
                       <Upload className="w-4 h-4" />
                       {avatarFile ? 'Change Image' : 'Upload Image'}
                     </Button>
-                    
+
                     {(avatarFile || avatarPreview) && (
                       <Button
                         type="button"
@@ -656,7 +669,7 @@ export default function UserDialogNew({
                       </Button>
                     )}
                   </div>
-                  
+
                   {avatarFile && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded">
                       <ImageIcon className="w-4 h-4 text-blue-600" />
@@ -666,14 +679,14 @@ export default function UserDialogNew({
                       </span>
                     </div>
                   )}
-                  
+
                   <p className="text-xs text-gray-500">
                     JPG, PNG, GIF, or WebP (max 5MB). AVIF not supported. Recommended: 400×400px
                   </p>
                   <p className="text-xs text-blue-600 mt-1">
                     ✨ Images will be automatically compressed to ~10KB (200×200px JPEG) for optimal performance
                   </p>
-                  
+
                   {errors.avatar && (
                     <p className="text-xs text-red-500">{errors.avatar}</p>
                   )}
@@ -699,9 +712,8 @@ export default function UserDialogNew({
                     value={formData.email || ''}
                     onChange={(e) => handleInputChange('email', e.target.value)}
                     disabled={!!user || isSaving}
-                    className={`${errors.email ? 'border-red-500' : ''} ${
-                      emailCheckStatus === 'available' ? 'border-green-500' : ''
-                    } placeholder:text-gray-400 placeholder:italic`}
+                    className={`${errors.email ? 'border-red-500' : ''} ${emailCheckStatus === 'available' ? 'border-green-500' : ''
+                      } placeholder:text-gray-400 placeholder:italic`}
                   />
                   {!user && isCheckingEmail && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -794,9 +806,8 @@ export default function UserDialogNew({
                   value={formData.phone || ''}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   disabled={isSaving}
-                  className={`${errors.phone ? 'border-red-500' : ''} ${
-                    phoneCheckStatus === 'available' ? 'border-green-500' : ''
-                  } ${phoneCheckStatus === 'invalid' ? 'border-amber-500' : ''} placeholder:text-gray-400 placeholder:italic`}
+                  className={`${errors.phone ? 'border-red-500' : ''} ${phoneCheckStatus === 'available' ? 'border-green-500' : ''
+                    } ${phoneCheckStatus === 'invalid' ? 'border-amber-500' : ''} placeholder:text-gray-400 placeholder:italic`}
                 />
                 {isCheckingPhone && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -846,8 +857,8 @@ export default function UserDialogNew({
                 <Label htmlFor="role_code">
                   Role <span className="text-red-500">*</span>
                 </Label>
-                <Select 
-                  value={formData.role_code || ''} 
+                <Select
+                  value={formData.role_code || ''}
                   onValueChange={(value) => handleInputChange('role_code', value)}
                   disabled={isSaving}
                 >
@@ -867,8 +878,41 @@ export default function UserDialogNew({
 
               <div className="space-y-2">
                 <Label htmlFor="organization_id">Organization</Label>
-                <Select 
-                  value={formData.organization_id || ''} 
+
+                {/* Organization Type Filter */}
+                <div className="mb-2">
+                  <Select
+                    value={orgTypeFilter}
+                    onValueChange={(value) => {
+                      setOrgTypeFilter(value)
+                      // Clear selected organization if it doesn't match the new type
+                      if (value && value !== 'ALL' && formData.organization_id) {
+                        const selectedOrg = organizations.find(o => o.id === formData.organization_id)
+                        if (selectedOrg && selectedOrg.org_type_code !== value) {
+                          handleInputChange('organization_id', '')
+                        }
+                      }
+                    }}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Filter by Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All Types</SelectItem>
+                      {Array.from(new Set(organizations.map(org => org.org_type_code)))
+                        .filter((t): t is string => !!t)
+                        .map(typeCode => (
+                          <SelectItem key={typeCode} value={typeCode}>
+                            {getOrgTypeName(typeCode)}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Select
+                  value={formData.organization_id || ''}
                   onValueChange={(value) => handleInputChange('organization_id', value)}
                   disabled={isSaving}
                 >
@@ -876,11 +920,13 @@ export default function UserDialogNew({
                     <SelectValue placeholder="Select an organization" />
                   </SelectTrigger>
                   <SelectContent>
-                    {organizations.map(org => (
-                      <SelectItem key={org.id} value={org.id}>
-                        {org.org_name} ({org.org_code})
-                      </SelectItem>
-                    ))}
+                    {organizations
+                      .filter(org => !orgTypeFilter || orgTypeFilter === 'ALL' || org.org_type_code === orgTypeFilter)
+                      .map(org => (
+                        <SelectItem key={org.id} value={org.id}>
+                          {org.org_name} ({org.org_code})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -912,8 +958,8 @@ export default function UserDialogNew({
                     <Label htmlFor="bank_id">
                       Bank Name
                     </Label>
-                    <Select 
-                      value={formData.bank_id || ''} 
+                    <Select
+                      value={formData.bank_id || ''}
                       onValueChange={(value) => handleInputChange('bank_id', value)}
                       disabled={isSaving}
                     >
@@ -958,7 +1004,7 @@ export default function UserDialogNew({
                   Super Admin Only
                 </span>
               </div>
-              
+
               {!showPasswordReset ? (
                 <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
                   <p className="text-sm text-gray-600 mb-3">

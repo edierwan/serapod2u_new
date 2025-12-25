@@ -84,33 +84,33 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       loadRoles()
       loadOrganizations()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const loadUsers = async () => {
     if (!isReady) return
     try {
       setLoading(true)
-      
+
       // Super Admin and HQ Admin can see all users, others see only their org
       const isPowerUser = userProfile?.roles?.role_level <= 20
-      
+
       let query = supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false })
-      
+
       // Filter by organization only for non-power users
       if (!isPowerUser) {
         query = query.eq('organization_id', userProfile.organization_id)
       }
-      
+
       const { data, error } = await query
-      
+
       if (error) throw error
-      
+
       console.log('📊 Loaded users:', data?.length, 'users')
       setUsers((data || []) as User[])
     } catch (error) {
@@ -128,7 +128,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         .select('role_code, role_name, role_level')
         .eq('is_active', true)
         .order('role_level', { ascending: true })
-      
+
       if (error) throw error
       setRoles((data || []) as Role[])
     } catch (error) {
@@ -143,7 +143,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
         .select('id, org_name, org_code, org_type_code')
         .eq('is_active', true)
         .order('org_name', { ascending: true })
-      
+
       if (error) throw error
       setOrganizations((data || []) as Organization[])
     } catch (error) {
@@ -165,7 +165,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
   const handleSaveUser = async (userData: Partial<UserType> & { password?: string }, avatarFile?: File | null, resetPassword?: { password: string }) => {
     try {
       setIsSaving(true)
-      
+
       if (editingUser) {
         // UPDATE existing user
         let updateData: any = {
@@ -175,7 +175,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
           organization_id: userData.organization_id,
           is_active: userData.is_active ?? true,
         }
-        
+
         // Handle password reset (Super Admin only)
         if (resetPassword && resetPassword.password) {
           try {
@@ -187,24 +187,24 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 new_password: resetPassword.password
               })
             })
-            
+
             const result = await response.json()
-            
+
             if (!response.ok || !result.success) {
               throw new Error(result.error || 'Failed to reset password')
             }
-            
-            toast({ 
-              title: 'Password Reset', 
-              description: 'User password has been reset successfully', 
-              variant: 'default' 
+
+            toast({
+              title: 'Password Reset',
+              description: 'User password has been reset successfully',
+              variant: 'default'
             })
           } catch (resetError: any) {
             console.error('Password reset error:', resetError)
-            toast({ 
-              title: 'Password Reset Failed', 
-              description: resetError.message || 'Failed to reset password', 
-              variant: 'destructive' 
+            toast({
+              title: 'Password Reset Failed',
+              description: resetError.message || 'Failed to reset password',
+              variant: 'destructive'
             })
             // Don't throw - continue with other updates
           }
@@ -223,28 +223,28 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 bankAccountHolderName: (userData as any).bank_account_holder_name
               })
             })
-            
+
             if (!bankResponse.ok) {
               const errorData = await bankResponse.json()
               throw new Error(errorData.error || 'Failed to update bank details')
             }
           } catch (bankError: any) {
             console.error('Error updating bank details:', bankError)
-            toast({ 
-              title: 'Bank Details Update Failed', 
-              description: bankError.message || 'Failed to update bank details', 
-              variant: 'destructive' 
+            toast({
+              title: 'Bank Details Update Failed',
+              description: bankError.message || 'Failed to update bank details',
+              variant: 'destructive'
             })
             // Continue with user update
           }
         }
-        
+
         // Handle avatar upload
         if (avatarFile) {
           try {
             // Compress avatar first
             const compressionResult = await compressAvatar(avatarFile)
-            
+
             toast({
               title: '🖼️ Avatar Compressed',
               description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
@@ -257,62 +257,62 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 await supabase.storage.from('avatars').remove([`${editingUser.id}/${oldPath}`])
               }
             }
-            
+
             // Upload new avatar
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
             const filePath = `${editingUser.id}/${fileName}`
-            
+
             const { error: uploadError } = await supabase.storage
               .from('avatars')
-              .upload(filePath, compressionResult.file, { 
+              .upload(filePath, compressionResult.file, {
                 contentType: compressionResult.file.type,
                 cacheControl: '3600',
-                upsert: true 
+                upsert: true
               })
-            
+
             if (uploadError) {
               console.error('Avatar upload error:', uploadError)
-              const errorMsg = uploadError.message?.includes('maximum allowed size') 
-                ? 'Avatar upload failed. Image should auto-compress to ~10KB. Please try a different image.' 
+              const errorMsg = uploadError.message?.includes('maximum allowed size')
+                ? 'Avatar upload failed. Image should auto-compress to ~10KB. Please try a different image.'
                 : `Avatar upload failed: ${uploadError.message}`
               throw new Error(errorMsg)
             }
-            
+
             // Get public URL without cache-busting params (will be added in display)
             const { data: urlData } = supabase.storage
               .from('avatars')
               .getPublicUrl(filePath)
-            
+
             updateData.avatar_url = urlData.publicUrl
           } catch (avatarError: any) {
             console.error('Avatar upload error:', avatarError)
-            toast({ 
-              title: 'Warning', 
-              description: avatarError.message || 'Avatar upload failed, but user data saved.', 
-              variant: 'default' 
+            toast({
+              title: 'Warning',
+              description: avatarError.message || 'Avatar upload failed, but user data saved.',
+              variant: 'default'
             })
           }
         }
-        
+
         // Update user in database
         const result = await updateUserWithAuth(editingUser.id, updateData, {
           id: userProfile.id,
           role_code: userProfile.role_code
         })
-        
+
         if (!result.success) throw new Error(result.error || 'Failed to update user')
-        
+
         toast({ title: 'Success', description: `${userData.full_name} updated successfully` })
         setDialogOpen(false)
         setEditingUser(null)
         await loadUsers()
-        
+
       } else {
         // CREATE new user
         if (!userData.email || !userData.full_name || !userData.role_code || !userData.password) {
           throw new Error('Email, Name, Role, and Password are required')
         }
-        
+
         const result = await createUserWithAuth({
           email: userData.email,
           password: userData.password,
@@ -321,20 +321,20 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
           organization_id: userData.organization_id || userProfile.organization_id,
           phone: userData.phone || undefined
         })
-        
+
         if (!result.success) {
           // Provide friendly error messages for common errors
           let errorMessage = result.error || 'Failed to create user'
-          
-          if (errorMessage.toLowerCase().includes('already been registered') || 
-              errorMessage.toLowerCase().includes('already exists') ||
-              errorMessage.toLowerCase().includes('duplicate')) {
+
+          if (errorMessage.toLowerCase().includes('already been registered') ||
+            errorMessage.toLowerCase().includes('already exists') ||
+            errorMessage.toLowerCase().includes('duplicate')) {
             errorMessage = `The email address "${userData.email}" is already registered in the system. Please use a different email address.`
           }
-          
+
           throw new Error(errorMessage)
         }
-        
+
         // Handle Bank Details Update (if provided)
         if ((userData as any).bank_id || (userData as any).bank_account_number) {
           try {
@@ -348,27 +348,27 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 bankAccountHolderName: (userData as any).bank_account_holder_name
               })
             })
-            
+
             if (!bankResponse.ok) {
               const errorData = await bankResponse.json()
               throw new Error(errorData.error || 'Failed to update bank details')
             }
           } catch (bankError: any) {
             console.error('Error updating bank details:', bankError)
-            toast({ 
-              title: 'Bank Details Update Failed', 
-              description: bankError.message || 'Failed to update bank details', 
-              variant: 'destructive' 
+            toast({
+              title: 'Bank Details Update Failed',
+              description: bankError.message || 'Failed to update bank details',
+              variant: 'destructive'
             })
           }
         }
-        
+
         // Upload avatar if provided
         if (avatarFile) {
           try {
             // Compress avatar first
             const compressionResult = await compressAvatar(avatarFile)
-            
+
             toast({
               title: '🖼️ Avatar Compressed',
               description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
@@ -376,29 +376,29 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
 
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
             const filePath = `${result.user_id}/${fileName}`
-            
-            const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, compressionResult.file, { 
+
+            const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, compressionResult.file, {
               contentType: compressionResult.file.type,
               cacheControl: '3600',
-              upsert: true 
+              upsert: true
             })
-            
+
             if (!uploadError) {
               const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(filePath)
-              
+
               // Store clean URL without cache-busting params
               const { error: updateError } = await (supabase as any)
                 .from('users')
                 .update({ avatar_url: urlData.publicUrl })
                 .eq('id', result.user_id)
-              
+
               if (updateError) {
                 console.error('Avatar URL update error:', updateError)
               }
             } else {
               console.error('Avatar upload error:', uploadError)
-              const errorMsg = uploadError.message?.includes('maximum allowed size') 
-                ? 'Avatar upload failed. Image should auto-compress to ~10KB. Please try a different image.' 
+              const errorMsg = uploadError.message?.includes('maximum allowed size')
+                ? 'Avatar upload failed. Image should auto-compress to ~10KB. Please try a different image.'
                 : `Avatar upload failed: ${uploadError.message}`
               toast({
                 title: 'Avatar Upload Warning',
@@ -415,24 +415,24 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
             })
           }
         }
-        
+
         console.log('✅ User created successfully, reloading user list...')
         toast({ title: 'Success', description: `${userData.full_name} created successfully` })
         setDialogOpen(false)
-        
+
         // Small delay to ensure database transaction completes
         await new Promise(resolve => setTimeout(resolve, 500))
-        
+
         // Force reload users to update the list
         await loadUsers()
         console.log('🔄 User list reloaded after creation')
       }
     } catch (error) {
       console.error('❌ Error saving user:', error)
-      toast({ 
-        title: 'Error', 
-        description: error instanceof Error ? error.message : 'Failed to save user', 
-        variant: 'destructive' 
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save user',
+        variant: 'destructive'
       })
     } finally {
       setIsSaving(false)
@@ -442,26 +442,26 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
   const handleToggleActive = async (userId: string, currentStatus: boolean, userName: string) => {
     try {
       setIsSaving(true)
-      
+
       const { error } = await (supabase as any)
         .from('users')
         .update({ is_active: !currentStatus })
         .eq('id', userId)
-      
+
       if (error) throw error
 
-      toast({ 
-        title: 'Success', 
+      toast({
+        title: 'Success',
         description: `${userName} ${!currentStatus ? 'activated' : 'deactivated'} successfully`
       })
-      
+
       await loadUsers()
     } catch (error) {
       console.error('Error toggling user status:', error)
-      toast({ 
-        title: 'Error', 
-        description: error instanceof Error ? error.message : 'Failed to update user status', 
-        variant: 'destructive' 
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update user status',
+        variant: 'destructive'
       })
     } finally {
       setIsSaving(false)
@@ -475,25 +475,25 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
 
     try {
       setIsSaving(true)
-      
+
       const result = await deleteUserWithAuth(userId)
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to delete user')
       }
 
-      toast({ 
-        title: 'Success', 
+      toast({
+        title: 'Success',
         description: result.warning || `${userName} deleted successfully`
       })
-      
+
       await loadUsers()
     } catch (error) {
       console.error('Error deleting user:', error)
-      toast({ 
-        title: 'Error', 
-        description: error instanceof Error ? error.message : 'Failed to delete user', 
-        variant: 'destructive' 
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete user',
+        variant: 'destructive'
       })
     } finally {
       setIsSaving(false)
@@ -505,27 +505,27 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       // Search filter
       const matchesSearch = user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         user.email.toLowerCase().includes(searchQuery.toLowerCase())
-      
+
       // Role filter
       const matchesRole = !roleFilter || user.role_code === roleFilter
-      
+
       // Organization filter
       const matchesOrg = !orgFilter || user.organization_id === orgFilter
 
       // Organization Type filter
       const userOrg = organizations.find(o => o.id === user.organization_id)
-      const matchesOrgType = !orgTypeFilter || 
+      const matchesOrgType = !orgTypeFilter ||
         (orgTypeFilter === 'CUSTOMER' && !user.organization_id) ||
         (userOrg && userOrg.org_type_code === orgTypeFilter)
-      
+
       // Status filter
-      const matchesStatus = !statusFilter || 
+      const matchesStatus = !statusFilter ||
         (statusFilter === 'active' && user.is_active) ||
         (statusFilter === 'inactive' && !user.is_active) ||
         (statusFilter === 'verified' && user.is_verified) ||
         (statusFilter === 'unverified' && !user.is_verified)
 
-            return matchesSearch && matchesRole && matchesOrg && matchesOrgType && matchesStatus
+      return matchesSearch && matchesRole && matchesOrg && matchesOrgType && matchesStatus
     })
     .sort((a, b) => {
       let aVal: any = a[sortField]
@@ -615,8 +615,8 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
           <p className="text-gray-600">Manage system users and access permissions</p>
         </div>
-        <Button 
-          onClick={() => { setEditingUser(null); setDialogOpen(true) }} 
+        <Button
+          onClick={() => { setEditingUser(null); setDialogOpen(true) }}
           className="bg-blue-600 hover:bg-blue-700"
           disabled={isSaving}
         >
@@ -703,19 +703,21 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
 
             {/* Organization Type Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Org Type</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Organization Type</label>
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 onChange={(e) => setOrgTypeFilter(e.target.value)}
                 value={orgTypeFilter}
               >
                 <option value="">All Types</option>
-                <option value="CUSTOMER">Customer (No Org)</option>
-                <option value="HQ">Headquarters</option>
-                <option value="MANU">Manufacturer</option>
-                <option value="DIST">Distributor</option>
-                <option value="WH">Warehouse</option>
-                <option value="SHOP">Shop</option>
+                <option value="CUSTOMER">End User</option>
+                {Array.from(new Set(organizations.map(org => org.org_type_code)))
+                  .filter((t): t is string => !!t)
+                  .map(typeCode => (
+                    <option key={typeCode} value={typeCode}>
+                      {getOrgTypeName(typeCode)}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -752,24 +754,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
               </select>
             </div>
 
-            {/* Organization Type Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Organization Type</label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                onChange={(e) => setOrgTypeFilter(e.target.value)}
-                value={orgTypeFilter}
-              >
-                <option value="">All Types</option>
-                {Array.from(new Set(organizations.map(org => org.org_type_code)))
-                  .filter((t): t is string => !!t)
-                  .map(typeCode => (
-                  <option key={typeCode} value={typeCode}>
-                    {getOrgTypeName(typeCode)}
-                  </option>
-                ))}
-              </select>
-            </div>
+
           </div>
 
           {/* Search Box */}
@@ -794,8 +779,8 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 <TableHeader>
                   <TableRow>
                     <TableHead>
-                      <button 
-                        onClick={() => handleSort('full_name')} 
+                      <button
+                        onClick={() => handleSort('full_name')}
                         className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                       >
                         User
@@ -807,8 +792,8 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                       </button>
                     </TableHead>
                     <TableHead>
-                      <button 
-                        onClick={() => handleSort('role_code')} 
+                      <button
+                        onClick={() => handleSort('role_code')}
                         className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                       >
                         Role
@@ -820,8 +805,8 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                       </button>
                     </TableHead>
                     <TableHead>
-                      <button 
-                        onClick={() => handleSort('organization_id')} 
+                      <button
+                        onClick={() => handleSort('organization_id')}
                         className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                       >
                         Organization
@@ -833,8 +818,8 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                       </button>
                     </TableHead>
                     <TableHead>
-                      <button 
-                        onClick={() => handleSort('created_at')} 
+                      <button
+                        onClick={() => handleSort('created_at')}
                         className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                       >
                         Join Date
@@ -846,8 +831,8 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                       </button>
                     </TableHead>
                     <TableHead>
-                      <button 
-                        onClick={() => handleSort('last_login_at')} 
+                      <button
+                        onClick={() => handleSort('last_login_at')}
                         className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                       >
                         Last Login
@@ -903,16 +888,16 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                               {getOrgTypeName(organizations.find(o => o.id === user.organization_id)?.org_type_code || '')}
                             </span>
                           ) : (
-                            <span className="text-gray-400 italic">No Organization</span>
+                            <span className="text-gray-400 italic">End User</span>
                           )}
                         </div>
                       </TableCell>
                       <TableCell>
                         <span className="text-gray-900">
-                          {new Date(user.created_at).toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'short', 
-                            day: 'numeric' 
+                          {new Date(user.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
                           })}
                         </span>
                       </TableCell>
