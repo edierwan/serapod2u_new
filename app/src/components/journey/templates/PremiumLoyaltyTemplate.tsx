@@ -2385,10 +2385,10 @@ export default function PremiumLoyaltyTemplate({
         }
 
         // Check if user is a shop user
-        if (!isShopUser) {
-            alert('Only shop accounts can redeem rewards')
-            return
-        }
+        // if (!isShopUser) {
+        //     alert('Only shop accounts can redeem rewards')
+        //     return
+        // }
 
         const pointsNeeded = reward.point_offer || reward.points_required
 
@@ -3136,7 +3136,7 @@ export default function PremiumLoyaltyTemplate({
                 {/* SCANNED - Show scanned products */}
                 {rewardCategory === 'Scanned' && (
                     <div className="space-y-3">
-                        {!isAuthenticated || !isShopUser ? (
+                        {!isAuthenticated ? (
                             <div className="text-center py-12 text-gray-500">
                                 <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                                 <p className="text-sm">Please login to view scanned products</p>
@@ -3287,7 +3287,7 @@ export default function PremiumLoyaltyTemplate({
                 {/* POINT HISTORY - Show points transactions */}
                 {rewardCategory === 'Point History' && (
                     <div className="space-y-3">
-                        {!isAuthenticated || !isShopUser ? (
+                        {!isAuthenticated ? (
                             <div className="text-center py-12 text-gray-500">
                                 <Star className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                                 <p className="text-sm">Please login to view points history</p>
@@ -3383,7 +3383,7 @@ export default function PremiumLoyaltyTemplate({
                 {/* HISTORY - Show redemption history */}
                 {rewardCategory === 'History' && (
                     <div className="space-y-3">
-                        {!isAuthenticated || !isShopUser ? (
+                        {!isAuthenticated ? (
                             <div className="text-center py-12 text-gray-500">
                                 <Gift className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                                 <p className="text-sm">Please login to view redemption history</p>
@@ -4559,7 +4559,7 @@ export default function PremiumLoyaltyTemplate({
                 ) : null}
 
                 {/* Stats Section - Only show when authenticated */}
-                {isAuthenticated && isShopUser && (
+                {isAuthenticated && (
                     <div className="bg-white rounded-2xl shadow-lg divide-y divide-gray-100">
                         <div className="p-4 flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -5655,7 +5655,7 @@ export default function PremiumLoyaltyTemplate({
                                             setShowRewardDetailModal(false)
                                             handleRedeemReward(selectedRewardForDetail)
                                         }}
-                                        disabled={!isAuthenticated || !isShopUser}
+                                        disabled={!isAuthenticated}
                                     >
                                         Redeem Now
                                     </Button>
