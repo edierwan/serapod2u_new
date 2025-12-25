@@ -88,14 +88,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify user belongs to a SHOP organization
+    // Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    if (!organization || organization.org_type_code !== 'SHOP') {
-      console.error('User is not from a shop organization:', organization?.org_type_code)
+    
+    // Allow if:
+    // 1. User has no organization (Independent Consumer)
+    // 2. User belongs to a SHOP organization
+    if (organization && organization.org_type_code !== 'SHOP') {
+      console.error('User is from non-shop organization:', organization?.org_type_code)
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Only users from shop organizations can collect points.',
+          error: 'Only users from shop organizations or independent consumers can collect points.',
           requiresLogin: true,
           details: `Your organization type is: ${organization?.org_type_code || 'unknown'}`
         },
@@ -103,7 +107,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ Shop user verified:', shopUser.email, '| Organization:', organization.org_name)
+    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer')
 
     // Resolve QR code record (handles both new codes with hash and legacy codes)
     const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)

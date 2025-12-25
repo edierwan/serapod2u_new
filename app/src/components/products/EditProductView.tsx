@@ -34,6 +34,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   const [saving, setSaving] = useState(false)
   const [brands, setBrands] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
+  const [manufacturers, setManufacturers] = useState<any[]>([])
   const [productImages, setProductImages] = useState<any[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
@@ -47,6 +48,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     product_description: '',
     brand_id: '',
     category_id: '',
+    manufacturer_id: '',
     is_vape: false,
     is_active: true,
     age_restriction: 0
@@ -58,6 +60,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       fetchProductImages()
       fetchBrands()
       fetchCategories()
+      fetchManufacturers()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
@@ -105,6 +108,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         product_description: data.product_description || '',
         brand_id: data.brand_id || '',
         category_id: data.category_id || '',
+        manufacturer_id: data.manufacturer_id || '',
         is_vape: data.is_vape || false,
         is_active: data.is_active !== false,
         age_restriction: data.age_restriction || 0
@@ -148,6 +152,22 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       setCategories(data || [])
     } catch (error) {
       console.error('Error fetching categories:', error)
+    }
+  }
+
+  const fetchManufacturers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id, org_name, org_code')
+        .eq('org_type_code', 'MFG')
+        .eq('is_active', true)
+        .order('org_name')
+
+      if (error) throw error
+      setManufacturers(data || [])
+    } catch (error) {
+      console.error('Error fetching manufacturers:', error)
     }
   }
 
@@ -352,6 +372,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
           product_description: formData.product_description || null,
           brand_id: formData.brand_id || null,
           category_id: formData.category_id || null,
+          manufacturer_id: formData.manufacturer_id || null,
           is_vape: formData.is_vape,
           is_active: formData.is_active,
           age_restriction: formData.age_restriction || null,
@@ -582,6 +603,23 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                     {categories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.category_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="manufacturer_id">Manufacturer</Label>
+                <Select value={formData.manufacturer_id || 'none'} onValueChange={(value) => setFormData({ ...formData, manufacturer_id: value === 'none' ? '' : value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select manufacturer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Manufacturer</SelectItem>
+                    {manufacturers.map((mfg) => (
+                      <SelectItem key={mfg.id} value={mfg.id}>
+                        {mfg.org_name}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle Bank Details Update (for Shop users)
+    // Handle Bank Details Update
     if (bank_id !== undefined || bank_account_number !== undefined || bank_account_holder_name !== undefined) {
       // Get user's organization
       const { data: userProfile, error: userError } = await adminClient
@@ -222,6 +222,12 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      } else {
+        // Independent Consumer (No Organization)
+        // Save bank details directly to users table
+        if (bank_id !== undefined) updateData.bank_id = bank_id
+        if (bank_account_number !== undefined) updateData.bank_account_number = bank_account_number
+        if (bank_account_holder_name !== undefined) updateData.bank_account_holder_name = bank_account_holder_name
       }
     }
 

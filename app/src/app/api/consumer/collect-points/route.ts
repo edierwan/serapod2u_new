@@ -134,21 +134,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3. Verify user belongs to a SHOP organization
+    // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    if (!organization || organization.org_type_code !== 'SHOP') {
-      console.error('User is not from a shop organization:', organization?.org_type_code)
+    
+    // Allow if:
+    // 1. User has no organization (Independent Consumer)
+    // 2. User belongs to a SHOP organization
+    if (organization && organization.org_type_code !== 'SHOP') {
+      console.error('User is from non-shop organization:', organization?.org_type_code)
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Only users from shop organizations can collect points.',
+          error: 'Only users from shop organizations or independent consumers can collect points.',
           details: `Your organization type is: ${organization?.org_type_code || 'unknown'}`
         },
         { status: 403 }
       )
     }
 
-    console.log('✅ Shop user verified:', shopUser.email, '| Organization:', organization.org_name)
+    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer')
 
     // 2. Resolve QR code record (handles both new codes with hash and legacy codes)
     const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)
@@ -248,28 +252,38 @@ export async function POST(request: NextRequest) {
 
     // Allow shops to collect points for orders from any HQ organization
     // Shops work with multiple HQs, so we validate by org type rather than strict hierarchy
-    const isSameOrg = organization.id === orderOrganization.id
-    const isShopCollectingFromHQ = organization.org_type_code === 'SHOP' && orderOrganization.org_type_code === 'HQ'
-    const isParentMatch = organization.parent_org_id && organization.parent_org_id === orderOrganization.id
-    const isChildMatch = orderOrganization.parent_org_id && orderOrganization.parent_org_id === organization.id
-    const isSiblingMatch = organization.parent_org_id && orderOrganization.parent_org_id && organization.parent_org_id === orderOrganization.parent_org_id
+    let isSameOrg = false
+    let isShopCollectingFromHQ = false
+    let isParentMatch = false
+    let isChildMatch = false
+    let isSiblingMatch = false
 
-    if (!isSameOrg && !isShopCollectingFromHQ && !isParentMatch && !isChildMatch && !isSiblingMatch) {
-      console.error('Organization mismatch:', {
-        shopOrg: {
-          id: organization.id,
-          parent_org_id: organization.parent_org_id,
-          org_type_code: organization.org_type_code
-        },
-        orderOrg: orderOrganization
-      })
-      return NextResponse.json(
-        { success: false, error: 'This product does not belong to your organization' },
-        { status: 403 }
-      )
+    if (organization) {
+      isSameOrg = organization.id === orderOrganization.id
+      isShopCollectingFromHQ = organization.org_type_code === 'SHOP' && orderOrganization.org_type_code === 'HQ'
+      isParentMatch = organization.parent_org_id && organization.parent_org_id === orderOrganization.id
+      isChildMatch = orderOrganization.parent_org_id && orderOrganization.parent_org_id === organization.id
+      isSiblingMatch = organization.parent_org_id && orderOrganization.parent_org_id && organization.parent_org_id === orderOrganization.parent_org_id
+
+      if (!isSameOrg && !isShopCollectingFromHQ && !isParentMatch && !isChildMatch && !isSiblingMatch) {
+        console.error('Organization mismatch:', {
+          shopOrg: {
+            id: organization.id,
+            parent_org_id: organization.parent_org_id,
+            org_type_code: organization.org_type_code
+          },
+          orderOrg: orderOrganization
+        })
+        return NextResponse.json(
+          { success: false, error: 'This product does not belong to your organization' },
+          { status: 403 }
+        )
+      }
+    } else {
+      console.log('✅ Independent consumer collecting points (skipping org hierarchy check)')
     }
 
-    console.log('✅ Organization relationship validated (Shop collecting from HQ)')
+    console.log('✅ Organization relationship validated')
 
     // 4. Get points configuration from organization's point rules
     // Try multiple sources: Order's company, Shop's parent org, or Shop's org
@@ -299,7 +313,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Fallback: Try shop's parent organization (if shop is under HQ)
-    if (!pointRule && organization.parent_org_id) {
+    if (!pointRule && organization && organization.parent_org_id) {
       console.log('🔍 Trying shop parent org:', organization.parent_org_id)
       const { data: rule2, error: error2 } = await supabaseAdmin
         .from('points_rules')
@@ -343,7 +357,13 @@ export async function POST(request: NextRequest) {
     // Final fallback: Try to get ANY active rule (in case org structure is different)
     if (!pointRule) {
       console.log('🔍 Final fallback: Looking for any active rule associated with order or shop orgs')
-      const orgIds = [orderData.company_id, organization.id, organization.parent_org_id, orderOrganization.parent_org_id].filter(Boolean)
+      const orgIds = [
+        orderData.company_id, 
+        organization?.id, 
+        organization?.parent_org_id, 
+        orderOrganization.parent_org_id
+      ].filter(Boolean)
+      
       const { data: anyRule, error: anyError } = await supabaseAdmin
         .from('points_rules')
         .select('points_per_scan, name, id, org_id, is_active')
@@ -362,7 +382,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!pointRule) {
-      console.warn('⚠️ No active point rule found for org_id:', orderData.company_id, 'or parent:', organization.parent_org_id)
+      console.warn('⚠️ No active point rule found for org_id:', orderData.company_id, 'or parent:', organization?.parent_org_id)
       console.warn('⚠️ Using default: 100 points')
     }
 
@@ -399,11 +419,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Helper to calculate balance based on user type
+    const calculateBalance = async () => {
+      if (shopUser.organization_id) {
+        return await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
+      } else {
+        // Independent consumer balance
+        const { data: consumerBalance } = await supabaseAdmin
+            .from('v_consumer_points_balance')
+            .select('current_balance')
+            .eq('user_id', authData.user.id)
+            .maybeSingle()
+        return consumerBalance?.current_balance || 0
+      }
+    }
+
     // Handle RPC result
     if (!result.success) {
       if (result.already_collected) {
         // Calculate total balance for response
-        const totalBalance = await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
+        const totalBalance = await calculateBalance()
         
         return NextResponse.json(
           {
@@ -430,8 +465,8 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Points awarded successfully:', pointsToAward)
 
-    // 6. Calculate total points collected by this shop organization
-    const totalBalance = await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
+    // 6. Calculate total points collected
+    const totalBalance = await calculateBalance()
 
     return NextResponse.json({
       success: true,

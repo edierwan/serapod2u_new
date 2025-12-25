@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { formatNumber } from '@/lib/utils/formatters'
 import { createClient } from '@/lib/supabase/client'
 import { logoutConsumer } from '@/app/actions/consumer'
+import { registerConsumer } from '@/lib/actions'
 import { SupportChatWidget } from '@/components/support/SupportChatWidget'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,7 +53,8 @@ import {
     List,
     Ghost,
     AlertTriangle,
-    AlertCircle
+    AlertCircle,
+    Camera
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { AnnouncementBanner } from '../AnnouncementBanner'
@@ -189,12 +191,97 @@ export default function PremiumLoyaltyTemplate({
     const [userName, setUserName] = useState('')
     const [userEmail, setUserEmail] = useState('')
     const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null)
+    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
     const [shopName, setShopName] = useState('')
     const [rewards, setRewards] = useState<RewardItem[]>([])
     const [products, setProducts] = useState<ProductItem[]>([])
     const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
     const [selectedRewardForDetail, setSelectedRewardForDetail] = useState<RewardItem | null>(null)
     const [currentRewardImageIndex, setCurrentRewardImageIndex] = useState(0)
+    
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const handleAvatarClick = () => {
+        if (isAuthenticated) {
+            fileInputRef.current?.click()
+        }
+    }
+
+    const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        try {
+            if (!event.target.files || event.target.files.length === 0) {
+                return
+            }
+
+            // Get user ID from state or auth
+            let currentUserId = userId
+            if (!currentUserId) {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (user) currentUserId = user.id
+            }
+
+            if (!currentUserId) {
+                toast({
+                    title: "Error",
+                    description: "You must be logged in to upload an avatar",
+                    variant: "destructive"
+                })
+                return
+            }
+
+            const file = event.target.files[0]
+            const fileExt = file.name.split('.').pop()
+            const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
+            const filePath = `${currentUserId}/${fileName}`
+
+            setIsUploadingAvatar(true)
+
+            // 1. Upload to Supabase Storage
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, file)
+
+            if (uploadError) {
+                throw uploadError
+            }
+
+            // 2. Get Public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath)
+
+            // 3. Update User Profile
+            const { error: updateError } = await supabase
+                .from('users')
+                .update({ avatar_url: publicUrl })
+                .eq('id', currentUserId)
+
+            if (updateError) {
+                throw updateError
+            }
+
+            // 4. Update Local State
+            setUserAvatarUrl(publicUrl)
+            toast({
+                title: "Success",
+                description: "Avatar updated successfully",
+            })
+
+        } catch (error: any) {
+            console.error('Error uploading avatar:', error)
+            toast({
+                title: "Error",
+                description: "Failed to upload avatar: " + error.message,
+                variant: "destructive"
+            })
+        } finally {
+            setIsUploadingAvatar(false)
+            // Reset file input
+            if (fileInputRef.current) {
+                fileInputRef.current.value = ''
+            }
+        }
+    }
     const [showRewardDetailModal, setShowRewardDetailModal] = useState(false)
     const [loadingRewards, setLoadingRewards] = useState(false)
     const [loadingProducts, setLoadingProducts] = useState(false)
@@ -286,9 +373,17 @@ export default function PremiumLoyaltyTemplate({
     const [loginEmail, setLoginEmail] = useState('')
     const [loginPassword, setLoginPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false)
     const [loginLoading, setLoginLoading] = useState(false)
     const [loginError, setLoginError] = useState('')
+    const [emailError, setEmailError] = useState('')
+    const [phoneError, setPhoneError] = useState('')
     const [isSignUp, setIsSignUp] = useState(false)
+    
+    // Signup states
+    const [signUpName, setSignUpName] = useState('')
+    const [signUpPhone, setSignUpPhone] = useState('')
+    const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('')
     
     // Security modal states
     const [showSecurityModal, setShowSecurityModal] = useState(false)
@@ -302,8 +397,8 @@ export default function PremiumLoyaltyTemplate({
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showLuckyDrawSuccess, setShowLuckyDrawSuccess] = useState(false)
     const [luckyDrawError, setLuckyDrawError] = useState('')
-    const [phoneError, setPhoneError] = useState('')
-    const [emailError, setEmailError] = useState('')
+    const [luckyDrawPhoneError, setLuckyDrawPhoneError] = useState('')
+    const [luckyDrawEmailError, setLuckyDrawEmailError] = useState('')
 
     // Account settings states
     const [userPhone, setUserPhone] = useState('')
@@ -340,7 +435,7 @@ export default function PremiumLoyaltyTemplate({
     const [confirmPassword, setConfirmPassword] = useState('')
     const [showCurrentPassword, setShowCurrentPassword] = useState(false)
     const [showNewPassword, setShowNewPassword] = useState(false)
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+    const [showChangeConfirmPassword, setShowChangeConfirmPassword] = useState(false)
     const [changingPassword, setChangingPassword] = useState(false)
     const [passwordError, setPasswordError] = useState('')
     const [passwordSuccess, setPasswordSuccess] = useState(false)
@@ -704,14 +799,13 @@ export default function PremiumLoyaltyTemplate({
                             setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             
-                            if (isShop) {
-                                console.log('🔐 Setting shop user points balance:', pointsBalance)
-                                setUserPoints(pointsBalance)
-                                // Set bank details
-                                setBankId(bankId || '')
-                                setBankAccountNumber(bankAccountNumber || '')
-                                setBankAccountHolderName(bankAccountHolderName || '')
-                            }
+                            // Set points and bank details for ALL users (Shop and Independent)
+                            console.log('🔐 Setting user points balance:', pointsBalance)
+                            setUserPoints(pointsBalance)
+                            // Set bank details
+                            setBankId(bankId || '')
+                            setBankAccountNumber(bankAccountNumber || '')
+                            setBankAccountHolderName(bankAccountHolderName || '')
                         } else {
                             console.warn('🔐 Profile fetch failed, using basic info')
                             setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
@@ -792,12 +886,11 @@ export default function PremiumLoyaltyTemplate({
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             
-                            if (isShop) {
-                                setUserPoints(pointsBalance)
-                                setBankId(bankId || '')
-                                setBankAccountNumber(bankAccountNumber || '')
-                                setBankAccountHolderName(bankAccountHolderName || '')
-                            }
+                            // Set points and bank details for ALL users
+                            setUserPoints(pointsBalance)
+                            setBankId(bankId || '')
+                            setBankAccountNumber(bankAccountNumber || '')
+                            setBankAccountHolderName(bankAccountHolderName || '')
                         }
                     } catch (error) {
                         console.error('🔐 Profile fetch error on auth change:', error)
@@ -1020,6 +1113,8 @@ export default function PremiumLoyaltyTemplate({
         setLoginEmail('')
         setLoginPassword('')
         setLoginError('')
+        setEmailError('')
+        setPhoneError('')
         setLoginLoading(false)
         setShowLoginForm(false)
     }, [qrCode])
@@ -1031,6 +1126,8 @@ export default function PremiumLoyaltyTemplate({
             setLoginEmail('')
             setLoginPassword('')
             setLoginError('')
+            setEmailError('')
+            setPhoneError('')
             setLoginLoading(false)
             setShowLoginForm(false)
         }
@@ -1248,6 +1345,26 @@ export default function PremiumLoyaltyTemplate({
             setLoginError('Please fill in all fields')
             return
         }
+
+        if (isSignUp) {
+            if (!signUpName) {
+                setLoginError('Please enter your full name')
+                return
+            }
+            if (!signUpConfirmPassword) {
+                setLoginError('Please confirm your password')
+                return
+            }
+            if (loginPassword !== signUpConfirmPassword) {
+                setLoginError('Passwords do not match')
+                return
+            }
+            // Phone is optional but good to have validation if provided
+            if (signUpPhone && !validateMalaysiaPhone(signUpPhone)) {
+                setLoginError('Please enter a valid Malaysia phone number')
+                return
+            }
+        }
         
         // Prevent duplicate submissions
         if (loginLoading) {
@@ -1259,12 +1376,20 @@ export default function PremiumLoyaltyTemplate({
         setLoginError('')
         
         try {
-            let emailToUse = loginEmail
+            // Remove all whitespace from email
+            let emailToUse = loginEmail.replace(/\s/g, '')
             
             // Check if input looks like a phone number (doesn't contain @)
-            if (!loginEmail.includes('@')) {
+            if (!emailToUse.includes('@')) {
+                // If signing up, we require a valid email in this field
+                if (isSignUp) {
+                    setLoginError('Please enter a valid email address')
+                    setLoginLoading(false)
+                    return
+                }
+
                 // Normalize and lookup email by phone
-                const normalizedPhone = normalizePhone(loginEmail)
+                const normalizedPhone = normalizePhone(emailToUse)
                 
                 // Use the RPC function to find the email associated with this phone number
                 // Add retry logic for better reliability
@@ -1319,17 +1444,119 @@ export default function PremiumLoyaltyTemplate({
             console.log('🔐 Attempting login with email:', emailToUse)
             
             if (isSignUp) {
-                const { error } = await supabase.auth.signUp({
+                // Validate email format before sending to Supabase
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+                if (!emailRegex.test(emailToUse)) {
+                    setLoginError(`Invalid email format: "${emailToUse}". Please check for typos.`)
+                    setLoginLoading(false)
+                    return
+                }
+
+                // Use server action to bypass rate limits
+                const regResult = await registerConsumer({
                     email: emailToUse,
                     password: loginPassword,
+                    full_name: signUpName,
+                    phone: signUpPhone || undefined
                 })
+
+                if (!regResult.success) {
+                    throw new Error(regResult.error || 'Failed to create account')
+                }
+
+                console.log('🔐 Sign up successful via server action')
+                
+                // Auto-login after successful registration
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: emailToUse,
+                    password: loginPassword
+                })
+
                 if (error) throw error
                 console.log('🔐 Sign up successful')
-                setLoginError('')
-                setShowLoginForm(false)
-                // Clear form after successful signup
-                setLoginEmail('')
-                setLoginPassword('')
+                
+                if (data.session && data.user) {
+                    console.log('🔐 Auto-logging in after signup...', data.user.id)
+                    
+                    // Update phone in public.users via API (bypasses RLS)
+                    if (signUpPhone) {
+                        try {
+                            console.log('🔐 Updating phone in public.users via API')
+                            const response = await fetch('/api/user/update-phone', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    userId: data.user.id,
+                                    phone: signUpPhone
+                                })
+                            })
+                            
+                            const result = await response.json()
+                            if (result.success) {
+                                console.log('🔐 Phone number updated successfully in public.users')
+                            } else {
+                                console.error('🔐 Error updating phone in public.users:', result.error)
+                            }
+                        } catch (phoneError) {
+                            console.error('🔐 Error updating phone:', phoneError)
+                        }
+                    }
+
+                    // IMPORTANT: Mark this as an active session so it persists within this browser session
+                    sessionStorage.setItem('serapod_active_session', 'logged_in')
+                    
+                    setShowLoginForm(false)
+                    // Clear form after successful login
+                    setLoginEmail('')
+                    setLoginPassword('')
+                    setSignUpName('')
+                    setSignUpPhone('')
+                    setSignUpConfirmPassword('')
+                    
+                    // IMPORTANT: Force profile fetch after successful login
+                    if (data.user) {
+                        console.log('🔐 Forcing profile fetch after signup...')
+                        try {
+                            const profileData = await checkUserOrganization(data.user.id, true) // Force fetch, bypass duplicate check
+                            const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance } = profileData
+                            
+                            if (success) {
+                                console.log('🔐 Profile loaded successfully after signup')
+                                setIsAuthenticated(true)
+                                setUserEmail(data.user.email || '')
+                                setUserId(data.user.id)
+                                setIsShopUser(isShop)
+                                setUserName(fullName || data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || '')
+                                setUserAvatarUrl(avatarUrl)
+                                setShopName(orgName)
+                                setUserPhone(phone)
+                                // Set points for all users
+                                setUserPoints(pointsBalance)
+                            }
+                        } catch (profileError) {
+                            console.error('🔐 Error fetching profile after signup:', profileError)
+                        }
+                    }
+
+                    toast({
+                        title: "Account Created",
+                        description: "Your account has been created and you are now logged in.",
+                    })
+                } else {
+                    setLoginError('')
+                    setShowLoginForm(false)
+                    // Clear form after successful signup
+                    setLoginEmail('')
+                    setLoginPassword('')
+                    setSignUpName('')
+                    setSignUpPhone('')
+                    setSignUpConfirmPassword('')
+                    
+                    toast({
+                        title: "Account Created",
+                        description: "Your account has been created successfully. Please check your email for confirmation if required.",
+                    })
+                }
             } else {
                 // Add timeout for sign in
                 const signInPromise = supabase.auth.signInWithPassword({
@@ -1385,9 +1612,8 @@ export default function PremiumLoyaltyTemplate({
                             setUserAvatarUrl(avatarUrl)
                             setShopName(orgName)
                             setUserPhone(phone)
-                            if (isShop) {
-                                setUserPoints(pointsBalance)
-                            }
+                            // Set points for all users
+                            setUserPoints(pointsBalance)
                         }
                     } catch (profileError) {
                         console.error('🔐 Error fetching profile after login:', profileError)
@@ -1496,8 +1722,8 @@ export default function PremiumLoyaltyTemplate({
                 updateData.phone = newPhone.trim() || null
             }
             
-            // Add bank details if shop user
-            if (isShopUser) {
+            // Add bank details if shop user or independent consumer
+            if (isShopUser || !shopName) {
                 // If any bank field is filled, validate all required fields
                 if (bankId || bankAccountNumber || bankAccountHolderName) {
                     if (!bankId) {
@@ -2048,9 +2274,9 @@ export default function PremiumLoyaltyTemplate({
     const handlePhoneChange = (value: string) => {
         setCustomerPhone(value)
         if (value && !validateMalaysiaPhone(value)) {
-            setPhoneError('Please enter a valid Malaysia phone number (e.g., 0123456789)')
+            setLuckyDrawPhoneError('Please enter a valid Malaysia phone number (e.g., 0123456789)')
         } else {
-            setPhoneError('')
+            setLuckyDrawPhoneError('')
         }
     }
 
@@ -2058,9 +2284,9 @@ export default function PremiumLoyaltyTemplate({
     const handleEmailChange = (value: string) => {
         setCustomerEmail(value)
         if (value && !validateEmail(value)) {
-            setEmailError('Please enter a valid email address')
+            setLuckyDrawEmailError('Please enter a valid email address')
         } else {
-            setEmailError('')
+            setLuckyDrawEmailError('')
         }
     }
 
@@ -2079,12 +2305,12 @@ export default function PremiumLoyaltyTemplate({
         }
         
         if (!validateMalaysiaPhone(customerPhone)) {
-            setPhoneError('Please enter a valid Malaysia phone number')
+            setLuckyDrawPhoneError('Please enter a valid Malaysia phone number')
             return
         }
         
         if (customerEmail && !validateEmail(customerEmail)) {
-            setEmailError('Please enter a valid email address')
+            setLuckyDrawEmailError('Please enter a valid email address')
             return
         }
         
@@ -2371,7 +2597,16 @@ export default function PremiumLoyaltyTemplate({
                                 </>
                             )}
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
+                        <div 
+                            className={`w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden relative ${isAuthenticated ? 'cursor-pointer hover:opacity-80' : ''}`}
+                            onClick={handleAvatarClick}
+                        >
+                            {isUploadingAvatar ? (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                </div>
+                            ) : null}
+                            
                             {userAvatarUrl ? (
                                 <img 
                                     src={userAvatarUrl} 
@@ -2381,6 +2616,13 @@ export default function PremiumLoyaltyTemplate({
                             ) : (
                                 <User className="w-6 h-6" />
                             )}
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                accept="image/*"
+                                onChange={handleAvatarUpload}
+                            />
                         </div>
                     </div>
                     
@@ -3360,10 +3602,10 @@ export default function PremiumLoyaltyTemplate({
                                     placeholder="e.g., 0123456789"
                                     value={customerPhone}
                                     onChange={(e) => handlePhoneChange(e.target.value)}
-                                    className={`h-11 ${phoneError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}`}
+                                    className={`h-11 ${luckyDrawPhoneError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}`}
                                 />
-                                {phoneError && (
-                                    <p className="text-xs text-red-500 mt-1">{phoneError}</p>
+                                {luckyDrawPhoneError && (
+                                    <p className="text-xs text-red-500 mt-1">{luckyDrawPhoneError}</p>
                                 )}
                                 <p className="text-xs text-gray-400 mt-1">Malaysia mobile number format</p>
                             </div>
@@ -3377,16 +3619,16 @@ export default function PremiumLoyaltyTemplate({
                                     placeholder="example@email.com"
                                     value={customerEmail}
                                     onChange={(e) => handleEmailChange(e.target.value)}
-                                    className={`h-11 ${emailError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}`}
+                                    className={`h-11 ${luckyDrawEmailError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}`}
                                 />
-                                {emailError && (
-                                    <p className="text-xs text-red-500 mt-1">{emailError}</p>
+                                {luckyDrawEmailError && (
+                                    <p className="text-xs text-red-500 mt-1">{luckyDrawEmailError}</p>
                                 )}
                             </div>
 
                             <Button 
                                 onClick={handleLuckyDrawSubmit}
-                                disabled={!customerName || !customerPhone || isSubmitting || !!phoneError || !!emailError}
+                                disabled={!customerName || !customerPhone || isSubmitting || !!luckyDrawPhoneError || !!luckyDrawEmailError}
                                 className="w-full h-12 text-base font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg"
                             >
                                 {isSubmitting ? (
@@ -3989,6 +4231,8 @@ export default function PremiumLoyaltyTemplate({
         )
     }
 
+
+
     // Render Profile Tab
     const renderProfileTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
@@ -3998,7 +4242,29 @@ export default function PremiumLoyaltyTemplate({
             >
                 {/* Buttons moved to fixed position outside scroll container */}
                 
-                <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
+                <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden relative group">
+                    {isAuthenticated && (
+                        <>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleAvatarUpload}
+                                className="hidden"
+                                accept="image/*"
+                            />
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10"
+                                disabled={isUploadingAvatar}
+                            >
+                                {isUploadingAvatar ? (
+                                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                                ) : (
+                                    <Camera className="w-6 h-6 text-white" />
+                                )}
+                            </button>
+                        </>
+                    )}
                     {isAuthenticated && userAvatarUrl ? (
                         <img 
                             src={userAvatarUrl} 
@@ -4037,6 +4303,8 @@ export default function PremiumLoyaltyTemplate({
                                         onClick={() => {
                                             setShowLoginForm(false)
                                             setLoginError('')
+                                            setEmailError('')
+                                            setPhoneError('')
                                             // Clear fields when closing form
                                             setLoginEmail('')
                                             setLoginPassword('')
@@ -4056,23 +4324,127 @@ export default function PremiumLoyaltyTemplate({
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Email or Phone Number
+                                        {isSignUp ? 'Email' : 'Email or Phone Number'}
                                     </label>
                                     <div className="relative">
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                                         <Input 
                                             type="text"
-                                            placeholder="Enter email or phone number"
+                                            placeholder={isSignUp ? "Enter your email address" : "Enter email or phone number"}
                                             value={loginEmail}
-                                            onChange={(e) => setLoginEmail(e.target.value)}
-                                            className="h-11 pl-10"
+                                            onChange={(e) => {
+                                                setLoginEmail(e.target.value)
+                                                setEmailError('')
+                                            }}
+                                            onBlur={async (e) => {
+                                                if (isSignUp && e.target.value && e.target.value.includes('@')) {
+                                                    // Check if email exists
+                                                    const { data } = await supabase
+                                                        .from('users')
+                                                        .select('id')
+                                                        .eq('email', e.target.value)
+                                                        .single()
+                                                    
+                                                    if (data) {
+                                                        setEmailError('This email address is already registered. Please use a different email.')
+                                                    }
+                                                }
+                                            }}
+                                            className={`h-11 pl-10 ${emailError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                                             autoComplete="off"
                                             autoCorrect="off"
                                             autoCapitalize="off"
                                         />
+                                        {emailError && (
+                                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                <AlertCircle className="w-5 h-5 text-red-500" />
+                                            </div>
+                                        )}
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-1">You can log in using your email or phone number.</p>
+                                    {emailError && (
+                                        <p className="text-xs text-red-500 mt-1">{emailError}</p>
+                                    )}
+                                    {!isSignUp && <p className="text-xs text-gray-500 mt-1">You can log in using your email or phone number.</p>}
                                 </div>
+
+                                {isSignUp && (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Full Name
+                                            </label>
+                                            <div className="relative">
+                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                                <Input 
+                                                    type="text"
+                                                    placeholder="Enter your full name"
+                                                    value={signUpName}
+                                                    onChange={(e) => {
+                                                        let newValue = e.target.value
+                                                        // Auto-capitalize words in Full Name when space is pressed
+                                                        if (newValue.endsWith(' ') && newValue.length > 1) {
+                                                            const words = newValue.split(' ')
+                                                            if (words.length >= 2) {
+                                                                const lastWordIndex = words.length - 2
+                                                                const lastWord = words[lastWordIndex]
+                                                                if (lastWord) {
+                                                                    words[lastWordIndex] = lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase()
+                                                                    newValue = words.join(' ')
+                                                                }
+                                                            }
+                                                        }
+                                                        setSignUpName(newValue)
+                                                    }}
+                                                    className="h-11 pl-10"
+                                                    autoComplete="name"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Phone Number
+                                            </label>
+                                            <div className="relative">
+                                                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                                <Input 
+                                                    type="tel"
+                                                    placeholder="e.g., 0123456789"
+                                                    value={signUpPhone}
+                                                    onChange={(e) => {
+                                                        setSignUpPhone(e.target.value)
+                                                        setPhoneError('')
+                                                    }}
+                                                    onBlur={async (e) => {
+                                                        if (e.target.value) {
+                                                            // Check if phone exists
+                                                            const { data } = await supabase
+                                                                .from('users')
+                                                                .select('id')
+                                                                .eq('phone', e.target.value)
+                                                                .single()
+                                                            
+                                                            if (data) {
+                                                                setPhoneError('This phone number is already registered to another user.')
+                                                            }
+                                                        }
+                                                    }}
+                                                    className={`h-11 pl-10 ${phoneError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                                    autoComplete="tel"
+                                                />
+                                                {phoneError && (
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                        <AlertCircle className="w-5 h-5 text-red-500" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {phoneError && (
+                                                <p className="text-xs text-red-500 mt-1">{phoneError}</p>
+                                            )}
+                                            <p className="text-xs text-gray-500 mt-1">Supported: Malaysia (+60) and China (+86) mobile numbers</p>
+                                        </div>
+                                    </>
+                                )}
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -4085,7 +4457,7 @@ export default function PremiumLoyaltyTemplate({
                                             value={loginPassword}
                                             onChange={(e) => setLoginPassword(e.target.value)}
                                             className="h-11 pr-10"
-                                            autoComplete="off"
+                                            autoComplete="new-password"
                                         />
                                         <button 
                                             type="button"
@@ -4099,7 +4471,46 @@ export default function PremiumLoyaltyTemplate({
                                             )}
                                         </button>
                                     </div>
+                                    {isSignUp && <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>}
                                 </div>
+
+                                {isSignUp && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Confirm Password
+                                        </label>
+                                        <div className="relative">
+                                            <Input 
+                                                type={showConfirmPassword ? 'text' : 'password'}
+                                                placeholder="Re-enter your password"
+                                                value={signUpConfirmPassword}
+                                                onChange={(e) => setSignUpConfirmPassword(e.target.value)}
+                                                className={`h-11 pr-10 ${
+                                                    signUpConfirmPassword && loginPassword === signUpConfirmPassword 
+                                                        ? 'border-green-500 focus-visible:ring-green-500' 
+                                                        : ''
+                                                }`}
+                                                autoComplete="new-password"
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2"
+                                            >
+                                                {showConfirmPassword ? (
+                                                    <EyeOff className="w-5 h-5 text-gray-400" />
+                                                ) : (
+                                                    <Eye className="w-5 h-5 text-gray-400" />
+                                                )}
+                                            </button>
+                                        </div>
+                                        {signUpConfirmPassword && loginPassword === signUpConfirmPassword && (
+                                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                                <Check className="w-3 h-3" /> Passwords match
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <Button 
                                     onClick={handleLogin}
@@ -4283,7 +4694,7 @@ export default function PremiumLoyaltyTemplate({
                                 </label>
                                 <div className="relative">
                                     <Input 
-                                        type={showConfirmPassword ? 'text' : 'password'}
+                                        type={showChangeConfirmPassword ? 'text' : 'password'}
                                         placeholder="Confirm new password"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -4291,10 +4702,10 @@ export default function PremiumLoyaltyTemplate({
                                     />
                                     <button 
                                         type="button"
-                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        onClick={() => setShowChangeConfirmPassword(!showChangeConfirmPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2"
                                     >
-                                        {showConfirmPassword ? (
+                                        {showChangeConfirmPassword ? (
                                             <EyeOff className="w-5 h-5 text-gray-400" />
                                         ) : (
                                             <Eye className="w-5 h-5 text-gray-400" />
@@ -4471,8 +4882,8 @@ export default function PremiumLoyaltyTemplate({
                     )}
                 </div>
 
-                {/* Bank Account Section (Shop Users Only) */}
-                {isShopUser && (
+                {/* Bank Account Section (Shop Users and Independent Consumers) */}
+                {(isShopUser || !shopName) && (
                     <div className="bg-transparent">
                         <button
                             onClick={() => setShowBankInfo(!showBankInfo)}
@@ -4487,7 +4898,7 @@ export default function PremiumLoyaltyTemplate({
 
                         {showBankInfo && (
                             <div className="bg-gray-50 rounded-xl mb-3 overflow-hidden p-4 space-y-4">
-                                <p className="text-sm text-gray-500 mb-2">Update your shop's bank account details for payouts.</p>
+                                <p className="text-sm text-gray-500 mb-2">Update your bank account details for payouts.</p>
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Full Name (Account Holder)</label>
@@ -4738,17 +5149,17 @@ export default function PremiumLoyaltyTemplate({
                                 <Gift className="w-8 h-8" style={{ color: config.primary_color }} />
                             </div>
                             <h3 className="text-xl font-bold text-gray-900">Collect Points</h3>
-                            <p className="text-sm text-gray-500 mt-1">Enter your shop credentials to collect points</p>
+                            <p className="text-sm text-gray-500 mt-1">Enter your credentials to collect points</p>
                         </div>
 
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Shop ID (Email or Phone)</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
                                 <input
                                     type="text"
                                     value={shopId}
                                     onChange={(e) => setShopId(e.target.value)}
-                                    placeholder="Enter your shop ID"
+                                    placeholder="Enter your email or phone"
                                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2"
                                     style={{ '--tw-ring-color': config.primary_color } as any}
                                     disabled={collectingPoints}
@@ -4815,6 +5226,21 @@ export default function PremiumLoyaltyTemplate({
                                 ) : (
                                     'Collect Points'
                                 )}
+                            </button>
+                        </div>
+                        
+                        <div className="text-center mt-2">
+                            <button 
+                                onClick={() => {
+                                    setShowPointsLoginModal(false)
+                                    setActiveTab('profile')
+                                    setShowLoginForm(true)
+                                    setIsSignUp(true)
+                                }}
+                                className="text-sm font-medium hover:underline"
+                                style={{ color: config.primary_color }}
+                            >
+                                Do not have account? Register here
                             </button>
                         </div>
                     </div>

@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !userProfile || !userProfile.organization_id) {
+    if (profileError || !userProfile) {
       console.error('❌ User profile not found:', profileError)
       return NextResponse.json(
         { success: false, error: 'User profile not found' },
@@ -56,29 +56,34 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get organization details
-    const { data: organization, error: orgError } = await supabaseAdmin
-      .from('organizations')
-      .select('id, org_type_code, org_name')
-      .eq('id', userProfile.organization_id)
-      .single()
+    let shopId = user.id // Default to user ID for independent consumers
 
-    if (orgError || !organization) {
-      console.error('❌ Organization not found:', orgError)
-      return NextResponse.json(
-        { success: false, error: 'Organization not found' },
-        { status: 404 }
-      )
+    // If user belongs to an organization, validate it
+    if (userProfile.organization_id) {
+      // Get organization details
+      const { data: organization, error: orgError } = await supabaseAdmin
+        .from('organizations')
+        .select('id, org_type_code, org_name')
+        .eq('id', userProfile.organization_id)
+        .single()
+
+      if (orgError || !organization) {
+        console.error('❌ Organization not found:', orgError)
+        return NextResponse.json(
+          { success: false, error: 'Organization not found' },
+          { status: 404 }
+        )
+      }
+
+      if (organization.org_type_code !== 'SHOP') {
+        return NextResponse.json(
+          { success: false, error: 'Only shop users or independent consumers can view redemption history' },
+          { status: 403 }
+        )
+      }
+
+      shopId = organization.id
     }
-
-    if (organization.org_type_code !== 'SHOP') {
-      return NextResponse.json(
-        { success: false, error: 'Only shop users can view redemption history' },
-        { status: 403 }
-      )
-    }
-
-    const shopId = organization.id
 
     // Get redemption history (transaction_type = 'redeem')
     // Use simple select without join to avoid TypeScript issues

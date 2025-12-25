@@ -400,3 +400,76 @@ export async function deleteUserWithAuth(userId: string) {
     }
   }
 }
+
+export async function registerConsumer(userData: {
+  email: string
+  password: string
+  full_name: string
+  phone?: string
+}) {
+  try {
+    const adminClient = createAdminClient()
+    if (!adminClient) {
+      return {
+        success: false,
+        error: 'System configuration error'
+      }
+    }
+
+    const phone = userData.phone ? normalizePhone(userData.phone) : undefined
+
+    // Create user with auto-confirm to bypass rate limits and verification
+    const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+      email: userData.email,
+      password: userData.password,
+      email_confirm: true,
+      phone: phone,
+      phone_confirm: !!phone,
+      user_metadata: {
+        full_name: userData.full_name,
+        phone: phone // Ensure phone is in metadata for the trigger
+      }
+    })
+
+    if (authError) {
+      return {
+        success: false,
+        error: authError.message
+      }
+    }
+
+    if (!authUser?.user) {
+      return {
+        success: false,
+        error: 'User creation failed'
+      }
+    }
+
+    // Explicitly sync user profile to ensure it exists before login
+    const supabase = await createClient()
+    const { error: syncError } = await supabase
+      .rpc('sync_user_profile', {
+        p_user_id: authUser.user.id,
+        p_email: userData.email,
+        p_full_name: userData.full_name,
+        p_phone: phone,
+        p_role_code: 'CONSUMER' // Default role for consumers
+      })
+
+    if (syncError) {
+      console.warn('Manual sync_user_profile failed, relying on trigger:', syncError)
+      // Don't fail the registration, as the trigger might still work
+    }
+
+    return {
+      success: true,
+      user: authUser.user
+    }
+  } catch (error) {
+    console.error('Error registering consumer:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to register consumer'
+    }
+  }
+}

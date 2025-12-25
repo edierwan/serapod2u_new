@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !userProfile || !userProfile.organization_id) {
+    if (profileError || !userProfile) {
       console.error('❌ User profile not found:', profileError)
       return NextResponse.json(
         { success: false, error: 'User profile not found' },
@@ -51,30 +51,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 2. Get organization details
-    const { data: organization, error: orgError } = await supabase
-      .from('organizations')
-      .select('id, org_type_code, org_name')
-      .eq('id', userProfile.organization_id)
-      .single()
+    let shopId = user.id // Default to user ID for independent consumers
+    let isIndependent = true
 
-    if (orgError || !organization) {
-      console.error('❌ Organization not found:', orgError)
-      return NextResponse.json(
-        { success: false, error: 'Organization not found' },
-        { status: 404 }
-      )
+    // If user belongs to an organization, validate it
+    if (userProfile.organization_id) {
+      // 2. Get organization details
+      const { data: organization, error: orgError } = await supabase
+        .from('organizations')
+        .select('id, org_type_code, org_name')
+        .eq('id', userProfile.organization_id)
+        .single()
+
+      if (orgError || !organization) {
+        console.error('❌ Organization not found:', orgError)
+        return NextResponse.json(
+          { success: false, error: 'Organization not found' },
+          { status: 404 }
+        )
+      }
+
+      if (organization.org_type_code !== 'SHOP') {
+        return NextResponse.json(
+          { success: false, error: 'Only shop users or independent consumers can redeem rewards' },
+          { status: 403 }
+        )
+      }
+
+      shopId = organization.id
+      isIndependent = false
+      console.log('✅ Shop user:', organization.org_name, 'Shop ID:', shopId)
+    } else {
+      console.log('✅ Independent consumer:', user.id)
     }
-
-    if (organization.org_type_code !== 'SHOP') {
-      return NextResponse.json(
-        { success: false, error: 'Only shop users can redeem rewards' },
-        { status: 403 }
-      )
-    }
-
-    const shopId = organization.id
-    console.log('✅ Shop user:', organization.org_name, 'Shop ID:', shopId)
 
     // 2. Get reward details
     const { data: reward, error: rewardError } = await supabase
@@ -105,21 +114,62 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Get current points balance
-    const { data: balanceData, error: balanceError } = await supabase
-      .from('v_shop_points_balance')
-      .select('*')
-      .eq('shop_id', shopId)
-      .maybeSingle()
+    let currentBalance = 0
 
-    if (balanceError) {
-      console.error('❌ Error fetching balance:', balanceError)
-      return NextResponse.json(
-        { success: false, error: 'Failed to fetch points balance' },
-        { status: 500 }
-      )
+    if (!isIndependent) {
+      const { data: balanceData, error: balanceError } = await supabase
+        .from('v_shop_points_balance')
+        .select('*')
+        .eq('shop_id', shopId)
+        .maybeSingle()
+
+      if (balanceError) {
+        console.error('❌ Error fetching balance:', balanceError)
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch points balance' },
+          { status: 500 }
+        )
+      }
+      currentBalance = balanceData?.current_balance || 0
+    } else {
+      // Calculate balance for independent consumer
+      // 1. Sum collected points
+      const { data: collectedData, error: collectedError } = await supabase
+        .from('consumer_qr_scans')
+        .select('points_amount')
+        .eq('consumer_id', user.id)
+        .eq('collected_points', true)
+
+      if (collectedError) {
+        console.error('❌ Error fetching collected points:', collectedError)
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch points balance' },
+          { status: 500 }
+        )
+      }
+
+      const totalCollected = collectedData?.reduce((sum, item) => sum + (item.points_amount || 0), 0) || 0
+
+      // 2. Sum redeemed points
+      const { data: redeemedData, error: redeemedError } = await supabase
+        .from('points_transactions')
+        .select('points_amount')
+        .eq('company_id', user.id)
+        .eq('transaction_type', 'redeem')
+
+      if (redeemedError) {
+        console.error('❌ Error fetching redeemed points:', redeemedError)
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch points balance' },
+          { status: 500 }
+        )
+      }
+
+      const totalRedeemed = redeemedData?.reduce((sum, item) => sum + Math.abs(item.points_amount || 0), 0) || 0
+      
+      currentBalance = totalCollected - totalRedeemed
     }
 
-    const currentBalance = balanceData?.current_balance || 0
     console.log('💰 Current balance:', currentBalance, 'Required:', pointsRequired)
 
     // 5. Check if user has enough points

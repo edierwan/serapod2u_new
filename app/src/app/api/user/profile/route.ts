@@ -65,7 +65,14 @@ export async function GET(request: NextRequest) {
         full_name,
         avatar_url,
         phone,
-        organization_id
+        organization_id,
+        bank_id,
+        bank_account_number,
+        bank_account_holder_name,
+        msia_banks (
+            id,
+            short_name
+        )
       `)
       .eq('id', user.id)
       .single()
@@ -122,15 +129,30 @@ export async function GET(request: NextRequest) {
           bankAccountHolderName = orgData.bank_account_holder_name
         }
       }
+    } else {
+      // Independent Consumer - Use bank details from users table
+      bankId = userProfile.bank_id
+      bankName = (userProfile.msia_banks as any)?.short_name || null
+      bankAccountNumber = userProfile.bank_account_number
+      bankAccountHolderName = userProfile.bank_account_holder_name
     }
 
-    // Fetch shop points balance if it's a shop user
+    // Fetch points balance
     let pointsBalance = 0
     if (isShop && userProfile.organization_id) {
       const { data: balanceData } = await supabaseAdmin
         .from('v_shop_points_balance')
         .select('current_balance')
         .eq('shop_id', userProfile.organization_id)
+        .maybeSingle()
+
+      pointsBalance = balanceData?.current_balance || 0
+    } else if (!userProfile.organization_id) {
+      // Independent Consumer
+      const { data: balanceData } = await supabaseAdmin
+        .from('v_consumer_points_balance')
+        .select('current_balance')
+        .eq('user_id', user.id)
         .maybeSingle()
 
       pointsBalance = balanceData?.current_balance || 0

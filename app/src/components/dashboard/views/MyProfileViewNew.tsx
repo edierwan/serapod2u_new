@@ -578,7 +578,22 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     <Input
                       id="full_name"
                       value={formData.full_name}
-                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                      onChange={(e) => {
+                        let newValue = e.target.value
+                        // Auto-capitalize words in Full Name when space is pressed
+                        if (newValue.endsWith(' ') && newValue.length > 1) {
+                          const words = newValue.split(' ')
+                          if (words.length >= 2) {
+                            const lastWordIndex = words.length - 2
+                            const lastWord = words[lastWordIndex]
+                            if (lastWord) {
+                              words[lastWordIndex] = lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase()
+                              newValue = words.join(' ')
+                            }
+                          }
+                        }
+                        setFormData({ ...formData, full_name: newValue })
+                      }}
                       placeholder="Enter your full name"
                       disabled={isSaving}
                       className="mt-1"

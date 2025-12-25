@@ -514,7 +514,9 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
 
       // Organization Type filter
       const userOrg = organizations.find(o => o.id === user.organization_id)
-      const matchesOrgType = !orgTypeFilter || (userOrg && userOrg.org_type_code === orgTypeFilter)
+      const matchesOrgType = !orgTypeFilter || 
+        (orgTypeFilter === 'CUSTOMER' && !user.organization_id) ||
+        (userOrg && userOrg.org_type_code === orgTypeFilter)
       
       // Status filter
       const matchesStatus = !statusFilter || 
@@ -708,6 +710,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 value={orgTypeFilter}
               >
                 <option value="">All Types</option>
+                <option value="CUSTOMER">Customer (No Org)</option>
                 <option value="HQ">Headquarters</option>
                 <option value="MANU">Manufacturer</option>
                 <option value="DIST">Distributor</option>

@@ -151,7 +151,26 @@ export default function UserDialog({
   }
 
   const handleInputChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    let newValue = value
+
+    // Auto-capitalize words in Full Name when space is pressed
+    if (field === 'full_name' && typeof value === 'string') {
+      if (value.endsWith(' ') && value.length > 1) {
+        const words = value.split(' ')
+        // The last element is empty string because of the trailing space
+        // The second to last element is the word we just finished typing
+        if (words.length >= 2) {
+          const lastWordIndex = words.length - 2
+          const lastWord = words[lastWordIndex]
+          if (lastWord) {
+            words[lastWordIndex] = lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase()
+            newValue = words.join(' ')
+          }
+        }
+      }
+    }
+
+    setFormData(prev => ({ ...prev, [field]: newValue }))
     if (errors[field]) {
       setErrors(prev => {
         const newErrors = { ...prev }

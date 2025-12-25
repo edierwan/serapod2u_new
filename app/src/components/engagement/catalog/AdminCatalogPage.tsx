@@ -29,6 +29,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { UserPointsMonitor } from "./UserPointsMonitor"
 import {
   CATEGORY_LABELS,
   EnrichedReward,
@@ -142,6 +143,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [rewards, setRewards] = useState<RedeemItemRow[]>([])
   const [transactions, setTransactions] = useState<PointsTransactionRow[]>([])
   const [shopUsers, setShopUsers] = useState<ShopUser[]>([])
+  const [consumerUsers, setConsumerUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [usersLoading, setUsersLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -150,7 +152,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
-  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "settings" | "redemptions" | "feedback">("rewards")
+  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback">("rewards")
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
   
@@ -252,6 +254,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   useEffect(() => {
     if (activeTab === 'users' && shopUsers.length === 0) {
       loadShopUsers()
+    } else if (activeTab === 'consumers' && consumerUsers.length === 0) {
+      loadConsumerUsers()
     }
   }, [activeTab])
 
@@ -475,6 +479,25 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     }
   }
 
+  async function loadConsumerUsers() {
+    setUsersLoading(true)
+    try {
+      const supabaseClient = createClient()
+      const { data, error } = await supabaseClient
+        .from('v_consumer_points_balance')
+        .select('*')
+        .order('current_balance', { ascending: false })
+
+      if (error) throw error
+
+      setConsumerUsers(data || [])
+    } catch (error) {
+      console.error("Error loading consumer users:", error)
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
   async function loadRedemptions(page = 1) {
     setRedemptionsLoading(true)
 
@@ -561,21 +584,30 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     }
 
     try {
-      // Create manual adjustment record in consumer_qr_scans for audit trail
       const adjustmentType = pointsAdjustment.type === 'add' ? 'manual_add' : 'manual_subtract'
+      const isConsumer = !selectedUser.organization_id && selectedUser.user_id
+
+      // Create manual adjustment record in consumer_qr_scans for audit trail
+      const scanData: any = {
+        qr_code_id: null,
+        collected_points: true,
+        points_amount: Math.abs(finalAmount),
+        points_collected_at: new Date().toISOString(),
+        is_manual_adjustment: true,
+        adjusted_by: userProfile.id,
+        adjustment_reason: pointsAdjustment.description || `Admin ${pointsAdjustment.type} - manual adjustment`,
+        adjustment_type: adjustmentType
+      }
+
+      if (isConsumer) {
+        scanData.consumer_id = selectedUser.user_id
+      } else {
+        scanData.shop_id = selectedUser.organization_id
+      }
+
       const { error: scanError } = await supabaseClient
         .from('consumer_qr_scans')
-        .insert({
-          qr_code_id: null, // No QR code for manual adjustments
-          shop_id: selectedUser.organization_id,
-          collected_points: true,
-          points_amount: Math.abs(finalAmount),
-          points_collected_at: new Date().toISOString(),
-          is_manual_adjustment: true,
-          adjusted_by: userProfile.id,
-          adjustment_reason: pointsAdjustment.description || `Admin ${pointsAdjustment.type} - manual adjustment`,
-          adjustment_type: adjustmentType
-        })
+        .insert(scanData)
 
       if (scanError) {
         console.error('Error creating adjustment record:', scanError)
@@ -584,26 +616,38 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       }
 
       // Also create in points_transactions for backward compatibility
+      const txnData: any = {
+        company_id: companyId,
+        transaction_type: 'adjust',
+        points_amount: finalAmount,
+        balance_after: newBalance,
+        description: pointsAdjustment.description || 'Admin adjustment - manual modification',
+        transaction_date: new Date().toISOString()
+      }
+
+      if (isConsumer) {
+        txnData.user_id = selectedUser.user_id
+        txnData.consumer_phone = selectedUser.consumer_phone
+        txnData.consumer_email = selectedUser.consumer_email
+      } else {
+        txnData.consumer_phone = selectedUser.shop_phone
+        txnData.consumer_email = selectedUser.shop_email
+      }
+
       const { error: txnError } = await supabaseClient
         .from('points_transactions')
-        .insert({
-          company_id: companyId,
-          consumer_phone: selectedUser.shop_phone,
-          consumer_email: selectedUser.shop_email,
-          transaction_type: 'adjust',
-          points_amount: finalAmount,
-          balance_after: newBalance,
-          description: pointsAdjustment.description || 'Admin adjustment - manual modification',
-          transaction_date: new Date().toISOString()
-        })
+        .insert(txnData)
 
       if (txnError) {
         console.warn('Warning: Failed to create transaction record:', txnError)
-        // Don't fail the whole operation
       }
 
       // Reload users
-      await loadShopUsers()
+      if (isConsumer) {
+        await loadConsumerUsers()
+      } else {
+        await loadShopUsers()
+      }
       
       setShowAdjustPointsModal(false)
       setSelectedUser(null)
@@ -797,13 +841,16 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "settings" | "redemptions" | "feedback")} className="space-y-6" suppressHydrationWarning>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback")} className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="rewards" className="gap-2">
             <Package className="h-4 w-4" /> Manage Rewards
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" /> Shop Points Monitor
+          </TabsTrigger>
+          <TabsTrigger value="consumers" className="gap-2">
+            <Users className="h-4 w-4" /> User Points Monitor
           </TabsTrigger>
           <TabsTrigger value="redemptions" className="gap-2">
             <Gift className="h-4 w-4" /> Redemption History
@@ -1296,6 +1343,19 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* CONSUMER POINTS MONITOR TAB */}
+        <TabsContent value="consumers" className="space-y-4">
+          <UserPointsMonitor 
+            users={consumerUsers} 
+            loading={usersLoading} 
+            onAdjustPoints={(user) => {
+              setSelectedUser(user)
+              setPointsAdjustment({ amount: 0, type: 'add', description: '' })
+              setShowAdjustPointsModal(true)
+            }} 
+          />
         </TabsContent>
 
         {/* REDEMPTION HISTORY TAB */}

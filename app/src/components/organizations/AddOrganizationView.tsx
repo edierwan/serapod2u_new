@@ -311,25 +311,40 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
       const prefix = prefixMap[typeCode] || typeCode.substring(0, 2)
 
-      // Get the highest number for this type
+      // Get ALL codes for this type to find the true maximum
+      // Ordering by created_at is not reliable if data was imported or created out of order
+      // or if non-standard codes exist (like 'SHOPDEV')
       const { data, error } = await (supabase as any)
         .from('organizations')
         .select('org_code')
         .eq('org_type_code', typeCode)
-        .order('created_at', { ascending: false })
-        .limit(1)
 
       if (error) throw error
 
-      let nextNumber = 1
+      let maxNumber = 0
+      
       if (data && data.length > 0) {
-        const lastCode = data[0].org_code
-        const numberMatch = lastCode.match(/\d+$/)
-        if (numberMatch) {
-          nextNumber = parseInt(numberMatch[0]) + 1
-        }
+        data.forEach((org: any) => {
+          // Check if code starts with the expected prefix
+          // We use startsWith to ensure we're looking at the right series
+          if (org.org_code && org.org_code.startsWith(prefix)) {
+            // Extract the number part
+            const numberPart = org.org_code.substring(prefix.length)
+            // ParseInt will stop at non-numeric characters, but we want to be strict
+            // to avoid parsing "SHOPDEV" as "OPDEV" -> NaN, which is fine.
+            // But what if we have "SH123ABC"? parseInt("123ABC") -> 123.
+            // This is probably acceptable.
+            const number = parseInt(numberPart)
+            if (!isNaN(number)) {
+              if (number > maxNumber) {
+                maxNumber = number
+              }
+            }
+          }
+        })
       }
 
+      const nextNumber = maxNumber + 1
       const newCode = `${prefix}${String(nextNumber).padStart(3, '0')}`
       handleInputChange('org_code', newCode)
     } catch (error: any) {

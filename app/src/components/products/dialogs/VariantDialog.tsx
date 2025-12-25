@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { X, Loader2, Upload, Image as ImageIcon } from 'lucide-react'
+import { getStorageUrl } from '@/lib/utils'
 
 // Image compression utility for variant images
 // Variant images are small display images, compress to ~5KB
@@ -149,7 +150,7 @@ export default function VariantDialog({
           is_default: variant.is_default,
           image_url: variant.image_url || null
         })
-        setImagePreview(variant.image_url || null)
+        setImagePreview(getStorageUrl(variant.image_url) || null)
       } else {
         setFormData({
           product_id: products.length > 0 ? products[0].id : '',

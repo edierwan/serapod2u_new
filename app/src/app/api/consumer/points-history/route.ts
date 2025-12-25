@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !userProfile || !userProfile.organization_id) {
+    if (profileError || !userProfile) {
       console.error('❌ User profile not found:', profileError)
       return NextResponse.json(
         { success: false, error: 'User profile not found' },
@@ -56,38 +56,44 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get organization details
-    const { data: organization, error: orgError } = await supabaseAdmin
-      .from('organizations')
-      .select('id, org_type_code, org_name')
-      .eq('id', userProfile.organization_id)
-      .single()
-
-    if (orgError || !organization) {
-      console.error('❌ Organization not found:', orgError)
-      return NextResponse.json(
-        { success: false, error: 'Organization not found' },
-        { status: 404 }
-      )
-    }
-
-    if (organization.org_type_code !== 'SHOP') {
-      return NextResponse.json(
-        { success: false, error: 'Only shop users can view points history' },
-        { status: 403 }
-      )
-    }
-
-    const shopId = organization.id
-
-    // Get points history from shop_points_ledger view
-    // This includes both scans (points earned) and redemptions (points spent)
-    const { data: ledgerData, error: ledgerError } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('shop_points_ledger')
       .select('*')
-      .eq('shop_id', shopId)
       .order('occurred_at', { ascending: false })
       .limit(100)
+
+    // If user belongs to an organization, filter by shop_id
+    if (userProfile.organization_id) {
+      // Get organization details
+      const { data: organization, error: orgError } = await supabaseAdmin
+        .from('organizations')
+        .select('id, org_type_code, org_name')
+        .eq('id', userProfile.organization_id)
+        .single()
+
+      if (orgError || !organization) {
+        console.error('❌ Organization not found:', orgError)
+        return NextResponse.json(
+          { success: false, error: 'Organization not found' },
+          { status: 404 }
+        )
+      }
+
+      if (organization.org_type_code !== 'SHOP') {
+        return NextResponse.json(
+          { success: false, error: 'Only shop users or independent consumers can view points history' },
+          { status: 403 }
+        )
+      }
+
+      query = query.eq('shop_id', organization.id)
+    } else {
+      // Independent consumer - filter by consumer_id
+      query = query.eq('consumer_id', user.id)
+    }
+
+    // Execute query
+    const { data: ledgerData, error: ledgerError } = await query
 
     if (ledgerError) {
       console.error('❌ Error fetching points history:', ledgerError)
