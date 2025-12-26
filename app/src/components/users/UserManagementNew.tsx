@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Users, Search, Plus, Loader2, Edit, CheckCircle, XCircle, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Power } from 'lucide-react'
 import UserDialogNew from './UserDialogNew'
 import type { User as UserType, Role, Organization } from '@/types/user'
@@ -75,6 +76,7 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
   const [isSaving, setIsSaving] = useState(false)
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -159,6 +161,84 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       // Set new field with default ascending direction
       setSortField(field)
       setSortDirection('asc')
+    }
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      // Select all filtered users except current user
+      const newSelected = new Set(filteredUsers.filter(u => u.id !== userProfile.id).map(u => u.id))
+      setSelectedUsers(newSelected)
+    } else {
+      setSelectedUsers(new Set())
+    }
+  }
+
+  const handleSelectUser = (userId: string, checked: boolean) => {
+    const newSelected = new Set(selectedUsers)
+    if (checked) {
+      newSelected.add(userId)
+    } else {
+      newSelected.delete(userId)
+    }
+    setSelectedUsers(newSelected)
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedUsers.size === 0) return
+
+    const confirmed = confirm(
+      `Are you sure you want to delete ${selectedUsers.size} user${selectedUsers.size > 1 ? 's' : ''}? This action cannot be undone.`
+    )
+
+    if (!confirmed) return
+
+    try {
+      setIsSaving(true)
+      let successCount = 0
+      let errorCount = 0
+
+      for (const userId of Array.from(selectedUsers)) {
+        try {
+          const result = await deleteUserWithAuth(userId, {
+            id: userProfile.id,
+            role_code: userProfile.role_code
+          })
+          if (result.success) {
+            successCount++
+          } else {
+            errorCount++
+          }
+        } catch (error) {
+          errorCount++
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: 'Bulk Delete Complete',
+          description: `Successfully deleted ${successCount} user${successCount > 1 ? 's' : ''}${errorCount > 0 ? `. ${errorCount} failed.` : ''}`,
+          variant: errorCount > 0 ? 'default' : 'default'
+        })
+      } else {
+        toast({
+          title: 'Delete Failed',
+          description: 'Failed to delete selected users',
+          variant: 'destructive'
+        })
+      }
+
+      setSelectedUsers(new Set())
+      await loadUsers()
+    } catch (error) {
+      console.error('Bulk delete error:', error)
+      toast({
+        title: 'Error',
+        description: 'An error occurred during bulk delete',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -773,11 +853,42 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
       {/* Users Table */}
       <Card>
         <CardContent className="pt-6">
+          {selectedUsers.size > 0 && (
+            <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">
+                  {selectedUsers.size} user{selectedUsers.size > 1 ? 's' : ''} selected
+                </span>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={isSaving}
+                className="gap-2"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Delete {selectedUsers.size} User{selectedUsers.size > 1 ? 's' : ''}
+              </Button>
+            </div>
+          )}
           {filteredUsers.length > 0 ? (
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={filteredUsers.filter(u => u.id !== userProfile.id).length > 0 && filteredUsers.filter(u => u.id !== userProfile.id).every(u => selectedUsers.has(u.id))}
+                        onCheckedChange={handleSelectAll}
+                        disabled={filteredUsers.filter(u => u.id !== userProfile.id).length === 0}
+                      />
+                    </TableHead>
                     <TableHead>
                       <button
                         onClick={() => handleSort('full_name')}
@@ -849,6 +960,13 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
                 <TableBody>
                   {filteredUsers.map((user) => (
                     <TableRow key={user.id} className="hover:bg-gray-50">
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedUsers.has(user.id)}
+                          onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
+                          disabled={user.id === userProfile.id}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="w-10 h-10">

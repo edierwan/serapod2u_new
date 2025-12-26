@@ -574,7 +574,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         </div>
         <div className="flex gap-2">
           {/* Only show Admin View button for HQ/admin users, not for shop users */}
-          {userProfile.organizations.org_type_code !== 'SHOP' && (
+          {userProfile?.organizations?.org_type_code && userProfile.organizations.org_type_code !== 'SHOP' && (
             <Button asChild variant="default" className="gap-2">
               <Link href="/engagement/catalog/admin">
                 <Settings className="h-4 w-4" /> Admin View

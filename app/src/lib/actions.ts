@@ -406,6 +406,7 @@ export async function registerConsumer(userData: {
   password: string
   full_name: string
   phone?: string
+  location?: string
 }) {
   try {
     const adminClient = createAdminClient()
@@ -427,7 +428,8 @@ export async function registerConsumer(userData: {
       phone_confirm: !!phone,
       user_metadata: {
         full_name: userData.full_name,
-        phone: phone // Ensure phone is in metadata for the trigger
+        phone: phone, // Ensure phone is in metadata for the trigger
+        location: userData.location
       }
     })
 
@@ -459,6 +461,12 @@ export async function registerConsumer(userData: {
     if (syncError) {
       console.warn('Manual sync_user_profile failed, relying on trigger:', syncError)
       // Don't fail the registration, as the trigger might still work
+    } else if (userData.location) {
+        // Update location if provided (since sync_user_profile might not handle it yet)
+        await adminClient
+            .from('users')
+            .update({ location: userData.location })
+            .eq('id', authUser.user.id)
     }
 
     return {

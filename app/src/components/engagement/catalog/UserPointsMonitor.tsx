@@ -5,15 +5,19 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Search, Users, Trophy, Edit, History } from "lucide-react"
 import { formatNumber, formatDateLabel } from "./catalog-utils"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PointMigration } from "./PointMigration"
 
 interface ConsumerUser {
   user_id: string
   consumer_name: string
   consumer_phone: string | null
   consumer_email: string | null
+  consumer_location?: string | null
   current_balance: number
   total_collected_system: number
   total_collected_manual: number
+  total_migration: number
   total_redeemed: number
   transaction_count: number
   last_transaction_date: string | null
@@ -27,6 +31,8 @@ interface UserPointsMonitorProps {
 
 export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPointsMonitorProps) {
   const [searchTerm, setSearchTerm] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
 
   const filteredUsers = users.filter(user => {
     const term = searchTerm.toLowerCase()
@@ -37,8 +43,25 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPoints
     )
   })
 
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex)
+
+  // Reset to page 1 when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value)
+    setCurrentPage(1)
+  }
+
   return (
-    <div className="space-y-4">
+    <Tabs defaultValue="monitor" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="monitor">Monitor Points</TabsTrigger>
+        <TabsTrigger value="migration">Point Migration</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="monitor" className="space-y-4">
       {/* Info Banner */}
       <Card className="border-purple-200 bg-purple-50/50">
         <CardContent className="pt-6">
@@ -81,7 +104,7 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPoints
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search by name, phone, or email..."
                 className="pl-9"
               />
@@ -104,14 +127,17 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPoints
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">Consumer</th>
+                    <th className="px-4 py-3 font-medium">Location</th>
                     <th className="px-4 py-3 font-medium">Current Balance</th>
                     <th className="px-4 py-3 font-medium">Collected (System)</th>
                     <th className="px-4 py-3 font-medium">Collected (Manual)</th>
+                    <th className="px-4 py-3 font-medium">Migration Points</th>
                     <th className="px-4 py-3 font-medium">Total Redeemed</th>
                     <th className="px-4 py-3 font-medium">Transactions</th>
                     <th className="px-4 py-3 font-medium">Last Activity</th>
@@ -119,12 +145,17 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPoints
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filteredUsers.map((user) => (
+                  {paginatedUsers.map((user) => (
                     <tr key={user.user_id} className="hover:bg-muted/50">
                       <td className="px-4 py-4">
                         <div className="font-medium">{user.consumer_name}</div>
                         <div className="text-xs text-muted-foreground">{user.consumer_phone}</div>
                         <div className="text-xs text-muted-foreground">{user.consumer_email}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="text-sm text-gray-700">
+                          {user.consumer_location || '-'}
+                        </span>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-2 font-bold text-primary">
@@ -143,6 +174,12 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPoints
                           {user.total_collected_manual > 0 ? '+' : ''}{formatNumber(user.total_collected_manual)}
                         </div>
                         <div className="text-xs text-muted-foreground">by admin</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="text-purple-600 font-medium">
+                          {user.total_migration > 0 ? '+' : ''}{formatNumber(user.total_migration)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">via migration</div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="text-orange-600">
@@ -168,9 +205,66 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPoints
                 </tbody>
               </table>
             </div>
+            
+            {filteredUsers.length > itemsPerPage && (
+            <div className="mt-4 flex items-center justify-between border-t pt-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredUsers.length)} of {filteredUsers.length} results
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum: number
+                    if (totalPages <= 5) {
+                      pageNum = i + 1
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i
+                    } else {
+                      pageNum = currentPage - 2 + i
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className="w-8"
+                      >
+                        {pageNum}
+                      </Button>
+                    )
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           )}
+        </>
+        )}
         </CardContent>
       </Card>
-    </div>
+      </TabsContent>
+
+      <TabsContent value="migration">
+        <PointMigration />
+      </TabsContent>
+    </Tabs>
   )
 }
