@@ -192,8 +192,9 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
   async function loadSubmittedOrders() {
     try {
       // Check if user can approve orders based on role level
-      const isPowerUser = userProfile.roles.role_level <= 20
-      if (!isPowerUser) return
+      // Level 30 (Manager) can also approve orders from lower levels
+      const canApprove = userProfile.roles.role_level <= 30
+      if (!canApprove) return
 
       const userOrgType = userProfile.organizations.org_type_code
 

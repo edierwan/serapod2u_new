@@ -118,6 +118,10 @@ export interface User {
   email: string;
   full_name?: string;
   role_code: string;
+  roles?: {
+    role_name?: string;
+    role_level: number;
+  };
 }
 
 export interface Product {

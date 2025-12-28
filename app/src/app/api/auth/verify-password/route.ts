@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
  */
 export async function POST(req: NextRequest) {
   console.log('🔐 API /api/auth/verify-password called')
-  
+
   try {
     const { email, password } = await req.json()
     console.log('🔐 Verifying password for email:', email)
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     // This ensures we're actually verifying credentials, not using existing session
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    
+
     if (!supabaseUrl || !supabaseKey) {
       console.error('❌ Missing Supabase environment variables')
       return NextResponse.json(
@@ -43,19 +43,13 @@ export async function POST(req: NextRequest) {
       password
     })
 
-    console.log('🔐 Sign-in result:', { 
-      hasData: !!data, 
+    console.log('🔐 Sign-in result:', {
+      hasData: !!data,
       hasUser: !!data?.user,
       hasSession: !!data?.session,
       hasError: !!error,
-      errorMessage: error?.message 
+      errorMessage: error?.message
     })
-
-    // Important: Sign out immediately to not create a new session
-    if (data?.session) {
-      console.log('🔐 Signing out immediately to prevent session creation...')
-      await supabase.auth.signOut()
-    }
 
     if (error) {
       console.log('❌ Password verification FAILED:', error.message)

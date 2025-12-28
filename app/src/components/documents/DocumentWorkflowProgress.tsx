@@ -26,10 +26,10 @@ interface DocumentWorkflowProgressProps {
   orderType?: string
 }
 
-export default function DocumentWorkflowProgress({ 
-  documents, 
-  onTabChange, 
-  use50_50Split = false, 
+export default function DocumentWorkflowProgress({
+  documents,
+  onTabChange,
+  use50_50Split = false,
   depositPercentage = 50,
   orderType
 }: DocumentWorkflowProgressProps) {
@@ -207,7 +207,7 @@ export default function DocumentWorkflowProgress({
 
       if (documents.po?.status === 'acknowledged' || documents.depositInvoice || documents.invoice) completed++
       if (documents.depositInvoice?.status === 'acknowledged' || documents.depositPayment || documents.invoice?.status === 'acknowledged' || documents.payment) completed++
-  if (documents.depositPayment?.status === 'acknowledged' || (!documents.balancePayment && documents.payment?.status === 'acknowledged') || documents.balancePaymentRequest) completed++
+      if (documents.depositPayment?.status === 'acknowledged' || (!documents.balancePayment && documents.payment?.status === 'acknowledged') || documents.balancePaymentRequest) completed++
       if (documents.balancePaymentRequest?.status === 'acknowledged' || documents.balancePayment) completed++
       if (documents.balancePayment?.status === 'acknowledged' || documents.receipt) completed++
       if (documents.receipt) completed++
@@ -267,30 +267,29 @@ export default function DocumentWorkflowProgress({
             <div key={step.key} className="relative">
               <button
                 onClick={() => onTabChange?.(step.key)}
-                className={`w-full border-2 rounded-lg p-3 sm:p-4 transition-all ${getStepColor(status, step.color)} ${
-                  onTabChange ? 'cursor-pointer hover:shadow-lg hover:scale-105 active:scale-100' : ''
-                }`}
+                className={`w-full border-2 rounded-lg p-2 sm:p-3 transition-all ${getStepColor(status, step.color)} ${onTabChange ? 'cursor-pointer hover:shadow-lg hover:scale-105 active:scale-100' : ''
+                  }`}
               >
                 <div className="flex flex-col items-center text-center">
                   <div className={`mb-2 ${getIconColor(status, step.color)}`}>
                     {status === 'completed' ? (
-                      <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8" />
+                      <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
                     ) : status === 'pending' || status === 'partial' ? (
-                      <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
+                      <Clock className="w-5 h-5 sm:w-6 sm:h-6" />
                     ) : (
-                      <StepIcon className="w-6 h-6 sm:w-8 sm:h-8" />
+                      <StepIcon className="w-5 h-5 sm:w-6 sm:h-6" />
                     )}
                   </div>
-                  
+
                   <p className="font-semibold text-xs sm:text-sm mb-1">
                     <span className="sm:hidden">{step.key === 'po' ? 'PO' : step.key === 'so' ? 'SO' : step.key === 'do' ? 'DO' : displayLabel}</span>
                     <span className="hidden sm:inline">{displayLabel}</span>
                   </p>
-                  
+
                   {step.document ? (
                     <>
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className="text-[10px] sm:text-xs mb-1"
                       >
                         <span className="truncate max-w-full block leading-tight">{step.document.doc_no}</span>
@@ -308,11 +307,10 @@ export default function DocumentWorkflowProgress({
               {/* Connector Arrow */}
               {index < steps.length - 1 && (
                 <div className="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 z-10">
-                  <div className={`w-8 h-0.5 ${
-                    getStepStatus(steps[index + 1].document) !== 'not-started' 
-                      ? 'bg-green-400' 
+                  <div className={`w-8 h-0.5 ${getStepStatus(steps[index + 1].document) !== 'not-started'
+                      ? 'bg-green-400'
                       : 'bg-gray-300'
-                  }`}></div>
+                    }`}></div>
                 </div>
               )}
             </div>
@@ -324,7 +322,7 @@ export default function DocumentWorkflowProgress({
       <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-800">
         <span className="font-bold">Workflow: </span>
         {orderType === 'D2H' || orderType === 'S2D' ? (
-           'Sales Order → Delivery Order → Invoice → Payment → Receipt.'
+          'Sales Order → Delivery Order → Invoice → Payment → Receipt.'
         ) : use50_50Split ? (
           `Orders use a ${depositPercentage}/${balancePercentage} payment split: Deposit Invoice (${depositPercentage}%) → Deposit Payment (${depositPercentage}%) → Balance Payment Request (${balancePercentage}%) → Balance Payment (${balancePercentage}%) → Receipt.`
         ) : (

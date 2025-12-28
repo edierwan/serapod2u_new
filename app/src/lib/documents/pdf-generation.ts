@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { PDFGenerator, type PDFCompressionStats } from '@/lib/pdf-generator'
 import { formatFileSize } from '@/lib/pdf-optimizer'
-import { 
-  getTemplateGenerator, 
+import {
+  getTemplateGenerator,
   getDocumentTitle,
   type DocumentTemplateType,
   type TemplateSignatureData
@@ -92,7 +92,8 @@ export async function generatePdfForOrderDocument(
         country_code,
         contact_name,
         contact_phone,
-        contact_email
+        contact_email,
+        logo_url
       ),
       seller_org:organizations!orders_seller_org_id_fkey(
         org_name,
@@ -147,10 +148,10 @@ export async function generatePdfForOrderDocument(
       .select('settings')
       .eq('id', orderData.buyer_org_id)
       .single()
-    
+
     if (hqOrgData?.settings) {
-      const settings = typeof hqOrgData.settings === 'string' 
-        ? JSON.parse(hqOrgData.settings) 
+      const settings = typeof hqOrgData.settings === 'string'
+        ? JSON.parse(hqOrgData.settings)
         : hqOrgData.settings
       if (settings.document_template) {
         documentTemplate = settings.document_template as DocumentTemplateType
@@ -160,15 +161,66 @@ export async function generatePdfForOrderDocument(
     console.warn('Could not fetch document template setting, using default:', e)
   }
 
+  // Fetch buyer organization logo and signature images for Classic template
+  let buyerLogoImage: string | null = null
+  let buyerSignatureImage: string | null = null
+
+  try {
+    if (orderData.buyer_org?.logo_url) {
+      buyerLogoImage = await fetchImageAsDataUrl(orderData.buyer_org.logo_url)
+    }
+  } catch (logoErr) {
+    console.warn('Could not fetch buyer logo:', logoErr)
+  }
+
+  // Fetch organization signature separately (it might be in a different column)
+  try {
+    const { data: orgSignature } = await supabase
+      .from('organizations')
+      .select('signature_url')
+      .eq('id', orderData.buyer_org_id)
+      .single()
+
+    if (orgSignature?.signature_url) {
+      buyerSignatureImage = await fetchImageAsDataUrl(orgSignature.signature_url)
+    }
+  } catch (sigErr) {
+    console.warn('Could not fetch buyer signature:', sigErr)
+  }
+
+  // Fetch creator (User Level) signature - the person who created the order
+  let creatorSignatureImage: string | null = null
+  if (orderData.created_by) {
+    try {
+      const { data: creator } = await supabase
+        .from('users')
+        .select('signature_url')
+        .eq('id', orderData.created_by)
+        .single()
+
+      if (creator?.signature_url) {
+        creatorSignatureImage = await fetchImageAsDataUrl(creator.signature_url)
+      }
+    } catch (creatorErr) {
+      console.warn('Could not fetch creator signature:', creatorErr)
+    }
+  }
+
   // Fetch approver data if order is approved
-  let enrichedOrderData = orderData
+  let enrichedOrderData = {
+    ...orderData,
+    buyer_logo_image: buyerLogoImage,
+    buyer_signature_image: buyerSignatureImage,
+    creator_signature_image: creatorSignatureImage
+  }
+
   if (orderData.approved_by) {
     const { data: approver } = await supabase
       .from('users')
       .select('full_name, signature_url, role_code, roles:role_code(role_name)')
       .eq('id', orderData.approved_by)
       .single()
-    
+
     if (approver) {
       const approverSignatureImage = approver.signature_url
         ? await fetchImageAsDataUrl(approver.signature_url)
@@ -180,9 +232,9 @@ export async function generatePdfForOrderDocument(
       const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer)
       const hashArray = Array.from(new Uint8Array(hashBuffer))
       const approvalHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32)
-      
+
       enrichedOrderData = {
-        ...orderData,
+        ...enrichedOrderData,
         approver: {
           full_name: approver.full_name,
           signature_url: approver.signature_url,
@@ -280,9 +332,9 @@ export async function generatePdfForOrderDocument(
     }
 
     const acknowledgementSource =
-      docType === 'RECEIPT' && paymentDocument ? paymentDocument : 
-      docType === 'INVOICE' && poDocument ? poDocument :
-      documentData
+      docType === 'RECEIPT' && paymentDocument ? paymentDocument :
+        docType === 'INVOICE' && poDocument ? poDocument :
+          documentData
 
     let enrichedDocumentData = {
       ...documentData,
@@ -296,7 +348,7 @@ export async function generatePdfForOrderDocument(
         .select('full_name, signature_url, role_code, roles:role_code(role_name)')
         .eq('id', acknowledgementSource.acknowledged_by)
         .single()
-      
+
       if (acknowledger) {
         const acknowledgerSignatureImage = acknowledger.signature_url
           ? await fetchImageAsDataUrl(acknowledger.signature_url)
@@ -308,7 +360,7 @@ export async function generatePdfForOrderDocument(
         const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer)
         const hashArray = Array.from(new Uint8Array(hashBuffer))
         const ackHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32)
-        
+
         enrichedDocumentData = {
           ...enrichedDocumentData,
           acknowledger: {
@@ -496,7 +548,7 @@ export async function generatePdfForOrderDocument(
 
     // Check if we should use an alternative template
     const templateGenerator = getTemplateGenerator(
-      documentTemplate, 
+      documentTemplate,
       signatures.map(s => ({
         signer_name: s.signer_name,
         signer_role: s.signer_role,
@@ -505,7 +557,7 @@ export async function generatePdfForOrderDocument(
       })) as TemplateSignatureData[]
     )
 
-    // Use alternative template if available (minimal or tax_invoice)
+    // Use alternative template if available (classic)
     if (templateGenerator && documentTemplate !== 'detailed') {
       const docTitle = getDocumentTitle(docType)
       pdfBlob = await templateGenerator.generate(
@@ -513,7 +565,7 @@ export async function generatePdfForOrderDocument(
         enrichedDocumentData as any,
         docTitle
       )
-      
+
       // Set filename based on document type
       switch (type) {
         case 'purchase_order':
@@ -576,7 +628,7 @@ export async function generatePdfForOrderDocument(
           filename = `${orderData.order_no}-order.pdf`
       }
     }
-    
+
     // Get updated compression stats after PDF generation
     compressionStats = generatorWithSigs.getCompressionStats()
     if (!options.skipUpload) {
@@ -602,36 +654,36 @@ export async function generatePdfForOrderDocument(
   const arrayBuffer = await pdfBlob.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
   const fileSize = buffer.length
-  
+
   // Build compression summary for notification
   const summaryParts: string[] = []
   summaryParts.push(`📄 PDF Size: ${formatFileSize(fileSize)}`)
-  
+
   if (compressionStats.totalSavings > 0) {
     summaryParts.push(`💾 Optimized: ${formatFileSize(compressionStats.totalSavings)} saved`)
   }
-  
+
   if (compressionStats.logoCompressedSize > 0) {
     const logoSaving = compressionStats.logoOriginalSize - compressionStats.logoCompressedSize
     if (logoSaving > 0) {
       summaryParts.push(`🖼️ Logo: ${formatFileSize(compressionStats.logoCompressedSize)} (${Math.round(logoSaving / compressionStats.logoOriginalSize * 100)}% smaller)`)
     }
   }
-  
+
   if (compressionStats.signatureCompressedSize > 0) {
     const sigSaving = compressionStats.signatureOriginalSize - compressionStats.signatureCompressedSize
     if (sigSaving > 0) {
       summaryParts.push(`✍️ Signatures: ${formatFileSize(compressionStats.signatureCompressedSize)} (${Math.round(sigSaving / compressionStats.signatureOriginalSize * 100)}% smaller)`)
     }
   }
-  
+
   const sizeInfo: PDFSizeInfo = {
     fileSize,
     fileSizeFormatted: formatFileSize(fileSize),
     compressionStats,
     compressionSummary: summaryParts.join(' | ')
   }
-  
+
   // Log compression summary for monitoring
   console.log(`📊 PDF Generated: ${filename} | ${sizeInfo.compressionSummary}`)
 

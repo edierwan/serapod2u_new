@@ -3,15 +3,15 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber } from '@/lib/utils/formatters'
-import { 
-  FileText, 
-  Plus, 
-  Search, 
+import {
+  FileText,
+  Plus,
+  Search,
   Filter,
   Download,
   Eye,
@@ -23,7 +23,6 @@ import {
   Package,
   Building2,
   Calendar,
-  DollarSign,
   Grid3x3,
   List,
   Trash2,
@@ -31,7 +30,10 @@ import {
   Store,
   TrendingUp,
   Copy,
-  User
+  User,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
 
@@ -66,8 +68,17 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const [typeFilter, setTypeFilter] = useState<OrderType | 'all'>('all')
   const [sellerFilter, setSellerFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('list')
   const [showOrderTypeDialog, setShowOrderTypeDialog] = useState(false)
+
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<string>('created_at')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -85,18 +96,82 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // Search filter
     const matchesSearch = order.order_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.notes?.toLowerCase().includes(searchQuery.toLowerCase())
-    
+
     // Status filter
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
-    
+
     // Type filter
     const matchesType = typeFilter === 'all' || order.order_type === typeFilter
-    
+
     // Seller filter
     const matchesSeller = !sellerFilter || order.seller_org_id === sellerFilter
-    
+
     return matchesSearch && matchesStatus && matchesType && matchesSeller
   })
+
+  // Sort orders
+  const sortedOrders = [...filteredOrders].sort((a, b) => {
+    let aValue: any
+    let bValue: any
+
+    switch (sortColumn) {
+      case 'created_at':
+        aValue = new Date(a.created_at).getTime()
+        bValue = new Date(b.created_at).getTime()
+        break
+      case 'order_no':
+        aValue = a.order_no
+        bValue = b.order_no
+        break
+      case 'seller':
+        aValue = a.seller_org?.org_name || ''
+        bValue = b.seller_org?.org_name || ''
+        break
+      case 'total':
+        aValue = calculateOrderTotal(a)
+        bValue = calculateOrderTotal(b)
+        break
+      case 'balance':
+        aValue = a.status === 'approved' ? 0 : calculateOrderTotal(a)
+        bValue = b.status === 'approved' ? 0 : calculateOrderTotal(b)
+        break
+      case 'status':
+        aValue = a.status
+        bValue = b.status
+        break
+      case 'created_by':
+        aValue = a.created_by_user?.full_name || a.created_by_user?.email || ''
+        bValue = b.created_by_user?.full_name || b.created_by_user?.email || ''
+        break
+      default:
+        return 0
+    }
+
+    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
+    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
+    return 0
+  })
+
+  // Pagination
+  const totalPages = Math.ceil(sortedOrders.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedOrders = sortedOrders.slice(startIndex, endIndex)
+
+  // Handle sort
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, statusFilter, typeFilter, sellerFilter])
 
   const handleTrackOrder = (orderId: string) => {
     // Store order ID and navigate to track view
@@ -113,31 +188,31 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       // Step 1: Fetch comprehensive order details and all related records
       console.log('🔍 Fetching order details for:', orderNo)
-      
+
       // Get order items count
       const { data: orderItems, error: itemsError } = await supabase
         .from('order_items')
         .select('id')
         .eq('order_id', orderId)
-      
+
       // Get documents count
       const { data: documents, error: docsError } = await supabase
         .from('documents')
         .select('id, doc_type, doc_no')
         .eq('order_id', orderId)
-      
+
       // Get QR batches count
       const { data: qrBatches, error: batchError } = await supabase
         .from('qr_batches')
         .select('id, status')
         .eq('order_id', orderId)
-      
+
       // Get QR codes count (both master and regular)
       const { data: qrCodes, error: codesError } = await supabase
         .from('qr_codes')
         .select('id')
         .eq('order_id', orderId)
-      
+
       const { data: masterCodes, error: masterError } = await supabase
         .from('qr_master_codes')
         .select('id')
@@ -161,21 +236,21 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         .select('id')
         .eq('order_id', orderId)
         .neq('status', 'pending')
-      
+
       // Step 2b: Get count of stock movements (inventory history)
       const { count: stockMovementsCount } = await supabase
         .from('stock_movements')
         .select('id', { count: 'exact', head: true })
         .eq('reference_type', 'order')
         .eq('reference_id', orderId)
-      
+
       const scannedCount = scannedQR?.length || 0
       const docsList = documents?.map(d => `${d.doc_type}: ${d.doc_no}`).join('\n  ') || 'None'
 
       // Step 3: Show confirmation dialog
-      const confirmMessage = 
+      const confirmMessage =
         `⚠️ DELETE ORDER ${orderNo}\n\n` +
-        (scannedCount > 0 
+        (scannedCount > 0
           ? `⚠️ WARNING: This order has ${scannedCount} SCANNED QR code(s)!\n⚠️ Deleting scanned QR codes affects audit trails!\n\n`
           : '') +
         `This will PERMANENTLY delete:\n` +
@@ -190,7 +265,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       // Show confirmation dialog
       const confirmed = window.confirm(confirmMessage)
-      
+
       if (!confirmed) {
         toast({
           title: 'Delete Cancelled',
@@ -296,7 +371,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       if (error) throw error
 
       // Inventory deduction is now handled by the orders_approve RPC for both D2H and S2D
-      
+
       toast({
         title: 'Order Approved',
         description: `Order ${orderNo} has been approved successfully. PO document has been generated.`,
@@ -307,28 +382,28 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       await loadSummary()
     } catch (error: any) {
       console.error('Error approving order:', error)
-      
+
       let title = 'Approval Failed'
       let description = 'An unexpected error occurred. Please try again.'
 
       if (error) {
         // Handle Supabase errors
         if (error.message) {
-            description = error.message
-            
-            // Map technical errors to friendly messages
-            if (description.includes('Order must be in submitted')) {
-                description = 'Only submitted orders can be approved.'
-            } else if (description.includes('User lacks permission')) {
-                description = 'You do not have permission to approve this order.'
-            } else if (description.includes('Parent order must be approved')) {
-                description = 'The parent order must be approved first.'
-            } else if (description.includes('Order not found')) {
-                description = 'Order not found.'
-            }
+          description = error.message
+
+          // Map technical errors to friendly messages
+          if (description.includes('Order must be in submitted')) {
+            description = 'Only submitted orders can be approved.'
+          } else if (description.includes('User lacks permission')) {
+            description = 'You do not have permission to approve this order.'
+          } else if (description.includes('Parent order must be approved')) {
+            description = 'The parent order must be approved first.'
+          } else if (description.includes('Order not found')) {
+            description = 'Order not found.'
+          }
         } else if (typeof error === 'object' && Object.keys(error).length === 0) {
-            // Empty error object usually means network or unknown error
-            description = 'Unable to connect to the server. Please check your internet connection.'
+          // Empty error object usually means network or unknown error
+          description = 'Unable to connect to the server. Please check your internet connection.'
         }
       }
 
@@ -383,10 +458,22 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const canApproveOrder = (order: Order): boolean => {
     // Must be submitted status
     if (order.status !== 'submitted') return false
-    
-    // Check role level (Power User or higher: role_level <= 20)
-    const isPowerUser = userProfile.roles.role_level <= 20
-    if (!isPowerUser) return false
+
+    // Check role level authority
+    const userLevel = userProfile.roles.role_level
+    const creatorLevel = order.created_by_user?.roles?.role_level ?? 999 // Default to high number (low rank) if unknown
+
+    let hasLevelAuthority = false
+
+    if (creatorLevel === 10) {
+      // Special condition: If creator is Level 10, only Level 10 or 20 can approve
+      hasLevelAuthority = (userLevel === 10 || userLevel === 20)
+    } else {
+      // General rule: Approver must be higher rank (lower number) than creator
+      hasLevelAuthority = (userLevel < creatorLevel)
+    }
+
+    if (!hasLevelAuthority) return false
 
     const userOrgType = userProfile.organizations.org_type_code
 
@@ -396,9 +483,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // D2H: HQ Power Users or Seller (Warehouse) can approve
     // Also allow if user is HQ and order is D2H (Distributor -> HQ)
     if (order.order_type === 'D2H') {
-        if (userOrgType === 'HQ') return true;
-        // If user is the seller (e.g. Warehouse admin if that exists, though usually HQ manages WH)
-        if (order.seller_org_id === userProfile.organization_id) return true;
+      if (userOrgType === 'HQ') return true;
+      // If user is the seller (e.g. Warehouse admin if that exists, though usually HQ manages WH)
+      if (order.seller_org_id === userProfile.organization_id) return true;
     }
 
     // S2D: Distributor (seller) Power Users can approve
@@ -408,34 +495,41 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   }
 
   // Helper function to check if user can cancel orders
-  const canCancelOrder = (order: Order): boolean => {
+  const canCancelOrder = (order: Order & { approved_by_user?: any }): boolean => {
     // Can cancel Submitted, Approved or Processing orders
     // Submitted: No stock allocated yet, but can be cancelled
     // Approved/Processing: Stock allocated, will be released
     if (!['submitted', 'approved', 'processing'].includes(order.status)) return false
-    
-    // Check permissions:
-    // 1. Buyer can cancel? Usually yes if not shipped.
-    // 2. Seller can cancel? Yes.
-    // 3. HQ can cancel? Yes.
-    
+
     const userOrgId = userProfile.organization_id
     const userOrgType = userProfile.organizations.org_type_code
-    
-    // HQ can cancel any order
-    if (userOrgType === 'HQ') return true
-    
-    // Seller can cancel
-    if (order.seller_org_id === userOrgId) return true
-    
-    // Buyer can cancel (maybe restrict if processing?)
-    if (order.buyer_org_id === userOrgId) return true
-    
-    return false
+
+    // Check if user is part of the transaction (HQ, Seller, Buyer)
+    const isParticipant = userOrgType === 'HQ' || order.seller_org_id === userOrgId || order.buyer_org_id === userOrgId
+    if (!isParticipant) return false
+
+    // Issue 2: Cancel order only can be done level upper
+    // If the order is approved, check the approver's level
+    if (['approved', 'processing'].includes(order.status) && order.approved_by_user?.roles) {
+      const approverLevel = order.approved_by_user.roles.role_level
+      const myLevel = userProfile.roles.role_level
+
+      // Current user must have a higher role (lower number) than the approver
+      // e.g. If approved by 30, only 20, 10, 1 can cancel
+      if (myLevel >= approverLevel) {
+        return false
+      }
+    }
+
+    return true
   }
 
   // Helper function to check if user can delete orders (Super Admin only)
   const canDeleteOrder = (): boolean => {
+    // Explicitly disallow level 30 and 40
+    if (userProfile.roles.role_level === 30 || userProfile.roles.role_level === 40) {
+      return false
+    }
     // Only Super Admin (role_level = 1) can delete orders
     return userProfile.roles.role_level === 1
   }
@@ -444,7 +538,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const canEditOrder = (order: Order): boolean => {
     // Can only edit draft or submitted orders
     if (order.status !== 'draft' && order.status !== 'submitted') return false
-    
+
     // User must be from the buyer organization
     return order.buyer_org_id === userProfile.organization_id
   }
@@ -452,7 +546,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const canCopyOrder = (order: Order): boolean => {
     // Can copy orders from any status (excluding closed)
     if (order.status === 'closed') return false
-    
+
     // User must be from the buyer organization
     return order.buyer_org_id === userProfile.organization_id
   }
@@ -494,7 +588,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       // Store in sessionStorage for the create order view to pick up
       sessionStorage.setItem('copyingOrderData', JSON.stringify(orderCopy))
-      
+
       toast({
         title: 'Order Copied',
         description: `${orderNo} copied. You can now edit and submit as a new order.`,
@@ -519,12 +613,47 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   useEffect(() => {
     loadOrders()
     loadSummary()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, searchQuery])
 
-  const handleCreateOrder = () => {
+  const handleCreateOrder = async () => {
+    // Check if user has digital signature
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('signature_url')
+        .eq('id', userProfile.id)
+        .single()
+
+      if (userError) throw userError
+
+      if (!userData?.signature_url) {
+        toast({
+          title: 'Digital Signature Required',
+          description: 'You must upload your digital signature before creating an order.',
+          variant: 'destructive',
+          action: (
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white text-black hover:bg-gray-100"
+              onClick={() => {
+                if (onViewChange) onViewChange('my-profile')
+              }}
+            >
+              Go to Profile
+            </Button>
+          )
+        })
+        return
+      }
+    } catch (error) {
+      console.error('Error checking signature:', error)
+      // Continue anyway if check fails to avoid blocking user due to technical error
+    }
+
     // If H2M filter is selected, go directly to H2M order creation
     if (typeFilter === 'H2M') {
       if (onViewChange) {
@@ -550,13 +679,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     }
 
     // For distributors, warehouses, and HQ, show order type selection dialog
-    if (userProfile.organizations.org_type_code === 'DIST' || 
-        userProfile.organizations.org_type_code === 'WH' ||
-        userProfile.organizations.org_type_code === 'HQ') {
+    if (userProfile.organizations.org_type_code === 'DIST' ||
+      userProfile.organizations.org_type_code === 'WH' ||
+      userProfile.organizations.org_type_code === 'HQ') {
       setShowOrderTypeDialog(true)
       return
     }
-    
+
     // Navigate to create order view (regular flow)
     if (onViewChange) {
       onViewChange('create-order')
@@ -565,7 +694,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
   const handleOrderTypeSelection = (orderType: 'regular' | 'd2h' | 's2d') => {
     setShowOrderTypeDialog(false)
-    
+
     if (orderType === 'd2h') {
       if (onViewChange) {
         onViewChange('distributor-order')
@@ -592,14 +721,14 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const loadOrders = async () => {
     try {
       setLoading(true)
-      
+
       // Get company_id from current org
       const { data: companyData } = await supabase
         .rpc('get_company_id', { p_org_id: userProfile.organization_id })
-      
+
       const companyId = companyData || userProfile.organization_id
       const orgType = userProfile.organizations.org_type_code
-      
+
       // First, get orders
       let query = supabase
         .from('orders')
@@ -607,19 +736,25 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           *,
           buyer_org:organizations!orders_buyer_org_id_fkey(id, org_name, org_code, org_type_code),
           seller_org:organizations!orders_seller_org_id_fkey(id, org_name, org_code, org_type_code),
-          created_by_user:users!orders_created_by_fkey(id, email, full_name),
-          approved_by_user:users!orders_approved_by_fkey(id, email, full_name)
+          created_by_user:users!orders_created_by_fkey(id, email, full_name, roles:role_code(role_level)),
+          approved_by_user:users!orders_approved_by_fkey(id, email, full_name, roles:role_code(role_level))
         `)
-      
+
       // Filter based on organization type
-      if (orgType === 'MFG') {
+      if (orgType === 'MFG' || orgType === 'MANU') {
         // Manufacturers see orders where they are the seller
         query = query.eq('seller_org_id', userProfile.organization_id)
+
+        // Issue 2: Manufacturers should only see 'approved' orders (or later stages), not 'submitted'
+        // They need to see approved orders to start processing them
+        // Assuming 'submitted' is the initial state before approval
+        query = query.neq('status', 'submitted')
+        query = query.neq('status', 'draft')
       } else {
         // HQ and others see all orders in their company
         query = query.eq('company_id', companyId)
       }
-      
+
       query = query.order('created_at', { ascending: false }).limit(50)
 
       // Apply status filter
@@ -635,16 +770,16 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       const { data: ordersData, error: ordersError } = await query
 
       if (ordersError) throw ordersError
-      
+
       console.log('=== ORDER LOADING DEBUG ===')
       console.log('Orders loaded:', ordersData?.length, 'orders')
       console.log('Company ID used:', companyId)
       console.log('User org ID:', userProfile.organization_id)
-      
+
       // Now get order_items for these orders separately
       if (ordersData && ordersData.length > 0) {
         const orderIds = ordersData.map(o => o.id)
-        
+
         const { data: itemsData, error: itemsError } = await supabase
           .from('order_items')
           .select(`
@@ -653,9 +788,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             variant:product_variants(id, variant_name)
           `)
           .in('order_id', orderIds)
-        
+
         console.log('Order items query result:', itemsData?.length || 0, 'items')
-        
+
         if (itemsError) {
           console.error('Error loading order items:', itemsError)
         } else if (itemsData) {
@@ -664,23 +799,23 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             ...order,
             order_items: itemsData.filter(item => item.order_id === order.id)
           }))
-          
+
           console.log('First order with items:', ordersWithItems[0]?.order_no)
           console.log('First order items count:', ordersWithItems[0]?.order_items?.length || 0)
-          
+
           if (ordersWithItems[0]?.order_items && ordersWithItems[0].order_items.length > 0) {
             console.log('First item details:', ordersWithItems[0].order_items[0])
           } else {
             console.log('⚠️ WARNING: No order items found')
             console.log('Items data received:', itemsData)
           }
-          
+
           console.log('========================')
           setOrders(ordersWithItems as any)
           return
         }
       }
-      
+
       console.log('========================')
       setOrders((ordersData || []) as any)
     } catch (error) {
@@ -695,9 +830,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       // Get company_id from current org
       const { data: companyData } = await supabase
         .rpc('get_company_id', { p_org_id: userProfile.organization_id })
-      
+
       const companyId = companyData || userProfile.organization_id
-      
+
       const { data, error } = await supabase
         .from('orders')
         .select('status, order_items(line_total)')
@@ -712,7 +847,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         approved_orders: data?.filter(o => o.status === 'approved').length || 0,
         closed_orders: data?.filter(o => o.status === 'closed').length || 0,
         total_amount: data?.reduce((sum: number, order: any) => {
-          const orderTotal = order.order_items?.reduce((itemSum: number, item: any) => 
+          const orderTotal = order.order_items?.reduce((itemSum: number, item: any) =>
             itemSum + (item.line_total || 0), 0) || 0
           return sum + orderTotal
         }, 0) || 0
@@ -790,12 +925,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-sm">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Orders</h2>
-          <p className="text-sm text-gray-600 mt-1">Manage and track all your orders</p>
+          <h2 className="text-lg font-bold text-gray-900">Orders</h2>
+          <p className="text-xs text-gray-600 mt-1">Manage and track all your orders</p>
         </div>
         {/* Hide Create Order button for Manufacturer (MANU/MFG) organizations */}
         {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
@@ -808,44 +943,44 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-          <Card>
-            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Total Orders</p>
-                  <p className="text-lg sm:text-xl font-bold">{summary.total_orders}</p>
-                </div>
-                <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-muted-foreground font-medium">Total Orders</p>
+                <p className="text-3xl font-bold text-gray-900">{summary.total_orders}</p>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Approved</p>
-                  <p className="text-lg sm:text-xl font-bold">{summary.approved_orders}</p>
-                </div>
-                <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
+          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-muted-foreground font-medium">Submitted</p>
+                <p className="text-3xl font-bold text-gray-900">{summary.submitted_orders}</p>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Total Amount</p>
-                  <p className="text-base sm:text-lg font-bold truncate">
-                    RM {summary.total_amount.toLocaleString('en-MY', { 
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2 
-                    })}
-                  </p>
-                </div>
-                <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
+          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-muted-foreground font-medium">Approved</p>
+                <p className="text-3xl font-bold text-gray-900">{summary.approved_orders}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-muted-foreground font-medium">Total Amount</p>
+                <p className="text-3xl font-bold text-gray-900 truncate">
+                  RM {summary.total_amount.toLocaleString('en-MY', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -857,53 +992,59 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         <CardContent className="pt-6 space-y-4">
           {/* Filter Row */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Order Type Filter */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Order Type</label>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as OrderType | 'all')}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="all">All Types</option>
-                <option value="H2M">H2M (HQ → Manufacturer)</option>
-                <option value="D2H">D2H (Distributor → HQ)</option>
-                <option value="S2D">S2D (Shop → Distributor)</option>
-              </select>
-            </div>
+            {/* Order Type Filter - Hidden for Manufacturers */}
+            {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">Order Type</label>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as OrderType | 'all')}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">All Types</option>
+                  <option value="H2M">H2M (HQ → Manufacturer)</option>
+                  <option value="D2H">D2H (Distributor → HQ)</option>
+                  <option value="S2D">S2D (Shop → Distributor)</option>
+                </select>
+              </div>
+            )}
 
-            {/* Manufacturer/Seller Filter */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Seller/Manufacturer</label>
-              <select
-                value={sellerFilter}
-                onChange={(e) => setSellerFilter(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">All Sellers</option>
-                {uniqueSellers.map(seller => (
-                  <option key={seller.id} value={seller.id}>
-                    {seller.org_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Manufacturer/Seller Filter - Hidden for Manufacturers */}
+            {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">Seller/Manufacturer</label>
+                <select
+                  value={sellerFilter}
+                  onChange={(e) => setSellerFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">All Sellers</option>
+                  {uniqueSellers.map(seller => (
+                    <option key={seller.id} value={seller.id}>
+                      {seller.org_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Status Filter */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="all">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="submitted">Submitted</option>
-                <option value="approved">Approved</option>
-                <option value="closed">Closed</option>
-              </select>
-            </div>
+            {/* Status Filter - Hidden for Manufacturers */}
+            {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">All Status</option>
+                  <option value="draft">Draft</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="approved">Approved</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+            )}
 
             {/* View Mode Toggle */}
             <div>
@@ -960,8 +1101,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found</h3>
                 <p className="text-gray-600 mb-4">
-                  {searchQuery || statusFilter !== 'all' 
-                    ? 'Try adjusting your filters' 
+                  {searchQuery || statusFilter !== 'all'
+                    ? 'Try adjusting your filters'
                     : ['MANU', 'MFG'].includes(userProfile.organizations.org_type_code)
                       ? 'No orders available. Manufacturers receive orders from HQ.'
                       : 'Create your first order to get started'}
@@ -977,184 +1118,269 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             </CardContent>
           </Card>
         ) : viewMode === 'list' ? (
-          /* LIST VIEW */
-          <div className="space-y-3">
-            {filteredOrders.map((order) => {
-              const totalAmount = calculateOrderTotal(order)
-              const itemCount = order.order_items?.length || 0
-              const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
+          /* LIST VIEW - Table Format */
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('created_at')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Date
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('order_no')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Order
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('seller')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Name
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('total')}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Total
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('balance')}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Balance
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('status')}
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          Status
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Due</th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('created_by')}
+                      >
+                        <div className="flex items-center gap-1">
+                          By
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paginatedOrders.map((order) => {
+                      const totalAmount = calculateOrderTotal(order)
+                      const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
+                      const balance = order.status === 'approved' ? 0 : totalAmount
 
-              return (
-                <Card key={order.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      {/* Left: Order Info */}
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="min-w-[180px]">
-                          <div 
-                            className="text-sm font-bold text-blue-600 mb-1 cursor-pointer hover:underline"
-                            onClick={() => handleViewOrderDetails(order.id)}
-                          >
-                            {order.order_no}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
-                              {order.order_type}
-                            </Badge>
+                      return (
+                        <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                          {/* Date Created */}
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-900">
+                            {new Date(order.created_at).toLocaleDateString('en-MY', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: '2-digit'
+                            })}
+                          </td>
+
+                          {/* Order Number */}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <button
+                              className="text-xs font-medium text-gray-900 hover:underline"
+                              onClick={() => handleViewOrderDetails(order.id)}
+                            >
+                              {order.order_no}
+                            </button>
+                          </td>
+
+                          {/* Seller Name */}
+                          <td className="px-4 py-3 text-xs text-gray-900">
+                            <div className="max-w-[200px] truncate" title={order.seller_org?.org_name || 'N/A'}>
+                              {order.seller_org?.org_name || 'N/A'}
+                            </div>
+                          </td>
+
+                          {/* Total Amount */}
+                          <td className="px-4 py-3 whitespace-nowrap text-right text-xs font-medium text-gray-900">
+                            {formatCurrency(totalAmount)}
+                          </td>
+
+                          {/* Balance */}
+                          <td className="px-4 py-3 whitespace-nowrap text-right text-xs font-medium text-gray-900">
+                            {formatCurrency(balance)}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
                             <Badge className={getStatusColor(order.status)}>
-                              <div className="flex items-center gap-1">
-                                {getStatusIcon(order.status)}
-                                <span className="text-[10px]">{order.status}</span>
-                              </div>
+                              <span className="text-[11px] capitalize">{order.status}</span>
                             </Badge>
-                          </div>
-                        </div>
+                          </td>
 
-                        {/* Customer */}
-                        <div className="flex items-center gap-2 min-w-[200px]">
-                          <ShoppingCart className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                          <div>
-                            <div className="text-[10px] text-gray-500">Customer</div>
-                            <div className="text-xs font-medium text-gray-900 truncate">
-                              {order.buyer_org?.org_name || 'N/A'}
+                          {/* Due Date (empty for now) */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs text-gray-900">
+                            -
+                          </td>
+
+                          {/* Created By */}
+                          <td className="px-4 py-3 text-xs text-gray-900">
+                            <div className="max-w-[120px] truncate" title={order.created_by_user?.full_name || order.created_by_user?.email || 'Unknown'}>
+                              {order.created_by_user?.full_name || order.created_by_user?.email || 'Unknown'}
                             </div>
-                          </div>
-                        </div>
+                          </td>
 
-                        {/* Seller */}
-                        <div className="flex items-center gap-2 min-w-[200px]">
-                          <Store className="w-3 h-3 text-green-500 flex-shrink-0" />
-                          <div>
-                            <div className="text-[10px] text-gray-500">Seller</div>
-                            <div className="text-xs font-medium text-gray-900 truncate" title={order.seller_org?.org_name || 'N/A'}>
-                              {shortenOrgName(order.seller_org?.org_name || 'N/A')}
+                          {/* Actions */}
+                          <td className="px-4 py-3 whitespace-nowrap text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {canEditOrder(order) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1 text-xs px-2"
+                                  onClick={() => handleEditOrder(order.id)}
+                                  title="Edit Order"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                </Button>
+                              )}
+                              {canCopyOrder(order) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1 text-xs px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                  onClick={() => handleCopyOrder(order.id, order.order_no)}
+                                  title="Copy Order"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </Button>
+                              )}
+                              {canApproveOrder(order) && (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="h-7 gap-1 text-xs px-2 bg-green-600 hover:bg-green-700 text-white"
+                                  onClick={() => handleApproveOrder(order.id, order.order_no)}
+                                  title="Approve Order"
+                                >
+                                  <CheckCircle className="w-3 h-3" />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => handleViewOrderDetails(order.id)}
+                                title="View Order Details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              {canCancelOrder(order) && userProfile.roles.role_level !== 40 && !['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleCancelOrder(order.id, order.order_no)}
+                                  title="Cancel Order"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {canDeleteOrder() && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleDeleteOrder(order.id, order.order_no)}
+                                  title="Delete Order (Super Admin Only)"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
-                          </div>
-                        </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-                        {/* Stats */}
-                        <div className="flex items-center gap-6">
-                          <div className="text-center">
-                            <div className="text-[10px] text-gray-500">Items</div>
-                            <div className="text-xs font-bold text-gray-900">{formatNumber(itemCount)}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-[10px] text-gray-500">Units</div>
-                            <div className="text-xs font-bold text-gray-900">{formatNumber(totalUnits)}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-[10px] text-gray-500">Amount</div>
-                            <div className="text-xs font-bold text-blue-600">
-                              {formatCurrency(totalAmount)}
-                            </div>
-                          </div>
-                        </div>
+              {/* Pagination Controls */}
+              {sortedOrders.length > 0 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-700">
+                      Showing {startIndex + 1} to {Math.min(endIndex, sortedOrders.length)} of {sortedOrders.length} orders
+                    </span>
+                  </div>
 
-                        {/* Date */}
-                        <div className="flex items-center gap-1 text-[10px] text-gray-500 min-w-[120px]">
-                          <Calendar className="w-3 h-3" />
-                          <span>{new Date(order.created_at).toLocaleDateString('en-MY')}</span>
-                        </div>
-                      </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(Number(e.target.value))
+                        setCurrentPage(1)
+                      }}
+                      className="px-2 py-1 text-xs border border-gray-300 rounded-md"
+                    >
+                      <option value={10}>10 per page</option>
+                      <option value={25}>25 per page</option>
+                      <option value={50}>50 per page</option>
+                      <option value={100}>100 per page</option>
+                    </select>
 
-                      {/* Creator and Approver Info */}
-                      <div className="flex items-center gap-4 text-[10px] mt-2 pt-2 border-t border-gray-100">
-                        {order.created_by_user && (
-                          <div className="flex items-center gap-1.5">
-                            <User className="w-3 h-3 text-gray-400" />
-                            <span className="text-gray-500">By:</span>
-                            <span className="font-medium text-gray-700">
-                              {order.created_by_user.full_name || order.created_by_user.email}
-                            </span>
-                          </div>
-                        )}
-                        {order.status === 'approved' && order.approved_by_user && (
-                          <div className="flex items-center gap-1.5">
-                            <CheckCircle className="w-3 h-3 text-green-500" />
-                            <span className="text-gray-500">Approved by:</span>
-                            <span className="font-medium text-green-700">
-                              {order.approved_by_user.full_name || order.approved_by_user.email}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
 
-                      {/* Right: Actions */}
-                      <div className="flex items-center gap-2">
-                        {canEditOrder(order) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 gap-1 text-xs px-2"
-                            onClick={() => handleEditOrder(order.id)}
-                            title="Edit Order"
-                          >
-                            <Edit className="w-3 h-3" />
-                            Edit
-                          </Button>
-                        )}
-                        {canCopyOrder(order) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 gap-1 text-xs px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                            onClick={() => handleCopyOrder(order.id, order.order_no)}
-                            title="Copy Order"
-                          >
-                            <Copy className="w-3 h-3" />
-                            Copy
-                          </Button>
-                        )}
-                        {canApproveOrder(order) && (
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="h-7 gap-1 text-xs px-2 bg-green-600 hover:bg-green-700 text-white"
-                            onClick={() => handleApproveOrder(order.id, order.order_no)}
-                            title="Approve Order"
-                          >
-                            <CheckCircle className="w-3 h-3" />
-                            Approve
-                          </Button>
-                        )}
-                        {canCancelOrder(order) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleCancelOrder(order.id, order.order_no)}
-                            title="Cancel Order"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                        )}
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0"
-                          onClick={() => handleViewOrderDetails(order.id)}
-                          title="View Order Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        {canDeleteOrder() && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteOrder(order.id, order.order_no)}
-                            title="Delete Order (Super Admin Only)"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
+                    <span className="text-xs text-gray-700">
+                      Page {currentPage} of {totalPages}
+                    </span>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         ) : (
           /* CARD VIEW */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1169,15 +1395,15 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                     {/* Header with Order Number and Status */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <div 
+                        <div
                           className="font-bold text-blue-600 text-lg mb-1 cursor-pointer hover:underline"
                           onClick={() => handleViewOrderDetails(order.id)}
                         >
                           {order.order_no}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge 
-                            variant="outline" 
+                          <Badge
+                            variant="outline"
                             className="text-xs bg-blue-50 text-blue-700 border-blue-200"
                           >
                             {order.order_type}
@@ -1316,7 +1542,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           Approve
                         </Button>
                       )}
-                      {canCancelOrder(order) && (
+                      {canCancelOrder(order) && userProfile.roles.role_level !== 40 && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -1355,7 +1581,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             <p className="text-sm text-gray-600 mb-6">
               Choose the type of order you want to create:
             </p>
-            
+
             <div className="space-y-3">
               <button
                 onClick={() => handleOrderTypeSelection('regular')}

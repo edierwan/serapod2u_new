@@ -2,15 +2,14 @@
  * PDF Document Templates
  * 
  * This module provides different PDF template styles:
- * - minimal: Simple, clean invoice style (Image 2)
- * - tax_invoice: Professional tax invoice format (Image 3)
  * - detailed: Comprehensive document format with full details (Image 4 - Current)
+ * - classic: Traditional Purchase Order layout (Image 2 style)
  */
 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-export type DocumentTemplateType = 'minimal' | 'tax_invoice' | 'detailed'
+export type DocumentTemplateType = 'detailed' | 'classic'
 
 export interface TemplateOrderData {
   order_no: string
@@ -19,6 +18,12 @@ export interface TemplateOrderData {
   created_at: string
   approved_at?: string
   payment_terms?: any
+  approver?: {
+    full_name: string
+    role_name?: string
+    signature_url?: string | null
+  }
+  approver_signature_image?: string | null
   buyer_org: {
     org_name: string
     address?: string | null
@@ -30,6 +35,7 @@ export interface TemplateOrderData {
     contact_name?: string | null
     contact_phone?: string | null
     contact_email?: string | null
+    logo_url?: string | null
   }
   seller_org: {
     org_name: string
@@ -52,6 +58,10 @@ export interface TemplateOrderData {
     unit_price: number
     line_total: number
   }>
+  // Dynamic image data (fetched and converted to base64)
+  buyer_logo_image?: string | null
+  buyer_signature_image?: string | null
+  creator_signature_image?: string | null  // User Level signature
 }
 
 export interface TemplateDocumentData {
@@ -71,203 +81,17 @@ export interface TemplateSignatureData {
   signature_image_data?: string | null
 }
 
-/**
- * Minimal Template (Simple Invoice - Image 2 style)
- * Clean, simple invoice with minimal information
- */
-export class MinimalTemplate {
-  private doc: jsPDF
-  private pageWidth: number = 210
-  private margin: number = 20
-  private signatures: TemplateSignatureData[]
 
-  constructor(signatures: TemplateSignatureData[] = []) {
-    this.doc = new jsPDF({ compress: true })
-    this.signatures = signatures
-  }
 
-  private formatCurrency(amount: number | string): string {
-    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount
-    if (isNaN(numAmount)) return '$0'
-    return `$${numAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-  }
 
-  private formatDate(dateString: string): string {
-    const date = new Date(dateString)
-    const day = String(date.getDate()).padStart(2, '0')
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const year = date.getFullYear()
-    return `${day}.${month}.${year}`
-  }
 
-  async generate(orderData: TemplateOrderData, documentData: TemplateDocumentData, docTitle: string): Promise<Blob> {
-    let y = 25
-
-    // Draw header line
-    this.doc.setDrawColor(0, 0, 0)
-    this.doc.setLineWidth(0.5)
-    this.doc.line(this.margin, y, 100, y)
-
-    // INVOICE title
-    this.doc.setFontSize(28)
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.setTextColor(0, 0, 0)
-    this.doc.text(docTitle.toUpperCase(), 105, y + 3)
-
-    // Draw line after title
-    this.doc.line(190 - this.margin, y, this.pageWidth - this.margin, y)
-
-    y += 35
-
-    // ISSUED TO section
-    this.doc.setFontSize(8)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('ISSUED TO:', this.margin, y)
-    
-    this.doc.setFont('helvetica', 'normal')
-    y += 5
-    this.doc.text(orderData.buyer_org.contact_name || orderData.buyer_org.org_name, this.margin, y)
-    y += 4
-    this.doc.text(orderData.buyer_org.org_name, this.margin, y)
-    y += 4
-    
-    const addressParts = [
-      orderData.buyer_org.address,
-      orderData.buyer_org.city
-    ].filter(Boolean).join(', ')
-    if (addressParts) {
-      this.doc.text(addressParts, this.margin, y)
-    }
-
-    // Right side - Invoice details
-    const rightX = 130
-    let rightY = y - 13
-    
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('INVOICE NO:', rightX, rightY)
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.text(documentData.doc_no.replace(/[^0-9]/g, '').slice(-5) || '01234', rightX + 35, rightY)
-    
-    rightY += 5
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('DATE:', rightX + 12, rightY)
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.text(this.formatDate(documentData.created_at), rightX + 35, rightY)
-    
-    rightY += 5
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('DUE DATE:', rightX + 1, rightY)
-    this.doc.setFont('helvetica', 'normal')
-    // Due date is 30 days from created_at
-    const dueDate = new Date(documentData.created_at)
-    dueDate.setDate(dueDate.getDate() + 30)
-    this.doc.text(this.formatDate(dueDate.toISOString()), rightX + 35, rightY)
-
-    y += 15
-
-    // PAY TO section
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('PAY TO:', this.margin, y)
-    
-    this.doc.setFont('helvetica', 'normal')
-    y += 5
-    this.doc.text('Bank Transfer', this.margin, y)
-    y += 4
-    this.doc.text(`Account Name: ${orderData.seller_org.org_name}`, this.margin, y)
-    y += 4
-    this.doc.text('Account No.: ****-****-****', this.margin, y)
-
-    y += 20
-
-    // Table header
-    this.doc.setFontSize(8)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('DESCRIPTION', this.margin, y)
-    this.doc.text('UNIT PRICE', 100, y, { align: 'center' })
-    this.doc.text('QTY', 130, y, { align: 'center' })
-    this.doc.text('TOTAL', this.pageWidth - this.margin, y, { align: 'right' })
-
-    y += 3
-    this.doc.setLineWidth(0.3)
-    this.doc.line(this.margin, y, this.pageWidth - this.margin, y)
-
-    y += 8
-
-    // Order items
-    this.doc.setFont('helvetica', 'normal')
-    let subtotal = 0
-    
-    orderData.order_items.forEach((item) => {
-      const description = item.product?.product_name || 'Product'
-      const unitPrice = item.unit_price || 0
-      const qty = item.qty || 0
-      const total = item.line_total || (unitPrice * qty)
-      subtotal += total
-
-      this.doc.text(description, this.margin, y)
-      this.doc.text(unitPrice.toString(), 100, y, { align: 'center' })
-      this.doc.text(qty.toString(), 130, y, { align: 'center' })
-      this.doc.text(this.formatCurrency(total), this.pageWidth - this.margin, y, { align: 'right' })
-      
-      y += 8
-    })
-
-    y += 10
-
-    // Summary
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('SUBTOTAL', this.margin, y)
-    this.doc.text(this.formatCurrency(subtotal), this.pageWidth - this.margin, y, { align: 'right' })
-
-    y += 8
-    // Tax calculation (10%)
-    const taxRate = 10
-    const taxAmount = subtotal * (taxRate / 100)
-    const total = subtotal + taxAmount
-
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.text('Tax', 130, y, { align: 'right' })
-    this.doc.text(`${taxRate}%`, this.pageWidth - this.margin, y, { align: 'right' })
-
-    y += 5
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('TOTAL', 130, y, { align: 'right' })
-    this.doc.text(this.formatCurrency(total), this.pageWidth - this.margin, y, { align: 'right' })
-
-    // Signature at bottom
-    if (this.signatures.length > 0) {
-      y = 250
-      
-      // Find appropriate signature based on document type
-      const sig = this.signatures[0]
-      
-      if (sig.signature_image_data) {
-        try {
-          this.doc.addImage(sig.signature_image_data, 'PNG', this.pageWidth - 70, y, 50, 20)
-        } catch (e) {
-          // Fallback to text signature
-          this.doc.setFont('helvetica', 'italic')
-          this.doc.setFontSize(14)
-          this.doc.text(sig.signer_name, this.pageWidth - this.margin, y + 15, { align: 'right' })
-        }
-      } else {
-        // Stylized text signature
-        this.doc.setFont('helvetica', 'italic')
-        this.doc.setFontSize(14)
-        this.doc.text(sig.signer_name, this.pageWidth - this.margin, y + 15, { align: 'right' })
-      }
-    }
-
-    return this.doc.output('blob')
-  }
-}
 
 
 /**
- * Tax Invoice Template (Image 3 style)
- * Professional tax invoice format with GST/Tax breakdown
+ * Classic Template (Image 2 style)
+ * Traditional Purchase Order layout
  */
-export class TaxInvoiceTemplate {
+export class ClassicTemplate {
   private doc: jsPDF
   private pageWidth: number = 210
   private margin: number = 15
@@ -280,8 +104,8 @@ export class TaxInvoiceTemplate {
 
   private formatCurrency(amount: number | string): string {
     const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount
-    if (isNaN(numAmount)) return '0.00'
-    return numAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    if (isNaN(numAmount)) return 'RM 0.00'
+    return `RM ${numAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
   private formatDate(dateString: string): string {
@@ -292,126 +116,223 @@ export class TaxInvoiceTemplate {
     return `${day}/${month}/${year}`
   }
 
+  private formatDateLong(dateString: string): string {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    const day = date.getDate()
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const month = months[date.getMonth()]
+    const year = date.getFullYear()
+    return `${day} ${month} ${year}`
+  }
+
   async generate(orderData: TemplateOrderData, documentData: TemplateDocumentData, docTitle: string): Promise<Blob> {
-    let y = 15
+    let y = 20
 
-    // Company Header (Seller)
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(orderData.seller_org.org_name, this.margin, y)
-    
-    y += 5
-    this.doc.setFontSize(8)
-    this.doc.setFont('helvetica', 'normal')
-    
-    // Address lines
-    const sellerAddress = [
-      orderData.seller_org.address,
-      orderData.seller_org.address_line2,
-      [orderData.seller_org.city, orderData.seller_org.postal_code].filter(Boolean).join(', '),
-      orderData.seller_org.state
-    ].filter(Boolean)
-    
-    sellerAddress.forEach(line => {
-      if (line) {
-        this.doc.text(line, this.margin, y)
-        y += 4
+    // 1. Header Section
+    // Left: Logo + Company Name + Address
+    // Right: Document Title + Details
+
+    // Logo (Left) - Use dynamic buyer logo if available
+    const logoX = this.margin
+    const logoY = y
+    const logoWidth = 20
+    const logoHeight = 20
+
+    if (orderData.buyer_logo_image) {
+      try {
+        this.doc.addImage(orderData.buyer_logo_image, 'PNG', logoX, logoY, logoWidth, logoHeight)
+      } catch (e) {
+        console.error('Error adding buyer logo:', e)
+        // Fallback: draw a placeholder
+        this.doc.setDrawColor(200, 200, 200)
+        this.doc.rect(logoX, logoY, logoWidth, logoHeight)
+        this.doc.setFontSize(6)
+        this.doc.setTextColor(150, 150, 150)
+        this.doc.text('Logo', logoX + logoWidth / 2, logoY + logoHeight / 2, { align: 'center' })
       }
-    })
-    
-    // Contact info
-    if (orderData.seller_org.contact_phone) {
-      this.doc.text(`Phone: ${orderData.seller_org.contact_phone}`, this.margin, y)
-      y += 4
-    }
-    if (orderData.seller_org.contact_email) {
-      this.doc.text(`Email: ${orderData.seller_org.contact_email}`, this.margin, y)
-      y += 4
+    } else {
+      // Placeholder text for logo
+      this.doc.setFontSize(8)
+      this.doc.setTextColor(100, 100, 100)
+      this.doc.text('HeadQuarters', logoX + 2, logoY + 12)
     }
 
-    y += 5
-
-    // Horizontal line
-    this.doc.setLineWidth(0.5)
-    this.doc.line(this.margin, y, this.pageWidth - this.margin, y)
-
-    y += 8
-
-    // TAX INVOICE title
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('TAX INVOICE', this.pageWidth / 2, y, { align: 'center' })
-
-    // Invoice details on right side
-    const rightX = 130
+    // Company Name (Left)
     this.doc.setFontSize(10)
     this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`Tax Invoice : ${documentData.doc_no}`, rightX, y)
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text(orderData.buyer_org.org_name.toUpperCase(), this.margin + 25, y + 5) // Offset for logo
 
-    y += 10
-
-    // Bill To box
-    this.doc.setDrawColor(0, 0, 0)
-    this.doc.setLineWidth(0.3)
-    this.doc.rect(this.margin, y, 80, 25)
-    
-    this.doc.setFontSize(9)
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.text(orderData.buyer_org.org_name, this.margin + 2, y + 5)
-
-    // Right side details box
-    const detailsStartY = y
+    // Address (Left)
     this.doc.setFontSize(8)
-    
-    const details = [
-      { label: 'Your Ref.', value: ':' },
-      { label: 'Our D/O No', value: ':' },
-      { label: 'Terms', value: `: 30 Days` },
-      { label: 'Date', value: `: ${this.formatDate(documentData.created_at)}` },
-      { label: 'Page', value: ': 1 of 1' }
-    ]
-    
-    let detailY = detailsStartY
-    details.forEach(detail => {
-      this.doc.text(detail.label, rightX, detailY)
-      this.doc.text(detail.value, rightX + 25, detailY)
-      detailY += 5
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(100, 100, 100)
+
+    let addrY = y + 10
+    const buyerAddress = [
+      orderData.buyer_org.address,
+      orderData.buyer_org.address_line2,
+      [orderData.buyer_org.city, orderData.buyer_org.postal_code].filter(Boolean).join(', '),
+      orderData.buyer_org.state
+    ].filter(Boolean)
+
+    buyerAddress.forEach(line => {
+      if (line) {
+        this.doc.text(line, this.margin + 25, addrY)
+        addrY += 4
+      }
     })
 
-    y += 30
+    // Right Header
+    const headerRightX = 140
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.text(docTitle.toUpperCase(), this.pageWidth - this.margin, y + 5, { align: 'right' })
 
-    // Attn and contact
-    this.doc.rect(this.margin, y, 40, 8)
-    this.doc.rect(this.margin + 40, y, 40, 8)
-    this.doc.text('Attn :', this.margin + 2, y + 5)
-    this.doc.text('TEL :', this.margin + 42, y + 5)
-    
-    this.doc.rect(this.margin + 80, y, 35, 8)
-    this.doc.text('FAX :', this.margin + 82, y + 5)
+    // Document Details (Right)
+    let detailsY = y + 15
+    this.doc.setFontSize(9)
 
-    y += 15
+    const details = [
+      { label: 'PO#:', value: documentData.doc_no },
+      { label: 'Date:', value: this.formatDate(documentData.created_at) },
+      { label: 'By:', value: 'User Level' }, // Placeholder as per image
+      { label: 'Ledger:', value: 'Stock Purchased / Inventory' }
+    ]
 
-    // Items table
-    const headers = ['No', 'Description', 'Qty', 'Price/Unit', 'Discount', 'Sub Total', 'Total Excl.\nGST (RM)', 'GST Amt @\n6% (RM)', 'Total Incl.\nGST (RM)', 'Tax']
-    
+    details.forEach(detail => {
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(128, 128, 128) // Gray label
+      this.doc.text(detail.label, headerRightX, detailsY)
+
+      this.doc.setTextColor(0, 0, 0) // Black value
+      this.doc.text(detail.value, this.pageWidth - this.margin, detailsY, { align: 'right' })
+      detailsY += 5
+    })
+
+    y = Math.max(addrY, detailsY) + 20
+
+    // 2. Supplier & Status Section
+    const supplierY = y
+
+    // Supplier (Left) - Only show supplier name and address
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text('Supplier:', this.margin, supplierY)
+
+    this.doc.setFontSize(9)
+    this.doc.text(orderData.seller_org.org_name.toUpperCase(), this.margin, supplierY + 6)
+
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(100, 100, 100)
+    let suppAddrY = supplierY + 11
+
+    // Helper to clean and validate address line
+    const cleanAddressLine = (line: string | null | undefined): string | null => {
+      if (!line || typeof line !== 'string') return null
+      const trimmed = line.trim()
+      if (trimmed.length === 0) return null
+      // Filter out UUID patterns (8-4-4-4-12 hex format)
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return null
+      // Filter out long hex strings
+      if (/^[0-9a-f]{16,}$/i.test(trimmed)) return null
+      return trimmed
+    }
+
+    // Build address lines - split any newlines in address fields
+    const addressLines: string[] = []
+
+    // Process main address field (may contain newlines)
+    const mainAddress = cleanAddressLine(orderData.seller_org.address)
+    if (mainAddress) {
+      // Split by newlines and add each line separately
+      mainAddress.split(/[\n\r]+/).forEach(line => {
+        const cleaned = cleanAddressLine(line)
+        if (cleaned) addressLines.push(cleaned)
+      })
+    }
+
+    // Process address_line2
+    const address2 = cleanAddressLine(orderData.seller_org.address_line2)
+    if (address2) {
+      address2.split(/[\n\r]+/).forEach(line => {
+        const cleaned = cleanAddressLine(line)
+        if (cleaned) addressLines.push(cleaned)
+      })
+    }
+
+    // Add city/postal code if available
+    const cityPostal = [orderData.seller_org.city, orderData.seller_org.postal_code].filter(Boolean).join(', ')
+    if (cityPostal) {
+      const cleaned = cleanAddressLine(cityPostal)
+      if (cleaned) addressLines.push(cleaned)
+    }
+
+    // Render address lines with proper line height
+    addressLines.forEach(line => {
+      this.doc.text(line, this.margin, suppAddrY)
+      suppAddrY += 4
+    })
+
+    // Status Box (Right)
+    // Box dimensions
+    const boxWidth = 40
+    const boxHeight = 15
+    const boxX = this.pageWidth - this.margin - boxWidth
+    const boxY = supplierY
+
+    this.doc.setDrawColor(230, 230, 230)
+    this.doc.setLineWidth(0.5)
+    this.doc.rect(boxX, boxY, boxWidth, boxHeight)
+
+    this.doc.setFontSize(7)
+    this.doc.setTextColor(128, 128, 128)
+    this.doc.text('STATUS', boxX + (boxWidth / 2), boxY + 5, { align: 'center' })
+
+    this.doc.setFontSize(10)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(34, 197, 94) // Green color
+    this.doc.text(orderData.status.toUpperCase(), boxX + (boxWidth / 2), boxY + 11, { align: 'center' })
+
+    y = Math.max(suppAddrY, boxY + boxHeight) + 20
+
+    // 3. Items Table
+    // Simple table with no borders, just lines
+    const headers = ['No', 'Description', 'Unit', 'Price', 'Amount']
+
     const tableData = orderData.order_items.map((item, index) => {
       const qty = item.qty || 0
       const unitPrice = item.unit_price || 0
-      const subTotal = item.line_total || (qty * unitPrice)
-      const gstAmount = 0 // Assuming 0% GST for now
-      const totalIncl = subTotal + gstAmount
-      
+      const total = item.line_total || (qty * unitPrice)
+
+      // Format description to match Order print/save view
+      // Extract product base name (e.g., "Cellera Hero")
+      const productName = (item.product?.product_name || 'Product').replace(/\[.*?\]\s*$/, '').trim()
+      // Extract variant details (e.g., "Deluxe Cellera Cartridge [ Strawberry Cheesecake ]")
+      const variantName = item.variant?.variant_name || ''
+
+      let description = productName
+      if (variantName) {
+        // If variant contains brackets, extract the parts
+        const bracketMatch = variantName.match(/^(.*?)\s*\[(.*)\]\s*$/)
+        if (bracketMatch) {
+          // Format: ProductName VariantType [ VariantFlavor ]
+          description = `${productName} ${bracketMatch[1].trim()} [ ${bracketMatch[2].trim()} ]`
+        } else {
+          // Fallback: Just show product name and variant
+          description = `${productName} ${variantName}`
+        }
+      }
+
       return [
         (index + 1).toString(),
-        `${item.product?.product_name || 'Product'}${item.variant?.variant_name ? `\n(${item.variant.variant_name})` : ''}`,
-        `${qty.toFixed(2)} UNIT`,
-        this.formatCurrency(unitPrice),
-        '',
-        this.formatCurrency(subTotal),
-        this.formatCurrency(subTotal),
-        this.formatCurrency(gstAmount),
-        this.formatCurrency(totalIncl),
-        ''
+        description,
+        qty.toString(),
+        unitPrice.toFixed(2),
+        `RM ${total.toFixed(2)}`
       ]
     })
 
@@ -419,140 +340,193 @@ export class TaxInvoiceTemplate {
       startY: y,
       head: [headers],
       body: tableData,
-      theme: 'grid',
+      theme: 'plain', // Minimal theme
       styles: {
-        fontSize: 7,
-        cellPadding: 1.5,
-        lineColor: [0, 0, 0],
-        lineWidth: 0.3,
-        textColor: [0, 0, 0]
+        fontSize: 8, // Smaller font to fit description in one row
+        cellPadding: 3,
+        textColor: [0, 0, 0],
+        font: 'helvetica',
+        overflow: 'linebreak',
+        cellWidth: 'wrap'
       },
       headStyles: {
-        fillColor: [255, 255, 255],
-        textColor: [0, 0, 0],
         fontStyle: 'bold',
-        halign: 'center',
-        valign: 'middle'
+        textColor: [0, 0, 0],
+        halign: 'left',
+        fontSize: 9
       },
       columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 45 },
-        2: { cellWidth: 18, halign: 'center' },
-        3: { cellWidth: 18, halign: 'right' },
-        4: { cellWidth: 15, halign: 'right' },
-        5: { cellWidth: 18, halign: 'right' },
-        6: { cellWidth: 20, halign: 'right' },
-        7: { cellWidth: 18, halign: 'right' },
-        8: { cellWidth: 18, halign: 'right' },
-        9: { cellWidth: 10, halign: 'center' }
+        0: { cellWidth: 12, halign: 'center' },   // No column - centered
+        1: { cellWidth: 'auto', halign: 'left' }, // Description - left aligned
+        2: { cellWidth: 18, halign: 'center' },   // Unit - center aligned (header & data)
+        3: { cellWidth: 22, halign: 'right' },    // Price - right aligned (header & data)
+        4: { cellWidth: 28, halign: 'right' }     // Amount - right aligned (header & data)
       },
-      margin: { left: this.margin, right: this.margin }
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        // Make headers for columns 2,3,4 center/right aligned to match data
+        if (data.section === 'head') {
+          if (data.column.index === 2) {
+            data.cell.styles.halign = 'center'
+          } else if (data.column.index >= 3) {
+            data.cell.styles.halign = 'right'
+          }
+        }
+      },
+      didDrawPage: (data) => {
+        // Header line
+        this.doc.setDrawColor(230, 230, 230)
+        this.doc.setLineWidth(0.1)
+        this.doc.line(this.margin, data.settings.startY + 7, this.pageWidth - this.margin, data.settings.startY + 7)
+      }
     })
 
-    y = (this.doc as any).lastAutoTable.finalY + 10
+    y = (this.doc as any).lastAutoTable.finalY + 5
 
-    // Total amount in words
+    // Draw line after table
+    this.doc.setDrawColor(230, 230, 230)
+    this.doc.line(this.margin, y, this.pageWidth - this.margin, y)
+
+    y += 10
+
+    // 4. Footer / Totals
     const totalAmount = orderData.order_items.reduce((sum, item) => sum + (item.line_total || 0), 0)
-    
-    this.doc.setFontSize(8)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`RINGGIT MALAYSIA : ${this.numberToWords(totalAmount)} ONLY`, this.margin, y)
 
-    y += 10
-
-    // Notes section
+    this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Notes :', this.margin, y)
-    y += 4
+    this.doc.setTextColor(0, 0, 0)
+
+    const totalX = this.pageWidth - this.margin - 30
+    this.doc.text('Total', totalX - 20, y, { align: 'right' })
+    this.doc.text(this.formatCurrency(totalAmount), this.pageWidth - this.margin, y, { align: 'right' })
+
+    y += 30
+
+    // 5. Signatures / Footer
+    const footerY = y
+
+    // Issued by (Left) - Organization stamp/signature
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text('Issued by:', this.margin, footerY)
+
+    // Organization Stamp - Use dynamic signature image if available (reduced 50% - half size)
+    const stampX = this.margin + 14
+    const stampY = footerY + 14
+    const stampSize = 16  // Reduced to half size (50% smaller)
+
+    if (orderData.buyer_signature_image) {
+      try {
+        this.doc.addImage(orderData.buyer_signature_image, 'PNG', stampX - stampSize / 2, stampY - stampSize / 2, stampSize, stampSize)
+      } catch (e) {
+        console.error('Error adding organization stamp:', e)
+        // Fallback to simulated stamp
+        this.drawDefaultStamp(stampX, stampY, orderData.buyer_org.org_name, stampSize / 2)
+      }
+    } else {
+      // Fallback: simulated stamp (half size)
+      this.drawDefaultStamp(stampX, stampY, orderData.buyer_org.org_name, stampSize / 2)
+    }
+
+    // Created by (Center) - Always show "User Level" as per requirement
+    const centerX = this.pageWidth / 2
+    this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.setFontSize(7)
-    this.doc.text('1. All cheques should be crossed and made payable to', this.margin, y)
-    y += 4
-    this.doc.text(`   ${orderData.seller_org.org_name}`, this.margin, y)
-    y += 4
-    this.doc.text('2. Goods sold are neither returnable nor refundable.', this.margin, y)
+    this.doc.setTextColor(100, 100, 100)
+    this.doc.text('Created by: User Level', centerX, footerY, { align: 'center' })
 
-    // Total summary on right
-    const summaryX = 130
-    const summaryY = y - 15
-    
+    // Creator Signature - Use CREATOR signature (User Level), NOT approver signature
+    if (orderData.creator_signature_image) {
+      try {
+        this.doc.addImage(orderData.creator_signature_image, 'PNG', centerX - 15, footerY + 2, 30, 12)
+      } catch (e) {
+        console.error('Error adding creator signature:', e)
+        // Draw placeholder squiggle
+        this.doc.setDrawColor(0, 0, 0)
+        this.doc.setLineWidth(0.5)
+        this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], centerX - 4, footerY + 10)
+      }
+    } else {
+      // Draw placeholder squiggle
+      this.doc.setDrawColor(0, 0, 0)
+      this.doc.setLineWidth(0.5)
+      this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], centerX - 4, footerY + 10)
+    }
+
+    // Signature Line
+    this.doc.setDrawColor(200, 200, 200)
+    this.doc.line(centerX - 15, footerY + 15, centerX + 15, footerY + 15)
+
+    // Date
     this.doc.setFontSize(8)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Total Amount Due', summaryX, summaryY)
-    this.doc.text(this.formatCurrency(totalAmount), summaryX + 25, summaryY)
-    this.doc.text(this.formatCurrency(totalAmount), summaryX + 45, summaryY)
-    this.doc.text('0.00', summaryX + 60, summaryY)
-    this.doc.text(this.formatCurrency(totalAmount), summaryX + 75, summaryY)
+    this.doc.setTextColor(100, 100, 100)
+    this.doc.text(this.formatDateLong(documentData.created_at), centerX, footerY + 22, { align: 'center' })
 
-    // GST summary box
-    y += 10
-    this.doc.rect(summaryX, y, 35, 8)
-    this.doc.rect(summaryX + 35, y, 35, 8)
-    
+    // Approved by (Right) - Use dynamic approver role
+    const footerRightX = this.pageWidth - this.margin - 25
+    this.doc.setFontSize(9)
+    const approverRole = orderData.approver?.role_name || 'Manager Level'
+    this.doc.text(`Approved by: ${approverRole}`, footerRightX, footerY, { align: 'center' })
+
+    // Approver Signature - Use approver signature if available  
+    if (orderData.approver_signature_image) {
+      try {
+        this.doc.addImage(orderData.approver_signature_image, 'PNG', footerRightX - 15, footerY + 2, 30, 12)
+      } catch (e) {
+        console.error('Error adding approver signature:', e)
+        // Draw placeholder squiggle
+        this.doc.setDrawColor(0, 0, 0)
+        this.doc.setLineWidth(0.5)
+        this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], footerRightX - 4, footerY + 10)
+      }
+    } else {
+      // Draw placeholder squiggle
+      this.doc.setDrawColor(0, 0, 0)
+      this.doc.setLineWidth(0.5)
+      this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], footerRightX - 4, footerY + 10)
+    }
+
+    // Signature Line
+    this.doc.line(footerRightX - 15, footerY + 15, footerRightX + 15, footerY + 15)
+
+    // Date
+    const approvedDate = orderData.approved_at || documentData.created_at
+    this.doc.text(this.formatDateLong(approvedDate), footerRightX, footerY + 22, { align: 'center' })
+
+    // Bottom text
+    const bottomY = footerY + 40
     this.doc.setFontSize(7)
-    this.doc.text('GST Amount (MYR)', summaryX + 2, y + 5)
-    this.doc.text('Total Payable (MYR)', summaryX + 37, y + 5)
-    
-    y += 8
-    this.doc.rect(summaryX, y, 35, 8)
-    this.doc.rect(summaryX + 35, y, 35, 8)
-    this.doc.text('0.00', summaryX + 17, y + 5, { align: 'center' })
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(this.formatCurrency(totalAmount), summaryX + 52, y + 5, { align: 'center' })
-
-    // Authorized Signature line
-    y = 260
-    this.doc.setLineWidth(0.5)
-    this.doc.line(this.margin, y, this.margin + 50, y)
-    y += 4
-    this.doc.setFontSize(8)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Authorised Signature', this.margin, y)
+    this.doc.setTextColor(180, 180, 180)
+    this.doc.text('This is a computer generated document.', this.margin, bottomY)
 
     return this.doc.output('blob')
   }
 
-  private numberToWords(num: number): string {
-    const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE']
-    const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY']
-    const teens = ['TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN']
+  private drawDefaultStamp(centerX: number, centerY: number, orgName: string, radius: number = 14): void {
+    // Draw circular stamp with configurable size
+    this.doc.setDrawColor(100, 100, 100)
+    this.doc.setLineWidth(0.5)
+    this.doc.circle(centerX, centerY, radius)
+    this.doc.circle(centerX, centerY, radius - 2)
 
-    if (num === 0) return 'ZERO'
-    if (num < 0) return 'MINUS ' + this.numberToWords(-num)
+    // Parse org name for stamp text - scale font based on radius
+    const nameParts = orgName.toUpperCase().split(' ')
+    const fontSize = Math.max(3, Math.min(5, radius / 3))
+    this.doc.setFontSize(fontSize)
+    this.doc.setTextColor(100, 100, 100)
 
-    let words = ''
-
-    if (Math.floor(num / 1000000) > 0) {
-      words += this.numberToWords(Math.floor(num / 1000000)) + ' MILLION '
-      num %= 1000000
+    const lineSpacing = radius / 3
+    if (nameParts.length >= 3) {
+      this.doc.text(nameParts[0], centerX, centerY - lineSpacing, { align: 'center' })
+      this.doc.text(nameParts[1], centerX, centerY, { align: 'center' })
+      this.doc.text(nameParts.slice(2).join(' '), centerX, centerY + lineSpacing, { align: 'center' })
+    } else if (nameParts.length === 2) {
+      this.doc.text(nameParts[0], centerX, centerY - lineSpacing / 2, { align: 'center' })
+      this.doc.text(nameParts[1], centerX, centerY + lineSpacing / 2, { align: 'center' })
+    } else {
+      this.doc.text(orgName.toUpperCase(), centerX, centerY, { align: 'center' })
     }
-
-    if (Math.floor(num / 1000) > 0) {
-      words += this.numberToWords(Math.floor(num / 1000)) + ' THOUSAND '
-      num %= 1000
-    }
-
-    if (Math.floor(num / 100) > 0) {
-      words += ones[Math.floor(num / 100)] + ' HUNDRED '
-      num %= 100
-    }
-
-    if (num > 0) {
-      if (words !== '') words += 'AND '
-
-      if (num < 10) {
-        words += ones[num]
-      } else if (num < 20) {
-        words += teens[num - 10]
-      } else {
-        words += tens[Math.floor(num / 10)]
-        if (num % 10 > 0) {
-          words += ' ' + ones[num % 10]
-        }
-      }
-    }
-
-    return words.trim()
   }
 }
 
@@ -563,12 +537,10 @@ export class TaxInvoiceTemplate {
 export function getTemplateGenerator(
   templateType: DocumentTemplateType,
   signatures: TemplateSignatureData[] = []
-): MinimalTemplate | TaxInvoiceTemplate | null {
+): ClassicTemplate | null {
   switch (templateType) {
-    case 'minimal':
-      return new MinimalTemplate(signatures)
-    case 'tax_invoice':
-      return new TaxInvoiceTemplate(signatures)
+    case 'classic':
+      return new ClassicTemplate(signatures)
     case 'detailed':
       // Return null to use the existing PDFGenerator
       return null

@@ -86,6 +86,7 @@ interface Variant {
   attributes: Record<string, any>
   barcode: string | null
   manufacturer_sku: string | null
+  manual_sku: string | null
   base_cost: number | null
   suggested_retail_price: number | null
   retailer_price?: number | null
@@ -119,6 +120,7 @@ export default function VariantDialog({
     attributes: {},
     barcode: '',
     manufacturer_sku: '',
+    manual_sku: '',
     base_cost: null,
     suggested_retail_price: null,
     retailer_price: null,
@@ -141,6 +143,7 @@ export default function VariantDialog({
           attributes: variant.attributes || {},
           barcode: variant.barcode || '',
           manufacturer_sku: variant.manufacturer_sku || '',
+          manual_sku: variant.manual_sku || '',
           base_cost: variant.base_cost,
           suggested_retail_price: variant.suggested_retail_price,
           retailer_price: variant.retailer_price,
@@ -158,6 +161,7 @@ export default function VariantDialog({
           attributes: {},
           barcode: '',
           manufacturer_sku: '',
+          manual_sku: '',
           base_cost: null,
           suggested_retail_price: null,
           retailer_price: null,
@@ -429,6 +433,22 @@ export default function VariantDialog({
               className="bg-gray-100 cursor-not-allowed text-gray-700"
             />
             <p className="text-xs text-gray-500">Format: SKU-[Product]-[Variant]-[ID] for easy product identification</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="manual_sku">Manual SKU <span className="text-xs text-gray-500">(Optional, 5 chars max)</span></Label>
+            <Input
+              id="manual_sku"
+              value={formData.manual_sku || ''}
+              onChange={(e) => {
+                const value = e.target.value.toUpperCase().slice(0, 5)
+                setFormData(prev => ({ ...prev, manual_sku: value }))
+              }}
+              maxLength={5}
+              placeholder="Enter custom SKU"
+              className="uppercase"
+            />
+            <p className="text-xs text-gray-500">Enter your own SKU code (max 5 characters)</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

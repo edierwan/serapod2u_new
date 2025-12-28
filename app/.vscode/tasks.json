@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "append_css",
+			"type": "shell",
+			"command": "/bin/bash",
+			"args": [
+				"-c",
+				"cat >> /Users/macbook/serapod2u_new/app/src/app/globals.css <<EOF\n\n@media print {\n  @page {\n    margin: 0;\n    size: auto;\n  }\n  \n  /* Hide browser default headers and footers by removing margins */\n  body {\n    margin: 1cm; /* Add back some margin for content */\n  }\n}\nEOF\n"
+			],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

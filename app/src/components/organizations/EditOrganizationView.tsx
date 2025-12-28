@@ -14,8 +14,8 @@ import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon }
 import OrgLogoUpload from './OrgLogoUpload'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import {
-  getValidParentOrgs, 
-  isParentRequired, 
+  getValidParentOrgs,
+  isParentRequired,
   getParentHelpText,
   getParentFieldLabel,
   parseHierarchyError,
@@ -92,9 +92,9 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         }, 2000)
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authHookError])
 
   useEffect(() => {
@@ -113,9 +113,9 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         onViewChange?.('organizations')
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   // Filter parent organizations when org type changes
@@ -126,7 +126,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         parentOrgs as any[]
       )
       setFilteredParentOrgs(validParents as ParentOrganization[])
-      
+
       // Clear parent_org_id if current selection is not valid
       if (formData.parent_org_id) {
         const isValid = validParents.some(p => p.id === formData.parent_org_id)
@@ -134,15 +134,15 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
           handleInputChange('parent_org_id', null)
         }
       }
-      
+
       // For HQ, always clear parent
       if (formData.org_type_code === 'HQ') {
         handleInputChange('parent_org_id', null)
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.org_type_code, parentOrgs])
 
   useEffect(() => {
@@ -151,7 +151,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     } else {
       setDistricts([])
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.state_id])
 
   const loadParentOrganizations = async () => {
@@ -223,12 +223,12 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
           .order('is_preferred', { ascending: false })
 
         if (error) throw error
-        
+
         const transformed = (data || []).map((sd: any) => ({
           ...sd,
           distributor: Array.isArray(sd.distributor) ? sd.distributor[0] : sd.distributor
         }))
-        
+
         setShopDistributors(transformed)
       }
     } catch (error) {
@@ -256,7 +256,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         .order('full_name', { ascending: true })
 
       if (error) throw error
-      
+
       console.log('📊 Loaded organization users:', data?.length)
       setOrgUsers(data || [])
     } catch (error) {
@@ -365,7 +365,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         try {
           // Compress logo first
           const compressionResult = await compressAvatar(logoFile)
-          
+
           toast({
             title: '🖼️ Logo Compressed',
             description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
@@ -407,7 +407,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             const { data: { publicUrl } } = supabase.storage
               .from('avatars')
               .getPublicUrl(filePath)
-            
+
             logo_url = `${publicUrl}?v=${Date.now()}` // Add cache-busting
           }
         } catch (logoUploadError) {
@@ -417,9 +417,12 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
       // Build update payload - only include fields that exist in formData
       const updatePayload: Record<string, any> = {
-        updated_at: new Date().toISOString(),
-        updated_by: userProfile.id
+        updated_at: new Date().toISOString()
       }
+
+      // if (userProfile?.id) {
+      //   updatePayload.updated_by = userProfile.id
+      // }
 
       // Only include fields that are actually in the form
       if (formData.org_name !== undefined) updatePayload.org_name = formData.org_name
@@ -438,24 +441,26 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (logo_url !== undefined) updatePayload.logo_url = logo_url
       if (formData.payment_term_id !== undefined) updatePayload.payment_term_id = formData.payment_term_id || null
       if (formData.warranty_bonus !== undefined) updatePayload.warranty_bonus = formData.warranty_bonus
+      if (formData.signature_type !== undefined) updatePayload.signature_type = formData.signature_type
+      if (formData.signature_url !== undefined) updatePayload.signature_url = formData.signature_url
 
       // Handle parent_org_id - include if changed OR if org type requires parent and it's missing
       const needsParent = isParentRequired(organization?.org_type_code as OrgType)
       const parentChanged = formData.parent_org_id !== undefined && formData.parent_org_id !== organization?.parent_org_id
       const parentMissing = needsParent && !organization?.parent_org_id && formData.parent_org_id
-      
+
       if (parentChanged || parentMissing) {
         // Validate hierarchy when parent is being changed or added
-        const parentOrg = formData.parent_org_id 
+        const parentOrg = formData.parent_org_id
           ? parentOrgs.find(p => p.id === formData.parent_org_id)
           : undefined
-        
+
         const hierarchyError = validateOrgHierarchy(
           organization?.org_type_code as OrgType,
           formData.parent_org_id || null,
           parentOrg?.org_type_code as OrgType | undefined
         )
-        
+
         if (hierarchyError) {
           toast({
             title: '✕ Invalid Hierarchy',
@@ -469,12 +474,37 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         updatePayload.parent_org_id = formData.parent_org_id || null
       }
 
-      const { error } = await (supabase as any)
+      const response = await (supabase as any)
         .from('organizations')
         .update(updatePayload)
         .eq('id', organization!.id)
+        .select()
 
-      if (error) throw error
+      const { error, data } = response
+
+      console.log('📊 Update response:', {
+        hasError: !!error,
+        hasData: !!data,
+        dataCount: data?.length,
+        updatePayload
+      })
+
+      if (error) {
+        // Log the error in multiple ways to ensure we capture all details
+        console.error('❌ Supabase update error:')
+        console.error('Error object:', error)
+        console.error('Error message:', error?.message)
+        console.error('Error code:', error?.code)
+        console.error('Error details:', error?.details)
+        console.error('Error hint:', error?.hint)
+        console.error('Update payload:', updatePayload)
+        console.error('Full response:', response)
+        throw error
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error('Update succeeded but no data was returned. This may indicate an RLS policy issue.')
+      }
 
       // Auto-repair: If this is a SHOP with a DIST parent, ensure shop_distributors entry exists
       if (organization?.org_type_code === 'SHOP' && updatePayload.parent_org_id) {
@@ -519,13 +549,22 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
       // Set flag to refresh links and go back to organizations
       sessionStorage.setItem('needsLinkRefresh', 'true')
-      
+
       // Go back to organizations
       setTimeout(() => {
         onViewChange?.('organizations')
       }, 500)
     } catch (error: any) {
-      console.error('Error saving organization:', error)
+      console.error('❌ Error saving organization:')
+      console.error('Error type:', typeof error)
+      console.error('Error constructor:', error?.constructor?.name)
+      console.error('Error object:', error)
+      console.error('Error message:', error?.message || 'No message')
+      console.error('Error code:', error?.code)
+      console.error('Error details:', error?.details)
+      console.error('Error hint:', error?.hint)
+      console.error('Error stack:', error?.stack)
+
       const friendlyError = parseHierarchyError(error)
       toast({
         title: '✕ Save Failed',
@@ -553,7 +592,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
           <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
           <p className="text-red-600 font-medium mb-2">{authError}</p>
           <p className="text-gray-600 mb-4">Your session may have expired. Please log in again.</p>
-          <Button 
+          <Button
             onClick={() => window.location.href = '/login'}
             className="bg-blue-600 hover:bg-blue-700"
           >
@@ -569,7 +608,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       <Card>
         <CardContent className="p-12 text-center">
           <p className="text-gray-600">Organization not found</p>
-          <Button 
+          <Button
             onClick={() => onViewChange?.('organizations')}
             className="mt-4"
           >
@@ -681,7 +720,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 {getParentFieldLabel(formData.org_type_code as OrgType)}
                 {isParentRequired(formData.org_type_code as OrgType) && ' *'}
               </Label>
-              
+
               {/* Help text showing hierarchy rules */}
               <Alert className="mb-2">
                 <Info className="h-4 w-4" />
@@ -695,12 +734,12 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 onValueChange={(value) => handleInputChange('parent_org_id', value === 'none' ? null : value)}
               >
                 <SelectTrigger>
-                  <SelectValue 
+                  <SelectValue
                     placeholder={
                       isParentRequired(formData.org_type_code as OrgType)
                         ? "Select parent organization"
                         : "Select parent organization (optional)"
-                    } 
+                    }
                   />
                 </SelectTrigger>
                 <SelectContent>
@@ -866,9 +905,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             {shopDistributors.map((sd) => (
               <div
                 key={sd.id}
-                className={`flex justify-between items-center p-4 border rounded-lg ${
-                  sd.is_preferred ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
-                }`}
+                className={`flex justify-between items-center p-4 border rounded-lg ${sd.is_preferred ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
@@ -1059,11 +1097,11 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                   All active users belonging to this organization
                 </p>
               </div>
-              
+
               <div className="space-y-3">
                 {orgUsers.map((user: any) => (
-                  <div 
-                    key={user.id} 
+                  <div
+                    key={user.id}
                     className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
                   >
                     <div className="flex-shrink-0">
@@ -1071,7 +1109,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                         {user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
                       </div>
                     </div>
-                    
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-sm font-medium text-gray-900 truncate">
@@ -1083,7 +1121,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                           </span>
                         )}
                       </div>
-                      
+
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2 text-xs text-gray-600">
                           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1091,7 +1129,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                           </svg>
                           <span className="truncate">{user.email}</span>
                         </div>
-                        
+
                         {user.phone && (
                           <div className="flex items-center gap-2 text-xs text-gray-600">
                             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

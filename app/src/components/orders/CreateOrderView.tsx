@@ -95,7 +95,7 @@ const formatCurrency = (amount: number): string => {
 const getProductFamily = (variant: ProductVariant): string | null => {
   // Check product name first - this covers the main families
   const productName = variant.product_name || ''
-  
+
   // Cellera families
   if (productName.toLowerCase().includes('cellera hero')) {
     return 'Cellera Hero'
@@ -103,23 +103,23 @@ const getProductFamily = (variant: ProductVariant): string | null => {
   if (productName.toLowerCase().includes('cellera zero')) {
     return 'Cellera Zero'
   }
-  
+
   // Ellbow Cat Treat
-  if (productName.toLowerCase().includes('ellbow cat treat') || 
-      productName.toLowerCase().includes('ellbow')) {
+  if (productName.toLowerCase().includes('ellbow cat treat') ||
+    productName.toLowerCase().includes('ellbow')) {
     return 'Ellbow Cat Treat'
   }
-  
+
   // Serapod Device families (check full product name for these)
-  if (productName.toLowerCase().includes('serapod device s.box') || 
-      productName.toLowerCase().includes('serapod device s box')) {
+  if (productName.toLowerCase().includes('serapod device s.box') ||
+    productName.toLowerCase().includes('serapod device s box')) {
     return 'Serapod Device S.Box'
   }
-  if (productName.toLowerCase().includes('serapod device s.line') || 
-      productName.toLowerCase().includes('serapod device s line')) {
+  if (productName.toLowerCase().includes('serapod device s.line') ||
+    productName.toLowerCase().includes('serapod device s line')) {
     return 'Serapod Device S.Line'
   }
-  
+
   // Check subgroup in attributes (if available) - fallback for S.Box/S.Line
   const subgroupName = variant.attributes?.subgroup_name || ''
   if (subgroupName.toLowerCase().includes('s.box') || subgroupName.toLowerCase().includes('s. box')) {
@@ -128,7 +128,7 @@ const getProductFamily = (variant: ProductVariant): string | null => {
   if (subgroupName.toLowerCase().includes('s.line') || subgroupName.toLowerCase().includes('s. line')) {
     return 'Serapod Device S.Line'
   }
-  
+
   return null
 }
 
@@ -151,27 +151,31 @@ const getDefaultCaseSize = (family: string): number => {
 
 export default function CreateOrderView({ userProfile, onViewChange }: CreateOrderViewProps) {
   const supabase = createClient()
-  
+
   // Determine order type based on user's organization type
   const [orderType, setOrderType] = useState<'H2M' | 'D2H' | 'S2D'>('H2M')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
+
+  // Track if we're editing an existing order
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
+  const [editingOrderNo, setEditingOrderNo] = useState<string | null>(null)
+
   // Organizations
   const [buyerOrg, setBuyerOrg] = useState<Organization | null>(null)
   const [sellerOrg, setSellerOrg] = useState<Organization | null>(null)
   const [availableSellerOrgs, setAvailableSellerOrgs] = useState<Organization[]>([])
   const [selectedSellerOrgId, setSelectedSellerOrgId] = useState('')
-  
+
   // For S2D: Multiple distributor options
   const [availableDistributors, setAvailableDistributors] = useState<DistributorOption[]>([])
   const [showDistributorSelector, setShowDistributorSelector] = useState(false)
-  
+
   // Customer Information (derived from organization or custom)
   const [customerName, setCustomerName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [deliveryAddress, setDeliveryAddress] = useState('')
-  
+
   // Order Configuration
   const [unitsPerCase, setUnitsPerCase] = useState(100)
   const [customUnitsPerCase, setCustomUnitsPerCase] = useState('')
@@ -184,38 +188,39 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   const [enableLuckyDraw, setEnableLuckyDraw] = useState(true)
   const [enableRedeem, setEnableRedeem] = useState(true)
   const [notes, setNotes] = useState('')
-  
+
   // Manufacturer lock - order can only contain products from one manufacturer
   const [lockedManufacturerId, setLockedManufacturerId] = useState<string | null>(null)
-  
+
   // Products and Variants
   const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([])
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
-  
+
   // Product filtering and search
   const [productSearchQuery, setProductSearchQuery] = useState('')
   const [selectedProductFilter, setSelectedProductFilter] = useState('')
 
   useEffect(() => {
     initializeOrder()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const initializeOrder = async () => {
     try {
       setLoading(true)
-      
+
       // Check if we're editing an existing order
       const editingOrderId = sessionStorage.getItem('editingOrderId')
       if (editingOrderId) {
+        setEditingOrderId(editingOrderId)
         await loadExistingOrder(editingOrderId)
         sessionStorage.removeItem('editingOrderId')
         return
       }
-      
+
       // Check if we're copying an order
       const copyingOrderData = sessionStorage.getItem('copyingOrderData')
       if (copyingOrderData) {
@@ -223,19 +228,19 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         sessionStorage.removeItem('copyingOrderData')
         return
       }
-      
+
       // Determine order type and buyer based on user's org type
       const userOrgType = userProfile.organizations.org_type_code
-      
+
       // Fetch user's organization full details
       const { data: userOrgData } = await supabase
         .from('organizations')
         .select('*')
         .eq('id', userProfile.organization_id)
         .single()
-      
+
       if (!userOrgData) throw new Error('User organization not found')
-      
+
       // Set order type and buyer based on user's organization
       if (userOrgType === 'HQ') {
         setOrderType('H2M')
@@ -252,7 +257,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             .select('*')
             .eq('id', userOrgData.parent_org_id)
             .single()
-          
+
           if (parentOrg) {
             setSellerOrg(parentOrg)
             setSelectedSellerOrgId(parentOrg.id)
@@ -263,45 +268,45 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       } else if (userOrgType === 'SHOP') {
         setOrderType('S2D')
         setBuyerOrg(userOrgData)
-        
+
         console.log('🏪 Shop Order - Auto-filling customer info:', {
           org_name: userOrgData.org_name,
           contact_name: userOrgData.contact_name,
           contact_phone: userOrgData.contact_phone,
           address: userOrgData.address
         })
-        
+
         // Auto-fill customer information from shop organization
         // For shops, customer = shop itself
         setCustomerName(userOrgData.org_name) // Use shop name as customer name
         setPhoneNumber(userOrgData.contact_phone || '')
-        
+
         // Combine address and address_line2 for delivery address
         const fullAddress = [
           userOrgData.address,
           userOrgData.address_line2
         ].filter(Boolean).join(', ')
-        
+
         setDeliveryAddress(fullAddress || '')
-        
+
         // For S2D: Shop buys from Distributor - load available distributors
         await loadShopDistributors(userOrgData.id)
       }
-      
+
       // Auto-fill customer information from organization (for HQ and DIST orders)
       if (userOrgType !== 'SHOP') {
         setCustomerName(userOrgData.contact_name || userOrgData.org_name)
         setPhoneNumber(userOrgData.contact_phone || '')
-        
+
         // Combine address and address_line2 for delivery address
         const fullAddress = [
           userOrgData.address,
           userOrgData.address_line2
         ].filter(Boolean).join(', ')
-        
+
         setDeliveryAddress(fullAddress || '')
       }
-      
+
     } catch (error) {
       console.error('Error initializing order:', error)
     } finally {
@@ -317,7 +322,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         .eq('org_type_code', orgType)
         .eq('is_active', true)
         .order('org_name')
-      
+
       if (error) throw error
       setAvailableSellerOrgs(data || [])
     } catch (error) {
@@ -341,14 +346,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         `)
         .eq('shop_id', shopId)
         .eq('is_active', true)
-      
+
       if (error) throw error
-      
+
       const distributors: DistributorOption[] = (data || [])
         .filter(item => item.organizations)
         .map(item => {
-          const org: any = Array.isArray(item.organizations) 
-            ? item.organizations[0] 
+          const org: any = Array.isArray(item.organizations)
+            ? item.organizations[0]
             : item.organizations
           return {
             id: org.id,
@@ -357,13 +362,13 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             is_preferred: item.is_preferred || false
           }
         })
-      
+
       setAvailableDistributors(distributors)
-      
+
       // For S2D orders, load products first (shops can order any product from distributor)
       // Don't filter by distributor - distributors act as middlemen
       await loadAvailableProducts('')
-      
+
       // Then auto-select preferred distributor if exists
       const preferred = distributors.find(d => d.is_preferred)
       if (preferred) {
@@ -426,7 +431,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     try {
       const effectiveLock = manufacturerLock !== undefined ? manufacturerLock : lockedManufacturerId
       console.log('🔍 Loading product variants - orderType:', orderType, 'sellerOrgId:', sellerOrgId, 'lockedManufacturerId:', lockedManufacturerId, 'effectiveLock:', effectiveLock)
-      
+
       // Load product variants with product details including subgroups for auto-logic
       let query = supabase
         .from('product_variants')
@@ -455,7 +460,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         `)
         .eq('is_active', true)
         .eq('products.is_active', true)
-      
+
       // Filter by locked manufacturer if order already has products
       if (effectiveLock) {
         console.log('🔒 Order locked to manufacturer:', effectiveLock)
@@ -472,24 +477,24 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       } else {
         console.log('🔓 No manufacturer filter applied - showing all products')
       }
-      
+
       query = query.order('variant_name')
-      
+
       const { data, error } = await query
-      
+
       console.log('📦 Variants query result - data:', data, 'error:', error)
-      
+
       if (error) {
         console.error('❌ Error loading variants:', error)
         throw error
       }
-      
+
       console.log('📦 Raw variants data (first item):', data?.[0])
-      
+
       const formattedVariants = data?.map((v: any) => {
         const product = Array.isArray(v.products) ? v.products[0] : v.products
         const subgroup = Array.isArray(product?.product_subgroups) ? product.product_subgroups[0] : product?.product_subgroups
-        
+
         return {
           id: v.id,
           product_id: v.product_id,
@@ -508,11 +513,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           manufacturer_id: product?.manufacturer_id
         }
       }) || []
-      
+
       console.log('✅ Formatted variants:', formattedVariants)
-      
+
       setAvailableVariants(formattedVariants)
-      
+
       if (formattedVariants.length === 0) {
         const errorMessages = {
           'H2M': 'This manufacturer has no active product variants. Please select a different manufacturer.',
@@ -565,7 +570,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         .select('org_name')
         .eq('id', lockedManufacturerId)
         .single()
-      
+
       return
     }
 
@@ -579,7 +584,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           .single()
 
         if (error) throw error
-        
+
         if (manufacturer) {
           setSellerOrg(manufacturer)
           setSelectedSellerOrgId(manufacturer.id)
@@ -596,7 +601,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       setLockedManufacturerId(variant.manufacturer_id)
       // Reload products to filter by locked manufacturer (pass manufacturer_id directly)
       await loadAvailableProducts(sellerOrg?.id || '', variant.manufacturer_id)
-      
+
       // Show notification about manufacturer lock
       const { data: manufacturer } = await supabase
         .from('organizations')
@@ -607,11 +612,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
     // Auto-logic for case size configuration
     const currentFamily = getProductFamily(variant)
-    
+
     // Determine if we should apply auto-logic
     let shouldAutoSwitch = false
     let autoMessage = ''
-    
+
     if (orderItems.length === 0) {
       // First product - set case size based on family
       if (currentFamily) {
@@ -630,17 +635,17 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           })
           .filter(Boolean)
       )
-      
+
       // Add current family to the set
       if (currentFamily) {
         existingFamilies.add(currentFamily)
       }
-      
+
       // If we now have mixed families, switch to individual mode
       if (existingFamilies.size > 1 && !useIndividualCases) {
         shouldAutoSwitch = true
         setUseIndividualCases(true)
-        
+
         // Update all existing items with their family-based defaults
         const updatedItems = orderItems.map(item => {
           const itemVariant = availableVariants.find(v => v.id === item.variant_id)
@@ -652,7 +657,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           return { ...item, units_per_case: item.units_per_case || unitsPerCase }
         })
         setOrderItems(updatedItems)
-        
+
         autoMessage = 'Switched to Individual case sizes (mixed product families detected)'
       } else if (existingFamilies.size === 1 && !useIndividualCases) {
         // All same family - ensure case size matches
@@ -664,11 +669,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         }
       }
     }
-    
+
     // Determine case size for new item
     let itemCaseSize = unitsPerCase
     let itemQty = unitsPerCase
-    
+
     if (shouldAutoSwitch || useIndividualCases) {
       // In individual mode, use family-specific default
       itemCaseSize = currentFamily ? getDefaultCaseSize(currentFamily) : unitsPerCase
@@ -698,14 +703,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   const handleRemoveProduct = async (variantId: string) => {
     const updatedItems = orderItems.filter(item => item.variant_id !== variantId)
     setOrderItems(updatedItems)
-    
+
     // Reset manufacturer lock when all products are removed
     if (updatedItems.length === 0) {
       console.log('🔓 Unlocking manufacturer - all products removed')
       setLockedManufacturerId(null)
       // Reload products without manufacturer filter (pass null explicitly)
       await loadAvailableProducts(sellerOrg?.id || '', null)
-      
+
       return // Exit early to avoid the generic "Product Removed" toast
     }
   }
@@ -715,25 +720,25 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     // The user can manually adjust units per case if needed
     // Auto-adjusting based on keystroke intermediate values causes bugs
     // (e.g., typing "50000" passes through "50" which was incorrectly triggering case size change)
-    setOrderItems(orderItems.map(item => 
-      item.variant_id === variantId 
-        ? { ...item, qty, line_total: qty * item.unit_price } 
+    setOrderItems(orderItems.map(item =>
+      item.variant_id === variantId
+        ? { ...item, qty, line_total: qty * item.unit_price }
         : item
     ))
   }
 
   const handleUpdatePrice = (variantId: string, price: number) => {
-    setOrderItems(orderItems.map(item => 
-      item.variant_id === variantId 
-        ? { ...item, unit_price: price, line_total: item.qty * price } 
+    setOrderItems(orderItems.map(item =>
+      item.variant_id === variantId
+        ? { ...item, unit_price: price, line_total: item.qty * price }
         : item
     ))
   }
 
   const handleUpdateIndividualUnitsPerCase = (variantId: string, units: number) => {
-    setOrderItems(orderItems.map(item => 
-      item.variant_id === variantId 
-        ? { ...item, units_per_case: units } 
+    setOrderItems(orderItems.map(item =>
+      item.variant_id === variantId
+        ? { ...item, units_per_case: units }
         : item
     ))
   }
@@ -768,6 +773,9 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       if (!orderData) throw new Error('Order not found')
 
       console.log('📝 Loading order for edit:', orderData)
+
+      // Store the order number for editing
+      setEditingOrderNo(orderData.order_no)
 
       // Load buyer organization
       const { data: buyerOrg } = await supabase
@@ -826,10 +834,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       )
 
       console.log('📦 Order items with details:', itemsWithDetails)
-      
+
       // Cast to any to access custom fields not in generated types
       const orderDataAny = orderData as any
-      
+
       console.log('📋 Order data for customer info:', {
         customer_name: orderDataAny.customer_name,
         phone_number: orderDataAny.phone_number,
@@ -857,7 +865,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         const customerMatch = notesText.match(/Customer:\s*([^,]+)/)
         const phoneMatch = notesText.match(/Phone:\s*([^,]+)/)
         const addressMatch = notesText.match(/Address:\s*(.+)/)
-        
+
         setCustomerName(customerMatch ? customerMatch[1].trim() : '')
         setPhoneNumber(phoneMatch ? phoneMatch[1].trim() : '')
         setDeliveryAddress(addressMatch ? addressMatch[1].trim() : '')
@@ -898,7 +906,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       }))
 
       setOrderItems(items)
-      
+
       // Set manufacturer lock if order has items
       if (items.length > 0) {
         const firstVariant = await supabase
@@ -906,7 +914,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           .select('products!inner(manufacturer_id)')
           .eq('id', items[0].variant_id)
           .single()
-        
+
         if (firstVariant.data) {
           const manufacturerId = (firstVariant.data.products as any)?.manufacturer_id
           if (manufacturerId) {
@@ -969,7 +977,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         const customerMatch = notesText.match(/Customer:\s*([^,]+)/)
         const phoneMatch = notesText.match(/Phone:\s*([^,]+)/)
         const addressMatch = notesText.match(/Address:\s*(.+)/)
-        
+
         setCustomerName(customerMatch ? customerMatch[1].trim() : '')
         setPhoneNumber(phoneMatch ? phoneMatch[1].trim() : '')
         setDeliveryAddress(addressMatch ? addressMatch[1].trim() : '')
@@ -1008,7 +1016,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       }))
 
       setOrderItems(items)
-      
+
       // Set manufacturer lock if order has items
       if (items.length > 0) {
         const firstVariant = await supabase
@@ -1016,7 +1024,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           .select('products!inner(manufacturer_id)')
           .eq('id', items[0].variant_id)
           .single()
-        
+
         if (firstVariant.data) {
           const manufacturerId = (firstVariant.data.products as any)?.manufacturer_id
           if (manufacturerId) {
@@ -1043,7 +1051,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       const itemUnitsPerCase = item.units_per_case || unitsPerCase
       const fullCases = Math.floor(item.qty / itemUnitsPerCase)
       const remainder = item.qty % itemUnitsPerCase
-      
+
       return {
         variantId: item.variant_id,
         productName: item.product_name,
@@ -1057,16 +1065,16 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
     // Get all products with remainders
     const productsWithRemainders = plan.filter(p => p.remainder > 0)
-    
+
     // Calculate if remainders can be paired into complete cases
     const totalRemainder = productsWithRemainders.reduce((sum, p) => sum + p.remainder, 0)
     const canFormMixedCases = productsWithRemainders.length >= 2
-    
+
     // Use the same case size from the products for mixed cases
     // Pick the first product's case size as the standard for mixed cases
     let suggestedMixedCaseSize = 0
     let mixedCasesNeeded = 0
-    
+
     if (canFormMixedCases && totalRemainder > 0) {
       // Use the case size from the first product with remainder
       suggestedMixedCaseSize = productsWithRemainders[0].unitsPerCase
@@ -1099,12 +1107,12 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       // Smart packing validation when using individual case sizes
       if (useIndividualCases) {
         const packingPlan = calculatePackingPlan()
-        
+
         if (packingPlan.hasIssue) {
           const problem = packingPlan.productsWithRemainders[0]
           return
         }
-        
+
         if (packingPlan.canFormMixedCases && packingPlan.totalRemainder > 0) {
           // Show info about mixed cases that will be created
           const remainderProducts = packingPlan.productsWithRemainders
@@ -1125,6 +1133,89 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
       const companyId = companyData || userProfile.organization_id
 
+      // Check if we're editing an existing order
+      if (editingOrderId && editingOrderNo) {
+        console.log('📝 Updating existing order:', editingOrderNo)
+
+        // STEP 1: Update order to draft status first (RLS requirement for order_items)
+        const orderUpdateData: any = {
+          seller_org_id: sellerOrg.id,
+          status: 'draft', // Keep as draft during item updates
+          units_per_case: useCustomUnitsPerCase && customUnitsPerCase ? parseInt(customUnitsPerCase) : unitsPerCase,
+          qr_buffer_percent: qrBuffer,
+          extra_qr_master: Math.max(0, Math.min(10, masterQrDuplicates)),
+          has_rfid: enableRFID,
+          has_points: hasPoints,
+          has_lucky_draw: enableLuckyDraw,
+          has_redeem: enableRedeem,
+          notes: notes || `Customer: ${customerName}, Phone: ${phoneNumber}, Address: ${deliveryAddress}`,
+          updated_at: new Date().toISOString()
+        }
+
+        const { error: updateError } = await supabase
+          .from('orders')
+          .update(orderUpdateData)
+          .eq('id', editingOrderId)
+
+        if (updateError) {
+          console.error('Error updating order:', updateError)
+          throw new Error(`Failed to update order: ${updateError.message}`)
+        }
+
+        // STEP 2: Delete existing order items
+        const { error: deleteItemsError } = await supabase
+          .from('order_items')
+          .delete()
+          .eq('order_id', editingOrderId)
+
+        if (deleteItemsError) {
+          console.error('Error deleting old order items:', deleteItemsError)
+          throw new Error(`Failed to update order items: ${deleteItemsError.message}`)
+        }
+
+        // STEP 3: Insert updated order items (works because order is draft)
+        const itemsToInsert = orderItems.map(item => ({
+          order_id: editingOrderId,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          qty: item.qty,
+          unit_price: item.unit_price,
+          company_id: companyId,
+          ...(useIndividualCases && item.units_per_case ? { units_per_case: item.units_per_case } : {})
+        }))
+
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(itemsToInsert)
+
+        if (itemsError) {
+          console.error('Error inserting updated order items:', itemsError)
+          throw new Error(`Failed to update order items: ${itemsError.message}`)
+        }
+
+        // STEP 4: Update status to submitted if requested (after items are inserted)
+        if (status === 'submitted') {
+          const { error: statusUpdateError } = await supabase
+            .from('orders')
+            .update({ status: 'submitted' })
+            .eq('id', editingOrderId)
+
+          if (statusUpdateError) {
+            console.error('Error updating order status:', statusUpdateError)
+            throw new Error(`Failed to submit order: ${statusUpdateError.message}`)
+          }
+        }
+
+        console.log('✅ Order updated successfully:', editingOrderNo)
+
+        // Navigate back to orders list
+        if (onViewChange) {
+          onViewChange('orders')
+        }
+        return
+      }
+
+      // CREATING NEW ORDER (not editing)
       // For H2M orders: Get the HQ's default warehouse
       let warehouseOrgId: string | null = null
       if (orderType === 'H2M' && buyerOrg) {
@@ -1153,21 +1244,21 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       const now = new Date()
       const monthDay = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
       const orderPrefix = `${orderType}-${monthDay}-`
-      
+
       // Fetch existing orders for today to find available sequence numbers
       const { data: existingOrders, error: orderQueryError } = await supabase
         .from('orders')
         .select('order_no')
         .like('order_no', `${orderPrefix}%`)
         .order('order_no', { ascending: true })
-      
+
       if (orderQueryError) {
         console.error('❌ Error fetching existing orders:', orderQueryError)
         throw orderQueryError
       }
 
       console.log(`🔍 Found ${existingOrders?.length || 0} existing orders with prefix ${orderPrefix}:`, existingOrders?.map(o => o.order_no))
-      
+
       // Extract sequence numbers from existing orders
       const usedSequences = new Set(
         (existingOrders || [])
@@ -1177,18 +1268,18 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           })
           .filter(num => !isNaN(num))
       )
-      
+
       console.log(`📊 Used sequence numbers:`, Array.from(usedSequences).sort((a, b) => a - b))
-      
+
       // Find the lowest available sequence number (including deleted slots)
       let sequenceNumber = 1
       while (usedSequences.has(sequenceNumber)) {
         sequenceNumber++
       }
-      
+
       const sequenceSuffix = String(sequenceNumber).padStart(2, '0')
       const generatedOrderNo = `${orderPrefix}${sequenceSuffix}`
-      
+
       console.log(`📝 Generated order number: ${generatedOrderNo} (sequence ${sequenceNumber}, reusing gaps if any)`)
 
       // Fetch seller organization's payment terms
@@ -1303,16 +1394,16 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     const subtotal = orderItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
     const tax = subtotal * 0.0 // Adjust tax rate as needed
     const total = subtotal + tax
-    
+
     // Calculate total cases based on individual or global units per case
     const totalCases = useIndividualCases
       ? orderItems.reduce((sum, item) => sum + Math.ceil(item.qty / (item.units_per_case || unitsPerCase)), 0)
       : Math.ceil(orderItems.reduce((sum, item) => sum + item.qty, 0) / unitsPerCase)
-    
+
     const masterQR = totalCases
     // Calculate unique QR per item with buffer, then sum them up (matches Product Selection logic)
     const uniqueQR = orderItems.reduce((sum, item) => sum + Math.round(item.qty + (item.qty * qrBuffer / 100)), 0)
-    
+
     return { subtotal, tax, total, totalCases, masterQR, uniqueQR }
   }
 
@@ -1331,9 +1422,9 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleBack}
             className="gap-2 -ml-2"
           >
@@ -1514,7 +1605,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         Smart Case Size Configuration
                       </p>
                       <p className="text-xs text-blue-700 mt-1">
-                        {useIndividualCases 
+                        {useIndividualCases
                           ? 'Individual mode: Each product has its own case size based on product family (Cellera Hero/Zero: 100, Ellbow Cat Treat: 20, S.Box: 50, S.Line: 200)'
                           : `Global mode: All products use ${unitsPerCase} units per case`}
                       </p>
@@ -1522,7 +1613,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   </div>
                 </div>
               )}
-              
+
               {/* Case Size Configuration Mode Toggle */}
               <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                 <label className="block text-sm font-medium text-gray-900 mb-3">
@@ -1643,7 +1734,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   <p className="text-xs text-gray-500 mt-1">Additional QR codes for manufacturing (default 10%)</p>
                 </div>
               </div>
-              
+
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Master QR copies per case
@@ -1666,7 +1757,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   How many duplicate Master QR stickers to print per case (0-10). Default is 5. Example: 0 = only 1 sticker per case, 5 = 6 stickers per case, 10 = 11 stickers per case.
                 </p>
               </div>
-              
+
               <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
                 <input
                   type="checkbox"
@@ -1749,15 +1840,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       size={Math.min(8, Math.max(3, availableVariants.filter(v => {
                         const alreadyAdded = orderItems.find(item => item.variant_id === v.id)
                         if (alreadyAdded) return false
-                        
+
                         const matchesProduct = !selectedProductFilter || v.product_name === selectedProductFilter
                         const searchLower = productSearchQuery.toLowerCase()
-                        const matchesSearch = !productSearchQuery || 
+                        const matchesSearch = !productSearchQuery ||
                           v.variant_name.toLowerCase().includes(searchLower) ||
                           v.product_name.toLowerCase().includes(searchLower) ||
                           (v.attributes?.strength && String(v.attributes.strength).toLowerCase().includes(searchLower)) ||
                           (v.attributes?.nicotine && String(v.attributes.nicotine).toLowerCase().includes(searchLower))
-                        
+
                         return matchesProduct && matchesSearch
                       }).length))}
                     >
@@ -1766,15 +1857,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           const filteredVariants = availableVariants.filter(v => {
                             const alreadyAdded = orderItems.find(item => item.variant_id === v.id)
                             if (alreadyAdded) return false
-                            
+
                             const matchesProduct = !selectedProductFilter || v.product_name === selectedProductFilter
                             const searchLower = productSearchQuery.toLowerCase()
-                            const matchesSearch = !productSearchQuery || 
+                            const matchesSearch = !productSearchQuery ||
                               v.variant_name.toLowerCase().includes(searchLower) ||
                               v.product_name.toLowerCase().includes(searchLower) ||
                               (v.attributes?.strength && String(v.attributes.strength).toLowerCase().includes(searchLower)) ||
                               (v.attributes?.nicotine && String(v.attributes.nicotine).toLowerCase().includes(searchLower))
-                            
+
                             return matchesProduct && matchesSearch
                           })
                           return filteredVariants.length === 0 ? 'No variants available' : `Select a variant (${filteredVariants.length} available)`
@@ -1784,15 +1875,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         .filter(variant => {
                           const alreadyAdded = orderItems.find(item => item.variant_id === variant.id)
                           if (alreadyAdded) return false
-                          
+
                           const matchesProduct = !selectedProductFilter || variant.product_name === selectedProductFilter
                           const searchLower = productSearchQuery.toLowerCase()
-                          const matchesSearch = !productSearchQuery || 
+                          const matchesSearch = !productSearchQuery ||
                             variant.variant_name.toLowerCase().includes(searchLower) ||
                             variant.product_name.toLowerCase().includes(searchLower) ||
                             (variant.attributes?.strength && String(variant.attributes.strength).toLowerCase().includes(searchLower)) ||
                             (variant.attributes?.nicotine && String(variant.attributes.nicotine).toLowerCase().includes(searchLower))
-                          
+
                           return matchesProduct && matchesSearch
                         })
                         .sort((a, b) => a.product_name.localeCompare(b.product_name) || a.variant_name.localeCompare(b.variant_name))
@@ -1805,8 +1896,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           )
                         })}
                     </select>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="bg-blue-600 text-white hover:bg-blue-700 shrink-0"
                       onClick={handleAddProduct}
                       disabled={!selectedVariantId}
@@ -1818,26 +1909,26 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
                 {availableVariants.length === 0 && (
                   <p className="text-xs text-red-600 mt-1">
-                    {orderType === 'H2M' 
-                      ? 'No active products available. Products will be filtered by manufacturer once added.' 
+                    {orderType === 'H2M'
+                      ? 'No active products available. Products will be filtered by manufacturer once added.'
                       : 'No active products available. Please contact your administrator.'}
                   </p>
                 )}
               </div>
-                
-                {/* Product List */}
-                {orderItems.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                    <p className="text-gray-500 text-sm">No products selected. Add products to create your order.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {orderItems.map((item) => {
-                      const itemVariant = availableVariants.find(v => v.id === item.variant_id)
-                      const productFamily = itemVariant ? getProductFamily(itemVariant) : null
-                      const familyDefaultSize = productFamily ? getDefaultCaseSize(productFamily) : null
-                      
-                      return (
+
+              {/* Product List */}
+              {orderItems.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <p className="text-gray-500 text-sm">No products selected. Add products to create your order.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {orderItems.map((item) => {
+                    const itemVariant = availableVariants.find(v => v.id === item.variant_id)
+                    const productFamily = itemVariant ? getProductFamily(itemVariant) : null
+                    const familyDefaultSize = productFamily ? getDefaultCaseSize(productFamily) : null
+
+                    return (
                       <div key={item.variant_id} className="border border-gray-200 rounded-lg p-4 bg-white">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
@@ -1928,7 +2019,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             />
                           </div>
                         </div>
-                        
+
                         {/* Auto-calculated summary */}
                         <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-4 gap-2 text-xs">
                           <div>
@@ -1936,7 +2027,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             {useIndividualCases && item.qty % (item.units_per_case || unitsPerCase) !== 0 ? (
                               <>
                                 <span className="font-semibold">
-                                  {Math.floor(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} full + 
+                                  {Math.floor(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} full +
                                   {(item.qty % (item.units_per_case || unitsPerCase)).toLocaleString()} units
                                 </span>
                                 {useIndividualCases && (
@@ -1966,18 +2057,18 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           </div>
                         </div>
                       </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Packing Plan Summary - Show when using individual cases with remainders */}
           {useIndividualCases && orderItems.length > 0 && (() => {
             const packingPlan = calculatePackingPlan()
             if (packingPlan.productsWithRemainders.length === 0) return null
-            
+
             return (
               <Card className={packingPlan.hasIssue ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}>
                 <CardHeader className="border-b bg-white">
@@ -2022,7 +2113,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             • {p.fullCases} case(s) of {p.productName} - {p.variantName} ({p.unitsPerCase}/case)
                           </div>
                         ))}
-                        
+
                         {packingPlan.productsWithRemainders.length > 0 && (
                           <>
                             <div className="text-sm font-semibold text-amber-700 mt-3">Mixed Case(s):</div>
@@ -2188,15 +2279,15 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     {orderItems.length === 0 && ' Add at least one product.'}
                   </div>
                 )}
-                <Button 
+                <Button
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleCreateOrder}
                   disabled={saving || !sellerOrg || !customerName || !deliveryAddress || orderItems.length === 0}
                 >
-                  {saving ? 'Creating...' : 'Create Order'}
+                  {saving ? (editingOrderId ? 'Updating...' : 'Creating...') : (editingOrderId ? 'Update Order' : 'Create Order')}
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleSaveAsDraft}
                   disabled={saving || !sellerOrg || !customerName || !deliveryAddress || orderItems.length === 0}

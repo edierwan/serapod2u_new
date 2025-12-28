@@ -24,6 +24,8 @@ export interface Organization {
   company_id?: string | null
   state?: string | null
   warranty_bonus?: number | null
+  signature_type?: 'none' | 'upload' | 'electronic'
+  signature_url?: string | null
 }
 
 export type OrganizationFormData = Partial<Organization>

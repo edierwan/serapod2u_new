@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
           if (pdfGenerated >= docLastUpdate) {
             console.log('📄 Serving cached PDF:', cachedPdf.file_name)
-            
+
             // Download from storage
             const { data: pdfBlob, error: downloadError } = await supabase.storage
               .from('order-documents')
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     // Skip internal upload in generation function, we handle it here with service role
     const { buffer, filename, sizeInfo } = await generatePdfForOrderDocument(orderId, type, {
       documentId,
-      skipUpload: true 
+      skipUpload: true
     })
 
     // Cache the generated PDF if documentId is provided
@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
           .upload(pdfStoragePath, buffer, {
             contentType: 'application/pdf',
             cacheControl: '3600',
-            upsert: false
+            upsert: true  // Allow overwriting existing files
           })
 
         if (uploadError) {
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
               company_id: companyId,
               uploaded_by: user?.id
             })
-          
+
           if (insertError) {
             console.error('Error saving PDF cache reference:', insertError)
           } else {
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-  return new NextResponse(buffer as any, {
+    return new NextResponse(buffer as any, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,

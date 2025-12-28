@@ -11,10 +11,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getStorageUrl } from '@/lib/utils'
-import { 
-  Building2, 
-  Search, 
-  Filter, 
+import {
+  Building2,
+  Search,
+  Filter,
   Plus,
   Edit,
   Eye,
@@ -36,7 +36,9 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
-  Info
+  Info,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import {
   Dialog,
@@ -154,7 +156,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('list')
   const [sortField, setSortField] = useState<SortField>('org_name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [selectedShopForDistributors, setSelectedShopForDistributors] = useState<Organization | null>(null)
@@ -167,6 +169,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [editingField, setEditingField] = useState<{ orgId: string; field: 'name' | 'phone' } | null>(null)
   const [editValue, setEditValue] = useState('')
   const [isSavingQuickEdit, setIsSavingQuickEdit] = useState(false)
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(10)
   // Delete dependencies modal state
   const [deleteDependenciesModal, setDeleteDependenciesModal] = useState<{
     show: boolean
@@ -186,7 +191,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         console.log('🔄 Refresh flag detected, will refresh link data...')
 
         sessionStorage.removeItem('needsLinkRefresh')
-        
+
         // Longer delay to ensure DB writes are complete and indexes updated (1.5 seconds)
         setTimeout(() => {
           console.log('🔄 Refreshing organization and link data...')
@@ -200,9 +205,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         checkDistributorShopLinks()
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const checkShopDistributorLinks = async () => {
@@ -217,22 +222,22 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         .eq('is_active', true)
 
       if (error) throw error
-      
+
       console.log('📊 Shop-Distributor links found:', data?.length || 0, data)
-      
+
       const shopIds = new Set((data || []).map((sd: { shop_id: string }) => sd.shop_id))
       setShopsWithDistributors(shopIds)
-      
+
       // Build map of shop_id -> [distributor names]
       const shopDistMap = new Map<string, string[]>()
-      ;(data || []).forEach((sd: any) => {
-        if (!shopDistMap.has(sd.shop_id)) {
-          shopDistMap.set(sd.shop_id, [])
-        }
-        if (sd.distributor?.org_name) {
-          shopDistMap.get(sd.shop_id)!.push(sd.distributor.org_name)
-        }
-      })
+        ; (data || []).forEach((sd: any) => {
+          if (!shopDistMap.has(sd.shop_id)) {
+            shopDistMap.set(sd.shop_id, [])
+          }
+          if (sd.distributor?.org_name) {
+            shopDistMap.get(sd.shop_id)!.push(sd.distributor.org_name)
+          }
+        })
       setShopLinkedDistributors(shopDistMap)
       console.log('🏪 Shops with distributors:', Array.from(shopIds))
     } catch (error) {
@@ -252,22 +257,22 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         .eq('is_active', true)
 
       if (error) throw error
-      
+
       console.log('📊 Distributor-Shop links found:', data?.length || 0, data)
-      
+
       const distributorIds = new Set((data || []).map((sd: { distributor_id: string }) => sd.distributor_id))
       setDistributorsWithShops(distributorIds)
-      
+
       // Build map of distributor_id -> [shop names]
       const distShopMap = new Map<string, string[]>()
-      ;(data || []).forEach((sd: any) => {
-        if (!distShopMap.has(sd.distributor_id)) {
-          distShopMap.set(sd.distributor_id, [])
-        }
-        if (sd.shop?.org_name) {
-          distShopMap.get(sd.distributor_id)!.push(sd.shop.org_name)
-        }
-      })
+        ; (data || []).forEach((sd: any) => {
+          if (!distShopMap.has(sd.distributor_id)) {
+            distShopMap.set(sd.distributor_id, [])
+          }
+          if (sd.shop?.org_name) {
+            distShopMap.get(sd.distributor_id)!.push(sd.shop.org_name)
+          }
+        })
       setDistributorLinkedShops(distShopMap)
       console.log('🚚 Distributors with shops:', Array.from(distributorIds))
     } catch (error) {
@@ -280,7 +285,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
     try {
       setLoading(true)
-      
+
       // Build the query based on user role and organization
       let query = supabase
         .from('organizations')
@@ -291,7 +296,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           payment_terms(term_name, deposit_percentage, balance_percentage)
         `)
         .eq('is_active', true)  // Only fetch active organizations
-      
+
       // Apply access control based on user role
       // Super admin (role_level 1-50) can see all organizations
       // Others see their org and its children
@@ -310,13 +315,13 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
       // Get all org IDs for batch stats query
       const orgIds = (data as any[])?.map((org: any) => org.id) || []
-      
+
       console.log('🔍 Fetching stats for org IDs:', orgIds)
-      
+
       // Use the database function to get all stats in ONE efficient query
       const { data: statsData, error: statsError } = await (supabase as any)
         .rpc('get_org_stats_batch', { p_org_ids: orgIds })
-      
+
       if (statsError) {
         console.error('❌ Error fetching org stats:', statsError)
       } else {
@@ -325,17 +330,17 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
       // Create a map of stats by org_id for quick lookup
       const statsMap = new Map<string, any>()
-      ;(statsData || []).forEach((stat: any) => {
-        console.log(`📊 Org ${stat.org_type_code}:`, {
-          org_id: stat.org_id,
-          distributors_count: stat.distributors_count,
-          shops_count: stat.shops_count,
-          products_count: stat.products_count,
-          users_count: stat.users_count,
-          orders_count: stat.orders_count
+        ; (statsData || []).forEach((stat: any) => {
+          console.log(`📊 Org ${stat.org_type_code}:`, {
+            org_id: stat.org_id,
+            distributors_count: stat.distributors_count,
+            shops_count: stat.shops_count,
+            products_count: stat.products_count,
+            users_count: stat.users_count,
+            orders_count: stat.orders_count
+          })
+          statsMap.set(stat.org_id, stat)
         })
-        statsMap.set(stat.org_id, stat)
-      })
 
       console.log('📊 Organization Stats:', statsMap)
 
@@ -349,7 +354,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           shops_count: 0,
           orders_count: 0
         }
-        
+
         return {
           ...org,
           org_types: Array.isArray(org.org_types) ? org.org_types[0] : org.org_types,
@@ -372,14 +377,14 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   }
 
   const filteredOrganizations = organizations.filter(org => {
-    const matchesSearch = 
+    const matchesSearch =
       org.org_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       org.org_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (org.contact_name && org.contact_name.toLowerCase().includes(searchTerm.toLowerCase()))
-    
+
     const matchesType = filterType === 'all' || org.org_type_code === filterType
-    const matchesStatus = 
-      filterStatus === 'all' || 
+    const matchesStatus =
+      filterStatus === 'all' ||
       (filterStatus === 'active' && org.is_active) ||
       (filterStatus === 'inactive' && !org.is_active)
 
@@ -411,6 +416,18 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
     return 0
   })
+
+  // Pagination calculations
+  const totalOrganizations = filteredOrganizations.length
+  const totalPages = Math.ceil(totalOrganizations / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedOrganizations = filteredOrganizations.slice(startIndex, endIndex)
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, filterType, filterStatus])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -460,7 +477,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     // Store selected org for parent to handle
     sessionStorage.setItem('selectedOrgId', org.id)
     sessionStorage.setItem('selectedOrgType', org.org_type_code)
-    
+
     // Only HQ goes to Settings
     if (org.org_type_code === 'HQ') {
       if (onViewChange) {
@@ -485,7 +502,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     try {
       // Find the parent HQ organization
       const parentHQ = organizations.find(o => o.id === warehouse.parent_org_id && o.org_type_code === 'HQ')
-      
+
       if (!parentHQ) {
         toast({
           title: "Error",
@@ -542,7 +559,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     }
   }
 
-    const handleDeleteOrganization = async (orgId: string) => {
+  const handleDeleteOrganization = async (orgId: string) => {
     try {
       const org = organizations.find(o => o.id === orgId)
       const orgName = org?.org_name || 'Organization'
@@ -565,7 +582,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       // Check the response from the function
       if (!data || !data.success) {
         console.error('Delete failed:', data || 'No response data')
-        
+
         // Handle null or missing data
         if (!data) {
           toast({
@@ -575,7 +592,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           })
           return
         }
-        
+
         // Show user-friendly error messages based on error code
         if (data.error_code === 'HAS_ORDERS') {
           toast({
@@ -614,14 +631,14 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       // Success! Show detailed deletion summary
       const deletedRecords = data.deleted_related_records || {}
       const summary = []
-      
+
       if (deletedRecords.users > 0) summary.push(`${deletedRecords.users} user(s)`)
       if (deletedRecords.shop_distributors > 0) summary.push(`${deletedRecords.shop_distributors} distributor link(s)`)
       if (deletedRecords.distributor_products > 0) summary.push(`${deletedRecords.distributor_products} product link(s)`)
       if (deletedRecords.inventory_records > 0) summary.push(`${deletedRecords.inventory_records} inventory record(s)`)
 
-      const summaryText = summary.length > 0 
-        ? ` Also removed: ${summary.join(', ')}.` 
+      const summaryText = summary.length > 0
+        ? ` Also removed: ${summary.join(', ')}.`
         : ''
 
       toast({
@@ -630,10 +647,10 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       })
 
       setDeleteConfirmation({ show: false, orgId: null })
-      
+
       // Refresh the organizations list
       fetchOrganizations()
-      
+
       // Refresh the relationship text (Supplying To / Additional Distributors)
       checkShopDistributorLinks()
       checkDistributorShopLinks()
@@ -706,11 +723,11 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   // Check organization dependencies before deleting
   const checkDependencies = async (orgId: string) => {
     setDeleteDependenciesModal({ show: true, loading: true, deleting: false, orgId, data: null })
-    
+
     try {
       const { data, error } = await (supabase as any)
         .rpc('check_organization_dependencies', { p_org_id: orgId })
-      
+
       if (error) {
         console.error('Error checking dependencies:', error)
         setDeleteDependenciesModal(prev => ({
@@ -723,7 +740,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         }))
         return
       }
-      
+
       setDeleteDependenciesModal(prev => ({
         ...prev,
         loading: false,
@@ -751,7 +768,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const proceedWithDeletion = async () => {
     const orgId = deleteDependenciesModal.orgId
     if (!orgId) return
-    
+
     setDeleteDependenciesModal(prev => ({ ...prev, deleting: true }))
     await handleDeleteOrganization(orgId)
     setDeleteDependenciesModal({ show: false, loading: false, deleting: false, orgId: null, data: null })
@@ -875,14 +892,14 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     {getStatusText(org.is_active, org.is_verified)}
                   </Badge>
                 </div>
-                
+
                 {/* Logo and Type Badges Row */}
                 <div className="flex items-start gap-4">
                   {/* Organization Logo - Fixed size container with contain */}
                   <div className="w-14 h-14 rounded-lg border border-gray-200 bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
                     {org.logo_url ? (
-                      <img 
-                        src={getStorageUrl(org.logo_url) || org.logo_url} 
+                      <img
+                        src={getStorageUrl(org.logo_url) || org.logo_url}
                         alt={`${org.org_name} logo`}
                         className="w-full h-full object-contain p-1"
                       />
@@ -894,21 +911,21 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Type and Payment Badges */}
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     <Badge className={`${getOrgTypeColor(org.org_type_code)} text-xs`}>
                       {org.org_types?.type_name || org.org_type_code}
                     </Badge>
-                    {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') && 
-                     (org as any).payment_terms && (
-                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
-                        💰 {(org as any).payment_terms.deposit_percentage}/{(org as any).payment_terms.balance_percentage} Split
-                      </Badge>
-                    )}
+                    {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') &&
+                      (org as any).payment_terms && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                          💰 {(org as any).payment_terms.deposit_percentage}/{(org as any).payment_terms.balance_percentage} Split
+                        </Badge>
+                      )}
                   </div>
                 </div>
-                
+
                 {/* Organization Name and Code */}
                 <div className="mt-4">
                   <h3 className="font-semibold text-gray-900 text-base leading-tight line-clamp-1">
@@ -916,16 +933,16 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   </h3>
                   <p className="text-sm text-gray-500 mt-0.5">
                     {org.org_code}
-                    {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') && 
-                     (org as any).payment_terms && (
-                      <span className="text-purple-600 ml-1.5">
-                        • {(org as any).payment_terms.deposit_percentage}% / {(org as any).payment_terms.balance_percentage}% split
-                      </span>
-                    )}
+                    {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') &&
+                      (org as any).payment_terms && (
+                        <span className="text-purple-600 ml-1.5">
+                          • {(org as any).payment_terms.deposit_percentage}% / {(org as any).payment_terms.balance_percentage}% split
+                        </span>
+                      )}
                   </p>
                 </div>
               </div>
-              
+
               {/* Card Content */}
               <CardContent className="px-5 pb-5 pt-0 space-y-3">
                 {/* Contact Info - Compact Grid */}
@@ -933,8 +950,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   {/* Contact Name */}
                   <div className="flex items-center gap-2 text-sm">
                     <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && 
-                     editingField?.orgId === org.id && editingField?.field === 'name' ? (
+                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') &&
+                      editingField?.orgId === org.id && editingField?.field === 'name' ? (
                       <div className="flex items-center gap-2 flex-1">
                         <Input
                           value={editValue}
@@ -966,8 +983,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   {/* Contact Phone */}
                   <div className="flex items-center gap-2 text-sm">
                     <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && 
-                     editingField?.orgId === org.id && editingField?.field === 'phone' ? (
+                    {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') &&
+                      editingField?.orgId === org.id && editingField?.field === 'phone' ? (
                       <div className="flex items-center gap-2 flex-1">
                         <Input
                           value={editValue}
@@ -1019,33 +1036,33 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   (org.org_type_code === 'SHOP' && shopLinkedDistributors.has(org.id)) ||
                   (org.org_type_code === 'DIST' && distributorLinkedShops.has(org.id))
                 ) && (
-                  <div className="text-xs text-gray-500 bg-blue-50 rounded-lg px-3 py-2">
-                    {/* Shop's Parent Distributor */}
-                    {org.parent_org && org.org_type_code === 'SHOP' && (
-                      <p className="mb-1">
-                        Ordering From: <span className="font-medium text-blue-600">{org.parent_org.org_name}</span>
-                      </p>
-                    )}
-                    
-                    {/* Shop's Additional Distributors */}
-                    {org.org_type_code === 'SHOP' && shopLinkedDistributors.has(org.id) && (
-                      <p>
-                        Additional Distributors: <span className="font-medium">
-                          {shopLinkedDistributors.get(org.id)?.join(', ') || 'None'}
-                        </span>
-                      </p>
-                    )}
-                    
-                    {/* Distributor's Linked Shops */}
-                    {org.org_type_code === 'DIST' && distributorLinkedShops.has(org.id) && (
-                      <p>
-                        Supplying To: <span className="font-medium text-green-600">
-                          {distributorLinkedShops.get(org.id)?.join(', ') || 'None'}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                )}
+                    <div className="text-xs text-gray-500 bg-blue-50 rounded-lg px-3 py-2">
+                      {/* Shop's Parent Distributor */}
+                      {org.parent_org && org.org_type_code === 'SHOP' && (
+                        <p className="mb-1">
+                          Ordering From: <span className="font-medium text-blue-600">{org.parent_org.org_name}</span>
+                        </p>
+                      )}
+
+                      {/* Shop's Additional Distributors */}
+                      {org.org_type_code === 'SHOP' && shopLinkedDistributors.has(org.id) && (
+                        <p>
+                          Additional Distributors: <span className="font-medium">
+                            {shopLinkedDistributors.get(org.id)?.join(', ') || 'None'}
+                          </span>
+                        </p>
+                      )}
+
+                      {/* Distributor's Linked Shops */}
+                      {org.org_type_code === 'DIST' && distributorLinkedShops.has(org.id) && (
+                        <p>
+                          Supplying To: <span className="font-medium text-green-600">
+                            {distributorLinkedShops.get(org.id)?.join(', ') || 'None'}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                 {/* Stats - Compact Design */}
                 <div className="grid grid-cols-3 gap-1 py-3 bg-gray-50 rounded-lg">
@@ -1121,9 +1138,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 {/* Actions - Clean Button Row */}
                 <div className="flex gap-2 pt-3 border-t border-gray-100">
                   {org.org_type_code === 'SHOP' && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="flex-1 h-9 text-xs font-medium hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
                       onClick={() => {
                         setSelectedShopForDistributors(org)
@@ -1135,9 +1152,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </Button>
                   )}
                   {org.org_type_code === 'DIST' && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="flex-1 h-9 text-xs font-medium hover:bg-green-50 hover:text-green-700 hover:border-green-300"
                       onClick={() => {
                         setSelectedDistributorForShops(org)
@@ -1149,14 +1166,13 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </Button>
                   )}
                   {org.org_type_code === 'WH' && org.parent_org_id && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className={`flex-1 h-9 text-xs font-medium ${
-                        organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id 
-                          ? 'bg-blue-50 text-blue-700 border-blue-300' 
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`flex-1 h-9 text-xs font-medium ${organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id
+                          ? 'bg-blue-50 text-blue-700 border-blue-300'
                           : 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
-                      }`}
+                        }`}
                       onClick={() => handleSetDefaultWarehouse(org)}
                       disabled={organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id}
                     >
@@ -1164,18 +1180,18 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       {organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? 'Default ✓' : 'Default'}
                     </Button>
                   )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="flex-1 h-9 text-xs font-medium hover:bg-gray-100"
                     onClick={() => handleEditOrganization(org)}
                   >
                     <Edit className="w-3.5 h-3.5 mr-1.5" />
                     Edit
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="flex-1 h-9 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200 hover:border-red-300"
                     onClick={() => confirmDelete(org.id)}
                   >
@@ -1200,8 +1216,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               <TableHeader>
                 <TableRow>
                   <TableHead>
-                    <button 
-                      onClick={() => handleSort('org_name')} 
+                    <button
+                      onClick={() => handleSort('org_name')}
                       className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                     >
                       Organization
@@ -1213,8 +1229,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </button>
                   </TableHead>
                   <TableHead>
-                    <button 
-                      onClick={() => handleSort('org_type_code')} 
+                    <button
+                      onClick={() => handleSort('org_type_code')}
                       className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                     >
                       Type
@@ -1226,8 +1242,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </button>
                   </TableHead>
                   <TableHead>
-                    <button 
-                      onClick={() => handleSort('contact_name')} 
+                    <button
+                      onClick={() => handleSort('contact_name')}
                       className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                     >
                       Contact
@@ -1239,8 +1255,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </button>
                   </TableHead>
                   <TableHead>
-                    <button 
-                      onClick={() => handleSort('city')} 
+                    <button
+                      onClick={() => handleSort('city')}
                       className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                     >
                       Location
@@ -1251,32 +1267,18 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       )}
                     </button>
                   </TableHead>
-                  <TableHead>Linked To</TableHead>
-                  <TableHead>
-                    <button 
-                      onClick={() => handleSort('is_active')} 
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
-                    >
-                      Status
-                      {sortField === 'is_active' ? (
-                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
-                      ) : (
-                        <ArrowUpDown className="w-4 h-4 opacity-30" />
-                      )}
-                    </button>
-                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrganizations.map((org) => (
+                {paginatedOrganizations.map((org) => (
                   <TableRow key={org.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         {/* Organization Logo/Avatar */}
                         <Avatar className="w-10 h-10 rounded-lg flex-shrink-0">
-                          <AvatarImage 
-                            src={getStorageUrl(org.logo_url) || org.logo_url || undefined} 
+                          <AvatarImage
+                            src={getStorageUrl(org.logo_url) || org.logo_url || undefined}
                             alt={`${org.org_name} logo`}
                             className="object-cover"
                           />
@@ -1286,7 +1288,6 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         </Avatar>
                         <div>
                           <div className="font-medium">{org.org_name}</div>
-                          <div className="text-sm text-gray-500">{org.org_code}</div>
                         </div>
                       </div>
                     </TableCell>
@@ -1299,80 +1300,20 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       <div className="text-sm">
                         <div className="font-medium">{org.contact_name || '-'}</div>
                         <div className="text-gray-500">{org.contact_phone || '-'}</div>
-                        <div className="text-gray-500 truncate max-w-[200px]">{org.contact_email || '-'}</div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
                         <div>{org.city || 'Not updated'}</div>
-                        <div className="text-gray-500 text-xs">State ID: {org.state_id ? 'Set' : 'Not set'}</div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {/* SHOP: Show linked distributors and parent org */}
-                      {org.org_type_code === 'SHOP' && (shopLinkedDistributors.has(org.id) || org.parent_org) ? (
-                        <div className="text-sm space-y-1">
-                          {/* Show parent org */}
-                          {org.parent_org && (
-                            <div>
-                              <div className="text-xs text-gray-500">Ordering From:</div>
-                              <div className="font-medium text-blue-600">{org.parent_org.org_name}</div>
-                              <div className="text-gray-500 text-xs">{org.parent_org.org_code}</div>
-                            </div>
-                          )}
-                          {/* Show linked distributors from shop_distributors table */}
-                          {shopLinkedDistributors.has(org.id) && (
-                            <div className="mt-2 pt-2 border-t">
-                              <div className="text-xs text-gray-500">Additional Distributors:</div>
-                              <div className="font-medium text-blue-600">
-                                {shopLinkedDistributors.get(org.id)?.join(', ') || 'None'}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : org.org_type_code === 'SHOP' && !shopLinkedDistributors.has(org.id) && !org.parent_org ? (
-                        <span className="text-sm text-gray-400">-</span>
-                      ) : null}
-                      
-                      {/* DISTRIBUTOR: Show supplying to (linked shops) */}
-                      {org.org_type_code === 'DIST' && distributorLinkedShops.has(org.id) ? (
-                        <div className="text-sm space-y-1">
-                          <div>
-                            <div className="text-xs text-gray-500">Supplying To:</div>
-                            <div className="font-medium text-blue-600">
-                              {distributorLinkedShops.get(org.id)?.join(', ') || 'None'}
-                            </div>
-                          </div>
-                        </div>
-                      ) : org.org_type_code === 'DIST' && !distributorLinkedShops.has(org.id) ? (
-                        <span className="text-sm text-gray-400">-</span>
-                      ) : null}
-                      
-                      {/* OTHER TYPES: Show parent or root level */}
-                      {org.org_type_code !== 'SHOP' && org.org_type_code !== 'DIST' && org.org_type_code !== 'HQ' && org.parent_org ? (
-                        <div className="text-sm space-y-1">
-                          <div>
-                            <div className="text-xs text-gray-500">Under:</div>
-                            <div className="font-medium">{org.parent_org.org_name}</div>
-                            <div className="text-gray-500">{org.parent_org.org_code}</div>
-                          </div>
-                        </div>
-                      ) : org.org_type_code === 'HQ' ? (
-                        <span className="text-sm text-gray-400">Root Level</span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(org.is_active, org.is_verified)}>
-                        {getStatusText(org.is_active, org.is_verified)}
-                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         {/* Manage Distributors button for SHOP organizations */}
                         {org.org_type_code === 'SHOP' && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-8 w-8 p-0"
                             onClick={() => {
                               setSelectedShopForDistributors(org)
@@ -1380,16 +1321,16 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             }}
                             title="Manage Distributors"
                           >
-                            <LinkIcon 
-                              className={`w-4 h-4 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`} 
+                            <LinkIcon
+                              className={`w-4 h-4 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
                             />
                           </Button>
                         )}
                         {/* Manage Shops button for DIST organizations */}
                         {org.org_type_code === 'DIST' && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-8 w-8 p-0"
                             onClick={() => {
                               setSelectedDistributorForShops(org)
@@ -1397,23 +1338,23 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             }}
                             title="Manage Shops"
                           >
-                            <LinkIcon 
-                              className={`w-4 h-4 ${distributorsWithShops.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`} 
+                            <LinkIcon
+                              className={`w-4 h-4 ${distributorsWithShops.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
                             />
                           </Button>
                         )}
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="h-8 w-8 p-0"
                           onClick={() => handleEditOrganization(org)}
                           title="Edit"
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                           onClick={() => confirmDelete(org.id)}
                           title="Delete"
@@ -1426,6 +1367,39 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 ))}
               </TableBody>
             </Table>
+
+            {/* Pagination Controls */}
+            {totalOrganizations > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-700">
+                    Showing {startIndex + 1} to {Math.min(endIndex, totalOrganizations)} of {totalOrganizations} organizations
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-xs text-gray-700">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1586,7 +1560,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     Please delete the following records in order:
                   </p>
                 </div>
-                
+
                 <div className="space-y-3">
                   {deleteDependenciesModal.data.blocking_records
                     ?.filter(r => !r.auto_delete)
@@ -1609,7 +1583,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                           <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                           <p className="text-sm text-blue-700">{record.action}</p>
                         </div>
-                        
+
                         {/* Show sample records if available */}
                         {record.records && record.records.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
@@ -1661,8 +1635,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               Cancel
             </Button>
             {deleteDependenciesModal.data?.can_delete && (
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 onClick={proceedWithDeletion}
                 disabled={deleteDependenciesModal.deleting}
               >

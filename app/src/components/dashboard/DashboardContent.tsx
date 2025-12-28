@@ -232,14 +232,16 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
   return (
     <div className="min-h-screen bg-background flex">
-      <Sidebar
-        userProfile={userProfile}
-        currentView={currentView}
-        onViewChange={handleViewChange}
-      />
+      <div className="print:hidden">
+        <Sidebar
+          userProfile={userProfile}
+          currentView={currentView}
+          onViewChange={handleViewChange}
+        />
+      </div>
       {/* Main Content - Add left padding on desktop to account for sidebar, full width on mobile */}
       <div className="flex-1 w-full lg:ml-0">
-        <main className="p-4 sm:p-6 h-full overflow-y-auto pt-16 lg:pt-6">
+        <main className="p-4 sm:p-6 h-full overflow-y-auto pt-16 lg:pt-6 print:p-0 print:pt-0 print:overflow-visible print:h-auto">
           {renderCurrentView()}
         </main>
       </div>

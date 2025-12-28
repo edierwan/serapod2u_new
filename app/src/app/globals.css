@@ -238,3 +238,27 @@
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+  
+  /* Hide browser default headers and footers by removing margins */
+  body {
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+@media print {
+  .page-break-inside-avoid {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .page-break-before-always {
+    page-break-before: always;
+    break-before: page;
+  }
+}

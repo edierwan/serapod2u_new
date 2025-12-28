@@ -17,7 +17,7 @@ import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
 import DocumentTemplateTab from './DocumentTemplateTab'
 import MigrationView from '../migration/MigrationView'
-import { 
+import {
   Settings,
   User,
   Shield,
@@ -92,6 +92,8 @@ interface OrganizationSettings {
   country_code: string
   require_payment_proof: boolean
   logo_url: string | null
+  signature_type: 'none' | 'upload' | 'electronic'
+  signature_url: string | null
   journey_builder_activation: 'shipped_distributor' | 'received_warehouse'
   qr_tracking_visibility: {
     manufacturer: {
@@ -114,6 +116,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [signatureFile, setSignatureFile] = useState<File | null>(null)
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null)
+  const signatureInputRef = useRef<HTMLInputElement>(null)
   const [rawSettings, setRawSettings] = useState<any>({})
   const [userSettings, setUserSettings] = useState<UserSettings>({
     full_name: '',
@@ -139,6 +144,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     country_code: 'MY',
     require_payment_proof: true,
     logo_url: null,
+    signature_type: 'none',
+    signature_url: null,
     journey_builder_activation: 'shipped_distributor',
     qr_tracking_visibility: {
       manufacturer: { scan: true, scan2: true },
@@ -150,7 +157,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     newPassword: '',
     confirmPassword: ''
   })
-  
+
   // Branding settings state for live preview
   const [brandingSettings, setBrandingSettings] = useState({
     appName: 'Serapod2U',
@@ -161,7 +168,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     companyName: 'Serapod2U',
     copyrightText: '© 2025 Serapod2U. All rights reserved.'
   })
-  
+
   const [brandingLogoFile, setBrandingLogoFile] = useState<File | null>(null)
   const [brandingLogoPreview, setBrandingLogoPreview] = useState<string | null>(null)
   const brandingLogoInputRef = useRef<HTMLInputElement>(null)
@@ -174,9 +181,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     }
     // Sync theme from context
     setUserSettings(prev => ({ ...prev, theme }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, theme])
 
   const loadSettings = async () => {
@@ -184,7 +191,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
     try {
       setLoading(true)
-      
+
       // Load user profile data (mock for now)
       setUserSettings({
         full_name: 'John Doe',
@@ -252,13 +259,16 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         country_code: orgData.country_code || 'MY',
         require_payment_proof: settings.require_payment_proof ?? true,
         logo_url: orgData.logo_url || null,
+        signature_type: orgData.signature_type || 'none',
+        signature_url: orgData.signature_url || null,
         journey_builder_activation: settings.journey_builder_activation || 'shipped_distributor',
         qr_tracking_visibility: qrVisibility
       })
-      
+
       // Set initial logo preview
       setLogoPreview(orgData.logo_url || null)
-      
+      setSignaturePreview(orgData.signature_url || null)
+
       // Load branding settings from database
       if (settings.branding) {
         setBrandingSettings({
@@ -270,7 +280,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
           companyName: settings.branding.companyName || 'Serapod2U',
           copyrightText: settings.branding.copyrightText || '© 2025 Serapod2U. All rights reserved.'
         })
-        
+
         // Set branding logo preview from database
         const logoUrl = settings.branding.logoUrl || orgData.logo_url
         if (logoUrl) {
@@ -303,11 +313,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
   const handleSaveNotifications = async () => {
     try {
       setLoading(true)
-      
+
       // Save user notification settings (profile)
       console.log('Saving notification settings:', userSettings)
       await new Promise(resolve => setTimeout(resolve, 500))
-      
+
       // Save organization settings if user has permission (Admin/Manager)
       if (userProfile.roles.role_level <= 20 && isReady) {
         // Try to save to system_preferences (new way) - wrap in try/catch to not block legacy save
@@ -328,7 +338,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               value: update.value,
               updated_at: new Date().toISOString()
             }, { onConflict: 'company_id, module, key' })
-            
+
             if (prefError) {
               console.warn('Warning: Failed to save to system_preferences (migration might be missing):', prefError)
             }
@@ -352,7 +362,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
           .eq('id', userProfile.organizations.id)
 
         if (error) throw error
-        
+
         // Dispatch event to update sidebar
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('settingsUpdated'))
@@ -360,7 +370,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
       }
 
       alert('Settings saved successfully!')
-      
+
       // Reload page to ensure changes are reflected
       setTimeout(() => {
         window.location.reload()
@@ -378,21 +388,21 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
     try {
       setLoading(true)
-      
+
       let logoUrl = orgSettings.logo_url
 
       // Handle logo upload if there's a new file
       if (logoFile) {
         // Compress logo first
         const compressionResult = await compressAvatar(logoFile)
-        
+
         toast({
           title: '🖼️ Logo Compressed',
           description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
         })
 
         const fileName = `org-${userProfile.organizations.id}-${Date.now()}.jpg`
-        
+
         // Upload the logo to avatars bucket
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('avatars')
@@ -413,37 +423,76 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         logoUrl = `${publicUrl}?v=${Date.now()}`
       }
 
+      let signatureUrl = orgSettings.signature_url
+
+      // Handle signature upload if there's a new file
+      if (signatureFile) {
+        const fileExt = signatureFile.name.split('.').pop()
+        const fileName = `sig-${userProfile.organizations.id}-${Date.now()}.${fileExt}`
+
+        // Upload the signature to avatars bucket
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, signatureFile, {
+            contentType: signatureFile.type,
+            cacheControl: '3600',
+            upsert: false
+          })
+
+        if (uploadError) throw uploadError
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(uploadData.path)
+
+        // Add cache-busting parameter
+        signatureUrl = `${publicUrl}?v=${Date.now()}`
+      }
+
       // Update the organizations table with new settings including logo
+      // Check if signature columns exist before including them
+      const updateData: any = {
+        org_name: orgSettings.org_name,
+        contact_name: orgSettings.contact_name || null,
+        contact_phone: orgSettings.contact_phone || null,
+        contact_email: orgSettings.contact_email || null,
+        address: orgSettings.address || null,
+        address_line2: orgSettings.address_line2 || null,
+        city: orgSettings.city || null,
+        state_id: orgSettings.state_id || null,
+        district_id: orgSettings.district_id || null,
+        postal_code: orgSettings.postal_code || null,
+        country_code: orgSettings.country_code || null,
+        logo_url: logoUrl,
+        settings: {
+          ...rawSettings,
+          require_payment_proof: orgSettings.require_payment_proof,
+          journey_builder_activation: orgSettings.journey_builder_activation
+        },
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }
+
+      // Only include signature fields if they have values (migration may not be applied)
+      if (orgSettings.signature_type) {
+        updateData.signature_type = orgSettings.signature_type
+      }
+      if (signatureUrl) {
+        updateData.signature_url = signatureUrl
+      }
+
       const { error } = await (supabase as any)
         .from('organizations')
-        .update({
-          org_name: orgSettings.org_name,
-          contact_name: orgSettings.contact_name || null,
-          contact_phone: orgSettings.contact_phone || null,
-          contact_email: orgSettings.contact_email || null,
-          address: orgSettings.address || null,
-          address_line2: orgSettings.address_line2 || null,
-          city: orgSettings.city || null,
-          state_id: orgSettings.state_id || null,
-          district_id: orgSettings.district_id || null,
-          postal_code: orgSettings.postal_code || null,
-          country_code: orgSettings.country_code || null,
-          logo_url: logoUrl,
-          settings: {
-            ...rawSettings,
-            require_payment_proof: orgSettings.require_payment_proof,
-            journey_builder_activation: orgSettings.journey_builder_activation
-          },
-          is_active: true,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', userProfile.organizations.id)
 
       if (error) throw error
 
-      // Clear the logo file selection
+      // Clear the logo and signature file selection
       setLogoFile(null)
-      
+      setSignatureFile(null)
+
       // Reload organization data to ensure we have the latest logo_url from database
       // This also ensures the cache-busted URL is properly set
       await loadSettings()
@@ -485,7 +534,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
       })
       return
     }
-    
+
     if (passwordData.newPassword.length < 6) {
       toast({
         title: 'Validation Error',
@@ -632,6 +681,43 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     }
   }
 
+  // Handle signature file selection
+  const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB')
+      return
+    }
+
+    setSignatureFile(file)
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setSignaturePreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Remove signature
+  const handleRemoveSignature = () => {
+    setSignatureFile(null)
+    setSignaturePreview(null)
+    setOrgSettings(prev => ({ ...prev, signature_url: null }))
+    if (signatureInputRef.current) {
+      signatureInputRef.current.value = ''
+    }
+  }
+
   // Handle branding logo file change
   const handleBrandingLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -709,11 +795,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 justify-start rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium transition sm:rounded-none sm:border-0 sm:border-b-2 sm:border-transparent sm:px-2 sm:py-2 sm:flex-shrink-0 sm:justify-center ${
-                  activeTab === tab.id
+                className={`flex items-center gap-2 justify-start rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium transition sm:rounded-none sm:border-0 sm:border-b-2 sm:border-transparent sm:px-2 sm:py-2 sm:flex-shrink-0 sm:justify-center ${activeTab === tab.id
                     ? 'bg-blue-50 text-blue-600 sm:bg-transparent sm:border-blue-500'
                     : 'text-gray-600 hover:bg-gray-50 sm:text-gray-500 sm:hover:text-gray-700 sm:hover:border-gray-300'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Icon className="w-4 h-4" />
@@ -743,7 +828,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="fullName"
                     value={userSettings.full_name}
-                    onChange={(e) => setUserSettings({...userSettings, full_name: e.target.value})}
+                    onChange={(e) => setUserSettings({ ...userSettings, full_name: e.target.value })}
                     placeholder="Enter your full name"
                   />
                 </div>
@@ -763,7 +848,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="phone"
                     value={userSettings.phone_number}
-                    onChange={(e) => setUserSettings({...userSettings, phone_number: e.target.value})}
+                    onChange={(e) => setUserSettings({ ...userSettings, phone_number: e.target.value })}
                     placeholder="+60123456789"
                   />
                 </div>
@@ -793,7 +878,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
             <CardHeader>
               <CardTitle>Organization Information</CardTitle>
               <CardDescription>
-                {canEditOrganization 
+                {canEditOrganization
                   ? 'Update your organization details and contact information'
                   : 'View your organization information (read-only)'
                 }
@@ -807,14 +892,14 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
                     {/* Logo Preview */}
                     <div className="flex-shrink-0">
-                      <Avatar className="w-24 h-24 rounded-lg" key={logoPreview || 'no-logo'}>
+                      <Avatar className="w-32 h-32 rounded-lg" key={logoPreview || 'no-logo'}>
                         <AvatarImage
                           src={logoPreview || undefined}
                           alt={`${orgSettings.org_name} logo`}
                           className="object-contain"
                         />
                         <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50">
-                          <Building2 className="w-10 h-10 text-blue-600" />
+                          <Building2 className="w-12 h-12 text-blue-600" />
                         </AvatarFallback>
                       </Avatar>
                     </div>
@@ -869,13 +954,102 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                 </div>
               )}
 
+              {/* Signature Section */}
+              {canEditOrganization && (
+                <div className="pb-6 border-b border-gray-200 mb-6">
+                  <Label className="text-base font-semibold mb-4 block">Organization Signature</Label>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signatureType">Signature Type</Label>
+                      <Select
+                        value={orgSettings.signature_type}
+                        onValueChange={(value: any) => setOrgSettings({ ...orgSettings, signature_type: value })}
+                      >
+                        <SelectTrigger id="signatureType" className="w-full md:w-1/2">
+                          <SelectValue placeholder="Select signature type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No signature</SelectItem>
+                          <SelectItem value="electronic">Electronic signature</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-500">
+                        This signature will be used for documentation created by this organization.
+                      </p>
+                    </div>
+
+                    {orgSettings.signature_type === 'electronic' && (
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6 mt-4">
+                        {/* Signature Preview */}
+                        <div className="flex-shrink-0">
+                          <div className="w-48 h-24 border border-gray-200 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+                            {signaturePreview ? (
+                              <img
+                                src={signaturePreview}
+                                alt="Signature preview"
+                                className="max-w-full max-h-full object-contain"
+                              />
+                            ) : (
+                              <span className="text-gray-400 text-sm">No signature</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Upload Controls */}
+                        <div className="flex-1 space-y-3">
+                          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+                            <input
+                              ref={signatureInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleSignatureFileChange}
+                              className="hidden"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => signatureInputRef.current?.click()}
+                              disabled={loading}
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              {signaturePreview ? 'Change Signature' : 'Upload Signature'}
+                            </Button>
+                            {signaturePreview && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleRemoveSignature}
+                                disabled={loading}
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500 space-y-1">
+                            <p>Recommended: Transparent PNG, approx 300x100px</p>
+                            {signatureFile && (
+                              <p className="text-blue-600 font-medium">
+                                New file selected: {signatureFile.name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="orgName">Organization Name</Label>
                   <Input
                     id="orgName"
                     value={orgSettings.org_name}
-                    onChange={(e) => setOrgSettings({...orgSettings, org_name: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, org_name: e.target.value })}
                     disabled={!canEditOrganization}
                     className={!canEditOrganization ? 'bg-gray-50' : ''}
                   />
@@ -885,7 +1059,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="orgCode"
                     value={orgSettings.org_name_short}
-                    onChange={(e) => setOrgSettings({...orgSettings, org_name_short: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, org_name_short: e.target.value })}
                     disabled={!canEditOrganization}
                     className={!canEditOrganization ? 'bg-gray-50' : ''}
                   />
@@ -895,7 +1069,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="contactPerson"
                     value={orgSettings.contact_name}
-                    onChange={(e) => setOrgSettings({...orgSettings, contact_name: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, contact_name: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Enter contact person name"
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -909,7 +1083,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="orgPhone"
                     value={orgSettings.contact_phone}
-                    onChange={(e) => setOrgSettings({...orgSettings, contact_phone: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, contact_phone: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Enter phone number (e.g., +60123456789)"
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -924,7 +1098,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     id="orgEmail"
                     type="email"
                     value={orgSettings.contact_email}
-                    onChange={(e) => setOrgSettings({...orgSettings, contact_email: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, contact_email: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Enter email address"
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -938,7 +1112,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="address"
                     value={orgSettings.address}
-                    onChange={(e) => setOrgSettings({...orgSettings, address: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, address: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Enter street address"
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -952,7 +1126,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="address_line2"
                     value={orgSettings.address_line2}
-                    onChange={(e) => setOrgSettings({...orgSettings, address_line2: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, address_line2: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Apt, suite, unit, building, floor, etc."
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -963,7 +1137,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="city"
                     value={orgSettings.city}
-                    onChange={(e) => setOrgSettings({...orgSettings, city: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, city: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Enter city"
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -988,7 +1162,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="postalCode"
                     value={orgSettings.postal_code}
-                    onChange={(e) => setOrgSettings({...orgSettings, postal_code: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, postal_code: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Enter postal code"
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -1002,7 +1176,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Input
                     id="country"
                     value={orgSettings.country_code}
-                    onChange={(e) => setOrgSettings({...orgSettings, country_code: e.target.value})}
+                    onChange={(e) => setOrgSettings({ ...orgSettings, country_code: e.target.value })}
                     disabled={!canEditOrganization}
                     placeholder="Enter country code (e.g., MY, US, SG)"
                     className={!canEditOrganization ? 'bg-gray-50 placeholder:text-gray-300' : 'placeholder:text-gray-300'}
@@ -1039,14 +1213,14 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-8 pt-6">
-              
+
               {/* Application Branding Section */}
               <div className="space-y-4 pb-6 border-b border-blue-200">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-blue-600" />
                   Application Branding
                 </h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="appName" className="text-sm font-medium">
@@ -1057,13 +1231,13 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       placeholder="e.g., Serapod2U"
                       className="font-medium"
                       value={brandingSettings.appName}
-                      onChange={(e) => setBrandingSettings({...brandingSettings, appName: e.target.value})}
+                      onChange={(e) => setBrandingSettings({ ...brandingSettings, appName: e.target.value })}
                     />
                     <p className="text-xs text-gray-500 italic">
                       Displayed in sidebar header, browser title, and login page
                     </p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="appTagline" className="text-sm font-medium">
                       Application Tagline
@@ -1072,7 +1246,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       id="appTagline"
                       placeholder="e.g., Supply Chain Management"
                       value={brandingSettings.appTagline}
-                      onChange={(e) => setBrandingSettings({...brandingSettings, appTagline: e.target.value})}
+                      onChange={(e) => setBrandingSettings({ ...brandingSettings, appTagline: e.target.value })}
                     />
                     <p className="text-xs text-gray-500 italic">
                       Shown below app name in sidebar
@@ -1087,9 +1261,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     <div className="flex items-center gap-3">
                       {brandingLogoPreview ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img 
-                          src={brandingLogoPreview} 
-                          alt="Logo preview" 
+                        <img
+                          src={brandingLogoPreview}
+                          alt="Logo preview"
                           className="h-10 w-10 rounded-lg object-contain flex-shrink-0"
                         />
                       ) : (
@@ -1102,7 +1276,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                         <p className="text-xs text-gray-600">{brandingSettings.appTagline || 'Supply Chain'}</p>
                       </div>
                     </div>
-                    
+
                     {/* Row 2: Date, Day, Time - Aligned Left */}
                     <div className="text-left text-xs text-gray-600 space-y-0.5 pl-0">
                       <div><span className="font-medium">Date:</span> 24 Oct 2025</div>
@@ -1119,7 +1293,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <ImageIcon className="w-5 h-5 text-blue-600" />
                   Application Logo
                 </h3>
-                
+
                 <div className="bg-white p-4 rounded-lg border border-gray-200">
                   <input
                     ref={brandingLogoInputRef}
@@ -1132,9 +1306,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     <div className="flex-shrink-0">
                       {brandingLogoPreview ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img 
-                          src={brandingLogoPreview} 
-                          alt="Logo preview" 
+                        <img
+                          src={brandingLogoPreview}
+                          alt="Logo preview"
                           className="w-16 h-16 rounded-lg object-contain"
                         />
                       ) : (
@@ -1144,12 +1318,12 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       )}
                       <p className="text-xs text-gray-500 mt-2 text-center">Current</p>
                     </div>
-                    
+
                     <div className="flex-1 space-y-3">
                       <div>
                         <div className="flex gap-2 mb-2">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => brandingLogoInputRef.current?.click()}
                             type="button"
@@ -1183,7 +1357,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <Globe className="w-5 h-5 text-blue-600" />
                   Login Page Customization
                 </h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="loginTitle" className="text-sm font-medium">
@@ -1193,10 +1367,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       id="loginTitle"
                       placeholder="e.g., Welcome to Serapod2U"
                       value={brandingSettings.loginTitle}
-                      onChange={(e) => setBrandingSettings({...brandingSettings, loginTitle: e.target.value})}
+                      onChange={(e) => setBrandingSettings({ ...brandingSettings, loginTitle: e.target.value })}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="loginSubtitle" className="text-sm font-medium">
                       Login Page Subtitle
@@ -1205,7 +1379,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       id="loginSubtitle"
                       placeholder="e.g., Supply Chain Management System"
                       value={brandingSettings.loginSubtitle}
-                      onChange={(e) => setBrandingSettings({...brandingSettings, loginSubtitle: e.target.value})}
+                      onChange={(e) => setBrandingSettings({ ...brandingSettings, loginSubtitle: e.target.value })}
                     />
                   </div>
                 </div>
@@ -1215,9 +1389,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <div className="text-center space-y-2 p-4 bg-gradient-to-b from-blue-50 to-white rounded-lg">
                     {brandingLogoPreview ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img 
-                        src={brandingLogoPreview} 
-                        alt="Logo preview" 
+                      <img
+                        src={brandingLogoPreview}
+                        alt="Logo preview"
                         className="h-12 w-12 rounded-lg object-contain mx-auto"
                       />
                     ) : (
@@ -1237,7 +1411,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <FileText className="w-5 h-5 text-blue-600" />
                   Footer & Copyright
                 </h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="copyrightYear" className="text-sm font-medium">
@@ -1247,10 +1421,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       id="copyrightYear"
                       placeholder="e.g., 2025"
                       value={brandingSettings.copyrightYear}
-                      onChange={(e) => setBrandingSettings({...brandingSettings, copyrightYear: e.target.value})}
+                      onChange={(e) => setBrandingSettings({ ...brandingSettings, copyrightYear: e.target.value })}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="companyName" className="text-sm font-medium">
                       Company Name
@@ -1259,10 +1433,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       id="companyName"
                       placeholder="e.g., Serapod2U"
                       value={brandingSettings.companyName}
-                      onChange={(e) => setBrandingSettings({...brandingSettings, companyName: e.target.value})}
+                      onChange={(e) => setBrandingSettings({ ...brandingSettings, companyName: e.target.value })}
                     />
                   </div>
-                  
+
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="copyrightText" className="text-sm font-medium">
                       Full Copyright Text
@@ -1271,7 +1445,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       id="copyrightText"
                       placeholder="e.g., © 2025 Serapod2U. All rights reserved."
                       value={brandingSettings.copyrightText}
-                      onChange={(e) => setBrandingSettings({...brandingSettings, copyrightText: e.target.value})}
+                      onChange={(e) => setBrandingSettings({ ...brandingSettings, copyrightText: e.target.value })}
                       className="font-medium"
                     />
                     <p className="text-xs text-gray-500 italic">
@@ -1294,20 +1468,20 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <AlertTriangle className="w-4 h-4 inline mr-1 text-amber-600" />
                   Changes will affect all users and require page refresh
                 </div>
-                <Button 
+                <Button
                   type="button"
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={async () => {
                     try {
                       setLoading(true)
-                      
+
                       let logoUrl = brandingLogoPreview
-                      
+
                       // Upload logo to Supabase storage if new file selected
                       if (brandingLogoFile) {
                         // Compress logo first
                         const compressionResult = await compressAvatar(brandingLogoFile)
-                        
+
                         toast({
                           title: '🖼️ Logo Compressed',
                           description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
@@ -1315,7 +1489,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
                         const timestamp = Date.now()
                         const fileName = `branding/${userProfile.organizations.id}-logo-${timestamp}.jpg`
-                        
+
                         // Upload to existing avatars bucket (same bucket used for user avatars and org logos)
                         const { data: uploadData, error: uploadError } = await supabase.storage
                           .from('avatars')
@@ -1324,10 +1498,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                             cacheControl: '3600',
                             upsert: true
                           })
-                        
+
                         if (uploadError) {
                           console.error('Storage upload error:', uploadError)
-                          
+
                           // Fallback: convert to base64 and save directly
                           const reader = new FileReader()
                           logoUrl = await new Promise<string>((resolve, reject) => {
@@ -1335,7 +1509,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                             reader.onerror = reject
                             reader.readAsDataURL(brandingLogoFile)
                           })
-                          
+
                           toast({
                             title: "⚠️ Note",
                             description: "Logo saved as base64. For better performance, please configure storage permissions.",
@@ -1345,11 +1519,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                           const { data: urlData } = supabase.storage
                             .from('avatars')
                             .getPublicUrl(fileName)
-                          
+
                           logoUrl = `${urlData.publicUrl}?t=${timestamp}`
                         }
                       }
-                      
+
                       // Save branding settings to organization settings
                       const settings = {
                         branding: {
@@ -1363,30 +1537,30 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                           logoUrl: logoUrl
                         }
                       }
-                      
+
                       const { error: updateError } = await supabase
                         .from('organizations')
-                        .update({ 
+                        .update({
                           settings,
                           logo_url: logoUrl,
                           updated_at: new Date().toISOString()
                         })
                         .eq('id', userProfile.organizations.id)
-                      
+
                       if (updateError) {
                         throw updateError
                       }
-                      
+
                       toast({
                         title: "✅ Success!",
                         description: "Branding settings have been saved successfully.",
                       })
-                      
+
                       // Reload page to apply changes
                       setTimeout(() => {
                         window.location.reload()
                       }, 1500)
-                      
+
                     } catch (error: any) {
                       console.error('Failed to save branding:', error)
                       toast({
@@ -1445,7 +1619,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                         id="currentPassword"
                         type={showPassword ? 'text' : 'password'}
                         value={passwordData.currentPassword}
-                        onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})}
+                        onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
                         placeholder="Enter current password"
                         className="pr-10"
                         required
@@ -1464,7 +1638,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       Enter your current password to verify your identity
                     </p>
                   </div>
-                  
+
                   <div className="border-t pt-4 mt-4">
                     <div className="space-y-2">
                       <Label htmlFor="newPassword">New Password <span className="text-red-500">*</span></Label>
@@ -1473,7 +1647,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                           id="newPassword"
                           type={showPassword ? 'text' : 'password'}
                           value={passwordData.newPassword}
-                          onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
+                          onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
                           placeholder="Enter new password (min 6 characters)"
                           className="pr-10"
                           required
@@ -1491,35 +1665,32 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       {passwordData.newPassword && (
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-xs">
-                            <div className={`h-1.5 flex-1 rounded-full ${
-                              passwordData.newPassword.length < 6 ? 'bg-red-200' :
-                              passwordData.newPassword.length < 8 ? 'bg-yellow-200' :
-                              passwordData.newPassword.length < 12 ? 'bg-blue-200' :
-                              'bg-green-200'
-                            }`}>
-                              <div className={`h-full rounded-full transition-all ${
-                                passwordData.newPassword.length < 6 ? 'bg-red-500 w-1/4' :
-                                passwordData.newPassword.length < 8 ? 'bg-yellow-500 w-2/4' :
-                                passwordData.newPassword.length < 12 ? 'bg-blue-500 w-3/4' :
-                                'bg-green-500 w-full'
-                              }`} />
+                            <div className={`h-1.5 flex-1 rounded-full ${passwordData.newPassword.length < 6 ? 'bg-red-200' :
+                                passwordData.newPassword.length < 8 ? 'bg-yellow-200' :
+                                  passwordData.newPassword.length < 12 ? 'bg-blue-200' :
+                                    'bg-green-200'
+                              }`}>
+                              <div className={`h-full rounded-full transition-all ${passwordData.newPassword.length < 6 ? 'bg-red-500 w-1/4' :
+                                  passwordData.newPassword.length < 8 ? 'bg-yellow-500 w-2/4' :
+                                    passwordData.newPassword.length < 12 ? 'bg-blue-500 w-3/4' :
+                                      'bg-green-500 w-full'
+                                }`} />
                             </div>
-                            <span className={`font-medium ${
-                              passwordData.newPassword.length < 6 ? 'text-red-600' :
-                              passwordData.newPassword.length < 8 ? 'text-yellow-600' :
-                              passwordData.newPassword.length < 12 ? 'text-blue-600' :
-                              'text-green-600'
-                            }`}>
+                            <span className={`font-medium ${passwordData.newPassword.length < 6 ? 'text-red-600' :
+                                passwordData.newPassword.length < 8 ? 'text-yellow-600' :
+                                  passwordData.newPassword.length < 12 ? 'text-blue-600' :
+                                    'text-green-600'
+                              }`}>
                               {passwordData.newPassword.length < 6 ? 'Weak' :
-                               passwordData.newPassword.length < 8 ? 'Fair' :
-                               passwordData.newPassword.length < 12 ? 'Good' :
-                               'Strong'}
+                                passwordData.newPassword.length < 8 ? 'Fair' :
+                                  passwordData.newPassword.length < 12 ? 'Good' :
+                                    'Strong'}
                             </span>
                           </div>
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="space-y-2 mt-4">
                       <Label htmlFor="confirmPassword">Confirm New Password <span className="text-red-500">*</span></Label>
                       <div className="relative">
@@ -1527,7 +1698,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                           id="confirmPassword"
                           type={showPassword ? 'text' : 'password'}
                           value={passwordData.confirmPassword}
-                          onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
+                          onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
                           placeholder="Confirm new password"
                           className="pr-10"
                           required
@@ -1556,7 +1727,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
                     <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -1571,10 +1742,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex justify-end gap-3">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setPasswordData({
                       currentPassword: '',
                       newPassword: '',
@@ -1584,8 +1755,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   >
                     Clear
                   </Button>
-                  <Button 
-                    onClick={handleChangePassword} 
+                  <Button
+                    onClick={handleChangePassword}
                     disabled={loading || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
                     className="bg-blue-600 hover:bg-blue-700"
                   >
@@ -1608,11 +1779,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <TabsTrigger2 value="types">Notification Types</TabsTrigger2>
                   <TabsTrigger2 value="providers">Providers</TabsTrigger2>
                 </TabsList2>
-                
+
                 <TabsContent2 value="types" className="mt-6">
                   <NotificationTypesTab userProfile={userProfile} />
                 </TabsContent2>
-                
+
                 <TabsContent2 value="providers" className="mt-6">
                   <NotificationProvidersTab userProfile={userProfile} />
                 </TabsContent2>
@@ -1642,7 +1813,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       <Switch
                         checked={userSettings.email_notifications}
                         onCheckedChange={(checked) => setUserSettings({
-                          ...userSettings, 
+                          ...userSettings,
                           email_notifications: checked
                         })}
                       />
@@ -1662,7 +1833,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       <Switch
                         checked={userSettings.sms_notifications}
                         onCheckedChange={(checked) => setUserSettings({
-                          ...userSettings, 
+                          ...userSettings,
                           sms_notifications: checked
                         })}
                       />
@@ -1690,7 +1861,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               <TabsTrigger2 value="qr-tracking">QR Tracking</TabsTrigger2>
               <TabsTrigger2 value="document-template">Document Template</TabsTrigger2>
             </TabsList2>
-            
+
             <TabsContent2 value="system">
               <Card>
                 <CardHeader>
@@ -1703,9 +1874,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="timezone">Timezone</Label>
-                      <Select 
-                        value={userSettings.timezone} 
-                        onValueChange={(value) => setUserSettings({...userSettings, timezone: value})}
+                      <Select
+                        value={userSettings.timezone}
+                        onValueChange={(value) => setUserSettings({ ...userSettings, timezone: value })}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -1720,9 +1891,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="language">Language</Label>
-                      <Select 
-                        value={userSettings.language} 
-                        onValueChange={(value) => setUserSettings({...userSettings, language: value})}
+                      <Select
+                        value={userSettings.language}
+                        onValueChange={(value) => setUserSettings({ ...userSettings, language: value })}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -1736,11 +1907,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="theme">Theme</Label>
-                      <Select 
-                        value={theme} 
+                      <Select
+                        value={theme}
                         onValueChange={(value) => {
                           setTheme(value as 'light' | 'dark' | 'system')
-                          setUserSettings({...userSettings, theme: value})
+                          setUserSettings({ ...userSettings, theme: value })
                         }}
                       >
                         <SelectTrigger>
@@ -1776,9 +1947,9 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="journey-activation">Journey Activation Trigger</Label>
-                      <Select 
-                        value={orgSettings.journey_builder_activation} 
-                        onValueChange={(value: any) => setOrgSettings({...orgSettings, journey_builder_activation: value})}
+                      <Select
+                        value={orgSettings.journey_builder_activation}
+                        onValueChange={(value: any) => setOrgSettings({ ...orgSettings, journey_builder_activation: value })}
                       >
                         <SelectTrigger>
                           <SelectValue />

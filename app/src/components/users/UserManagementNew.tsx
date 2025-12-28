@@ -98,10 +98,17 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
 
       // Super Admin and HQ Admin can see all users, others see only their org
       const isPowerUser = userProfile?.roles?.role_level <= 20
+      const currentUserLevel = userProfile?.roles?.role_level || 999
 
       let query = supabase
         .from('users')
-        .select('*')
+        .select(`
+          *,
+          roles:role_code (
+            role_name,
+            role_level
+          )
+        `)
         .order('created_at', { ascending: false })
 
       // Filter by organization only for non-power users
@@ -113,8 +120,16 @@ export default function UserManagementNew({ userProfile }: { userProfile: UserPr
 
       if (error) throw error
 
-      console.log('📊 Loaded users:', data?.length, 'users')
-      setUsers((data || []) as User[])
+      // Filter users based on role level visibility
+      // Users can only see other users with role_level >= their own role_level
+      // (Lower number means higher rank, so they can see equal or lower rank)
+      const visibleUsers = (data || []).filter((u: any) => {
+        const userRoleLevel = u.roles?.role_level || 999
+        return userRoleLevel >= currentUserLevel
+      })
+
+      console.log('📊 Loaded users:', visibleUsers.length, 'users (filtered from', data?.length, ')')
+      setUsers(visibleUsers as User[])
     } catch (error) {
       console.error('Error loading users:', error)
       toast({ title: 'Load Failed', description: 'Could not load users. Please refresh.', variant: 'destructive' })

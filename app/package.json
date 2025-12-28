@@ -40,7 +40,7 @@
     "critters": "^0.0.23",
     "date-fns": "^4.1.0",
     "exceljs": "^4.4.0",
-    "framer-motion": "^12.23.25",
+    "framer-motion": "^12.23.26",
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
     "lottie-react": "^2.4.1",

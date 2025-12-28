@@ -86,9 +86,20 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       // Load created by user
       const { data: createdByUser } = await supabase
         .from('users')
-        .select('full_name, email')
+        .select('full_name, email, signature_url')
         .eq('id', order.created_by)
         .single()
+
+      // Load approved by user if order is approved
+      let approvedByUser = null
+      if (order.approved_by) {
+        const { data } = await supabase
+          .from('users')
+          .select('full_name, email, signature_url')
+          .eq('id', order.approved_by)
+          .single()
+        approvedByUser = data
+      }
 
       // Load order items
       const { data: orderItems } = await supabase
@@ -125,6 +136,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         buyer_org: buyerOrg,
         seller_org: sellerOrg,
         created_by_user: createdByUser,
+        approved_by_user: approvedByUser,
         order_items: itemsWithDetails
       }
 
@@ -291,296 +303,263 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
 
   const subtotal = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.line_total || 0), 0) || 0
   const totalQuantity = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
-  const bufferPercent = orderData.qr_buffer_percent || 10
-  const bufferQty = Math.floor(totalQuantity * bufferPercent / 100)
-  const uniqueQR = totalQuantity + bufferQty
-  const masterQR = Math.ceil(totalQuantity / (orderData.units_per_case || 100)) // Based on base units only, not buffer
+  
+  // Helper to get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'approved': return 'text-green-600'
+      case 'closed': return 'text-gray-600'
+      case 'cancelled': return 'text-red-600'
+      case 'draft': return 'text-gray-500'
+      default: return 'text-red-500' // submitted/pending usually red/orange in invoices
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Button variant="ghost" onClick={handleBack} className="mb-2">
+    <div className="min-h-screen bg-gray-50 print:bg-white">
+      {/* Action Bar */}
+      <div className="bg-white border-b border-gray-200 mb-0 print:hidden">
+        <div className="px-6 py-4 flex justify-between items-center">
+          <Button 
+            variant="ghost" 
+            onClick={handleBack} 
+            className="hover:bg-gray-100 -ml-2"
+          >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Orders
           </Button>
-          <h1 className="text-2xl font-bold text-gray-900">{orderData.order_no}</h1>
-          <p className="text-gray-600 mt-1">{orderData.order_type} • {orderData.buyer_org?.org_name} → {orderData.seller_org?.org_name}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            onClick={() => setDocumentsDialogOpen(true)}
-            className="gap-2 bg-blue-600 hover:bg-blue-700"
-            size="default"
-          >
-            <FileText className="w-4 h-4" />
-            View Order Documents
-          </Button>
-          <Badge 
-            variant={orderData.status === 'approved' ? 'default' : 'secondary'}
-            className="text-sm px-4 py-2 font-medium"
-          >
-            {orderData.status?.toUpperCase()}
-          </Badge>
+          <div className="flex gap-3">
+            <Button 
+              onClick={() => setDocumentsDialogOpen(true)}
+              variant="outline"
+              className="gap-2 border-gray-300 hover:bg-gray-50"
+            >
+              <FileText className="w-4 h-4" />
+              Documents
+            </Button>
+            <Button 
+              onClick={() => {
+                // Set document title for PDF filename
+                const originalTitle = document.title
+                if (orderData?.order_no) {
+                  document.title = `PO ${orderData.order_no}`
+                }
+
+                // Show a toast with instructions
+                toast({
+                  title: 'Print Dialog Opening',
+                  description: 'In the print dialog, select "Save as PDF" as your printer destination to download the PDF file.',
+                })
+                // Trigger browser print dialog
+                setTimeout(() => {
+                  window.print()
+                  // Restore title after a delay to ensure print dialog picked it up
+                  setTimeout(() => {
+                    document.title = originalTitle
+                  }, 2000)
+                }, 500)
+              }} 
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <FileText className="w-4 h-4" />
+              Print / Save PDF
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Order Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="w-5 h-5" />
-            Order Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Order Number</label>
-              <p className="text-lg font-semibold text-blue-600">{orderData.order_no}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Order Type</label>
-              <p className="text-sm">{orderData.order_type}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Created</label>
-              <p className="text-sm flex items-center gap-1">
-                <Calendar className="w-4 h-4" />
-                {new Date(orderData.created_at).toLocaleDateString('en-MY')}
-              </p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Created By</label>
-              <p className="text-sm">{orderData.created_by_user?.full_name || 'N/A'}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Units Per Case</label>
-              <p className="text-sm">{orderData.units_per_case || 100}</p>
-            </div>
-            {orderData.order_type !== 'D2H' && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">QR Buffer</label>
-                <p className="text-sm">{orderData.qr_buffer_percent || 10}%</p>
-              </div>
+      {/* Document Container */}
+      <div className="bg-white shadow-lg p-8 md:p-12 print:shadow-none print:p-8 print:w-full">
+        
+        {/* Header Section - 3 Columns in 1 Row */}
+        <div className="flex justify-between items-start mb-12 print:mb-6 gap-8">
+          {/* Left: Company Logo */}
+          <div className="flex-shrink-0">
+            {orderData.buyer_org?.logo_url ? (
+              <img 
+                src={orderData.buyer_org.logo_url} 
+                alt={orderData.buyer_org.org_name} 
+                className="h-20 object-contain"
+              />
+            ) : (
+              <h1 className="text-2xl font-bold tracking-tight">serapod<span className="text-blue-600">2u</span></h1>
             )}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Organizations */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-blue-600" />
-              Buyer Organization
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Organization</label>
-                <p className="text-sm">{orderData.buyer_org?.org_name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Code</label>
-                <p className="text-sm">{orderData.buyer_org?.org_code}</p>
-              </div>
-              {orderData.buyer_org?.address && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Address</label>
-                  <p className="text-sm">{orderData.buyer_org.address}</p>
-                </div>
-              )}
+          {/* Center: Headquarters Detail */}
+          <div className="flex-1">
+            <h2 className="font-bold text-gray-900 uppercase mb-2 text-sm tracking-wide">
+              {orderData.buyer_org?.org_name}
+            </h2>
+            <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
+              <p className="whitespace-pre-line">{orderData.buyer_org?.address || 'No address provided'}</p>
+              {orderData.buyer_org?.phone && <p>Phone: {orderData.buyer_org.phone}</p>}
+              {orderData.buyer_org?.email && <p>Email: {orderData.buyer_org.email}</p>}
+              {orderData.buyer_org?.website && <p>Website: {orderData.buyer_org.website}</p>}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-green-600" />
-              Seller Organization
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Organization</label>
-                <p className="text-sm">{orderData.seller_org?.org_name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Code</label>
-                <p className="text-sm">{orderData.seller_org?.org_code}</p>
-              </div>
-              {orderData.seller_org?.address && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Address</label>
-                  <p className="text-sm">{orderData.seller_org.address}</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Order Items */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Order Items</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">#</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Product</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Variant</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Quantity</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Unit Price</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {orderData.order_items?.map((item: any, index: number) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3 text-sm">{index + 1}</td>
-                    <td className="px-4 py-3 text-sm">{item.product?.product_name || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm">{item.variant?.variant_name || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-right">{formatNumber(item.qty)}</td>
-                    <td className="px-4 py-3 text-sm text-right">{formatCurrency(item.unit_price)}</td>
-                    <td className="px-4 py-3 text-sm text-right font-medium">{formatCurrency(item.line_total)}</td>
-                  </tr>
-                ))}
-                {/* Grand Total Row */}
-                <tr className="bg-gray-50 font-bold">
-                  <td colSpan={3} className="px-4 py-3 text-right text-sm text-gray-900">Grand Total</td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-900">{formatNumber(totalQuantity)}</td>
-                  <td className="px-4 py-3 text-sm text-right"></td>
-                  <td className="px-4 py-3 text-sm text-right text-blue-600">{formatCurrency(subtotal)}</td>
-                </tr>
-              </tbody>
-            </table>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* QR Code Requirements - Full Width - Only for non-D2H orders */}
-      {orderData.order_type !== 'D2H' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <QrCode className="w-5 h-5" />
-              QR Code Requirements
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Order Quantity:</span>
-                <span className="font-medium">{formatNumber(totalQuantity)} units</span>
+          {/* Right: PO Detail */}
+          <div className="flex-shrink-0 text-right">
+            <h1 className="text-xl font-light text-gray-900 mb-4 uppercase tracking-wider">PURCHASE ORDER</h1>
+            <div className="text-xs space-y-2">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">PO#:</span>
+                <span className="font-medium text-gray-900">{orderData.order_no}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Buffer ({bufferPercent}%):</span>
-                <span className="font-medium">{formatNumber(bufferQty)} units (unassigned spares)</span>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">Date:</span>
+                <span className="font-medium text-gray-900">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
               </div>
-              <div className="flex justify-between border-t pt-2">
-                <span className="text-gray-700 font-medium">Total Unique QR Codes:</span>
-                <span className="font-bold text-blue-600">{formatNumber(uniqueQR)} ({formatNumber(totalQuantity)} + {formatNumber(bufferQty)})</span>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">By:</span>
+                <span className="font-medium text-gray-900">{orderData.created_by_user?.full_name || 'Unknown'}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-700 font-medium">Master QR Codes (Cases):</span>
-                <span className="font-bold text-green-600">{formatNumber(masterQR)} cases</span>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">Ledger:</span>
+                <span className="font-medium text-gray-900">Stock Purchased / Inventory</span>
               </div>
-              
-              {/* QR Code Statistics */}
-              {qrStats && (
-                <div className="mt-6 pt-6 border-t">
-                  <h4 className="text-sm font-semibold text-gray-900 mb-3">QR Code Statistics</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <QrCode className="w-4 h-4 text-blue-600" />
-                        <span className="text-xs text-blue-700 font-medium">Valid Links</span>
-                      </div>
-                      <p className="text-2xl font-bold text-blue-900">{formatNumber(qrStats.validLinks)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Supplier & Status Section */}
+        <div className="flex justify-between items-start mb-12 print:mb-6 border-t border-gray-100 pt-8 print:pt-4">
+          {/* Supplier Info */}
+          <div className="w-1/2">
+            <h3 className="font-bold text-gray-900 mb-3 text-sm">Supplier:</h3>
+            <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
+              <p className="font-bold text-gray-800 uppercase mb-1">{orderData.seller_org?.org_name}</p>
+              {/* Contact Person if available, otherwise generic */}
+              <p className="uppercase">{orderData.seller_org?.contact_person || ''}</p>
+              <p className="whitespace-pre-line max-w-xs">{orderData.seller_org?.address || 'No address provided'}</p>
+              <p>{orderData.seller_org?.email}</p>
+            </div>
+          </div>
+
+          {/* Status Box */}
+          <div className="w-48">
+            <div className="border border-gray-200 p-4 text-center rounded-sm">
+              <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Status</p>
+              <p className={`text-xl font-bold uppercase ${getStatusColor(orderData.status)}`}>
+                {orderData.status === 'submitted' ? 'SUBMITTED' : orderData.status}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Items Table */}
+        <div className="mb-12 print:mb-6">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="py-2 text-left text-xs font-bold text-gray-900 w-12">No</th>
+                <th className="py-2 text-left text-xs font-bold text-gray-900">Description</th>
+                <th className="py-2 text-right text-xs font-bold text-gray-900 w-24">Unit</th>
+                <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Price</th>
+                <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {orderData.order_items?.map((item: any, index: number) => (
+                <tr key={item.id} className="break-inside-avoid page-break-inside-avoid">
+                  <td className="py-3 text-xs text-gray-600 align-top pt-4">{index + 1}</td>
+                  <td className="py-3 text-xs text-gray-900 align-top pt-4">
+                    <p className="font-medium text-sm whitespace-nowrap">
+                      {(() => {
+                        // Extract product base name (e.g., "Cellera Hero")
+                        const productName = item.product?.product_name?.replace(/\[.*?\]\s*$/, '').trim() || '';
+                        // Extract variant details (e.g., "Deluxe Cellera Cartridge [ Strawberry Cheesecake ]")
+                        const variantName = item.variant?.variant_name || '';
+                        
+                        // If variant contains brackets, extract the parts
+                        const bracketMatch = variantName.match(/^(.*?)\s*\[(.*?)\]\s*$/);
+                        if (bracketMatch) {
+                          // Format: ProductName VariantType [ VariantFlavor ]
+                          return `${productName} ${bracketMatch[1].trim()} [ ${bracketMatch[2].trim()} ]`;
+                        }
+                        // Fallback: Just show product name and variant
+                        return `${productName} ${variantName}`;
+                      })()}
+                    </p>
+                  </td>
+                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatNumber(item.qty)}</td>
+                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>
+                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.line_total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-gray-200">
+                <td colSpan={2} className="py-4"></td>
+                <td className="py-4 text-right text-xs font-bold text-gray-900">{formatNumber(totalQuantity)}</td>
+                <td className="py-4 text-right text-xs font-bold text-gray-900">Total</td>
+                <td className="py-4 text-right text-sm font-bold text-gray-900">{formatCurrency(subtotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* Footer Notes & Signature */}
+        <div className="mt-12 pt-8 print:mt-4 print:pt-4 border-t border-gray-100 break-inside-avoid page-break-inside-avoid">
+          <div className="flex justify-between items-start">
+            {/* Left: Issued By with Company Signature */}
+            <div>
+              {orderData.buyer_org?.signature_type === 'electronic' && orderData.buyer_org?.signature_url && (
+                <div className="mb-6">
+                  <p className="text-sm font-bold text-gray-900 mb-2">Issued by:</p>
+                  <div className="flex items-start gap-4">
+                    <div className="w-32 h-24 flex items-center">
+                      <img 
+                        src={orderData.buyer_org.signature_url} 
+                        alt="Company Signature" 
+                        className="max-w-full max-h-full object-contain"
+                      />
                     </div>
-                    
-                    <div className="bg-green-50 rounded-lg p-3 border border-green-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Package className="w-4 h-4 text-green-600" />
-                        <span className="text-xs text-green-700 font-medium">Scanned</span>
-                      </div>
-                      <p className="text-2xl font-bold text-green-900">{formatNumber(qrStats.scanned)}</p>
-                    </div>
-                    
-                    {/* Only show Redemptions if order has redemption feature */}
-                    {orderData.has_redeem && (
-                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Gift className="w-4 h-4 text-purple-600" />
-                          <span className="text-xs text-purple-700 font-medium">Redemptions</span>
-                        </div>
-                        <p className="text-2xl font-bold text-purple-900">{formatNumber(qrStats.redemptions)}</p>
-                      </div>
-                    )}
-                    
-                    {/* Only show Lucky Draw if order has lucky draw feature */}
-                    {orderData.has_lucky_draw && (
-                      <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Trophy className="w-4 h-4 text-amber-600" />
-                          <span className="text-xs text-amber-700 font-medium">Lucky Draw</span>
-                        </div>
-                        <p className="text-2xl font-bold text-amber-900">{formatNumber(qrStats.luckyDraws)}</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
-              
-              <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-3">
-                <p className="text-xs text-amber-800">
-                  <strong>Note:</strong> Buffer codes ({formatNumber(bufferQty)}) are unassigned spares for damaged/lost QR codes. 
-                  Master cases are calculated based on order quantity only ({formatNumber(totalQuantity)} ÷ {formatNumber(orderData.units_per_case || 100)} = {formatNumber(masterQR)} cases).
-                </p>
-              </div>
-
-              {/* Features Section - Moved from Order Summary */}
-              <div className="mt-6 pt-6 border-t">
-                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  Features
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {/* Show features based on order has_lucky_draw and has_redeem flags */}
-                  {!orderData.has_lucky_draw && !orderData.has_redeem && (
-                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                      <Sparkles className="w-3 h-3 mr-1" />
-                      Points
-                    </Badge>
-                  )}
-                  {orderData.has_lucky_draw && (
-                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                      <Trophy className="w-3 h-3 mr-1" />
-                      Lucky Draw
-                    </Badge>
-                  )}
-                  {orderData.has_redeem && (
-                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                      <Gift className="w-3 h-3 mr-1" />
-                      Redemption
-                    </Badge>
-                  )}
+              <p className="text-[10px] text-gray-400 mt-8">This is a computer generated document.</p>
+            </div>
+            
+            {/* Center: Created By */}
+            <div className="text-center">
+              <p className="text-xs text-gray-600 mb-2">Created by: {orderData.created_by_user?.full_name || 'Unknown'}</p>
+              {orderData.created_by_user?.signature_url && (
+                <div className="flex justify-center mb-2">
+                  <img 
+                    src={orderData.created_by_user.signature_url} 
+                    alt="Created by signature" 
+                    className="h-16 print:h-12 object-contain"
+                  />
                 </div>
+              )}
+              <div className="border-t border-gray-300 w-48 mx-auto pt-1">
+                <p className="text-xs text-gray-500">{orderData.created_at ? new Date(orderData.created_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+
+            {/* Right: Approved By */}
+            {orderData.approved_by && orderData.approved_by_user && (
+              <div className="text-center">
+                <p className="text-xs text-gray-600 mb-2">Approved by: {orderData.approved_by_user.full_name || 'Unknown'}</p>
+                {orderData.approved_by_user.signature_url && (
+                  <div className="flex justify-center mb-2">
+                    <img 
+                      src={orderData.approved_by_user.signature_url} 
+                      alt="Approved by signature" 
+                      className="h-16 print:h-12 object-contain"
+                    />
+                  </div>
+                )}
+                <div className="border-t border-gray-300 w-48 mx-auto pt-1">
+                  <p className="text-xs text-gray-500">{orderData.approved_at ? new Date(orderData.approved_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Order Documents Dialog */}
       {orderData && (
