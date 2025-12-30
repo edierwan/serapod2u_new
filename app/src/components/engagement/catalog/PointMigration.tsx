@@ -4,32 +4,79 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Download, Loader2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Upload,
+  FileSpreadsheet,
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  Loader2,
+  XCircle,
+  FileDown,
+  ChevronLeft,
+  ChevronRight
+} from "lucide-react"
+
+interface MigrationResult {
+  rowNumber: number
+  joinedDate: string
+  name: string
+  phone: string
+  email: string
+  location: string
+  points: number
+  password?: string
+  status: 'Success' | 'Error'
+  message: string
+}
+
+type PasswordMode = 'default' | 'file'
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const
 
 export function PointMigration() {
   const [file, setFile] = useState<File | null>(null)
   const [defaultPassword, setDefaultPassword] = useState("")
+  const [passwordMode, setPasswordMode] = useState<PasswordMode>('default')
   const [uploading, setUploading] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  const [uploadComplete, setUploadComplete] = useState(false)
+  const [results, setResults] = useState<MigrationResult[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(20)
+  const [filterStatus, setFilterStatus] = useState<'all' | 'Success' | 'Error'>('all')
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0])
-      setResult(null)
+      setResults([])
+      setUploadComplete(false)
+      setError(null)
     }
   }
 
   const handleUpload = async () => {
     if (!file) return
-    if (!defaultPassword) {
-        alert("Please enter a default password for new users.")
-        return
+    if (passwordMode === 'default' && !defaultPassword) {
+      alert("Please enter a default password for new users.")
+      return
     }
 
     setUploading(true)
+    setError(null)
+    setResults([])
+    setUploadComplete(false)
+
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('defaultPassword', defaultPassword)
+    formData.append('passwordMode', passwordMode)
+    if (passwordMode === 'default') {
+      formData.append('defaultPassword', defaultPassword)
+    }
 
     try {
       const res = await fetch('/api/admin/point-migration', {
@@ -37,43 +84,83 @@ export function PointMigration() {
         body: formData
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Upload failed')
+        throw new Error(data.error || 'Upload failed')
       }
 
-      // Handle File Download
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `migration_results_${new Date().toISOString().split('T')[0]}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      // Set results from JSON response
+      setResults(data.results || [])
+      setUploadComplete(true)
+      setCurrentPage(1)
+      setFilterStatus('all')
 
-      setResult({ success: true, message: "Processing complete. Results file downloaded." })
     } catch (error: any) {
       console.error(error)
-      setResult({ success: false, error: error.message || 'Upload failed' })
+      setError(error.message || 'Upload failed')
     } finally {
       setUploading(false)
     }
   }
 
   const downloadTemplate = () => {
-    // Create a dummy CSV/Excel and download
-    const headers = ['Joined Date', 'Name', 'Phone', 'Email', 'Location', 'Points']
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + "2023-01-01,John Doe,60123456789,john@example.com,Selangor,100"
+    // Updated template with Password column
+    const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password']
+    const exampleRow = '2025-01-11,AZMIR,0179244297,nurazmirpcb@gmail.com,Kelantan,20,hb080397'
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + exampleRow
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement("a")
     link.setAttribute("href", encodedUri)
-    link.setAttribute("download", "migration_template.csv")
+    link.setAttribute("download", "point_migration_template.csv")
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
   }
+
+  const downloadErrorRecords = () => {
+    const errorRecords = results.filter(r => r.status === 'Error')
+    if (errorRecords.length === 0) return
+
+    const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'ErrorMessage']
+    const rows = errorRecords.map(r =>
+      [r.joinedDate, r.name, r.phone, r.email, r.location, r.points, r.password || '', r.message].join(',')
+    )
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.join("\n")
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    link.setAttribute("download", `migration_errors_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const downloadAllResults = () => {
+    if (results.length === 0) return
+
+    const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'Status', 'Message']
+    const rows = results.map(r =>
+      [r.joinedDate, r.name, r.phone, r.email, r.location, r.points, r.password || '', r.status, r.message].join(',')
+    )
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.join("\n")
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    link.setAttribute("download", `migration_results_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // Filter and paginate results
+  const filteredResults = results.filter(r => filterStatus === 'all' || r.status === filterStatus)
+  const totalPages = Math.ceil(filteredResults.length / pageSize)
+  const startIndex = (currentPage - 1) * pageSize
+  const paginatedResults = filteredResults.slice(startIndex, startIndex + pageSize)
+
+  const successCount = results.filter(r => r.status === 'Success').length
+  const errorCount = results.filter(r => r.status === 'Error').length
 
   return (
     <div className="space-y-6">
@@ -88,20 +175,65 @@ export function PointMigration() {
             <Input id="migration-file" type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} />
           </div>
 
-          <div className="grid w-full max-w-sm items-center gap-1.5">
-            <Label htmlFor="default-password">Default Password for New Users</Label>
-            <Input 
-                id="default-password" 
-                type="text" 
-                placeholder="Enter default password" 
-                value={defaultPassword}
-                onChange={(e) => setDefaultPassword(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">This password will be used for any new accounts created during migration.</p>
+          {/* Password Mode Selection */}
+          <div className="space-y-3">
+            <Label>Password Source for New Users</Label>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="passwordMode"
+                  value="default"
+                  checked={passwordMode === 'default'}
+                  onChange={() => setPasswordMode('default')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Use default password (same for all new users)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="passwordMode"
+                  value="file"
+                  checked={passwordMode === 'file'}
+                  onChange={() => setPasswordMode('file')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Use password from file (Column G - Password)</span>
+              </label>
+            </div>
           </div>
 
+          {/* Default Password Input - only show when default mode is selected */}
+          {passwordMode === 'default' && (
+            <div className="grid w-full max-w-sm items-center gap-1.5">
+              <Label htmlFor="default-password">Default Password for New Users</Label>
+              <Input
+                id="default-password"
+                type="text"
+                placeholder="Enter default password"
+                value={defaultPassword}
+                onChange={(e) => setDefaultPassword(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">This password will be used for any new accounts created during migration.</p>
+            </div>
+          )}
+
+          {passwordMode === 'file' && (
+            <Alert className="border-blue-200 bg-blue-50">
+              <FileSpreadsheet className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-700">
+                The password for each new user will be read from Column G (Password) of your uploaded file.
+                Make sure each row has a valid password.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex gap-2">
-            <Button onClick={handleUpload} disabled={!file || !defaultPassword || uploading}>
+            <Button
+              onClick={handleUpload}
+              disabled={!file || (passwordMode === 'default' && !defaultPassword) || uploading}
+            >
               {uploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {uploading ? 'Processing...' : 'Upload & Process'}
             </Button>
@@ -110,27 +242,218 @@ export function PointMigration() {
             </Button>
           </div>
 
-          {result && (
-            <div className="mt-4 space-y-2">
-              {result.success ? (
-                <Alert className="border-green-200 bg-green-50">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <h5 className="mb-1 font-medium leading-none tracking-tight text-green-800">Migration Complete</h5>
-                  <AlertDescription className="text-green-700">
-                    {result.message} Check the downloaded file for details.
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <Alert className="border-red-500/50 text-red-600 dark:border-red-500 [&>svg]:text-red-600 bg-red-50">
-                  <AlertCircle className="h-4 w-4" />
-                  <h5 className="mb-1 font-medium leading-none tracking-tight">Error</h5>
-                  <AlertDescription>{result.error || 'Unknown error occurred'}</AlertDescription>
-                </Alert>
-              )}
-            </div>
+          {error && (
+            <Alert className="border-red-500/50 text-red-600 dark:border-red-500 [&>svg]:text-red-600 bg-red-50">
+              <AlertCircle className="h-4 w-4" />
+              <h5 className="mb-1 font-medium leading-none tracking-tight">Error</h5>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
         </CardContent>
       </Card>
+
+      {/* Results Section - shown after upload */}
+      {uploadComplete && results.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Migration Results</CardTitle>
+                <CardDescription>
+                  Review the results below. Success records have been processed.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    {successCount} Success
+                  </Badge>
+                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                    <XCircle className="w-3 h-3 mr-1" />
+                    {errorCount} Errors
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Action buttons and filters */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Filter:</Label>
+                <select
+                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={filterStatus}
+                  onChange={(e) => {
+                    setFilterStatus(e.target.value as 'all' | 'Success' | 'Error')
+                    setCurrentPage(1)
+                  }}
+                >
+                  <option value="all">All Records ({results.length})</option>
+                  <option value="Success">Success Only ({successCount})</option>
+                  <option value="Error">Errors Only ({errorCount})</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={downloadAllResults}>
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Download All Results
+                </Button>
+                {errorCount > 0 && (
+                  <Button variant="outline" size="sm" onClick={downloadErrorRecords} className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50">
+                    <FileDown className="mr-2 h-4 w-4" />
+                    Download Error Records
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Results Table */}
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="w-12">#</TableHead>
+                    <TableHead>Joined Date</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead className="text-right">Points</TableHead>
+                    <TableHead className="w-24">Status</TableHead>
+                    <TableHead>Message</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedResults.length > 0 ? (
+                    paginatedResults.map((result, index) => (
+                      <TableRow key={`${result.rowNumber}-${index}`} className={result.status === 'Error' ? 'bg-red-50/50' : ''}>
+                        <TableCell className="text-gray-500">{result.rowNumber}</TableCell>
+                        <TableCell className="text-sm">{result.joinedDate}</TableCell>
+                        <TableCell className="font-medium">{result.name}</TableCell>
+                        <TableCell className="text-sm">{result.phone}</TableCell>
+                        <TableCell className="text-sm">{result.email}</TableCell>
+                        <TableCell className="text-sm">{result.location}</TableCell>
+                        <TableCell className="text-right font-medium">{result.points}</TableCell>
+                        <TableCell>
+                          {result.status === 'Success' ? (
+                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              Success
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
+                              <XCircle className="w-3 h-3 mr-1" />
+                              Error
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600 max-w-xs truncate" title={result.message}>
+                          {result.message}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                        No records match the current filter
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Pagination Controls */}
+            {filteredResults.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Rows per page:</span>
+                  <select
+                    className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    {PAGE_SIZE_OPTIONS.map(size => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-600">
+                    Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredResults.length)} of {filteredResults.length} records
+                  </span>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      First
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="px-3 py-1 text-sm font-medium">
+                      Page {currentPage} of {totalPages || 1}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage >= totalPages}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage >= totalPages}
+                    >
+                      Last
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Info message for error records */}
+            {errorCount > 0 && (
+              <Alert className="border-yellow-200 bg-yellow-50">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-700">
+                  <strong>{errorCount} record(s)</strong> had errors and were not processed.
+                  Download the error records, fix the issues, and re-upload them.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {successCount > 0 && (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-700">
+                  <strong>{successCount} record(s)</strong> were successfully processed and points have been updated.
+                  You can view the updated balances in the Monitor Points tab.
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

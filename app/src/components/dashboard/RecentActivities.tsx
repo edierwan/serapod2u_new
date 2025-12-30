@@ -25,10 +25,10 @@ interface Activity {
 
 interface UserProfile {
   id: string
-  organization_id: string
+  organization_id: string | null
   organizations: {
     org_type_code: string
-  }
+  } | null
 }
 
 interface RecentActivitiesProps {
@@ -48,6 +48,10 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
   }, [userProfile.organization_id])
 
   async function loadRecentActivities() {
+    if (!userProfile.organization_id) {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
 

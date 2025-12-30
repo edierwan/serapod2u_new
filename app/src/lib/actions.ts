@@ -331,7 +331,7 @@ export async function signup(formData: FormData) {
   redirect('/dashboard')
 }
 
-export async function deleteUserWithAuth(userId: string) {
+export async function deleteUserWithAuth(userId: string, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
     
@@ -343,6 +343,50 @@ export async function deleteUserWithAuth(userId: string) {
     }
 
     const supabase = await createClient()
+    
+    // Verify caller has permission to delete users
+    let isAuthorized = false
+    
+    // Try to get current user from session first
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    
+    if (currentUser) {
+      // Check if current user is admin
+      const { data: currentUserProfile } = await adminClient
+        .from('users')
+        .select('role_code, roles(role_level)')
+        .eq('id', currentUser.id)
+        .single()
+      
+      const roleLevel = (currentUserProfile?.roles as any)?.role_level
+      isAuthorized = roleLevel === 1 || roleLevel === 10 // Super Admin or HQ Admin
+    } else if (callerInfo) {
+      // Fallback to caller info for validation
+      const { data: callerProfile } = await adminClient
+        .from('users')
+        .select('id, role_code, roles(role_level)')
+        .eq('id', callerInfo.id)
+        .single()
+      
+      if (callerProfile) {
+        const roleLevel = (callerProfile.roles as any)?.role_level
+        isAuthorized = roleLevel === 1 || roleLevel === 10
+      }
+    }
+    
+    if (!isAuthorized) {
+      return {
+        success: false,
+        error: 'Unauthorized: Only administrators can delete users'
+      }
+    }
+
+    // First, get user's email and phone for consumer_activations lookup
+    const { data: targetUser } = await adminClient
+      .from('users')
+      .select('email, phone')
+      .eq('id', userId)
+      .single()
 
     // Step 1: Delete audit_logs first to avoid foreign key constraint
     // Use admin client to bypass RLS policies
@@ -353,26 +397,68 @@ export async function deleteUserWithAuth(userId: string) {
 
     if (auditError) {
       console.error('Failed to delete audit logs:', auditError)
-      return {
-        success: false,
-        error: `Failed to delete audit logs: ${auditError.message}`
+      // Don't fail on audit log deletion - continue with user deletion
+    }
+
+    // Step 2: Delete points_transactions for this user
+    const { error: pointsError } = await adminClient
+      .from('points_transactions')
+      .delete()
+      .eq('user_id', userId)
+    
+    if (pointsError) {
+      console.error('Failed to delete points_transactions:', pointsError)
+      // Continue anyway
+    }
+
+    // Step 3: Delete consumer_activations for this user by email or phone
+    if (targetUser?.email) {
+      const { error: activationsEmailError } = await adminClient
+        .from('consumer_activations')
+        .delete()
+        .eq('consumer_email', targetUser.email)
+      
+      if (activationsEmailError) {
+        console.error('Failed to delete consumer_activations by email:', activationsEmailError)
       }
     }
 
-    // Step 2: Delete user from public.users table (will cascade to other related records)
-    const { error: dbError } = await supabase
+    if (targetUser?.phone) {
+      const { error: activationsPhoneError } = await adminClient
+        .from('consumer_activations')
+        .delete()
+        .eq('consumer_phone', targetUser.phone)
+      
+      if (activationsPhoneError) {
+        console.error('Failed to delete consumer_activations by phone:', activationsPhoneError)
+      }
+    }
+
+    // Step 4: Set null on consumer_qr_scans for this user (FK has SET NULL rule)
+    const { error: scansError } = await adminClient
+      .from('consumer_qr_scans')
+      .update({ consumer_id: null })
+      .eq('consumer_id', userId)
+    
+    if (scansError) {
+      console.error('Failed to nullify consumer_qr_scans:', scansError)
+    }
+
+    // Step 5: Delete user from public.users table using admin client to bypass RLS
+    const { error: dbError } = await adminClient
       .from('users')
       .delete()
       .eq('id', userId)
 
     if (dbError) {
+      console.error('Database delete error:', dbError)
       return {
         success: false,
         error: `Failed to delete user from database: ${dbError.message}`
       }
     }
 
-    // Step 2: Delete user from Supabase Auth
+    // Step 6: Delete user from Supabase Auth
     const { error: authError } = await adminClient.auth.admin.deleteUser(userId)
 
     if (authError) {
@@ -386,7 +472,7 @@ export async function deleteUserWithAuth(userId: string) {
       }
     }
 
-    // Step 3: Return success
+    // Step 7: Return success
     revalidatePath('/dashboard')
     return {
       success: true,

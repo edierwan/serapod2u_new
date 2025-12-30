@@ -16,6 +16,7 @@ import DangerZoneTab from './DangerZoneTab'
 import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
 import DocumentTemplateTab from './DocumentTemplateTab'
+import AccountingTab from './AccountingTab'
 import MigrationView from '../migration/MigrationView'
 import {
   Settings,
@@ -40,7 +41,8 @@ import {
   X,
   Image as ImageIcon,
   Info,
-  Package
+  Package,
+  Calculator
 } from 'lucide-react'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
@@ -768,6 +770,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'organization', label: 'Organization', icon: Building2 },
+    // Accounting tab - after Organization, HQ only with role_level <= 20
+    ...(userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? [{ id: 'accounting', label: 'Accounting', icon: Calculator }] : []),
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'preferences', label: 'Preferences', icon: Settings },
@@ -2098,6 +2102,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         {/* Data Migration Tab - HQ Admin Only */}
         {activeTab === 'migration' && userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && (
           <MigrationView userProfile={userProfile} />
+        )}
+
+        {/* Accounting Tab - HQ Admin/Power User Only */}
+        {activeTab === 'accounting' && userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && (
+          <AccountingTab userProfile={userProfile} />
         )}
 
         {/* Danger Zone Tab - Super Admin Only */}

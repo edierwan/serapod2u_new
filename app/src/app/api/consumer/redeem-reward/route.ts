@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 /**
  * POST /api/consumer/redeem-reward
@@ -13,6 +14,18 @@ import { createClient } from '@/lib/supabase/server'
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
+
+    // Initialize admin client for balance checks (bypasses RLS)
+    const supabaseAdmin = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
 
     const { reward_id, consumer_phone, consumer_email } = await request.json()
 
@@ -117,7 +130,7 @@ export async function POST(request: NextRequest) {
     let currentBalance = 0
 
     if (!isIndependent) {
-      const { data: balanceData, error: balanceError } = await supabase
+      const { data: balanceData, error: balanceError } = await supabaseAdmin
         .from('v_shop_points_balance')
         .select('*')
         .eq('shop_id', shopId)
@@ -132,42 +145,23 @@ export async function POST(request: NextRequest) {
       }
       currentBalance = balanceData?.current_balance || 0
     } else {
-      // Calculate balance for independent consumer
-      // 1. Sum collected points
-      const { data: collectedData, error: collectedError } = await supabase
-        .from('consumer_qr_scans')
-        .select('points_amount')
-        .eq('consumer_id', user.id)
-        .eq('collected_points', true)
+      // Use the view for independent consumers to ensure consistency with the UI
+      // This handles collected points, migration points, adjustments, and redemptions
+      const { data: balanceData, error: balanceError } = await supabaseAdmin
+        .from('v_consumer_points_balance')
+        .select('current_balance')
+        .eq('user_id', user.id)
+        .maybeSingle()
 
-      if (collectedError) {
-        console.error('❌ Error fetching collected points:', collectedError)
+      if (balanceError) {
+        console.error('❌ Error fetching balance:', balanceError)
         return NextResponse.json(
           { success: false, error: 'Failed to fetch points balance' },
           { status: 500 }
         )
       }
 
-      const totalCollected = collectedData?.reduce((sum, item) => sum + (item.points_amount || 0), 0) || 0
-
-      // 2. Sum redeemed points
-      const { data: redeemedData, error: redeemedError } = await supabase
-        .from('points_transactions')
-        .select('points_amount')
-        .eq('company_id', user.id)
-        .eq('transaction_type', 'redeem')
-
-      if (redeemedError) {
-        console.error('❌ Error fetching redeemed points:', redeemedError)
-        return NextResponse.json(
-          { success: false, error: 'Failed to fetch points balance' },
-          { status: 500 }
-        )
-      }
-
-      const totalRedeemed = redeemedData?.reduce((sum, item) => sum + Math.abs(item.points_amount || 0), 0) || 0
-
-      currentBalance = totalCollected - totalRedeemed
+      currentBalance = balanceData?.current_balance || 0
     }
 
     console.log('💰 Current balance:', currentBalance, 'Required:', pointsRequired)

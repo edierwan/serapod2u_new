@@ -10,14 +10,14 @@ interface UserProfile {
   id: string
   email: string
   role_code: string
-  organization_id: string
+  organization_id: string | null
   is_active: boolean
   organizations: {
     id: string
     org_name: string
     org_type_code: string
     org_code: string
-  }
+  } | null
   roles: {
     role_name: string
     role_level: number
@@ -36,7 +36,7 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
     sessionStorage.setItem('trackingOrderId', orderId)
     sessionStorage.setItem('selectedDocumentId', documentId)
     sessionStorage.setItem('selectedDocumentType', docType)
-    
+
     // Map document type to the correct tab
     let initialTab = 'po' // default
     if (docType === 'INVOICE') {
@@ -50,10 +50,10 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
     } else if (docType === 'PAYMENT_REQUEST') {
       initialTab = 'balanceRequest'
     }
-    
+
     // Store the initial tab to open
     sessionStorage.setItem('selectedDocumentTab', initialTab)
-    
+
     // Navigate to track order view
     onViewChange('track-order')
   }
@@ -64,7 +64,7 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Dashboard Overview</h2>
         <p className="text-gray-600">
-          Welcome back, {userProfile.organizations.org_name}
+          Welcome back, {userProfile.organizations?.org_name || userProfile.email}
         </p>
         <p className="text-sm text-gray-500">
           {userProfile.roles.role_name} • {userProfile.email}
@@ -76,7 +76,7 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
 
       {/* Action Required and Recent Activities - Moved to Top */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ActionRequired 
+        <ActionRequired
           userProfile={userProfile}
           onViewDocument={handleViewDocument}
           onViewChange={onViewChange}

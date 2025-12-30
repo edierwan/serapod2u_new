@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
-import { 
-  FileText, 
-  Package, 
-  Clock, 
+import {
+  FileText,
+  Package,
+  Clock,
   CheckCircle2,
   AlertCircle,
   TrendingUp
@@ -21,10 +21,10 @@ interface DashboardStats {
 
 interface UserProfile {
   id: string
-  organization_id: string
+  organization_id: string | null
   organizations: {
     org_type_code: string
-  }
+  } | null
 }
 
 interface DashboardStatsProps {
@@ -43,9 +43,9 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
 
   useEffect(() => {
     loadStatistics()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.organization_id])
 
   async function loadStatistics() {
@@ -56,6 +56,11 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         console.warn('No active session, skipping statistics load')
+        setLoading(false)
+        return
+      }
+
+      if (!userProfile.organization_id) {
         setLoading(false)
         return
       }
@@ -76,7 +81,7 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
       }
 
       // For distributors, add approved H2M orders to pending actions count
-      if (userProfile.organizations.org_type_code === 'DIST') {
+      if (userProfile.organizations?.org_type_code === 'DIST') {
         try {
           // Get parent org (HQ) for this distributor
           const { data: orgData, error: orgError } = await supabase

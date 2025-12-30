@@ -72,7 +72,8 @@ import {
   AlertCircle,
   Truck,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
+  ArrowUpDown
 } from "lucide-react"
 import { PointsConfigurationSettings } from './PointsConfigurationSettings'
 import { CategorySettingsDialog } from './CategorySettingsDialog'
@@ -155,7 +156,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [activeTab, setActiveTab] = useState<"rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback">("rewards")
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
-  
+
   // Feedback states
   const [feedback, setFeedback] = useState<any[]>([])
   const [feedbackLoading, setFeedbackLoading] = useState(false)
@@ -163,7 +164,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [feedbackTotalPages, setFeedbackTotalPages] = useState(1)
   const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<string>("all")
   const FEEDBACK_PAGE_SIZE = 10
-  
+
   // Redemption history states
   const [redemptions, setRedemptions] = useState<any[]>([])
   const [redemptionsLoading, setRedemptionsLoading] = useState(false)
@@ -172,6 +173,12 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [redemptionPage, setRedemptionPage] = useState(1)
   const [redemptionTotalPages, setRedemptionTotalPages] = useState(1)
   const REDEMPTION_PAGE_SIZE = 10
+
+  // Reward Inventory State
+  const [rewardCurrentPage, setRewardCurrentPage] = useState(1)
+  const [rewardItemsPerPage, setRewardItemsPerPage] = useState(10)
+  const [rewardSortConfig, setRewardSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -190,7 +197,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     }
     loadSettings()
   }, [supabase, userProfile.organizations.id])
-  
+
   // Points adjustment modal
   const [showAdjustPointsModal, setShowAdjustPointsModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState<ShopUser | null>(null)
@@ -323,7 +330,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
     try {
       console.log("🔍 Loading shops for company:", companyId, userProfile.organizations.org_name)
-      
+
       // Step 1: Get all distributors under this HQ/company
       const { data: distributors, error: distError } = await supabaseClient
         .from("organizations")
@@ -341,7 +348,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
       // Step 2: Get all shops under those distributors (and direct shops under HQ)
       let shopOrgIds: string[] = []
-      
+
       if (distributorIds.length > 0) {
         const { data: shopOrgs, error: orgsError } = await supabaseClient
           .from("organizations")
@@ -428,7 +435,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
       // Create organization ID to user mapping
       const orgIdToUserMap = new Map<string, any>()
-      
+
       shopUsersData?.forEach((user) => {
         if (user.organization_id) {
           orgIdToUserMap.set(user.organization_id, user)
@@ -437,15 +444,15 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
       // Build user list from balances
       const users: ShopUser[] = []
-      
+
       shopBalances?.forEach((balance: any) => {
         const shopUser = orgIdToUserMap.get(balance.shop_id)
-        
+
         if (!shopUser) {
           console.log("⚠️ Shop org not found for balance:", balance.shop_id)
           return
         }
-        
+
         const org = shopUser.organizations as any
         users.push({
           user_id: shopUser.id,
@@ -503,7 +510,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
     try {
       console.log("🎁 Loading redemptions for company:", companyId)
-      
+
       // Use API endpoint to bypass RLS
       const response = await fetch(`/api/admin/redemption-history?page=${page}&limit=${REDEMPTION_PAGE_SIZE}`)
       const result = await response.json()
@@ -572,7 +579,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     }
 
     const supabaseClient = createClient()
-    const finalAmount = pointsAdjustment.type === 'subtract' 
+    const finalAmount = pointsAdjustment.type === 'subtract'
       ? -Math.abs(pointsAdjustment.amount)
       : Math.abs(pointsAdjustment.amount)
 
@@ -648,11 +655,11 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       } else {
         await loadShopUsers()
       }
-      
+
       setShowAdjustPointsModal(false)
       setSelectedUser(null)
       setPointsAdjustment({ amount: 0, type: 'add', description: '' })
-      
+
       alert(`Successfully ${pointsAdjustment.type === 'add' ? 'added' : 'subtracted'} ${Math.abs(finalAmount)} points`)
     } catch (error) {
       console.error('Error adjusting points:', error)
@@ -785,6 +792,22 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     }
 
     return [...base].sort((a, b) => {
+      if (rewardSortConfig) {
+        const { key, direction } = rewardSortConfig
+        let aValue = (a as any)[key]
+        let bValue = (b as any)[key]
+
+        if (aValue === bValue) return 0
+        if (aValue === null || aValue === undefined) return 1
+        if (bValue === null || bValue === undefined) return -1
+
+        if (direction === 'asc') {
+          return aValue < bValue ? -1 : 1
+        } else {
+          return aValue > bValue ? -1 : 1
+        }
+      }
+
       switch (sortOption) {
         case "points-asc":
           return a.points_required - b.points_required
@@ -800,7 +823,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
       }
     })
-  }, [categoryFilter, enrichedRewards, searchTerm, sortOption, statusFilter])
+  }, [categoryFilter, enrichedRewards, searchTerm, sortOption, statusFilter, rewardSortConfig])
 
   const filteredUsers = useMemo(() => {
     const term = userSearchTerm.trim().toLowerCase()
@@ -816,6 +839,20 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
     })
   }, [shopUsers, userSearchTerm])
 
+  // Reward Pagination & Sorting Helpers
+  const rewardTotalPages = Math.ceil(filteredRewards.length / rewardItemsPerPage)
+  const rewardStartIndex = (rewardCurrentPage - 1) * rewardItemsPerPage
+  const rewardEndIndex = rewardStartIndex + rewardItemsPerPage
+  const paginatedRewards = filteredRewards.slice(rewardStartIndex, rewardEndIndex)
+
+  const handleRewardSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc'
+    if (rewardSortConfig && rewardSortConfig.key === key && rewardSortConfig.direction === 'asc') {
+      direction = 'desc'
+    }
+    setRewardSortConfig({ key, direction })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -823,7 +860,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           <p className="text-sm font-medium text-muted-foreground">Consumer Engagement • Admin View</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Point Catalog Management</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Manage rewards inventory and monitor shop point collections. Track shop balances earned through mobile app, 
+            Manage rewards inventory and monitor shop point collections. Track shop balances earned through mobile app,
             publish new rewards, and oversee redemption activity across all shops.
           </p>
         </div>
@@ -865,339 +902,450 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
         {/* MANAGE REWARDS TAB */}
         <TabsContent value="rewards" className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" /> Active rewards
-            </CardTitle>
-            <CardDescription>Currently visible to shops</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold text-emerald-600">{summaryStats.available}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{summaryStats.total} total rewards in catalog</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-blue-200 bg-blue-50/60 shadow-none">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-blue-700">
-              <Clock className="h-5 w-5" /> Scheduled or ending soon
-            </CardTitle>
-            <CardDescription className="text-blue-700/80">Plan upcoming launches ahead of time</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold text-blue-700">{summaryStats.scheduled + summaryStats.endingSoon}</p>
-            <p className="mt-2 text-xs text-blue-700/70">{summaryStats.scheduled} scheduled • {summaryStats.endingSoon} ending within 7 days</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-amber-200 bg-amber-50/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-amber-700">
-              <ShieldAlert className="h-5 w-5" /> Stock risks
-            </CardTitle>
-            <CardDescription className="text-amber-700/80">Keep popular rewards replenished</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold text-amber-700">{summaryStats.lowStock + summaryStats.soldOut}</p>
-            <p className="mt-2 text-xs text-amber-800/70">{summaryStats.lowStock} running low • {summaryStats.soldOut} sold out</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-emerald-200 bg-emerald-50/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-emerald-700">
-              <TrendingUp className="h-5 w-5" /> Redemptions (30d)
-            </CardTitle>
-            <CardDescription className="text-emerald-700/80">Performance snapshot across shops</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold text-emerald-700">{formatNumber(redemptionAnalytics.totalRedemptions)}</p>
-            <p className="mt-2 text-xs text-emerald-700/70">{formatNumber(redemptionAnalytics.totalPointsRedeemed)} points redeemed</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="space-y-6">
-        <Card>
-          <CardHeader className="gap-4 border-b border-border/50 pb-6">
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ListChecks className="h-4 w-4" /> Reward inventory
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-500" /> Active rewards
                 </CardTitle>
-                <CardDescription>Filter by status, category, or search to focus your review.</CardDescription>
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="relative sm:min-w-[220px]">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search rewards…"
-                    className="pl-9"
-                  />
-                </div>
-                <Select value={sortOption} onValueChange={setSortOption}>
-                  <SelectTrigger className="sm:w-56">
-                    <SelectValue placeholder="Sort" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SORT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+                <CardDescription>Currently visible to shops</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-semibold text-emerald-600">{summaryStats.available}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{summaryStats.total} total rewards in catalog</p>
+              </CardContent>
+            </Card>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant={statusFilter === "all" ? "default" : "outline"}
-                onClick={() => setStatusFilter("all")}
-              >
-                All statuses
-              </Button>
-              {(["available", "scheduled", "paused", "expired", "soldOut"] as RewardStatus[]).map((status) => (
-                <Button
-                  key={status}
-                  size="sm"
-                  variant={statusFilter === status ? "default" : "outline"}
-                  onClick={() => setStatusFilter(status)}
-                  className="capitalize"
-                >
-                  {status === "soldOut" ? "Sold out" : status}
-                </Button>
-              ))}
-            </div>
+            <Card className="border-blue-200 bg-blue-50/60 shadow-none">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-blue-700">
+                  <Clock className="h-5 w-5" /> Scheduled or ending soon
+                </CardTitle>
+                <CardDescription className="text-blue-700/80">Plan upcoming launches ahead of time</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-semibold text-blue-700">{summaryStats.scheduled + summaryStats.endingSoon}</p>
+                <p className="mt-2 text-xs text-blue-700/70">{summaryStats.scheduled} scheduled • {summaryStats.endingSoon} ending within 7 days</p>
+              </CardContent>
+            </Card>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant={categoryFilter === "all" ? "default" : "outline"}
-                onClick={() => setCategoryFilter("all")}
-              >
-                All categories
-              </Button>
-              {(Object.keys(categoryLabels) as RewardCategory[]).map((category) => (
-                <Button
-                  key={category}
-                  size="sm"
-                  variant={categoryFilter === category ? "default" : "outline"}
-                  onClick={() => setCategoryFilter(category)}
-                >
-                  {categoryLabels[category]}
-                </Button>
-              ))}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowCategorySettings(true)}
-                className="ml-2"
-              >
-                <Edit className="mr-2 h-3 w-3" /> Rename
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-16 text-muted-foreground">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading rewards…
-              </div>
-            ) : error ? (
-              <div className="py-12 text-center text-sm text-destructive">{error}</div>
-            ) : filteredRewards.length === 0 ? (
-              <div className="py-16 text-center text-sm text-muted-foreground">
-                No rewards match the selected filters.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-border text-sm">
-                  <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3">Reward</th>
-                      <th className="px-4 py-3">Points</th>
-                      <th className="px-4 py-3">Stock</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Schedule</th>
-                      <th className="px-4 py-3">Verification</th>
-                      <th className="px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    {filteredRewards.map((reward) => (
-                      <tr key={reward.id} className="hover:bg-muted/40">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
-                              {reward.item_image_url ? (
-                                <Image
-                                  src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
-                                  alt={reward.item_name}
-                                  fill
-                                  className="object-cover"
-                                  unoptimized={reward.item_image_url.startsWith('data:')}
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                                  <Package className="h-5 w-5" />
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">{reward.item_name}</div>
-                              <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                <Badge variant="outline" className="border-border/70 bg-background">
-                                  {categoryLabels[reward.category]}
-                                </Badge>
-                                {reward.lowStock && (
-                                  <Badge className="bg-amber-500 text-white">Low stock</Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          {(reward as any).point_offer && (reward as any).point_offer > 0 ? (
-                            <div className="flex flex-col">
-                              <span className="text-xs text-muted-foreground line-through decoration-red-500/50">
-                                {formatNumber(reward.points_required)}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <span className="font-bold text-red-600">{formatNumber((reward as any).point_offer)}</span>
-                                <Badge variant="outline" className="h-4 border-red-200 px-1 text-[10px] text-red-600">
-                                  PROMO
-                                </Badge>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="font-semibold text-blue-600">{formatNumber(reward.points_required)}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-sm">
-                          {typeof reward.stock_quantity === "number" ? (
-                            <span className={reward.stock_quantity <= 0 ? "text-destructive" : undefined}>
-                              {reward.stock_quantity} units
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">Unlimited</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4">
-                          <Badge className={getStatusBadgeClass(reward.status)}>{reward.status}</Badge>
-                        </td>
-                        <td className="px-4 py-4 text-xs text-muted-foreground">
-                          <div>Start: {reward.valid_from ? formatDateLabel(reward.valid_from) : "Now"}</div>
-                          <div>End: {reward.valid_until ? formatDateLabel(reward.valid_until) : "Open"}</div>
-                        </td>
-                        <td className="px-4 py-4 text-xs text-muted-foreground">
-                          {reward.requiresVerification ? "Manual check" : "Auto approve"}
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="flex gap-2">
-                            <Button asChild size="sm" variant="outline" className="gap-1">
-                              <Link href={`/engagement/catalog/admin/edit/${reward.id}`}>
-                                <Edit className="h-4 w-4" /> Edit
-                              </Link>
-                            </Button>
-                            <Button asChild size="sm" variant="outline" className="gap-1">
-                              <Link href={`/engagement/catalog/admin?focus=${reward.id}`}>
-                                <Filter className="h-4 w-4" /> Focus
-                              </Link>
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <Card className="border-amber-200 bg-amber-50/70">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-amber-700">
+                  <ShieldAlert className="h-5 w-5" /> Stock risks
+                </CardTitle>
+                <CardDescription className="text-amber-700/80">Keep popular rewards replenished</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-semibold text-amber-700">{summaryStats.lowStock + summaryStats.soldOut}</p>
+                <p className="mt-2 text-xs text-amber-800/70">{summaryStats.lowStock} running low • {summaryStats.soldOut} sold out</p>
+              </CardContent>
+            </Card>
 
-        <div className="grid gap-6 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BarChart3 className="h-4 w-4" /> Top redeemed rewards
-              </CardTitle>
-              <CardDescription>Based on redemption counts across all shops.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {redemptionAnalytics.topRewards.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No redemption activity captured yet.</div>
-              ) : (
-                redemptionAnalytics.topRewards.map((entry) => (
-                  <div key={entry.rewardId} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm font-medium">
-                      <span>{entry.reward?.item_name}</span>
-                      <span className="text-muted-foreground">{entry.count} redemptions</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-muted">
-                      <div
-                        className="h-2 rounded-full bg-gradient-to-r from-indigo-400 to-indigo-600"
-                        style={{ width: `${redemptionAnalytics.maxCount ? (entry.count / redemptionAnalytics.maxCount) * 100 : 0}%` }}
+            <Card className="border-emerald-200 bg-emerald-50/70">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-emerald-700">
+                  <TrendingUp className="h-5 w-5" /> Redemptions (30d)
+                </CardTitle>
+                <CardDescription className="text-emerald-700/80">Performance snapshot across shops</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-semibold text-emerald-700">{formatNumber(redemptionAnalytics.totalRedemptions)}</p>
+                <p className="mt-2 text-xs text-emerald-700/70">{formatNumber(redemptionAnalytics.totalPointsRedeemed)} points redeemed</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-6">
+            <Card>
+              <CardHeader className="gap-4 border-b border-border/50 pb-6">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <ListChecks className="h-4 w-4" /> Reward inventory
+                    </CardTitle>
+                    <CardDescription>Filter by status, category, or search to focus your review.</CardDescription>
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="relative sm:min-w-[220px]">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder="Search rewards…"
+                        className="pl-9"
                       />
                     </div>
+                    <Select value={sortOption} onValueChange={setSortOption}>
+                      <SelectTrigger className="sm:w-56">
+                        <SelectValue placeholder="Sort" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SORT_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Package className="h-4 w-4" /> Latest redemptions
-              </CardTitle>
-              <CardDescription>Live feed of the most recent redemption approvals.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {redemptionAnalytics.recentFeed.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No redemptions yet.</div>
-              ) : (
-                redemptionAnalytics.recentFeed.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-border/60 bg-muted/30 p-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="font-medium text-foreground">{item.rewardName}</div>
-                      <span className="text-xs text-muted-foreground">{item.label}</span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{item.consumer || "Unknown consumer"}</span>
-                      <span className="font-semibold text-amber-600">-{formatNumber(item.points)} pts</span>
-                    </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={statusFilter === "all" ? "default" : "outline"}
+                    onClick={() => setStatusFilter("all")}
+                  >
+                    All statuses
+                  </Button>
+                  {(["available", "scheduled", "paused", "expired", "soldOut"] as RewardStatus[]).map((status) => (
+                    <Button
+                      key={status}
+                      size="sm"
+                      variant={statusFilter === status ? "default" : "outline"}
+                      onClick={() => setStatusFilter(status)}
+                      className="capitalize"
+                    >
+                      {status === "soldOut" ? "Sold out" : status}
+                    </Button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={categoryFilter === "all" ? "default" : "outline"}
+                    onClick={() => setCategoryFilter("all")}
+                  >
+                    All categories
+                  </Button>
+                  {(Object.keys(categoryLabels) as RewardCategory[]).map((category) => (
+                    <Button
+                      key={category}
+                      size="sm"
+                      variant={categoryFilter === category ? "default" : "outline"}
+                      onClick={() => setCategoryFilter(category)}
+                    >
+                      {categoryLabels[category]}
+                    </Button>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowCategorySettings(true)}
+                    className="ml-2"
+                  >
+                    <Edit className="mr-2 h-3 w-3" /> Rename
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {loading ? (
+                  <div className="flex items-center justify-center py-16 text-muted-foreground">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading rewards…
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                ) : error ? (
+                  <div className="py-12 text-center text-sm text-destructive">{error}</div>
+                ) : filteredRewards.length === 0 ? (
+                  <div className="py-16 text-center text-sm text-muted-foreground">
+                    No rewards match the selected filters.
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-border text-sm">
+                        <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-4 py-3 w-[50px]">#</th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-muted/60" onClick={() => handleRewardSort('item_name')}>
+                              <div className="flex items-center gap-1">
+                                Reward
+                                <ArrowUpDown className={`h-3 w-3 ${rewardSortConfig?.key === 'item_name' ? 'text-primary' : 'text-muted-foreground'}`} />
+                              </div>
+                            </th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-muted/60" onClick={() => handleRewardSort('points_required')}>
+                              <div className="flex items-center gap-1">
+                                Points
+                                <ArrowUpDown className={`h-3 w-3 ${rewardSortConfig?.key === 'points_required' ? 'text-primary' : 'text-muted-foreground'}`} />
+                              </div>
+                            </th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-muted/60" onClick={() => handleRewardSort('stock_quantity')}>
+                              <div className="flex items-center gap-1">
+                                Stock
+                                <ArrowUpDown className={`h-3 w-3 ${rewardSortConfig?.key === 'stock_quantity' ? 'text-primary' : 'text-muted-foreground'}`} />
+                              </div>
+                            </th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-muted/60" onClick={() => handleRewardSort('status')}>
+                              <div className="flex items-center gap-1">
+                                Status
+                                <ArrowUpDown className={`h-3 w-3 ${rewardSortConfig?.key === 'status' ? 'text-primary' : 'text-muted-foreground'}`} />
+                              </div>
+                            </th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-muted/60" onClick={() => handleRewardSort('valid_from')}>
+                              <div className="flex items-center gap-1">
+                                Schedule
+                                <ArrowUpDown className={`h-3 w-3 ${rewardSortConfig?.key === 'valid_from' ? 'text-primary' : 'text-muted-foreground'}`} />
+                              </div>
+                            </th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-muted/60" onClick={() => handleRewardSort('requiresVerification')}>
+                              <div className="flex items-center gap-1">
+                                Verification
+                                <ArrowUpDown className={`h-3 w-3 ${rewardSortConfig?.key === 'requiresVerification' ? 'text-primary' : 'text-muted-foreground'}`} />
+                              </div>
+                            </th>
+                            <th className="px-4 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                          {paginatedRewards.map((reward, index) => (
+                            <tr key={reward.id} className="hover:bg-muted/40">
+                              <td className="px-4 py-4 text-muted-foreground">
+                                {rewardStartIndex + index + 1}
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+                                    {reward.item_image_url ? (
+                                      <Image
+                                        src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
+                                        alt={reward.item_name}
+                                        fill
+                                        className="object-cover"
+                                        unoptimized={reward.item_image_url.startsWith('data:')}
+                                      />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                                        <Package className="h-5 w-5" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-foreground">{reward.item_name}</div>
+                                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                      <Badge variant="outline" className="border-border/70 bg-background">
+                                        {categoryLabels[reward.category]}
+                                      </Badge>
+                                      {reward.lowStock && (
+                                        <Badge className="bg-amber-500 text-white">Low stock</Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4">
+                                {(reward as any).point_offer && (reward as any).point_offer > 0 ? (
+                                  <div className="flex flex-col">
+                                    <span className="text-xs text-muted-foreground line-through decoration-red-500/50">
+                                      {formatNumber(reward.points_required)}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="font-bold text-red-600">{formatNumber((reward as any).point_offer)}</span>
+                                      <Badge variant="outline" className="h-4 border-red-200 px-1 text-[10px] text-red-600">
+                                        PROMO
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="font-semibold text-blue-600">{formatNumber(reward.points_required)}</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {typeof reward.stock_quantity === "number" ? (
+                                  <span className={reward.stock_quantity <= 0 ? "text-destructive" : undefined}>
+                                    {reward.stock_quantity} units
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">Unlimited</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-4">
+                                <Badge className={getStatusBadgeClass(reward.status)}>{reward.status}</Badge>
+                              </td>
+                              <td className="px-4 py-4 text-xs text-muted-foreground">
+                                <div>Start: {reward.valid_from ? formatDateLabel(reward.valid_from) : "Now"}</div>
+                                <div>End: {reward.valid_until ? formatDateLabel(reward.valid_until) : "Open"}</div>
+                              </td>
+                              <td className="px-4 py-4 text-xs text-muted-foreground">
+                                {reward.requiresVerification ? "Manual check" : "Auto approve"}
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex gap-2">
+                                  <Button asChild size="sm" variant="outline" className="gap-1">
+                                    <Link href={`/engagement/catalog/admin/edit/${reward.id}`}>
+                                      <Edit className="h-4 w-4" /> Edit
+                                    </Link>
+                                  </Button>
+                                  <Button asChild size="sm" variant="outline" className="gap-1">
+                                    <Link href={`/engagement/catalog/admin?focus=${reward.id}`}>
+                                      <Filter className="h-4 w-4" /> Focus
+                                    </Link>
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-          <Card className="border-dashed border-primary/30 bg-primary/5">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg text-primary">
-                <ChevronRight className="h-4 w-4" /> Next recommended action
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-primary">
-              <p>
-                {summaryStats.lowStock > 0
-                  ? `Replenish inventory for ${summaryStats.lowStock} low-stock reward${summaryStats.lowStock === 1 ? "" : "s"} to keep shops engaged.`
-                  : "All rewards look healthy right now—consider launching a limited-time reward to boost engagement."}
-              </p>
-              <Button asChild size="sm" variant="outline" className="gap-2 border-primary text-primary hover:bg-primary/10">
-                <Link href="/engagement/catalog/admin/new">
-                  <Sparkles className="h-4 w-4" /> Launch limited reward
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                    {/* Pagination Controls */}
+                    {filteredRewards.length > 0 && (
+                      <div className="flex items-center justify-between border-t p-4">
+                        <div className="flex items-center gap-4">
+                          <div className="text-sm text-muted-foreground">
+                            Showing {rewardStartIndex + 1} to {Math.min(rewardEndIndex, filteredRewards.length)} of {filteredRewards.length} results
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Rows per page:</span>
+                            <Select
+                              value={rewardItemsPerPage.toString()}
+                              onValueChange={(value) => {
+                                setRewardItemsPerPage(Number(value))
+                                setRewardCurrentPage(1)
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-[70px]">
+                                <SelectValue placeholder={rewardItemsPerPage} />
+                              </SelectTrigger>
+                              <SelectContent side="top">
+                                {[10, 20, 30, 40, 50].map((pageSize) => (
+                                  <SelectItem key={pageSize} value={pageSize.toString()}>
+                                    {pageSize}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setRewardCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={rewardCurrentPage === 1}
+                          >
+                            Previous
+                          </Button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(5, rewardTotalPages) }, (_, i) => {
+                              let pageNum: number
+                              if (rewardTotalPages <= 5) {
+                                pageNum = i + 1
+                              } else if (rewardCurrentPage <= 3) {
+                                pageNum = i + 1
+                              } else if (rewardCurrentPage >= rewardTotalPages - 2) {
+                                pageNum = rewardTotalPages - 4 + i
+                              } else {
+                                pageNum = rewardCurrentPage - 2 + i
+                              }
+                              return (
+                                <Button
+                                  key={pageNum}
+                                  variant={rewardCurrentPage === pageNum ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => setRewardCurrentPage(pageNum)}
+                                  className="w-8"
+                                >
+                                  {pageNum}
+                                </Button>
+                              )
+                            })}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setRewardCurrentPage(p => Math.min(rewardTotalPages, p + 1))}
+                            disabled={rewardCurrentPage === rewardTotalPages}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-6 md:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <BarChart3 className="h-4 w-4" /> Top redeemed rewards
+                  </CardTitle>
+                  <CardDescription>Based on redemption counts across all shops.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {redemptionAnalytics.topRewards.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No redemption activity captured yet.</div>
+                  ) : (
+                    redemptionAnalytics.topRewards.map((entry) => (
+                      <div key={entry.rewardId} className="space-y-2">
+                        <div className="flex items-center justify-between text-sm font-medium">
+                          <span>{entry.reward?.item_name}</span>
+                          <span className="text-muted-foreground">{entry.count} redemptions</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted">
+                          <div
+                            className="h-2 rounded-full bg-gradient-to-r from-indigo-400 to-indigo-600"
+                            style={{ width: `${redemptionAnalytics.maxCount ? (entry.count / redemptionAnalytics.maxCount) * 100 : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Package className="h-4 w-4" /> Latest redemptions
+                  </CardTitle>
+                  <CardDescription>Live feed of the most recent redemption approvals.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {redemptionAnalytics.recentFeed.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No redemptions yet.</div>
+                  ) : (
+                    redemptionAnalytics.recentFeed.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="font-medium text-foreground">{item.rewardName}</div>
+                          <span className="text-xs text-muted-foreground">{item.label}</span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{item.consumer || "Unknown consumer"}</span>
+                          <span className="font-semibold text-amber-600">-{formatNumber(item.points)} pts</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-dashed border-primary/30 bg-primary/5">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg text-primary">
+                    <ChevronRight className="h-4 w-4" /> Next recommended action
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-primary">
+                  <p>
+                    {summaryStats.lowStock > 0
+                      ? `Replenish inventory for ${summaryStats.lowStock} low-stock reward${summaryStats.lowStock === 1 ? "" : "s"} to keep shops engaged.`
+                      : "All rewards look healthy right now—consider launching a limited-time reward to boost engagement."}
+                  </p>
+                  <Button asChild size="sm" variant="outline" className="gap-2 border-primary text-primary hover:bg-primary/10">
+                    <Link href="/engagement/catalog/admin/new">
+                      <Sparkles className="h-4 w-4" /> Launch limited reward
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* SHOP POINTS MONITOR TAB */}
@@ -1212,7 +1360,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                 <div className="flex-1">
                   <h3 className="font-semibold text-blue-900">Shop Point Collection System</h3>
                   <p className="mt-1 text-sm text-blue-800">
-                    Shops collect points through the mobile app by entering their Shop ID and password. 
+                    Shops collect points through the mobile app by entering their Shop ID and password.
                     All point collections are tracked here for monitoring and management.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">
@@ -1258,7 +1406,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                 </div>
               ) : filteredUsers.length === 0 ? (
                 <div className="py-16 text-center text-sm text-muted-foreground">
-                  {shopUsers.length === 0 
+                  {shopUsers.length === 0
                     ? "No shop points collected yet. Shops can collect points through the mobile app."
                     : "No users match your search."}
                 </div>
@@ -1318,7 +1466,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                             {user.transaction_count}
                           </td>
                           <td className="px-4 py-4 text-xs text-muted-foreground">
-                            {user.last_transaction_date 
+                            {user.last_transaction_date
                               ? formatRelative(new Date(user.last_transaction_date))
                               : 'Never'}
                           </td>
@@ -1347,14 +1495,14 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
         {/* CONSUMER POINTS MONITOR TAB */}
         <TabsContent value="consumers" className="space-y-4">
-          <UserPointsMonitor 
-            users={consumerUsers} 
-            loading={usersLoading} 
+          <UserPointsMonitor
+            users={consumerUsers}
+            loading={usersLoading}
             onAdjustPoints={(user) => {
               setSelectedUser(user)
               setPointsAdjustment({ amount: 0, type: 'add', description: '' })
               setShowAdjustPointsModal(true)
-            }} 
+            }}
           />
         </TabsContent>
 
@@ -1379,7 +1527,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                   className="gap-2"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
                   </svg>
                   Refresh
                 </Button>
@@ -1392,7 +1540,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      placeholder="Search by shop name, phone, or reward name..."
+                      placeholder="Search by shop/consumer name, phone, or reward name..."
                       value={redemptionSearchTerm}
                       onChange={(e) => setRedemptionSearchTerm(e.target.value)}
                       className="pl-9"
@@ -1441,6 +1589,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                         return (
                           r.shop_name?.toLowerCase().includes(search) ||
                           r.shop_phone?.toLowerCase().includes(search) ||
+                          r.staff_name?.toLowerCase().includes(search) ||
+                          r.staff_phone?.toLowerCase().includes(search) ||
                           r.reward_name?.toLowerCase().includes(search)
                         )
                       }
@@ -1484,7 +1634,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                       </div>
                                     )}
                                   </div>
-                                  
+
                                   <div className="flex-1">
                                     <div className="flex items-start justify-between">
                                       <div className="flex-1">
@@ -1493,7 +1643,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                           Code: {redemption.redemption_code || "N/A"}
                                         </p>
                                       </div>
-                                      <Badge 
+                                      <Badge
                                         className={`${statusColors[redemption.fulfillment_status || "pending"]} flex items-center gap-1`}
                                       >
                                         <StatusIcon className="h-3 w-3" />
@@ -1506,7 +1656,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                 <div className="space-y-1 text-sm">
                                   <div className="flex items-center gap-2 text-muted-foreground">
                                     <MapPin className="h-4 w-4" />
-                                    <span className="font-medium">{redemption.shop_name}</span>
+                                    <span className="font-medium">{redemption.shop_name || redemption.staff_location || 'Unknown Location'}</span>
                                   </div>
                                   <div className="flex items-center gap-2 text-muted-foreground">
                                     <User className="h-4 w-4" />
@@ -1514,7 +1664,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                   </div>
                                   <div className="flex items-center gap-2 text-muted-foreground">
                                     <Phone className="h-4 w-4" />
-                                    <span>{redemption.shop_phone}</span>
+                                    <span>{redemption.shop_phone || redemption.staff_phone}</span>
                                   </div>
                                   <div className="flex items-center gap-2 text-muted-foreground">
                                     <Calendar className="h-4 w-4" />
@@ -1542,10 +1692,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                     <div className="grid grid-cols-[80px_1fr] gap-y-1 gap-x-2">
                                       <span className="text-blue-600">Bank:</span>
                                       <span className="font-medium text-blue-900">{redemption.shop_bank_name || '-'}</span>
-                                      
+
                                       <span className="text-blue-600">Account:</span>
                                       <span className="font-medium text-blue-900">{redemption.shop_bank_account_number || '-'}</span>
-                                      
+
                                       <span className="text-blue-600">Holder:</span>
                                       <span className="font-medium text-blue-900">{redemption.shop_bank_account_holder_name || '-'}</span>
                                     </div>
@@ -1639,7 +1789,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                         </Card>
                       )
                     })}
-                  
+
                   {/* Pagination Controls */}
                   {redemptionTotalPages > 1 && (
                     <div className="flex items-center justify-center gap-2 py-4">
@@ -1687,7 +1837,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-                <AdminSupportInbox />
+              <AdminSupportInbox />
             </CardContent>
           </Card>
         </TabsContent>
@@ -1710,8 +1860,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Adjustment Type</Label>
-              <Select 
-                value={pointsAdjustment.type} 
+              <Select
+                value={pointsAdjustment.type}
                 onValueChange={(value) => setPointsAdjustment(prev => ({ ...prev, type: value as 'add' | 'subtract' }))}
               >
                 <SelectTrigger>
@@ -1748,7 +1898,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
                 <p className="font-medium text-blue-900">
                   New Balance: {formatNumber(
-                    (selectedUser?.current_balance ?? 0) + 
+                    (selectedUser?.current_balance ?? 0) +
                     (pointsAdjustment.type === 'add' ? pointsAdjustment.amount : -pointsAdjustment.amount)
                   )} points
                 </p>
@@ -1772,8 +1922,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </DialogContent>
       </Dialog>
 
-      <CategorySettingsDialog 
-        open={showCategorySettings} 
+      <CategorySettingsDialog
+        open={showCategorySettings}
         onOpenChange={setShowCategorySettings}
         userProfile={userProfile}
         onUpdate={setCategoryLabels}

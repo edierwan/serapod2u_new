@@ -20,10 +20,10 @@ import {
 interface UserProfile {
   id: string
   role_code: string
-  organization_id: string
+  organization_id: string | null
   organizations: {
     org_type_code: string
-  }
+  } | null
 }
 
 type StageKey = 'pending' | 'generated' | 'printed' | 'packed' | 'ready_to_ship' | 'received_warehouse' | 'warehouse_packed' | 'shipped_distributor' | 'opened'
@@ -253,25 +253,25 @@ function buildOverview(records: RawRecord[]): {
 function combinePipelineCounts(stageCounts: Record<StageKey, number>) {
   // Calculate cumulative counts for display stages
   // "Printing" includes everything from pending/generated onwards (pending + generated + printed + packed + ready_to_ship + ...)
-  const printingTotal = stageCounts.pending + stageCounts.generated + stageCounts.printed + 
-                       stageCounts.packed + stageCounts.ready_to_ship + stageCounts.received_warehouse + 
-                       stageCounts.warehouse_packed + stageCounts.shipped_distributor + stageCounts.opened
-  
+  const printingTotal = stageCounts.pending + stageCounts.generated + stageCounts.printed +
+    stageCounts.packed + stageCounts.ready_to_ship + stageCounts.received_warehouse +
+    stageCounts.warehouse_packed + stageCounts.shipped_distributor + stageCounts.opened
+
   // "Packed @ Manufacturer" includes packed + ready_to_ship + all downstream
-  const packedTotal = stageCounts.packed + stageCounts.ready_to_ship + 
-                     stageCounts.received_warehouse + stageCounts.warehouse_packed + 
-                     stageCounts.shipped_distributor + stageCounts.opened
-  
+  const packedTotal = stageCounts.packed + stageCounts.ready_to_ship +
+    stageCounts.received_warehouse + stageCounts.warehouse_packed +
+    stageCounts.shipped_distributor + stageCounts.opened
+
   // "Received @ Warehouse" includes warehouse + warehouse_packed + all downstream
-  const warehouseTotal = stageCounts.received_warehouse + stageCounts.warehouse_packed + 
-                        stageCounts.shipped_distributor + stageCounts.opened
-  
+  const warehouseTotal = stageCounts.received_warehouse + stageCounts.warehouse_packed +
+    stageCounts.shipped_distributor + stageCounts.opened
+
   // "Shipped to Distributor" includes distributor + opened
   const distributorTotal = stageCounts.shipped_distributor + stageCounts.opened
-  
+
   // "Opened @ Shop" is just opened
   const shopTotal = stageCounts.opened
-  
+
   return PIPELINE_META.map((meta) => {
     let count = 0
     if (meta.key === 'pending_printed') {
@@ -347,6 +347,10 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
         .order('updated_at', { ascending: false })
 
       if (scope === 'manufacturer') {
+        if (!userProfile.organization_id) {
+          setLoading(false)
+          return
+        }
         baseQuery.eq('manufacturer_org_id', userProfile.organization_id)
       }
 
@@ -645,8 +649,8 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
                       </p>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-gray-500">Cases {order.totalCases}</span>
-                        <Badge 
-                          variant={percent >= 70 ? 'secondary' : percent >= 30 ? 'default' : 'destructive'} 
+                        <Badge
+                          variant={percent >= 70 ? 'secondary' : percent >= 30 ? 'default' : 'destructive'}
                           className="text-[10px]"
                         >
                           {percent}%
@@ -654,9 +658,8 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
                       </div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200">
                         <div
-                          className={`h-full rounded-full ${
-                            percent >= 70 ? 'bg-emerald-500' : percent >= 30 ? 'bg-blue-500' : 'bg-red-500'
-                          }`}
+                          className={`h-full rounded-full ${percent >= 70 ? 'bg-emerald-500' : percent >= 30 ? 'bg-blue-500' : 'bg-red-500'
+                            }`}
                           style={{ width: `${percent}%` }}
                         />
                       </div>
@@ -678,8 +681,8 @@ export default function SupplyChainProgressBoard({ userProfile }: { userProfile:
                           <p className="text-sm font-semibold text-gray-900">{order.orderNo}</p>
                           <p className="text-xs text-gray-500">{order.totalUnits.toLocaleString()} units • {order.totalCases} master cases</p>
                         </div>
-                        <Badge 
-                          variant={percent >= 70 ? 'secondary' : percent >= 30 ? 'default' : 'destructive'} 
+                        <Badge
+                          variant={percent >= 70 ? 'secondary' : percent >= 30 ? 'default' : 'destructive'}
                           className="text-xs"
                         >
                           {percent}% complete
