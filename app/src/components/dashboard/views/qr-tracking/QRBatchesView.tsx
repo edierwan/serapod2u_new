@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatNumber } from '@/lib/utils/formatters'
-import { 
-  QrCode, 
-  Download, 
-  Plus, 
+import {
+  QrCode,
+  Download,
+  Plus,
   Search,
   Filter,
   RefreshCw,
@@ -18,7 +18,10 @@ import {
   Clock,
   AlertCircle,
   Package,
-  ArrowRight
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
@@ -52,21 +55,28 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
   const [workerRunning, setWorkerRunning] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+
+  // Pagination & Sorting
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+  const [customPageSize, setCustomPageSize] = useState('')
+
   const { toast } = useToast()
   const supabase = createClient()
 
   useEffect(() => {
     loadBatches()
     loadApprovedOrders()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Poll for updates when batches are processing
   useEffect(() => {
     const hasActiveBatches = batches.some(b => ['queued', 'processing'].includes(b.status))
-    
+
     if (hasActiveBatches) {
       const intervalId = setInterval(() => {
         loadBatches(true)
@@ -74,7 +84,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
       return () => clearInterval(intervalId)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batches])
 
   const loadApprovedOrders = async () => {
@@ -132,7 +142,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      
+
       // Fetch packed counts for each batch
       // Progress counts master codes that are packed or beyond (warehouse_packed, ready_to_ship, completed, received_warehouse, shipped_distributor, opened)
       const batchesWithProgress = await Promise.all(
@@ -143,10 +153,10 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             .select('*', { count: 'exact', head: true })
             .eq('batch_id', batch.id)
             .in('status', ['packed', 'warehouse_packed', 'ready_to_ship', 'completed', 'received_warehouse', 'shipped_distributor', 'opened'])
-          
+
           const totalCount = batch.total_master_codes || 0
           const progressPercentage = totalCount > 0 ? Math.round(((packedCount || 0) / totalCount) * 100) : 0
-          
+
           return {
             ...batch,
             packed_master_codes: packedCount || 0,
@@ -154,7 +164,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
           }
         })
       )
-      
+
       setBatches(batchesWithProgress)
     } catch (error: any) {
       toast({
@@ -169,7 +179,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
   const runWorker = async (showToast = true) => {
     if (workerRunning) return
-    
+
     try {
       setWorkerRunning(true)
       if (showToast) {
@@ -181,14 +191,14 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
       let keepRunning = true
       let runCount = 0
-      
+
       while (keepRunning) {
         runCount++
         const response = await fetch('/api/cron/qr-generation-worker')
         const result = await response.json()
-        
+
         console.log(`Worker run #${runCount} result:`, result)
-        
+
         if (result.message === 'No batches to process') {
           if (showToast && runCount === 1) {
             toast({
@@ -200,20 +210,20 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         } else {
           // If we processed something, refresh the list
           await loadBatches(true)
-          
+
           // Check if we should continue
           // The worker returns hasMore: true if it yielded
           if (result.hasMore) {
-             // Add a small delay to prevent hammering
-             await new Promise(resolve => setTimeout(resolve, 1000))
+            // Add a small delay to prevent hammering
+            await new Promise(resolve => setTimeout(resolve, 1000))
           } else {
-             keepRunning = false
-             if (showToast) {
-               toast({
-                 title: 'Worker Run Complete',
-                 description: 'Batch processing completed.'
-               })
-             }
+            keepRunning = false
+            if (showToast) {
+              toast({
+                title: 'Worker Run Complete',
+                description: 'Batch processing completed.'
+              })
+            }
           }
         }
       }
@@ -261,16 +271,16 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       })
 
       if (!response.ok) throw new Error('Failed to generate QR batch')
-      
+
       const result = await response.json()
       toast({
         title: 'Success',
         description: result.message || 'Batch queued for generation'
       })
-      
+
       await loadBatches()
       await loadApprovedOrders() // Refresh approved orders list
-      
+
       // Automatically start the worker
       runWorker(true)
     } catch (error: any) {
@@ -314,11 +324,11 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       // Use direct window.open for better Vercel/production compatibility
       // Signed URLs from Supabase include Content-Disposition header for download
       const downloadUrl = payload.url as string
-      
+
       // Open in new window/tab - browser will handle download automatically
       // This works better on Vercel than anchor.click()
       const downloadWindow = window.open(downloadUrl, '_blank')
-      
+
       // Fallback: if popup blocked, try anchor method
       if (!downloadWindow) {
         const anchor = document.createElement('a')
@@ -336,7 +346,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         .select('status')
         .eq('id', batch.id)
         .single()
-      
+
       if (currentBatch?.status !== 'generated') {
         console.warn('Batch status changed, skipping update:', currentBatch?.status)
         return
@@ -346,7 +356,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       // AND update all QR codes (master + unique) to 'printed' status
       if (batch.status === 'generated') {
         console.log('🔄 Updating batch status via RPC...')
-        
+
         // Use RPC function to update everything in chunks
         // This handles large datasets efficiently with internal batching
         const { data: rpcData, error: rpcError } = await supabase.rpc('mark_batch_as_printed', {
@@ -360,14 +370,14 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             details: rpcError.details,
             hint: rpcError.hint
           })
-          
+
           // Fallback to client-side chunked updates if RPC fails
           console.warn('⚠️ Falling back to client-side chunked updates...')
-          
+
           // Update batch status first (fast operation)
           const { error: updateError } = await supabase
             .from('qr_batches')
-            .update({ 
+            .update({
               status: 'printing',
               updated_at: new Date().toISOString()
             })
@@ -382,7 +392,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
           // Update master codes (typically small number, can do in one go)
           const { error: masterError } = await supabase
             .from('qr_master_codes')
-            .update({ 
+            .update({
               status: 'printed',
               updated_at: new Date().toISOString()
             })
@@ -400,13 +410,13 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             const CHUNK_SIZE = 500 // Update 500 codes at a time (safe batch size)
             let totalUpdated = 0
             let chunkIndex = 0
-            
+
             console.log(`Fallback: Updating ${batch.total_unique_codes} unique codes in chunks of ${CHUNK_SIZE}...`)
 
             // Use limit-offset pagination for reliable chunking
             while (true) {
               const offset = chunkIndex * CHUNK_SIZE
-              
+
               // First, get the IDs of codes to update in this chunk
               const { data: codesToUpdate, error: fetchError } = await supabase
                 .from('qr_codes')
@@ -428,7 +438,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               // Update this chunk by IDs
               const { error: chunkError, count } = await supabase
                 .from('qr_codes')
-                .update({ 
+                .update({
                   status: 'printed',
                   updated_at: new Date().toISOString()
                 })
@@ -444,7 +454,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               }
 
               chunkIndex++
-              
+
               // Safety limit: max 1000 chunks (500k codes)
               if (chunkIndex >= 1000) {
                 console.warn('Reached maximum chunk limit, stopping updates')
@@ -496,23 +506,23 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       if (Array.isArray(order.qr_batches) && order.qr_batches.length === 0) return true
       return false
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvedOrders])
 
   const getDuration = (batch: any) => {
     if (!batch.processing_started_at || !batch.processing_finished_at) return null
-    
+
     const start = new Date(batch.processing_started_at).getTime()
     const end = new Date(batch.processing_finished_at).getTime()
     const diff = end - start
-    
+
     if (diff < 0) return null
-    
+
     const minutes = Math.floor(diff / 60000)
     const seconds = Math.floor((diff % 60000) / 1000)
-    
+
     if (minutes === 0) return `${seconds}s`
     return `${minutes}m ${seconds}s`
   }
@@ -528,10 +538,10 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       in_production: { label: 'In Production', variant: 'default', icon: Clock },
       completed: { label: 'Completed', variant: 'default', icon: CheckCircle }
     }
-    
+
     const config = statusConfig[status] || statusConfig.pending
     const Icon = config.icon
-    
+
     return (
       <Badge variant={config.variant} className="flex items-center gap-1">
         <Icon className={`h-3 w-3 ${config.className || ''}`} />
@@ -540,15 +550,104 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     )
   }
 
-  const filteredBatches = batches.filter(batch => {
-    const matchesSearch = !searchTerm || 
-      batch.orders?.order_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      batch.id.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = statusFilter === 'all' || batch.status === statusFilter
-    
-    return matchesSearch && matchesStatus
-  })
+  const filteredBatches = useMemo(() => {
+    let result = batches.filter(batch => {
+      const matchesSearch = !searchTerm ||
+        batch.orders?.order_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        batch.id.toLowerCase().includes(searchTerm.toLowerCase())
+
+      const matchesStatus = statusFilter === 'all' || batch.status === statusFilter
+
+      return matchesSearch && matchesStatus
+    })
+
+    // Sorting
+    if (sortConfig) {
+      result.sort((a, b) => {
+        let aValue: any = ''
+        let bValue: any = ''
+
+        switch (sortConfig.key) {
+          case 'order_no':
+            aValue = a.orders?.order_no || ''
+            bValue = b.orders?.order_no || ''
+            break
+          case 'progress':
+            // Calculate progress
+            const aTotal = a.total_unique_codes || 0
+            const aGenerated = a.qr_codes?.length || 0 // This might be inaccurate if not loaded, but using what we have
+            // Better to use status for progress approximation if counts aren't available
+            aValue = a.status === 'completed' ? 100 : 0
+            bValue = b.status === 'completed' ? 100 : 0
+            break
+          case 'master_codes':
+            aValue = a.total_master_codes || 0
+            bValue = b.total_master_codes || 0
+            break
+          case 'unique_codes':
+            aValue = a.total_unique_codes || 0
+            bValue = b.total_unique_codes || 0
+            break
+          case 'status':
+            aValue = a.status || ''
+            bValue = b.status || ''
+            break
+          case 'date':
+            aValue = new Date(a.created_at).getTime()
+            bValue = new Date(b.created_at).getTime()
+            break
+          default:
+            break
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1
+        return 0
+      })
+    } else {
+      // Default sort by date desc
+      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }
+
+    return result
+  }, [batches, searchTerm, statusFilter, sortConfig])
+
+  // Pagination
+  const paginatedBatches = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return filteredBatches.slice(startIndex, startIndex + pageSize)
+  }, [filteredBatches, currentPage, pageSize])
+
+  const totalPages = Math.ceil(filteredBatches.length / pageSize)
+
+  const handleSort = (key: string) => {
+    setSortConfig(current => {
+      if (current?.key === key) {
+        return current.direction === 'asc'
+          ? { key, direction: 'desc' }
+          : null
+      }
+      return { key, direction: 'asc' }
+    })
+  }
+
+  const handlePageSizeChange = (value: string) => {
+    if (value === 'custom') {
+      // Focus custom input?
+      return
+    }
+    setPageSize(Number(value))
+    setCurrentPage(1)
+  }
+
+  const handleCustomPageSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setCustomPageSize(val)
+    if (val && !isNaN(Number(val)) && Number(val) > 0) {
+      setPageSize(Number(val))
+      setCurrentPage(1)
+    }
+  }
 
 
 
@@ -564,16 +663,16 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         </div>
         <div className="flex gap-2">
           {/* Debug Button for Manual Worker Trigger */}
-          <Button 
-            onClick={handleTriggerWorker} 
+          <Button
+            onClick={handleTriggerWorker}
             disabled={workerRunning}
-            variant="secondary" 
+            variant="secondary"
             className="bg-gray-100 hover:bg-gray-200 text-gray-700"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${workerRunning ? 'animate-spin' : ''}`} />
             {workerRunning ? 'Running...' : 'Run Worker (Debug)'}
           </Button>
-          
+
           <Button onClick={handleRefresh} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -640,7 +739,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                         const totalQuantity = order.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
                         const bufferQty = Math.floor(totalQuantity * (order.qr_buffer_percent || 10) / 100)
                         const qrCodes = totalQuantity + bufferQty
-                        
+
                         return (
                           <SelectItem key={order.id} value={order.id}>
                             <div className="flex flex-col">
@@ -655,7 +754,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                   </SelectContent>
                 </Select>
               </div>
-              <Button 
+              <Button
                 onClick={handleGenerateBatchForSelectedOrder}
                 disabled={!selectedOrderId || generating !== null}
                 className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
@@ -678,14 +777,14 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
             {selectedOrderId && (() => {
               const selectedOrder = approvedOrders.find(o => o.id === selectedOrderId)
               if (!selectedOrder) return null
-              
+
               const totalItems = selectedOrder.order_items?.length || 0
               const totalQuantity = selectedOrder.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
               const bufferPercent = selectedOrder.qr_buffer_percent || 10
               // Fixed calculation: base units + buffer (not multiplied)
               const bufferQty = Math.floor(totalQuantity * bufferPercent / 100)
               const qrCodes = totalQuantity + bufferQty
-              
+
               return (
                 <div className="bg-white p-4 rounded-lg border border-blue-200">
                   <h4 className="font-medium text-gray-900 mb-3">Order Details</h4>
@@ -791,122 +890,246 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order No</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progress</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Master Codes</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unique Codes</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">No.</th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('order_no')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Order No
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('progress')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Progress
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('master_codes')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Master Codes
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('unique_codes')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Unique Codes
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('status')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Status
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('date')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Date
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredBatches.map((batch) => (
-                    <tr key={batch.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                        {batch.orders?.order_no || 'N/A'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="relative w-12 h-12">
-                            <svg className="w-12 h-12 transform -rotate-90">
-                              <circle
-                                cx="24"
-                                cy="24"
-                                r="20"
-                                stroke="#E5E7EB"
-                                strokeWidth="4"
-                                fill="none"
-                              />
-                              <circle
-                                cx="24"
-                                cy="24"
-                                r="20"
-                                stroke={batch.progress_percentage === 100 ? '#10B981' : '#3B82F6'}
-                                strokeWidth="4"
-                                fill="none"
-                                strokeDasharray={`${2 * Math.PI * 20}`}
-                                strokeDashoffset={`${2 * Math.PI * 20 * (1 - batch.progress_percentage / 100)}`}
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <span className="text-xs font-semibold text-gray-700">
-                                {batch.progress_percentage}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {formatNumber(batch.total_master_codes)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {formatNumber(batch.total_unique_codes)}
-                      </td>
-                      <td className="px-4 py-3">
-                        {batch.status === 'processing' || batch.status === 'queued' ? (
-                          <div className="flex flex-col gap-1 min-w-[120px]">
-                            <div className="flex items-center justify-between text-xs text-gray-500">
-                              <span>{batch.status === 'queued' ? 'Queued' : 'Generating...'}</span>
-                              <span>{batch.total_unique_codes > 0 ? Math.round(((batch.qr_inserted_count || 0) / batch.total_unique_codes) * 100) : 0}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-1.5">
-                              <div 
-                                className="bg-blue-600 h-1.5 rounded-full transition-all duration-500" 
-                                style={{ width: `${batch.total_unique_codes > 0 ? Math.round(((batch.qr_inserted_count || 0) / batch.total_unique_codes) * 100) : 0}%` }}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-start gap-1">
-                            {getStatusBadge(batch.status)}
-                            {batch.status === 'completed' && getDuration(batch) && (
-                              <span className="text-[10px] text-blue-600 font-medium px-2">
-                                {getDuration(batch)}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {new Date(batch.excel_generated_at || batch.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 text-right space-x-2">
-                        {batch.excel_file_url && batch.status !== 'processing' && batch.status !== 'queued' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDownloadExcel(batch)}
+                  {paginatedBatches.map((batch, index) => {
+                    const progress = batch.status === 'completed' ? 100 :
+                      batch.status === 'generated' ? 100 : 0
+
+                    return (
+                      <tr key={batch.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {(currentPage - 1) * pageSize + index + 1}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                          <button
+                            className="hover:underline text-blue-600 hover:text-blue-800 transition-colors"
+                            onClick={() => {
+                              if (batch.order_id) {
+                                sessionStorage.setItem('viewOrderId', batch.order_id)
+                                onViewChange('view-order')
+                              }
+                            }}
                           >
-                            <Download className="h-4 w-4 mr-1" />
-                            Excel
-                          </Button>
-                        )}
-                        {(batch.status === 'pending' || batch.status === 'failed') && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleGenerateBatch(batch.order_id)}
-                            disabled={generating === batch.order_id}
-                          >
-                            {generating === batch.order_id ? (
-                              <>
-                                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-                                Generating...
-                              </>
-                            ) : (
-                              <>
-                                <QrCode className="h-4 w-4 mr-1" />
-                                {batch.status === 'failed' ? 'Retry' : 'Generate'}
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                            {batch.orders?.order_no || 'N/A'}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="relative w-12 h-12">
+                              <svg className="w-12 h-12 transform -rotate-90">
+                                <circle
+                                  cx="24"
+                                  cy="24"
+                                  r="20"
+                                  stroke="#E5E7EB"
+                                  strokeWidth="4"
+                                  fill="none"
+                                />
+                                <circle
+                                  cx="24"
+                                  cy="24"
+                                  r="20"
+                                  stroke={batch.progress_percentage === 100 ? '#10B981' : '#3B82F6'}
+                                  strokeWidth="4"
+                                  fill="none"
+                                  strokeDasharray={`${2 * Math.PI * 20}`}
+                                  strokeDashoffset={`${2 * Math.PI * 20 * (1 - batch.progress_percentage / 100)}`}
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-xs font-semibold text-gray-700">
+                                  {batch.progress_percentage}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {formatNumber(batch.total_master_codes)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {formatNumber(batch.total_unique_codes)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {batch.status === 'processing' || batch.status === 'queued' ? (
+                            <div className="flex flex-col gap-1 min-w-[120px]">
+                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                <span>{batch.status === 'queued' ? 'Queued' : 'Generating...'}</span>
+                                <span>{batch.total_unique_codes > 0 ? Math.round(((batch.qr_inserted_count || 0) / batch.total_unique_codes) * 100) : 0}%</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div
+                                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                                  style={{ width: `${batch.total_unique_codes > 0 ? Math.round(((batch.qr_inserted_count || 0) / batch.total_unique_codes) * 100) : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-start gap-1">
+                              {getStatusBadge(batch.status)}
+                              {batch.status === 'completed' && getDuration(batch) && (
+                                <span className="text-[10px] text-blue-600 font-medium px-2">
+                                  {getDuration(batch)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {new Date(batch.excel_generated_at || batch.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-right space-x-2">
+                          {batch.excel_file_url && batch.status !== 'processing' && batch.status !== 'queued' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDownloadExcel(batch)}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              Excel
+                            </Button>
+                          )}
+                          {(batch.status === 'pending' || batch.status === 'failed') && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleGenerateBatch(batch.order_id)}
+                              disabled={generating === batch.order_id}
+                            >
+                              {generating === batch.order_id ? (
+                                <>
+                                  <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                                  Generating...
+                                </>
+                              ) : (
+                                <>
+                                  <QrCode className="h-4 w-4 mr-1" />
+                                  {batch.status === 'failed' ? 'Retry' : 'Generate'}
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {filteredBatches.length > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">
+                  Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredBatches.length)} of {filteredBatches.length} entries
+                </span>
+                <Select
+                  value={pageSize.toString()}
+                  onValueChange={handlePageSizeChange}
+                >
+                  <SelectTrigger className="w-[100px] h-8">
+                    <SelectValue placeholder="20" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="30">30</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="200">200</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Custom:</span>
+                  <input
+                    type="number"
+                    value={customPageSize}
+                    onChange={handleCustomPageSizeChange}
+                    className="w-16 h-8 px-2 border border-gray-300 rounded text-sm"
+                    placeholder="Size"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

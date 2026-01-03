@@ -171,7 +171,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [isSavingQuickEdit, setIsSavingQuickEdit] = useState(false)
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
   // Delete dependencies modal state
   const [deleteDependenciesModal, setDeleteDependenciesModal] = useState<{
     show: boolean
@@ -1170,8 +1170,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       variant="outline"
                       size="sm"
                       className={`flex-1 h-9 text-xs font-medium ${organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id
-                          ? 'bg-blue-50 text-blue-700 border-blue-300'
-                          : 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                        ? 'bg-blue-50 text-blue-700 border-blue-300'
+                        : 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
                         }`}
                       onClick={() => handleSetDefaultWarehouse(org)}
                       disabled={organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id}
@@ -1215,95 +1215,89 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[50px] text-xs">No</TableHead>
                   <TableHead>
                     <button
                       onClick={() => handleSort('org_name')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
                     >
                       Organization
                       {sortField === 'org_name' ? (
-                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                       ) : (
-                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        <ArrowUpDown className="w-3 h-3 opacity-30" />
                       )}
                     </button>
                   </TableHead>
                   <TableHead>
                     <button
                       onClick={() => handleSort('org_type_code')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
                     >
                       Type
                       {sortField === 'org_type_code' ? (
-                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                       ) : (
-                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        <ArrowUpDown className="w-3 h-3 opacity-30" />
                       )}
                     </button>
                   </TableHead>
                   <TableHead>
                     <button
                       onClick={() => handleSort('contact_name')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
                     >
                       Contact
                       {sortField === 'contact_name' ? (
-                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                       ) : (
-                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        <ArrowUpDown className="w-3 h-3 opacity-30" />
                       )}
                     </button>
                   </TableHead>
                   <TableHead>
                     <button
                       onClick={() => handleSort('city')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
                     >
                       Location
                       {sortField === 'city' ? (
-                        sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                        sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                       ) : (
-                        <ArrowUpDown className="w-4 h-4 opacity-30" />
+                        <ArrowUpDown className="w-3 h-3 opacity-30" />
                       )}
                     </button>
                   </TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right text-xs">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedOrganizations.map((org) => (
+                {paginatedOrganizations.map((org, index) => (
                   <TableRow key={org.id}>
+                    <TableCell className="text-xs text-gray-500">
+                      {startIndex + index + 1}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        {/* Organization Logo/Avatar */}
-                        <Avatar className="w-10 h-10 rounded-lg flex-shrink-0">
-                          <AvatarImage
-                            src={getStorageUrl(org.logo_url) || org.logo_url || undefined}
-                            alt={`${org.org_name} logo`}
-                            className="object-cover"
-                          />
-                          <AvatarFallback className="rounded-lg bg-blue-100 text-blue-600 text-sm font-semibold">
-                            {getOrgInitials(org.org_name)}
-                          </AvatarFallback>
-                        </Avatar>
+                        {/* Removed Avatar */}
                         <div>
-                          <div className="font-medium">{org.org_name}</div>
+                          <div className="font-medium text-xs">{org.org_name}</div>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={getOrgTypeColor(org.org_type_code)}>
+                      <Badge className={`${getOrgTypeColor(org.org_type_code)} text-[10px] px-1.5 py-0.5`}>
                         {org.org_types?.type_name || org.org_type_code}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm">
+                      <div className="text-xs">
                         <div className="font-medium">{org.contact_name || '-'}</div>
                         <div className="text-gray-500">{org.contact_phone || '-'}</div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm">
+                      <div className="text-xs">
                         <div>{org.city || 'Not updated'}</div>
                       </div>
                     </TableCell>
@@ -1314,7 +1308,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0"
+                            className="h-7 w-7 p-0"
                             onClick={() => {
                               setSelectedShopForDistributors(org)
                               checkShopDistributorLinks() // Refresh on open
@@ -1322,7 +1316,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             title="Manage Distributors"
                           >
                             <LinkIcon
-                              className={`w-4 h-4 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
+                              className={`w-3.5 h-3.5 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
                             />
                           </Button>
                         )}
@@ -1331,7 +1325,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0"
+                            className="h-7 w-7 p-0"
                             onClick={() => {
                               setSelectedDistributorForShops(org)
                               checkDistributorShopLinks() // Refresh on open
@@ -1339,27 +1333,27 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             title="Manage Shops"
                           >
                             <LinkIcon
-                              className={`w-4 h-4 ${distributorsWithShops.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
+                              className={`w-3.5 h-3.5 ${distributorsWithShops.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
                             />
                           </Button>
                         )}
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0"
+                          className="h-7 w-7 p-0"
                           onClick={() => handleEditOrganization(org)}
                           title="Edit"
                         >
-                          <Edit className="w-4 h-4" />
+                          <Edit className="w-3.5 h-3.5" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
                           onClick={() => confirmDelete(org.id)}
                           title="Delete"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -1371,10 +1365,33 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             {/* Pagination Controls */}
             {totalOrganizations > 0 && (
               <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-4">
                   <span className="text-xs text-gray-700">
                     Showing {startIndex + 1} to {Math.min(endIndex, totalOrganizations)} of {totalOrganizations} organizations
                   </span>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">Rows:</span>
+                    <Select
+                      value={itemsPerPage.toString()}
+                      onValueChange={(value) => {
+                        setItemsPerPage(Number(value))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <SelectTrigger className="h-7 w-[70px] text-xs bg-white">
+                        <SelectValue placeholder="10" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="30">30</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                        <SelectItem value="200">200</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">

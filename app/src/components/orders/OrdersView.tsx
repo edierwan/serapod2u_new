@@ -780,6 +780,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       if (ordersData && ordersData.length > 0) {
         const orderIds = ordersData.map(o => o.id)
 
+        // 1. Fetch Order Items
         const { data: itemsData, error: itemsError } = await supabase
           .from('order_items')
           .select(`
@@ -789,16 +790,30 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           `)
           .in('order_id', orderIds)
 
+        // 2. Fetch PO Documents to check acknowledgement status (for Unpaid status logic)
+        const { data: poData } = await supabase
+          .from('documents')
+          .select('order_id, status')
+          .in('order_id', orderIds)
+          .eq('doc_type', 'PO')
+
         console.log('Order items query result:', itemsData?.length || 0, 'items')
 
         if (itemsError) {
           console.error('Error loading order items:', itemsError)
         } else if (itemsData) {
           // Map items to orders
-          const ordersWithItems = ordersData.map(order => ({
-            ...order,
-            order_items: itemsData.filter(item => item.order_id === order.id)
-          }))
+          const ordersWithItems = ordersData.map(order => {
+            const items = itemsData.filter(item => item.order_id === order.id)
+            const poDoc = poData?.find(d => d.order_id === order.id)
+
+            return {
+              ...order,
+              order_items: items,
+              paid_amount: (order as any).paid_amount || 0,
+              po_acknowledged: poDoc?.status === 'acknowledged' || poDoc?.status === 'completed'
+            }
+          })
 
           console.log('First order with items:', ordersWithItems[0]?.order_no)
           console.log('First order items count:', ordersWithItems[0]?.order_items?.length || 0)
@@ -1196,7 +1211,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                     {paginatedOrders.map((order) => {
                       const totalAmount = calculateOrderTotal(order)
                       const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
-                      const balance = order.status === 'approved' ? 0 : totalAmount
+                      const paidAmount = (order as any).paid_amount || 0
+                      const balance = Math.max(0, totalAmount - paidAmount)
 
                       return (
                         <tr key={order.id} className="hover:bg-gray-50 transition-colors">
@@ -1232,15 +1248,42 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           </td>
 
                           {/* Balance */}
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-xs font-medium text-gray-900">
+                          <td className={`px-4 py-3 whitespace-nowrap text-right text-xs font-medium ${balance > 0 ? 'text-red-600' : 'text-gray-900'}`}>
                             {formatCurrency(balance)}
                           </td>
 
                           {/* Status */}
                           <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <Badge className={getStatusColor(order.status)}>
-                              <span className="text-[11px] capitalize">{order.status}</span>
-                            </Badge>
+                            {order.status === 'approved' && (order as any).po_acknowledged ? (
+                              (() => {
+                                const totalAmount = calculateOrderTotal(order)
+                                const paidAmount = (order as any).paid_amount || 0
+
+                                if (paidAmount >= totalAmount && totalAmount > 0) {
+                                  return (
+                                    <Badge className="bg-green-100 text-green-800">
+                                      <span className="text-[11px] capitalize">Paid</span>
+                                    </Badge>
+                                  )
+                                } else if (paidAmount > 0) {
+                                  return (
+                                    <Badge className="bg-orange-100 text-orange-800">
+                                      <span className="text-[11px] capitalize">Partial</span>
+                                    </Badge>
+                                  )
+                                } else {
+                                  return (
+                                    <Badge className="bg-red-100 text-red-800">
+                                      <span className="text-[11px] capitalize">Unpaid</span>
+                                    </Badge>
+                                  )
+                                }
+                              })()
+                            ) : (
+                              <Badge className={getStatusColor(order.status)}>
+                                <span className="text-[11px] capitalize">{order.status}</span>
+                              </Badge>
+                            )}
                           </td>
 
                           {/* Due Date (empty for now) */}
@@ -1413,12 +1456,48 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           </span>
                         </div>
                       </div>
-                      <Badge className={getStatusColor(order.status)}>
-                        <div className="flex items-center gap-1">
-                          {getStatusIcon(order.status)}
-                          <span className="text-xs font-medium">{order.status}</span>
-                        </div>
-                      </Badge>
+                      {order.status === 'approved' && (order as any).po_acknowledged ? (
+                        (() => {
+                          const totalAmount = calculateOrderTotal(order)
+                          const paidAmount = (order as any).paid_amount || 0
+
+                          if (paidAmount >= totalAmount && totalAmount > 0) {
+                            return (
+                              <Badge className="bg-green-100 text-green-800">
+                                <div className="flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3" />
+                                  <span className="text-xs font-medium">Paid</span>
+                                </div>
+                              </Badge>
+                            )
+                          } else if (paidAmount > 0) {
+                            return (
+                              <Badge className="bg-orange-100 text-orange-800">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  <span className="text-xs font-medium">Partial</span>
+                                </div>
+                              </Badge>
+                            )
+                          } else {
+                            return (
+                              <Badge className="bg-red-100 text-red-800">
+                                <div className="flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" />
+                                  <span className="text-xs font-medium">Unpaid</span>
+                                </div>
+                              </Badge>
+                            )
+                          }
+                        })()
+                      ) : (
+                        <Badge className={getStatusColor(order.status)}>
+                          <div className="flex items-center gap-1">
+                            {getStatusIcon(order.status)}
+                            <span className="text-xs font-medium">{order.status}</span>
+                          </div>
+                        </Badge>
+                      )}
                     </div>
 
                     {/* Organization Details */}

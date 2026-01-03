@@ -52,13 +52,13 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       })
       handleBack()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function loadOrderData(orderId: string) {
     try {
       setLoading(true)
-      
+
       // Fetch order data
       const { data: order, error } = await supabase
         .from('orders')
@@ -153,7 +153,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       setLoading(false)
     }
   }
-  
+
   async function loadJourneyData(orderId: string) {
     try {
       // Get journey configuration linked to this order
@@ -162,7 +162,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         .select('journey_config_id')
         .eq('order_id', orderId)
         .maybeSingle()
-      
+
       if (linkError) {
         if (linkError.code !== 'PGRST116') {
           console.error('Error loading journey link:', linkError.message || linkError.code || 'Unknown error', linkError)
@@ -181,7 +181,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         .eq('id', link.journey_config_id)
         .eq('is_active', true)
         .maybeSingle()
-      
+
       if (configError) {
         if (configError.code !== 'PGRST116') {
           console.error('Error loading journey config:', configError.message || configError.code || 'Unknown error', configError)
@@ -195,7 +195,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       console.error('Error loading journey data:', error?.message || 'Unknown error', error)
     }
   }
-  
+
   async function loadQRStats(orderId: string) {
     try {
       // Get batch ID from order
@@ -204,14 +204,14 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         .select('id')
         .eq('order_id', orderId)
         .maybeSingle()
-      
+
       if (batchError) {
         if (batchError.code !== 'PGRST116') {
           console.error('Error loading batch:', batchError.message || batchError.code || 'Unknown error', batchError)
         }
         return
       }
-      
+
       if (!batch) {
         // No batch found, set default stats
         setQrStats({
@@ -222,33 +222,33 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         })
         return
       }
-      
+
       // Get QR codes stats using proper count queries (avoids 1000 row limit)
       // Count total valid links (all QR codes in batch)
       const { count: validLinks } = await supabase
         .from('qr_codes')
         .select('*', { count: 'exact', head: true })
         .eq('batch_id', batch.id)
-      
+
       // Count scanned - actual consumer scans from consumer_qr_scans table
       const { count: scanned } = await supabase
         .from('consumer_qr_scans')
         .select('*', { count: 'exact', head: true })
         .eq('batch_id', batch.id)
-      
+
       // Get redemptions count from consumer_qr_scans where reward was redeemed
       const { count: redemptionCount } = await supabase
         .from('consumer_qr_scans')
         .select('id', { count: 'exact', head: true })
         .eq('batch_id', batch.id)
         .not('redeemed_at', 'is', null)
-      
+
       // Get lucky draw entries
       const { count: luckyDrawCount } = await supabase
         .from('lucky_draw_entries')
         .select('id', { count: 'exact', head: true })
         .eq('batch_id', batch.id)
-      
+
       setQrStats({
         validLinks: validLinks || 0,
         scanned: scanned || 0,
@@ -303,7 +303,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
 
   const subtotal = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.line_total || 0), 0) || 0
   const totalQuantity = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
-  
+
   // Helper to get status color
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -320,16 +320,16 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       {/* Action Bar */}
       <div className="bg-white border-b border-gray-200 mb-0 print:hidden">
         <div className="px-6 py-4 flex justify-between items-center">
-          <Button 
-            variant="ghost" 
-            onClick={handleBack} 
+          <Button
+            variant="ghost"
+            onClick={handleBack}
             className="hover:bg-gray-100 -ml-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Orders
           </Button>
           <div className="flex gap-3">
-            <Button 
+            <Button
               onClick={() => setDocumentsDialogOpen(true)}
               variant="outline"
               className="gap-2 border-gray-300 hover:bg-gray-50"
@@ -337,7 +337,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
               <FileText className="w-4 h-4" />
               Documents
             </Button>
-            <Button 
+            <Button
               onClick={() => {
                 // Set document title for PDF filename
                 const originalTitle = document.title
@@ -358,7 +358,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                     document.title = originalTitle
                   }, 2000)
                 }, 500)
-              }} 
+              }}
               className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
             >
               <FileText className="w-4 h-4" />
@@ -370,16 +370,16 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
 
       {/* Document Container */}
       <div className="bg-white shadow-lg p-8 md:p-12 print:shadow-none print:p-8 print:w-full">
-        
+
         {/* Header Section - 3 Columns in 1 Row */}
         <div className="flex justify-between items-start mb-12 print:mb-6 gap-8">
           {/* Left: Company Logo */}
           <div className="flex-shrink-0">
             {orderData.buyer_org?.logo_url ? (
-              <img 
-                src={orderData.buyer_org.logo_url} 
-                alt={orderData.buyer_org.org_name} 
-                className="h-20 object-contain"
+              <img
+                src={orderData.buyer_org.logo_url}
+                alt={orderData.buyer_org.org_name}
+                className="h-60 object-contain"
               />
             ) : (
               <h1 className="text-2xl font-bold tracking-tight">serapod<span className="text-blue-600">2u</span></h1>
@@ -471,7 +471,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                         const productName = item.product?.product_name?.replace(/\[.*?\]\s*$/, '').trim() || '';
                         // Extract variant details (e.g., "Deluxe Cellera Cartridge [ Strawberry Cheesecake ]")
                         const variantName = item.variant?.variant_name || '';
-                        
+
                         // If variant contains brackets, extract the parts
                         const bracketMatch = variantName.match(/^(.*?)\s*\[(.*?)\]\s*$/);
                         if (bracketMatch) {
@@ -510,9 +510,9 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                   <p className="text-sm font-bold text-gray-900 mb-2">Issued by:</p>
                   <div className="flex items-start gap-4">
                     <div className="w-32 h-24 flex items-center">
-                      <img 
-                        src={orderData.buyer_org.signature_url} 
-                        alt="Company Signature" 
+                      <img
+                        src={orderData.buyer_org.signature_url}
+                        alt="Company Signature"
                         className="max-w-full max-h-full object-contain"
                       />
                     </div>
@@ -521,15 +521,15 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
               )}
               <p className="text-[10px] text-gray-400 mt-8">This is a computer generated document.</p>
             </div>
-            
+
             {/* Center: Created By */}
             <div className="text-center">
               <p className="text-xs text-gray-600 mb-2">Created by: {orderData.created_by_user?.full_name || 'Unknown'}</p>
               {orderData.created_by_user?.signature_url && (
                 <div className="flex justify-center mb-2">
-                  <img 
-                    src={orderData.created_by_user.signature_url} 
-                    alt="Created by signature" 
+                  <img
+                    src={orderData.created_by_user.signature_url}
+                    alt="Created by signature"
                     className="h-16 print:h-12 object-contain"
                   />
                 </div>
@@ -545,9 +545,9 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
                 <p className="text-xs text-gray-600 mb-2">Approved by: {orderData.approved_by_user.full_name || 'Unknown'}</p>
                 {orderData.approved_by_user.signature_url && (
                   <div className="flex justify-center mb-2">
-                    <img 
-                      src={orderData.approved_by_user.signature_url} 
-                      alt="Approved by signature" 
+                    <img
+                      src={orderData.approved_by_user.signature_url}
+                      alt="Approved by signature"
                       className="h-16 print:h-12 object-contain"
                     />
                   </div>

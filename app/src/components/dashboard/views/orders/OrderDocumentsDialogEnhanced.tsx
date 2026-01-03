@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { X, Download, Loader2, CheckCircle2 } from 'lucide-react'
+import { X, Download, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
@@ -78,6 +78,10 @@ export default function OrderDocumentsDialogEnhanced({
     const roleCode = userProfile?.role_code
     const roleLevel = userProfile?.roles?.role_level ?? 0
     return roleCode === 'HQ_ADMIN' || roleCode === 'POWER_USER' || roleLevel >= 80 || userProfile?.organizations?.org_type_code === 'HQ'
+  }, [userProfile])
+
+  const isManufacturer = useMemo(() => {
+    return ['MANU', 'MFG'].includes(userProfile?.organizations?.org_type_code)
   }, [userProfile])
 
   // Check if this order uses split payment (deposit + balance)
@@ -161,9 +165,9 @@ export default function OrderDocumentsDialogEnhanced({
 
   async function loadDocuments() {
     try {
-  setPaymentProofUrl(null)
-  setBalancePaymentProofUrl(null)
-  setHasReviewedBalanceProof(false)
+      setPaymentProofUrl(null)
+      setBalancePaymentProofUrl(null)
+      setHasReviewedBalanceProof(false)
       const { data, error } = await supabase
         .from('documents')
         .select(`
@@ -183,10 +187,10 @@ export default function OrderDocumentsDialogEnhanced({
       const invoices: Document[] = []
       const payments: Document[] = []
       const receipts: Document[] = []
-      
+
       data?.forEach((doc: any) => {
         const docType = doc.doc_type.toLowerCase()
-        
+
         // Group invoices, payments, and receipts by creation order
         if (docType === 'invoice') {
           invoices.push(doc)
@@ -242,7 +246,7 @@ export default function OrderDocumentsDialogEnhanced({
       if (receipts.length > 0) {
         const finalReceipt = receipts.find((r: any) => r.payment_percentage === 100)
         const depositReceipt = receipts.find((r: any) => r.payment_percentage < 100)
-        
+
         if (depositReceipt) {
           docs.depositReceipt = depositReceipt
         }
@@ -417,7 +421,7 @@ export default function OrderDocumentsDialogEnhanced({
     setDownloading(documentId)
     try {
       console.log('handleDownload called with:', { documentId, docType, orderId, orderNo })
-      
+
       // Map docType to API type parameter
       let apiType: string
       switch (docType.toUpperCase()) {
@@ -492,7 +496,7 @@ export default function OrderDocumentsDialogEnhanced({
 
       const blob = await response.blob()
       console.log('PDF blob size:', blob.size, '| Size info:', pdfSizeFormatted)
-      
+
       if (blob.size === 0) {
         throw new Error('Generated PDF is empty')
       }
@@ -503,7 +507,7 @@ export default function OrderDocumentsDialogEnhanced({
       a.download = `${orderNo}-${docType}.pdf`
       document.body.appendChild(a)
       a.click()
-      
+
       // Clean up
       setTimeout(() => {
         window.URL.revokeObjectURL(blobUrl)
@@ -513,13 +517,13 @@ export default function OrderDocumentsDialogEnhanced({
       // Show success toast with PDF size information
       toast({
         title: '✅ Document Downloaded',
-        description: pdfSizeFormatted 
+        description: pdfSizeFormatted
           ? `${docType} downloaded successfully (${pdfSizeFormatted})`
           : 'Document downloaded successfully'
       })
     } catch (error: any) {
       console.error('Error downloading document:', error)
-      
+
       // Check if it's a network error
       if (error.message === 'Failed to fetch') {
         toast({
@@ -606,7 +610,7 @@ export default function OrderDocumentsDialogEnhanced({
     setDownloading('payment-proof')
     try {
       console.log('🔍 Downloading payment proof from:', paymentProofUrl)
-      
+
       // Download the file from Supabase Storage using the download method
       // This works for both public and private buckets
       const { data: fileData, error: downloadError } = await supabase.storage
@@ -623,10 +627,10 @@ export default function OrderDocumentsDialogEnhanced({
       }
 
       console.log('🔍 Downloaded blob size:', fileData.size, 'type:', fileData.type)
-      
+
       // Extract filename from URL or create a default one
       const fileName = paymentProofUrl.split('/').pop() || `payment-proof-${orderNo}.pdf`
-      
+
       // Create download link
       const blobUrl = window.URL.createObjectURL(fileData)
       const a = document.createElement('a')
@@ -634,7 +638,7 @@ export default function OrderDocumentsDialogEnhanced({
       a.download = fileName
       document.body.appendChild(a)
       a.click()
-      
+
       // Clean up
       setTimeout(() => {
         window.URL.revokeObjectURL(blobUrl)
@@ -816,8 +820,8 @@ export default function OrderDocumentsDialogEnhanced({
           {/* Content */}
           <div className="p-6 space-y-6">
             {/* Workflow Progress */}
-            <DocumentWorkflowProgress 
-              documents={documents as any} 
+            <DocumentWorkflowProgress
+              documents={documents as any}
               onTabChange={handleTabChange}
               use50_50Split={is50_50Split}
               depositPercentage={depositPercentage}
@@ -956,7 +960,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.do.acknowledged_at && (
                           <div>
                             <span className="text-indigo-700">Acknowledged:</span>{' '}
-                            <span>{formatDate(documents.do.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.do.acknowledged_at)}
+                              {documents.do.acknowledged_by_user?.full_name && ` (${documents.do.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1017,7 +1024,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.po.acknowledged_at && (
                           <div>
                             <span className="text-blue-700">Acknowledged:</span>{' '}
-                            <span>{formatDate(documents.po.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.po.acknowledged_at)}
+                              {documents.po.acknowledged_by_user?.full_name && ` (${documents.po.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1044,22 +1054,29 @@ export default function OrderDocumentsDialogEnhanced({
                     </div>
 
                     {/* Show manufacturer document upload for seller (manufacturer) before acknowledgment */}
-                    {documents.po.status === 'pending' && 
-                     documents.po.issued_to_org_id === userProfile.organization_id && 
-                     orderData?.order_type === 'H2M' && (
-                      <ManufacturerDocumentUpload
-                        documentId={documents.po.id}
-                        orderId={orderId}
-                        companyId={orderData?.company_id}
-                        onUploadComplete={setManufacturerDocUrl}
-                        existingFileUrl={manufacturerDocUrl}
-                      />
-                    )}
+                    {documents.po.status === 'pending' &&
+                      documents.po.issued_to_org_id === userProfile.organization_id &&
+                      orderData?.order_type === 'H2M' && (
+                        <ManufacturerDocumentUpload
+                          documentId={documents.po.id}
+                          orderId={orderId}
+                          companyId={orderData?.company_id}
+                          onUploadComplete={setManufacturerDocUrl}
+                          existingFileUrl={manufacturerDocUrl}
+                        />
+                      )}
 
                     <AcknowledgeButton
                       document={documents.po as Document}
                       userProfile={userProfileWithSignature}
-                      onSuccess={loadData}
+                      onSuccess={async () => {
+                        // When PO is acknowledged, update order status to Unpaid (if not already)
+                        // This is handled by the backend trigger usually, but we can force a refresh
+                        await loadData()
+
+                        // Also refresh the parent view if needed
+                        // We can't easily do that here, but the user will see it when they close the dialog
+                      }}
                     />
                   </div>
                 ) : (
@@ -1091,7 +1108,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.invoice.acknowledged_at && (
                           <div>
                             <span className="text-green-700">Acknowledged:</span>{' '}
-                            <span>{formatDate(documents.invoice.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.invoice.acknowledged_at)}
+                              {documents.invoice.acknowledged_by_user?.full_name && ` (${documents.invoice.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1222,7 +1242,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.payment.acknowledged_at && (
                           <div>
                             <span className="text-purple-700">Acknowledged:</span>{' '}
-                            <span>{formatDate(documents.payment.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.payment.acknowledged_at)}
+                              {documents.payment.acknowledged_by_user?.full_name && ` (${documents.payment.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1300,7 +1323,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.depositInvoice.acknowledged_at && (
                           <div>
                             <span className="text-green-700">Acknowledged:</span>{' '}
-                            <span>{formatDate(documents.depositInvoice.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.depositInvoice.acknowledged_at)}
+                              {documents.depositInvoice.acknowledged_by_user?.full_name && ` (${documents.depositInvoice.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1449,7 +1475,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.depositPayment.acknowledged_at && (
                           <div>
                             <span className="text-purple-700">Acknowledged:</span>{' '}
-                            <span>{formatDate(documents.depositPayment.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.depositPayment.acknowledged_at)}
+                              {documents.depositPayment.acknowledged_by_user?.full_name && ` (${documents.depositPayment.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1577,7 +1606,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.balancePaymentRequest.acknowledged_at && (
                           <div>
                             <span className="text-teal-700">Approved:</span>{' '}
-                            <span>{formatDate(documents.balancePaymentRequest.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.balancePaymentRequest.acknowledged_at)}
+                              {documents.balancePaymentRequest.acknowledged_by_user?.full_name && ` (${documents.balancePaymentRequest.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1608,7 +1640,16 @@ export default function OrderDocumentsDialogEnhanced({
                         )}
                       </Button>
 
-                      {isHQAdmin && documents.balancePaymentRequest.status === 'pending' && (
+                      {isManufacturer && documents.balancePaymentRequest.status === 'pending' && (
+                        <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
+                          <p className="text-sm text-yellow-800 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            Only HQ can upload the final payment document.
+                          </p>
+                        </div>
+                      )}
+
+                      {!isManufacturer && isHQAdmin && documents.balancePaymentRequest.status === 'pending' && (
                         <PaymentProofUpload
                           documentId={documents.balancePaymentRequest.id}
                           orderId={orderId}
@@ -1619,7 +1660,7 @@ export default function OrderDocumentsDialogEnhanced({
                         />
                       )}
 
-                      {isHQAdmin && documents.balancePaymentRequest.status === 'pending' && (
+                      {!isManufacturer && isHQAdmin && documents.balancePaymentRequest.status === 'pending' && (
                         <div className="space-y-2">
                           <Button
                             onClick={() => handleApproveBalancePaymentRequest(documents.balancePaymentRequest!.id)}
@@ -1681,7 +1722,10 @@ export default function OrderDocumentsDialogEnhanced({
                         {documents.balancePayment.acknowledged_at && (
                           <div>
                             <span className="text-indigo-700">Acknowledged:</span>{' '}
-                            <span>{formatDate(documents.balancePayment.acknowledged_at)}</span>
+                            <span>
+                              {formatDate(documents.balancePayment.acknowledged_at)}
+                              {documents.balancePayment.acknowledged_by_user?.full_name && ` (${documents.balancePayment.acknowledged_by_user.full_name})`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1762,22 +1806,19 @@ export default function OrderDocumentsDialogEnhanced({
                     {/* Deposit Receipt - Dynamic percentage based on payment_terms */}
                     {documents.depositReceipt && (
                       <div className="space-y-4">
-                        <div className={`rounded-lg p-4 ${
-                          documents.finalReceipt 
-                            ? 'bg-emerald-50 border border-emerald-200' 
-                            : 'bg-amber-50 border border-amber-200'
-                        }`}>
+                        <div className={`rounded-lg p-4 ${documents.finalReceipt
+                          ? 'bg-emerald-50 border border-emerald-200'
+                          : 'bg-amber-50 border border-amber-200'
+                          }`}>
                           <div className="flex items-center justify-between mb-2">
-                            <h3 className={`font-semibold ${
-                              documents.finalReceipt ? 'text-emerald-900' : 'text-amber-900'
-                            }`}>
+                            <h3 className={`font-semibold ${documents.finalReceipt ? 'text-emerald-900' : 'text-amber-900'
+                              }`}>
                               Deposit Receipt ({depositPercentage}%)
                             </h3>
-                            <span className={`px-2 py-1 text-xs font-semibold rounded ${
-                              documents.finalReceipt 
-                                ? 'bg-emerald-100 text-emerald-800' 
-                                : 'bg-amber-100 text-amber-800'
-                            }`}>
+                            <span className={`px-2 py-1 text-xs font-semibold rounded ${documents.finalReceipt
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                              }`}>
                               DEPOSIT
                             </span>
                           </div>
@@ -1800,11 +1841,10 @@ export default function OrderDocumentsDialogEnhanced({
                         <Button
                           onClick={() => handleDownload(documents.depositReceipt!.id, 'RECEIPT')}
                           disabled={downloading === documents.depositReceipt!.id}
-                          className={`w-full ${
-                            documents.finalReceipt 
-                              ? 'bg-emerald-600 hover:bg-emerald-700' 
-                              : 'bg-amber-600 hover:bg-amber-700'
-                          }`}
+                          className={`w-full ${documents.finalReceipt
+                            ? 'bg-emerald-600 hover:bg-emerald-700'
+                            : 'bg-amber-600 hover:bg-amber-700'
+                            }`}
                         >
                           {downloading === documents.depositReceipt!.id ? (
                             <>
@@ -1827,8 +1867,8 @@ export default function OrderDocumentsDialogEnhanced({
                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-2">
                             <h3 className="font-semibold text-emerald-900">
-                              {documents.depositReceipt 
-                                ? `Balance Receipt (${balancePercentage}%)` 
+                              {documents.depositReceipt
+                                ? `Balance Receipt (${balancePercentage}%)`
                                 : 'Receipt (100%)'}
                             </h3>
                             <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded">
@@ -1871,8 +1911,8 @@ export default function OrderDocumentsDialogEnhanced({
                           ) : (
                             <>
                               <Download className="w-4 h-4 mr-2" />
-                              {documents.depositReceipt 
-                                ? `Download Balance Receipt (${balancePercentage}%)` 
+                              {documents.depositReceipt
+                                ? `Download Balance Receipt (${balancePercentage}%)`
                                 : 'Download Receipt (100%)'}
                             </>
                           )}
@@ -1901,7 +1941,7 @@ export default function OrderDocumentsDialogEnhanced({
                   </div>
                 ) : (
                   <div className="text-center py-12 text-gray-500">
-                    {useSplitPayment 
+                    {useSplitPayment
                       ? `Receipts will be created after each payment acknowledgment: Deposit Receipt (${depositPercentage}%) → Balance Receipt (${balancePercentage}%)`
                       : 'Receipt will be created after Payment is acknowledged'}
                   </div>

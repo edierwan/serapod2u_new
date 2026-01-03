@@ -129,92 +129,116 @@ export class ClassicTemplate {
   async generate(orderData: TemplateOrderData, documentData: TemplateDocumentData, docTitle: string): Promise<Blob> {
     let y = 20
 
-    // 1. Header Section
-    // Left: Logo + Company Name + Address
-    // Right: Document Title + Details
+    // 1. Header Section - 2 Column Grid
+    // Left Column (65%): Logo + Company Info (Side-by-side, vertically centered)
+    // Right Column (35%): Document Title + Meta Details
 
-    // Logo (Left) - Use dynamic buyer logo if available
-    const logoX = this.margin
-    const logoY = y
-    const logoWidth = 20
-    const logoHeight = 20
+    // --- Right Column Content (Title + Meta) ---
+    const headerRightX = this.pageWidth - this.margin
 
-    if (orderData.buyer_logo_image) {
-      try {
-        this.doc.addImage(orderData.buyer_logo_image, 'PNG', logoX, logoY, logoWidth, logoHeight)
-      } catch (e) {
-        console.error('Error adding buyer logo:', e)
-        // Fallback: draw a placeholder
-        this.doc.setDrawColor(200, 200, 200)
-        this.doc.rect(logoX, logoY, logoWidth, logoHeight)
-        this.doc.setFontSize(6)
-        this.doc.setTextColor(150, 150, 150)
-        this.doc.text('Logo', logoX + logoWidth / 2, logoY + logoHeight / 2, { align: 'center' })
-      }
-    } else {
-      // Placeholder text for logo
-      this.doc.setFontSize(8)
-      this.doc.setTextColor(100, 100, 100)
-      this.doc.text('HeadQuarters', logoX + 2, logoY + 12)
-    }
-
-    // Company Name (Left)
-    this.doc.setFontSize(10)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.setTextColor(0, 0, 0)
-    this.doc.text(orderData.buyer_org.org_name.toUpperCase(), this.margin + 25, y + 5) // Offset for logo
-
-    // Address (Left)
-    this.doc.setFontSize(8)
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.setTextColor(100, 100, 100)
-
-    let addrY = y + 10
-    const buyerAddress = [
-      orderData.buyer_org.address,
-      orderData.buyer_org.address_line2,
-      [orderData.buyer_org.city, orderData.buyer_org.postal_code].filter(Boolean).join(', '),
-      orderData.buyer_org.state
-    ].filter(Boolean)
-
-    buyerAddress.forEach(line => {
-      if (line) {
-        this.doc.text(line, this.margin + 25, addrY)
-        addrY += 4
-      }
-    })
-
-    // Right Header
-    const headerRightX = 140
     this.doc.setTextColor(0, 0, 0)
     this.doc.setFontSize(14)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.text(docTitle.toUpperCase(), this.pageWidth - this.margin, y + 5, { align: 'right' })
+    this.doc.text(docTitle.toUpperCase(), headerRightX, y + 5, { align: 'right' })
 
-    // Document Details (Right)
     let detailsY = y + 15
     this.doc.setFontSize(9)
 
     const details = [
       { label: 'PO#:', value: documentData.doc_no },
       { label: 'Date:', value: this.formatDate(documentData.created_at) },
-      { label: 'By:', value: 'User Level' }, // Placeholder as per image
+      { label: 'By:', value: 'User Level' },
       { label: 'Ledger:', value: 'Stock Purchased / Inventory' }
     ]
 
     details.forEach(detail => {
       this.doc.setFont('helvetica', 'normal')
       this.doc.setTextColor(128, 128, 128) // Gray label
-      this.doc.text(detail.label, headerRightX, detailsY)
+      this.doc.text(detail.label, headerRightX - 50, detailsY, { align: 'left' })
 
       this.doc.setTextColor(0, 0, 0) // Black value
-      this.doc.text(detail.value, this.pageWidth - this.margin, detailsY, { align: 'right' })
+      this.doc.text(detail.value, headerRightX, detailsY, { align: 'right' })
       detailsY += 5
     })
 
-    y = Math.max(addrY, detailsY) + 20
+    // --- Left Column Content (Logo + Info) ---
+    const orgName = orderData.buyer_org.org_name.toUpperCase()
+    const buyerAddress = [
+      orderData.buyer_org.address,
+      orderData.buyer_org.address_line2,
+      [orderData.buyer_org.city, orderData.buyer_org.postal_code].filter(Boolean).join(', '),
+      orderData.buyer_org.state,
+      orderData.buyer_org.contact_email
+    ].filter(Boolean)
+
+    // Calculate Text Block Height
+    const nameHeight = 4
+    const addrLineHeight = 3.5
+    const textBlockHeight = nameHeight + (buyerAddress.length * addrLineHeight)
+
+    // Logo Dimensions & Positioning
+    const logoMaxHeight = 22 // ~64px (100% bigger)
+    let logoW = 22
+    let logoH = 22
+    const logoX = this.margin
+    let logoY = y + 2 // Default top align if no image
+
+    if (orderData.buyer_logo_image) {
+      try {
+        const props = this.doc.getImageProperties(orderData.buyer_logo_image)
+        const ratio = props.width / props.height
+        logoH = Math.min(logoMaxHeight, props.height * 0.264583) // Convert px to mm if needed, but max is 22mm
+        logoH = logoMaxHeight
+        logoW = logoH * ratio
+
+        // Center vertically relative to text block
+        // Ensure we don't go above y
+        logoY = y + Math.max(0, (textBlockHeight - logoH) / 2)
+
+        this.doc.addImage(orderData.buyer_logo_image, 'PNG', logoX, logoY, logoW, logoH)
+      } catch (e) {
+        console.error('Error adding buyer logo:', e)
+        this.doc.setDrawColor(200, 200, 200)
+        this.doc.rect(logoX, logoY, logoH, logoH)
+      }
+    } else {
+      this.doc.setFontSize(6)
+      this.doc.setTextColor(150, 150, 150)
+      this.doc.text('LOGO', logoX, logoY + 5)
+    }
+
+    // Render Text Block (Offset by Logo Width + Gap)
+    const textX = logoX + logoW + 5 // 5mm gap
+    let currentTextY = y + 3.5 // Align text top roughly with logo top
+
+    // Org Name
+    this.doc.setFontSize(10)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text(orgName, textX, currentTextY)
+    currentTextY += nameHeight
+
+    // Address
+    this.doc.setFontSize(8)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(100, 100, 100)
+
+    buyerAddress.forEach(line => {
+      if (line) {
+        this.doc.text(line, textX, currentTextY)
+        currentTextY += addrLineHeight
+      }
+    })
+
+    y = Math.max(currentTextY, detailsY) + 5
 
     // 2. Supplier & Status Section
+    // Draw line above Supplier
+    this.doc.setDrawColor(230, 230, 230)
+    this.doc.setLineWidth(0.1)
+    this.doc.line(this.margin, y, this.pageWidth - this.margin, y)
+
+    y += 5
     const supplierY = y
 
     // Supplier (Left) - Only show supplier name and address
@@ -297,7 +321,7 @@ export class ClassicTemplate {
     this.doc.setTextColor(34, 197, 94) // Green color
     this.doc.text(orderData.status.toUpperCase(), boxX + (boxWidth / 2), boxY + 11, { align: 'center' })
 
-    y = Math.max(suppAddrY, boxY + boxHeight) + 20
+    y = Math.max(suppAddrY, boxY + boxHeight) + 5
 
     // 3. Items Table
     // Simple table with no borders, just lines
@@ -342,22 +366,25 @@ export class ClassicTemplate {
       body: tableData,
       theme: 'plain', // Minimal theme
       styles: {
-        fontSize: 8, // Smaller font to fit description in one row
-        cellPadding: 3,
+        fontSize: 9,
+        cellPadding: { top: 3, bottom: 3, left: 2, right: 2 },
+        minCellHeight: 8,
+        valign: 'middle',
         textColor: [0, 0, 0],
         font: 'helvetica',
-        overflow: 'linebreak',
+        overflow: 'ellipsize',
         cellWidth: 'wrap'
       },
       headStyles: {
         fontStyle: 'bold',
         textColor: [0, 0, 0],
         halign: 'left',
-        fontSize: 9
+        fontSize: 11,
+        cellPadding: { top: 2, bottom: 2, left: 2, right: 2 }
       },
       columnStyles: {
         0: { cellWidth: 12, halign: 'center' },   // No column - centered
-        1: { cellWidth: 'auto', halign: 'left' }, // Description - left aligned
+        1: { cellWidth: 'auto', halign: 'left', fontStyle: 'normal' }, // Description - left aligned, not bold
         2: { cellWidth: 18, halign: 'center' },   // Unit - center aligned (header & data)
         3: { cellWidth: 22, halign: 'right' },    // Price - right aligned (header & data)
         4: { cellWidth: 28, halign: 'right' }     // Amount - right aligned (header & data)
@@ -373,6 +400,20 @@ export class ClassicTemplate {
           }
         }
       },
+      didDrawCell: (data) => {
+        // Draw horizontal line after each body row
+        if (data.section === 'body') {
+          this.doc.setDrawColor(230, 230, 230)
+          this.doc.setLineWidth(0.1)
+          const lineY = data.cell.y + data.cell.height
+          this.doc.line(
+            this.margin,
+            lineY,
+            this.pageWidth - this.margin,
+            lineY
+          )
+        }
+      },
       didDrawPage: (data) => {
         // Header line
         this.doc.setDrawColor(230, 230, 230)
@@ -382,12 +423,6 @@ export class ClassicTemplate {
     })
 
     y = (this.doc as any).lastAutoTable.finalY + 5
-
-    // Draw line after table
-    this.doc.setDrawColor(230, 230, 230)
-    this.doc.line(this.margin, y, this.pageWidth - this.margin, y)
-
-    y += 10
 
     // 4. Footer / Totals
     const totalAmount = orderData.order_items.reduce((sum, item) => sum + (item.line_total || 0), 0)
