@@ -9,12 +9,10 @@ export const runtime = "nodejs";
 // Increase max duration for large file processing (10 minutes for 1.2K+ records)
 export const maxDuration = 600;
 
-// Batch processing configuration
-const BATCH_SIZE = 10; // Process 10 records in parallel
-const PROGRESS_UPDATE_INTERVAL = 10; // Update progress every 10 records
-const KEEP_ALIVE_INTERVAL = 15000; // Send keep-alive ping every 15 seconds
-const MAX_RETRIES = 3; // Retry failed operations up to 3 times
-const RETRY_DELAY = 1000; // Wait 1 second between retries
+// OPTIMIZED Batch processing configuration
+const BATCH_SIZE = 25; // Process 25 records in parallel
+const PROGRESS_UPDATE_INTERVAL = 25; // Update progress every 25 records
+const KEEP_ALIVE_INTERVAL = 8000; // Send keep-alive ping every 8 seconds
 
 /**
  * Normalize full name to Title Case
@@ -102,13 +100,6 @@ function validateEmail(email: string | undefined | null): string | null {
         return "Invalid email format. Domain must include extension (e.g., .com, .my).";
     }
 
-    const domainParts = domain.split(".");
-    const extension = domainParts[domainParts.length - 1];
-
-    if (extension.length < 2) {
-        return "Invalid email format. Please check the domain extension.";
-    }
-
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
         return "Invalid email format. Please enter a valid email address.";
@@ -148,40 +139,103 @@ function validateRow(row: any, passwordMode: string): string | null {
     return null;
 }
 
-/**
- * Retry wrapper for database operations
- */
-async function withRetry<T>(
-    operation: () => Promise<T>,
-    maxRetries: number = MAX_RETRIES,
-    delay: number = RETRY_DELAY
-): Promise<T> {
-    let lastError: Error;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            return await operation();
-        } catch (error: any) {
-            lastError = error;
-            // Don't retry validation errors or user errors
-            if (error.message?.includes("required") || 
-                error.message?.includes("Invalid") ||
-                error.message?.includes("conflict") ||
-                error.message?.includes("already registered")) {
-                throw error;
-            }
-            if (attempt < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, delay * attempt));
-            }
-        }
-    }
-    throw lastError!;
+// Pre-fetch users cache for batch processing
+interface UserCache {
+    byPhone: Map<string, any>;
+    byEmail: Map<string, any>;
 }
 
-async function processRow(
+/**
+ * OPTIMIZED: Pre-fetch all users that might match the batch
+ */
+async function prefetchUsersForBatch(
+    rows: any[],
+    supabaseAdmin: any
+): Promise<UserCache> {
+    const phones: string[] = [];
+    const emails: string[] = [];
+
+    for (const row of rows) {
+        try {
+            const normalizedPhone = normalizePhone(row.phone);
+            phones.push(normalizedPhone);
+        } catch {
+            // Skip invalid phones
+        }
+        if (row.email) {
+            emails.push(row.email.trim().toLowerCase());
+        }
+    }
+
+    const cache: UserCache = {
+        byPhone: new Map(),
+        byEmail: new Map(),
+    };
+
+    // Fetch users by phone and email in parallel
+    const [phoneResult, emailResult] = await Promise.all([
+        phones.length > 0 
+            ? supabaseAdmin
+                .from("users")
+                .select("id, email, phone, full_name, location, last_migration_point_value")
+                .in("phone", phones)
+            : Promise.resolve({ data: [] }),
+        emails.length > 0 
+            ? supabaseAdmin
+                .from("users")
+                .select("id, email, phone, full_name, location, last_migration_point_value")
+                .in("email", emails)
+            : Promise.resolve({ data: [] }),
+    ]);
+
+    for (const user of phoneResult.data || []) {
+        if (user.phone) {
+            cache.byPhone.set(user.phone, user);
+        }
+    }
+
+    for (const user of emailResult.data || []) {
+        if (user.email) {
+            cache.byEmail.set(user.email.toLowerCase(), user);
+        }
+    }
+
+    return cache;
+}
+
+/**
+ * OPTIMIZED: Pre-fetch points balances for all users in batch
+ */
+async function prefetchPointsBalances(
+    userIds: string[],
+    supabaseAdmin: any
+): Promise<Map<string, number>> {
+    const balanceMap = new Map<string, number>();
+
+    if (userIds.length === 0) return balanceMap;
+
+    const { data: balances } = await supabaseAdmin
+        .from("v_consumer_points_balance")
+        .select("user_id, current_balance")
+        .in("user_id", userIds);
+
+    for (const balance of balances || []) {
+        balanceMap.set(balance.user_id, balance.current_balance || 0);
+    }
+
+    return balanceMap;
+}
+
+/**
+ * OPTIMIZED: Process a single row using cached data
+ */
+async function processRowOptimized(
     row: any,
     supabaseAdmin: any,
     passwordMode: string,
-    defaultPassword: string
+    defaultPassword: string,
+    userCache: UserCache,
+    balanceCache: Map<string, number>
 ): Promise<any> {
     // Validate all fields first
     const validationError = validateRow(row, passwordMode);
@@ -205,22 +259,9 @@ async function processRow(
         userPassword = defaultPassword;
     }
 
-    // Find user by phone OR email
-    const { data: phoneUsers } = await supabaseAdmin
-        .from("users")
-        .select("id, email, phone, full_name, location, last_migration_point_value")
-        .eq("phone", normalizedPhone);
-
-    let emailUser = null;
-    if (row.email) {
-        const { data: emailUsers } = await supabaseAdmin
-            .from("users")
-            .select("id, email, phone, full_name, location, last_migration_point_value")
-            .eq("email", row.email.trim());
-        emailUser = emailUsers?.[0];
-    }
-
-    let user = phoneUsers?.[0];
+    // Use cached user lookups instead of DB queries
+    let user = userCache.byPhone.get(normalizedPhone);
+    const emailUser = row.email ? userCache.byEmail.get(row.email.trim().toLowerCase()) : null;
 
     // Conflict Check
     if (user && emailUser && user.id !== emailUser.id) {
@@ -272,9 +313,21 @@ async function processRow(
             location: row.location,
             last_migration_point_value: 0,
         };
+
+        // Add to cache for potential subsequent lookups
+        userCache.byPhone.set(normalizedPhone, user);
+        if (row.email) {
+            userCache.byEmail.set(row.email.trim().toLowerCase(), user);
+        }
     }
 
-    // Update User Details
+    // Use cached balance
+    const realCurrentBalance = balanceCache.get(user.id) || 0;
+    const lastMigrationValue = user.last_migration_point_value || 0;
+    const newMigrationValue = row.points;
+    const delta = newMigrationValue - lastMigrationValue;
+
+    // Prepare updates
     const updates: any = {
         full_name: row.name,
         location: row.location,
@@ -284,61 +337,20 @@ async function processRow(
     if (normalizedPhone) updates.phone = normalizedPhone;
     if (row.joinedDate) updates.created_at = parseDate(row.joinedDate);
 
-    // Calculate Points
-    const { data: balanceData } = await supabaseAdmin
-        .from("v_consumer_points_balance")
-        .select("current_balance")
-        .eq("user_id", user.id)
-        .single();
-
-    const realCurrentBalance = balanceData?.current_balance || 0;
-    const lastMigrationValue = user.last_migration_point_value || 0;
-    const newMigrationValue = row.points;
-    const delta = newMigrationValue - lastMigrationValue;
-
     if (delta !== 0) {
-        const { error: transactionError } = await supabaseAdmin
-            .from("points_transactions")
-            .insert({
-                user_id: user.id,
-                company_id: null,
-                consumer_phone: normalizedPhone,
-                consumer_email: row.email || user.email,
-                transaction_type: "MIGRATION",
-                points_amount: delta,
-                balance_after: realCurrentBalance + delta,
-                description: `Migration: ${newMigrationValue} (Prev: ${lastMigrationValue})`,
-                transaction_date: new Date().toISOString(),
-            });
-
-        if (transactionError) {
-            throw new Error(`Failed to record points transaction. Please try again.`);
-        }
-
         updates.last_migration_point_value = newMigrationValue;
     }
 
-    // Update User
-    const { error: updateError } = await supabaseAdmin
-        .from("users")
-        .update(updates)
-        .eq("id", user.id);
-
-    if (updateError) {
-        throw new Error(`Failed to update user details. Please try again.`);
-    }
-
     return {
-        rowNumber: row.rowNumber,
-        joinedDate: row.joinedDate,
-        name: row.name,
-        phone: row.phone,
-        email: row.email,
-        location: row.location,
-        points: row.points,
-        password: row.password,
-        status: "Success",
-        message: `Delta: ${delta}`,
+        userId: user.id,
+        normalizedPhone,
+        email: row.email || user.email,
+        delta,
+        realCurrentBalance,
+        newMigrationValue,
+        lastMigrationValue,
+        updates,
+        row,
     };
 }
 
@@ -347,12 +359,19 @@ export async function POST(request: NextRequest) {
 
     const stream = new ReadableStream({
         async start(controller) {
+            let keepAliveInterval: NodeJS.Timeout | null = null;
+
             const sendEvent = (type: string, data: any) => {
                 const message = `data: ${JSON.stringify({ type, ...data })}\n\n`;
                 controller.enqueue(encoder.encode(message));
             };
 
             try {
+                // Start keep-alive interval immediately
+                keepAliveInterval = setInterval(() => {
+                    sendEvent("ping", { timestamp: Date.now() });
+                }, KEEP_ALIVE_INTERVAL);
+
                 const supabaseAdmin = createClient(
                     process.env.NEXT_PUBLIC_SUPABASE_URL!,
                     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -365,6 +384,7 @@ export async function POST(request: NextRequest) {
 
                 if (!file) {
                     sendEvent("error", { message: "No file uploaded" });
+                    if (keepAliveInterval) clearInterval(keepAliveInterval);
                     controller.close();
                     return;
                 }
@@ -406,6 +426,7 @@ export async function POST(request: NextRequest) {
                     const worksheet = workbook.getWorksheet(1);
                     if (!worksheet) {
                         sendEvent("error", { message: "Invalid Excel file" });
+                        if (keepAliveInterval) clearInterval(keepAliveInterval);
                         controller.close();
                         return;
                     }
@@ -442,94 +463,145 @@ export async function POST(request: NextRequest) {
                 const allResults: any[] = [];
                 let successCount = 0;
                 let errorCount = 0;
-                let lastProgressUpdate = Date.now();
-                let lastKeepAlive = Date.now();
 
-                // Keep-alive ping function
-                const sendKeepAlive = () => {
-                    const now = Date.now();
-                    if (now - lastKeepAlive >= KEEP_ALIVE_INTERVAL) {
-                        sendEvent("ping", { timestamp: now });
-                        lastKeepAlive = now;
-                    }
-                };
-
-                // Process a single row with retry
-                const processRowWithRetry = async (row: any) => {
-                    return withRetry(async () => {
-                        return await processRow(row, supabaseAdmin, passwordMode, defaultPassword);
-                    });
-                };
-
-                // Process rows in parallel batches for better performance
+                // Process rows in optimized batches
                 for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-                    // Send keep-alive ping before processing each batch
-                    sendKeepAlive();
-
                     const batch = rows.slice(i, Math.min(i + BATCH_SIZE, rows.length));
-                    
-                    // Process batch in parallel
+
+                    // PHASE 1: Pre-fetch all users for this batch (2 queries instead of 2*N)
+                    const userCache = await prefetchUsersForBatch(batch, supabaseAdmin);
+
+                    // Collect user IDs from cache for balance prefetch
+                    const userIdsForBalance: string[] = [];
+                    for (const row of batch) {
+                        try {
+                            const phone = normalizePhone(row.phone);
+                            const user = userCache.byPhone.get(phone) || 
+                                (row.email ? userCache.byEmail.get(row.email.trim().toLowerCase()) : null);
+                            if (user) {
+                                userIdsForBalance.push(user.id);
+                            }
+                        } catch {
+                            // Skip invalid rows
+                        }
+                    }
+
+                    // PHASE 2: Pre-fetch all balances for existing users (1 query instead of N)
+                    const balanceCache = await prefetchPointsBalances(userIdsForBalance, supabaseAdmin);
+
+                    // PHASE 3: Process each row using cached data
+                    const processedRows: any[] = [];
+
                     const batchPromises = batch.map(async (row) => {
                         try {
-                            const result = await processRowWithRetry(row);
-                            return { ...result, _success: true };
+                            const result = await processRowOptimized(
+                                row,
+                                supabaseAdmin,
+                                passwordMode,
+                                defaultPassword,
+                                userCache,
+                                balanceCache
+                            );
+                            return { success: true, result };
                         } catch (err: any) {
                             return {
-                                rowNumber: row.rowNumber,
-                                joinedDate: row.joinedDate,
-                                name: row.name,
-                                phone: row.phone,
-                                email: row.email,
-                                location: row.location,
-                                points: row.points,
-                                password: row.password,
-                                status: "Error",
-                                message: err.message,
-                                _success: false,
+                                success: false,
+                                error: {
+                                    rowNumber: row.rowNumber,
+                                    joinedDate: row.joinedDate,
+                                    name: row.name,
+                                    phone: row.phone,
+                                    email: row.email,
+                                    location: row.location,
+                                    points: row.points,
+                                    password: row.password,
+                                    status: "Error",
+                                    message: err.message,
+                                },
                             };
                         }
                     });
 
                     const batchResults = await Promise.all(batchPromises);
-                    
-                    // Count results and add to allResults
+
+                    // Separate successes and errors
                     for (const result of batchResults) {
-                        const { _success, ...cleanResult } = result;
-                        allResults.push(cleanResult);
-                        if (_success) {
-                            successCount++;
+                        if (result.success) {
+                            processedRows.push(result.result);
                         } else {
+                            allResults.push(result.error);
                             errorCount++;
                         }
                     }
 
-                    const currentProcessed = Math.min(i + BATCH_SIZE, rows.length);
-                    const now = Date.now();
+                    // PHASE 4: Batch insert transactions for all successful rows
+                    const transactions = processedRows
+                        .filter((r) => r.delta !== 0)
+                        .map((r) => ({
+                            user_id: r.userId,
+                            company_id: null,
+                            consumer_phone: r.normalizedPhone,
+                            consumer_email: r.email,
+                            transaction_type: "MIGRATION",
+                            points_amount: r.delta,
+                            balance_after: r.realCurrentBalance + r.delta,
+                            description: `Migration: ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`,
+                            transaction_date: new Date().toISOString(),
+                        }));
 
-                    // Send progress update every PROGRESS_UPDATE_INTERVAL records or after 2 seconds
-                    if (currentProcessed % PROGRESS_UPDATE_INTERVAL === 0 || 
-                        currentProcessed === rows.length || 
-                        now - lastProgressUpdate >= 2000) {
-                        const progress = Math.round((currentProcessed / totalRows) * 100);
-                        sendEvent("progress", {
-                            current: currentProcessed,
-                            total: totalRows,
-                            progress,
-                            success: successCount,
-                            errors: errorCount,
-                            message: `Processing ${currentProcessed} of ${totalRows} records (${progress}%)`
+                    if (transactions.length > 0) {
+                        await supabaseAdmin.from("points_transactions").insert(transactions);
+                    }
+
+                    // PHASE 5: Batch update users
+                    const userUpdates = processedRows.map((r) => ({
+                        id: r.userId,
+                        data: r.updates,
+                    }));
+
+                    // Update in parallel (smaller sub-batches)
+                    const UPDATE_SUB_BATCH = 10;
+                    for (let j = 0; j < userUpdates.length; j += UPDATE_SUB_BATCH) {
+                        const updateBatch = userUpdates.slice(j, j + UPDATE_SUB_BATCH);
+                        await Promise.all(
+                            updateBatch.map(({ id, data }) =>
+                                supabaseAdmin.from("users").update(data).eq("id", id)
+                            )
+                        );
+                    }
+
+                    // Add successful results
+                    for (const r of processedRows) {
+                        allResults.push({
+                            rowNumber: r.row.rowNumber,
+                            joinedDate: r.row.joinedDate,
+                            name: r.row.name,
+                            phone: r.row.phone,
+                            email: r.row.email,
+                            location: r.row.location,
+                            points: r.row.points,
+                            password: r.row.password,
+                            status: "Success",
+                            message: `Delta: ${r.delta}`,
                         });
-                        lastProgressUpdate = now;
+                        successCount++;
                     }
 
-                    // Small delay between batches to prevent overwhelming the database
-                    if (i + BATCH_SIZE < rows.length) {
-                        await new Promise((resolve) => setTimeout(resolve, 100));
-                    }
+                    // Send progress update
+                    const currentProcessed = Math.min(i + BATCH_SIZE, rows.length);
+                    const progress = Math.round((currentProcessed / totalRows) * 100);
+                    sendEvent("progress", {
+                        current: currentProcessed,
+                        total: totalRows,
+                        progress,
+                        success: successCount,
+                        errors: errorCount,
+                        message: `Processing ${currentProcessed} of ${totalRows} records (${progress}%)`
+                    });
                 }
 
-                // Send final keep-alive before completion
-                sendKeepAlive();
+                // Clear keep-alive interval
+                if (keepAliveInterval) clearInterval(keepAliveInterval);
 
                 // Send completion with all results
                 sendEvent("complete", {
@@ -545,6 +617,7 @@ export async function POST(request: NextRequest) {
                 controller.close();
             } catch (error: any) {
                 console.error("Point migration error:", error);
+                if (keepAliveInterval) clearInterval(keepAliveInterval);
                 sendEvent("error", { message: error.message || "Processing failed" });
                 controller.close();
             }
@@ -556,7 +629,7 @@ export async function POST(request: NextRequest) {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no", // Disable nginx buffering
+            "X-Accel-Buffering": "no",
         },
     });
 }
