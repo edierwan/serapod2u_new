@@ -37,6 +37,7 @@ import {
   Power,
   ChevronLeft,
   ChevronRight,
+  Circle,
 } from "lucide-react";
 import UserDialogNew from "./UserDialogNew";
 import type { User as UserType, Role, Organization } from "@/types/user";
@@ -63,6 +64,19 @@ const formatRelativeTime = (dateString: string | null): string => {
     return `${Math.floor(months / 12)}y ago`;
   } catch {
     return "Unknown";
+  }
+};
+
+// Check if user is online (logged in within last 15 minutes)
+const isUserOnline = (lastLoginAt: string | null): boolean => {
+  if (!lastLoginAt) return false;
+  try {
+    const lastLogin = new Date(lastLoginAt);
+    const now = new Date();
+    const diffMinutes = (now.getTime() - lastLogin.getTime()) / (1000 * 60);
+    return diffMinutes <= 15;
+  } catch {
+    return false;
   }
 };
 
@@ -751,6 +765,7 @@ export default function UserManagementNew({
         // Status filter
         const matchesStatus =
           !statusFilter ||
+          (statusFilter === "online" && isUserOnline(user.last_login_at)) ||
           (statusFilter === "active" && user.is_active) ||
           (statusFilter === "inactive" && !user.is_active) ||
           (statusFilter === "verified" && user.is_verified) ||
@@ -841,6 +856,7 @@ export default function UserManagementNew({
     total: filteredUsers.length,
     active: filteredUsers.filter((u) => u.is_active).length,
     verified: filteredUsers.filter((u) => u.is_verified).length,
+    online: filteredUsers.filter((u) => isUserOnline(u.last_login_at)).length,
   };
 
   const getInitials = (name: string | null): string => {
@@ -918,7 +934,7 @@ export default function UserManagementNew({
       />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
@@ -930,6 +946,22 @@ export default function UserManagementNew({
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
                 <Users className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Online Now</p>
+                <p className="text-3xl font-bold text-emerald-600">
+                  {stats.online}
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center relative">
+                <Circle className="w-6 h-6 text-emerald-600 fill-emerald-500" />
+                <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               </div>
             </div>
           </CardContent>
@@ -1044,6 +1076,7 @@ export default function UserManagementNew({
                 value={statusFilter}
               >
                 <option value="">All Status</option>
+                <option value="online">🟢 Online Now</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="verified">Verified</option>
@@ -1218,22 +1251,31 @@ export default function UserManagementNew({
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <Avatar className="w-10 h-10">
-                              {user.avatar_url && (
-                                <AvatarImage
-                                  src={
-                                    getStorageUrl(
-                                      `${user.avatar_url.split("?")[0]}?t=${new Date(user.updated_at).getTime()}`,
-                                    ) || user.avatar_url
-                                  }
-                                  alt={user.full_name || "User"}
-                                  key={`avatar-${user.id}-${user.updated_at}`}
+                            <div className="relative">
+                              <Avatar className="w-10 h-10">
+                                {user.avatar_url && (
+                                  <AvatarImage
+                                    src={
+                                      getStorageUrl(
+                                        `${user.avatar_url.split("?")[0]}?t=${new Date(user.updated_at).getTime()}`,
+                                      ) || user.avatar_url
+                                    }
+                                    alt={user.full_name || "User"}
+                                    key={`avatar-${user.id}-${user.updated_at}`}
+                                  />
+                                )}
+                                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
+                                  {getInitials(user.full_name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              {/* Online status indicator */}
+                              {isUserOnline(user.last_login_at) && (
+                                <span 
+                                  className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"
+                                  title="Online now"
                                 />
                               )}
-                              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
-                                {getInitials(user.full_name)}
-                              </AvatarFallback>
-                            </Avatar>
+                            </div>
                             <div className="min-w-0 flex-1">
                               <div className="text-gray-900 truncate font-medium">
                                 {user.full_name || "No Name"}
@@ -1291,15 +1333,23 @@ export default function UserManagementNew({
                           </span>
                         </TableCell>
                         <TableCell>
-                          <span
-                            className={
-                              user.last_login_at
-                                ? "text-gray-900"
-                                : "text-gray-400 italic"
-                            }
-                          >
-                            {formatRelativeTime(user.last_login_at)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {isUserOnline(user.last_login_at) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
+                                Online
+                              </span>
+                            )}
+                            <span
+                              className={
+                                user.last_login_at
+                                  ? "text-gray-900"
+                                  : "text-gray-400 italic"
+                              }
+                            >
+                              {formatRelativeTime(user.last_login_at)}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
