@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import {
   Users,
   Search,
@@ -133,6 +134,18 @@ export default function UserManagementNew({
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(20);
+  
+  // Delete progress state
+  const [deleteProgress, setDeleteProgress] = useState<{
+    isDeleting: boolean;
+    current: number;
+    total: number;
+    progress: number;
+    success: number;
+    errors: number;
+    message: string;
+  } | null>(null);
+  
   const { isReady, supabase } = useSupabaseAuth();
   const { toast } = useToast();
 
@@ -280,47 +293,102 @@ export default function UserManagementNew({
 
     try {
       setIsSaving(true);
-      let successCount = 0;
-      let errorCount = 0;
-      const errors: string[] = [];
+      setDeleteProgress({
+        isDeleting: true,
+        current: 0,
+        total: selectedUsers.size,
+        progress: 0,
+        success: 0,
+        errors: 0,
+        message: "Starting deletion...",
+      });
 
-      for (const userId of Array.from(selectedUsers)) {
-        try {
-          const result = await deleteUserWithAuth(userId, {
-            id: userProfile.id,
-            role_code: userProfile.role_code,
-          });
-          if (result.success) {
-            successCount++;
-          } else {
-            errorCount++;
-            if (result.error) {
-              errors.push(result.error);
+      // Use streaming endpoint for bulk delete with progress
+      const response = await fetch("/api/admin/bulk-delete-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userIds: Array.from(selectedUsers),
+          callerId: userProfile.id,
+          callerRoleCode: userProfile.role_code,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to start bulk deletion");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              switch (data.type) {
+                case "init":
+                  setDeleteProgress((prev) => ({
+                    ...prev!,
+                    total: data.total,
+                    message: data.message,
+                  }));
+                  break;
+                case "progress":
+                  setDeleteProgress({
+                    isDeleting: true,
+                    current: data.current,
+                    total: data.total,
+                    progress: data.progress,
+                    success: data.success,
+                    errors: data.errors,
+                    message: data.message,
+                  });
+                  break;
+                case "complete":
+                  setDeleteProgress((prev) => ({
+                    ...prev!,
+                    isDeleting: false,
+                    progress: 100,
+                    message: `Completed! ${data.summary.success} deleted, ${data.summary.error} failed`,
+                  }));
+
+                  toast({
+                    title: "Bulk Delete Complete",
+                    description: `Successfully deleted ${data.summary.success} user${data.summary.success !== 1 ? "s" : ""}${data.summary.error > 0 ? `. ${data.summary.error} failed.` : ""}`,
+                    variant: data.summary.error > 0 ? "default" : "default",
+                  });
+
+                  setSelectedUsers(new Set());
+                  await loadUsers();
+
+                  // Clear progress after a delay
+                  setTimeout(() => setDeleteProgress(null), 3000);
+                  break;
+                case "ping":
+                  // Keep-alive, do nothing
+                  break;
+                case "error":
+                  throw new Error(data.message);
+              }
+            } catch (parseError) {
+              if (parseError instanceof Error && parseError.message) {
+                throw parseError;
+              }
+              console.error("Parse error:", parseError);
             }
           }
-        } catch (error) {
-          errorCount++;
-          errors.push(error instanceof Error ? error.message : "Unknown error");
         }
       }
-
-      if (successCount > 0) {
-        toast({
-          title: "Bulk Delete Complete",
-          description: `Successfully deleted ${successCount} user${successCount > 1 ? "s" : ""}${errorCount > 0 ? `. ${errorCount} failed.` : ""}`,
-          variant: errorCount > 0 ? "default" : "default",
-        });
-      } else {
-        toast({
-          title: "Delete Failed",
-          description:
-            errors.length > 0 ? errors[0] : "Failed to delete selected users",
-          variant: "destructive",
-        });
-      }
-
-      setSelectedUsers(new Set());
-      await loadUsers();
     } catch (error) {
       console.error("Bulk delete error:", error);
       toast({
@@ -331,6 +399,7 @@ export default function UserManagementNew({
             : "An error occurred during bulk delete",
         variant: "destructive",
       });
+      setDeleteProgress(null);
     } finally {
       setIsSaving(false);
     }
@@ -1101,7 +1170,39 @@ export default function UserManagementNew({
       {/* Users Table */}
       <Card>
         <CardContent className="pt-6">
-          {selectedUsers.size > 0 && (
+          {/* Delete Progress Indicator */}
+          {deleteProgress && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {deleteProgress.isDeleting ? (
+                    <Loader2 className="w-5 h-5 text-red-600 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  )}
+                  <span className="text-sm font-medium text-red-900">
+                    {deleteProgress.message}
+                  </span>
+                </div>
+                <span className="text-sm text-red-700">
+                  {deleteProgress.current} / {deleteProgress.total}
+                </span>
+              </div>
+              <Progress value={deleteProgress.progress} className="h-2" />
+              <div className="flex justify-between text-xs text-red-600">
+                <span>
+                  ✓ {deleteProgress.success} success
+                </span>
+                {deleteProgress.errors > 0 && (
+                  <span>
+                    ✗ {deleteProgress.errors} errors
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {selectedUsers.size > 0 && !deleteProgress && (
             <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-blue-600" />

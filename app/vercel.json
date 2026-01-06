@@ -17,6 +17,9 @@
     },
     "src/app/api/admin/point-migration/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/admin/bulk-delete-users/route.ts": {
+      "maxDuration": 600
     }
   },
   "crons": [
