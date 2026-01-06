@@ -6,8 +6,15 @@ import Papa from "papaparse";
 // Configure route to be dynamic
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// Increase max duration for large file processing (5 minutes)
-export const maxDuration = 300;
+// Increase max duration for large file processing (10 minutes for 1.2K+ records)
+export const maxDuration = 600;
+
+// Batch processing configuration
+const BATCH_SIZE = 10; // Process 10 records in parallel
+const PROGRESS_UPDATE_INTERVAL = 10; // Update progress every 10 records
+const KEEP_ALIVE_INTERVAL = 15000; // Send keep-alive ping every 15 seconds
+const MAX_RETRIES = 3; // Retry failed operations up to 3 times
+const RETRY_DELAY = 1000; // Wait 1 second between retries
 
 /**
  * Normalize full name to Title Case
@@ -139,6 +146,35 @@ function validateRow(row: any, passwordMode: string): string | null {
     }
 
     return null;
+}
+
+/**
+ * Retry wrapper for database operations
+ */
+async function withRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = MAX_RETRIES,
+    delay: number = RETRY_DELAY
+): Promise<T> {
+    let lastError: Error;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await operation();
+        } catch (error: any) {
+            lastError = error;
+            // Don't retry validation errors or user errors
+            if (error.message?.includes("required") || 
+                error.message?.includes("Invalid") ||
+                error.message?.includes("conflict") ||
+                error.message?.includes("already registered")) {
+                throw error;
+            }
+            if (attempt < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, delay * attempt));
+            }
+        }
+    }
+    throw lastError!;
 }
 
 async function processRow(
@@ -406,49 +442,94 @@ export async function POST(request: NextRequest) {
                 const allResults: any[] = [];
                 let successCount = 0;
                 let errorCount = 0;
+                let lastProgressUpdate = Date.now();
+                let lastKeepAlive = Date.now();
 
-                // Process rows one by one with progress updates
-                for (let i = 0; i < rows.length; i++) {
-                    const row = rows[i];
+                // Keep-alive ping function
+                const sendKeepAlive = () => {
+                    const now = Date.now();
+                    if (now - lastKeepAlive >= KEEP_ALIVE_INTERVAL) {
+                        sendEvent("ping", { timestamp: now });
+                        lastKeepAlive = now;
+                    }
+                };
 
-                    try {
-                        const result = await processRow(row, supabaseAdmin, passwordMode, defaultPassword);
-                        allResults.push(result);
-                        successCount++;
-                    } catch (err: any) {
-                        allResults.push({
-                            rowNumber: row.rowNumber,
-                            joinedDate: row.joinedDate,
-                            name: row.name,
-                            phone: row.phone,
-                            email: row.email,
-                            location: row.location,
-                            points: row.points,
-                            password: row.password,
-                            status: "Error",
-                            message: err.message,
-                        });
-                        errorCount++;
+                // Process a single row with retry
+                const processRowWithRetry = async (row: any) => {
+                    return withRetry(async () => {
+                        return await processRow(row, supabaseAdmin, passwordMode, defaultPassword);
+                    });
+                };
+
+                // Process rows in parallel batches for better performance
+                for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+                    // Send keep-alive ping before processing each batch
+                    sendKeepAlive();
+
+                    const batch = rows.slice(i, Math.min(i + BATCH_SIZE, rows.length));
+                    
+                    // Process batch in parallel
+                    const batchPromises = batch.map(async (row) => {
+                        try {
+                            const result = await processRowWithRetry(row);
+                            return { ...result, _success: true };
+                        } catch (err: any) {
+                            return {
+                                rowNumber: row.rowNumber,
+                                joinedDate: row.joinedDate,
+                                name: row.name,
+                                phone: row.phone,
+                                email: row.email,
+                                location: row.location,
+                                points: row.points,
+                                password: row.password,
+                                status: "Error",
+                                message: err.message,
+                                _success: false,
+                            };
+                        }
+                    });
+
+                    const batchResults = await Promise.all(batchPromises);
+                    
+                    // Count results and add to allResults
+                    for (const result of batchResults) {
+                        const { _success, ...cleanResult } = result;
+                        allResults.push(cleanResult);
+                        if (_success) {
+                            successCount++;
+                        } else {
+                            errorCount++;
+                        }
                     }
 
-                    // Send progress update every 5 records or on last record
-                    if ((i + 1) % 5 === 0 || i === rows.length - 1) {
-                        const progress = Math.round(((i + 1) / totalRows) * 100);
+                    const currentProcessed = Math.min(i + BATCH_SIZE, rows.length);
+                    const now = Date.now();
+
+                    // Send progress update every PROGRESS_UPDATE_INTERVAL records or after 2 seconds
+                    if (currentProcessed % PROGRESS_UPDATE_INTERVAL === 0 || 
+                        currentProcessed === rows.length || 
+                        now - lastProgressUpdate >= 2000) {
+                        const progress = Math.round((currentProcessed / totalRows) * 100);
                         sendEvent("progress", {
-                            current: i + 1,
+                            current: currentProcessed,
                             total: totalRows,
                             progress,
                             success: successCount,
                             errors: errorCount,
-                            message: `Processing ${i + 1} of ${totalRows} records (${progress}%)`
+                            message: `Processing ${currentProcessed} of ${totalRows} records (${progress}%)`
                         });
+                        lastProgressUpdate = now;
                     }
 
-                    // Small delay every 20 records to prevent overwhelming
-                    if ((i + 1) % 20 === 0 && i < rows.length - 1) {
-                        await new Promise((resolve) => setTimeout(resolve, 50));
+                    // Small delay between batches to prevent overwhelming the database
+                    if (i + BATCH_SIZE < rows.length) {
+                        await new Promise((resolve) => setTimeout(resolve, 100));
                     }
                 }
+
+                // Send final keep-alive before completion
+                sendKeepAlive();
 
                 // Send completion with all results
                 sendEvent("complete", {
@@ -463,6 +544,7 @@ export async function POST(request: NextRequest) {
 
                 controller.close();
             } catch (error: any) {
+                console.error("Point migration error:", error);
                 sendEvent("error", { message: error.message || "Processing failed" });
                 controller.close();
             }
@@ -472,8 +554,9 @@ export async function POST(request: NextRequest) {
     return new Response(stream, {
         headers: {
             "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no", // Disable nginx buffering
         },
     });
 }

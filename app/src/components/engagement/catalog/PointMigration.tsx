@@ -50,6 +50,11 @@ type SortField = 'rowNumber' | 'joinedDate' | 'name' | 'phone' | 'email' | 'loca
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100] as const
 
+// Connection timeout in ms (30 seconds without any activity)
+const CONNECTION_TIMEOUT = 30000
+// Maximum timeout for entire operation (15 minutes for large files)
+const MAX_OPERATION_TIMEOUT = 900000
+
 interface PointMigrationProps {
   onMigrationComplete?: () => void
 }
@@ -108,7 +113,49 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
       formData.append('defaultPassword', defaultPassword)
     }
 
+    // Activity tracking for timeout detection
+    let lastActivityTime = Date.now()
+    let connectionTimeoutId: NodeJS.Timeout | null = null
+    let operationTimeoutId: NodeJS.Timeout | null = null
+    let isCompleted = false
+
+    const clearTimeouts = () => {
+      if (connectionTimeoutId) {
+        clearTimeout(connectionTimeoutId)
+        connectionTimeoutId = null
+      }
+      if (operationTimeoutId) {
+        clearTimeout(operationTimeoutId)
+        operationTimeoutId = null
+      }
+    }
+
+    const resetConnectionTimeout = () => {
+      lastActivityTime = Date.now()
+      if (connectionTimeoutId) {
+        clearTimeout(connectionTimeoutId)
+      }
+      connectionTimeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          console.error('Connection timeout - no activity for', CONNECTION_TIMEOUT, 'ms')
+          setError('Connection lost. Please try again. If the issue persists, try processing smaller batches.')
+          setUploading(false)
+          clearTimeouts()
+        }
+      }, CONNECTION_TIMEOUT)
+    }
+
     try {
+      // Set maximum operation timeout
+      operationTimeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          console.error('Operation timeout after', MAX_OPERATION_TIMEOUT, 'ms')
+          setError('Operation timed out. Please try processing smaller batches.')
+          setUploading(false)
+          clearTimeouts()
+        }
+      }, MAX_OPERATION_TIMEOUT)
+
       // Try streaming endpoint first, fallback to regular endpoint
       let useStreaming = true
       let response: Response
@@ -131,6 +178,9 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
         const reader = response!.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
+
+        // Start connection timeout monitoring
+        resetConnectionTimeout()
 
         while (true) {
           const { done, value } = await reader.read()
@@ -170,8 +220,12 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                       message: data.message
                     })
                     setStatusMessage(data.message)
+                    // Reset timeout on progress
+                    resetConnectionTimeout()
                     break
                   case 'complete':
+                    isCompleted = true
+                    clearTimeouts()
                     setResults(data.results || [])
                     setUploadComplete(true)
                     setCurrentPage(1)
@@ -183,14 +237,30 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                       onMigrationComplete()
                     }
                     break
+                  case 'ping':
+                    // Keep-alive ping from server, reset timeout
+                    resetConnectionTimeout()
+                    break
                   case 'error':
+                    isCompleted = true
+                    clearTimeouts()
                     throw new Error(data.message)
                 }
               } catch (parseError) {
-                console.error('Parse error:', parseError)
+                // Only log parse errors that aren't from our explicit throw
+                if (!(parseError instanceof Error && parseError.message)) {
+                  console.error('Parse error:', parseError)
+                } else {
+                  throw parseError
+                }
               }
             }
           }
+        }
+
+        // If we reach here without completion, something went wrong
+        if (!isCompleted) {
+          throw new Error('Connection ended unexpectedly. Please try again.')
         }
       } else {
         // Fallback to regular endpoint
@@ -206,6 +276,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
           throw new Error(data.error || 'Upload failed')
         }
 
+        isCompleted = true
+        clearTimeouts()
         setResults(data.results || [])
         setUploadComplete(true)
         setCurrentPage(1)
@@ -219,8 +291,10 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     } catch (error: any) {
       console.error('Upload error:', error)
       setError(error.message || 'Upload failed')
+      clearTimeouts()
     } finally {
       setUploading(false)
+      clearTimeouts()
     }
   }
 

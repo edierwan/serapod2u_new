@@ -11,6 +11,14 @@
   "git": {
     "deploymentEnabled": true
   },
+  "functions": {
+    "src/app/api/admin/point-migration-stream/route.ts": {
+      "maxDuration": 600
+    },
+    "src/app/api/admin/point-migration/route.ts": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/qr-reverse-worker",
