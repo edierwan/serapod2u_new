@@ -18,10 +18,22 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
+    // Get user's company ID
+    const { data: userData } = await supabase
+      .from('users')
+      .select('organization_id')
+      .eq('id', user.id)
+      .single()
+
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'User has no organization' }, { status: 400 })
+    }
+
     // Use the pending postings view (using 'any' since view not in generated types yet)
     const { data: pendingPostings, error, count } = await (supabase as any)
       .from('v_pending_gl_postings')
       .select('*', { count: 'exact' })
+      .eq('company_id', userData.organization_id) // Filter by user's company
       .order('document_date', { ascending: false })
       .range(offset, offset + limit - 1)
 

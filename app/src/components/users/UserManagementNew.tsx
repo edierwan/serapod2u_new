@@ -838,9 +838,9 @@ export default function UserManagementNew({
   ]);
 
   const stats = {
-    total: users.length,
-    active: users.filter((u) => u.is_active).length,
-    verified: users.filter((u) => u.is_verified).length,
+    total: filteredUsers.length,
+    active: filteredUsers.filter((u) => u.is_active).length,
+    verified: filteredUsers.filter((u) => u.is_verified).length,
   };
 
   const getInitials = (name: string | null): string => {

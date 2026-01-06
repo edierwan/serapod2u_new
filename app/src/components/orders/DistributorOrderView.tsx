@@ -88,6 +88,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const [sellerOrg, setSellerOrg] = useState<Organization | null>(null)
   const [availableDistributors, setAvailableDistributors] = useState<Organization[]>([])
   const [selectedDistributorId, setSelectedDistributorId] = useState('')
+  const [distributorSearchQuery, setDistributorSearchQuery] = useState('')
+  const [isDistributorDropdownOpen, setIsDistributorDropdownOpen] = useState(false)
+  const distributorSearchRef = useRef<HTMLDivElement>(null)
+  const [hqOrgId, setHqOrgId] = useState<string>('')
   
   // Customer Information
   const [customerName, setCustomerName] = useState('')
@@ -106,6 +110,28 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   useEffect(() => {
     initializeOrder()
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (hqOrgId) {
+      const timer = setTimeout(() => {
+        loadDistributors(hqOrgId, undefined, distributorSearchQuery)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [distributorSearchQuery, hqOrgId])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (distributorSearchRef.current && !distributorSearchRef.current.contains(event.target as Node)) {
+        setIsDistributorDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
   }, [])
 
   const initializeOrder = async () => {
@@ -142,6 +168,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           return
         }
       }
+      
+      setHqOrgId(hqOrgId)
 
       // Determine inventory source organization
       // If we are HQ, inventory is likely in a child Warehouse
@@ -177,22 +205,30 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     }
   }
 
-  const loadDistributors = async (hqOrgId: string, inventoryOrgId?: string) => {
+  const loadDistributors = async (hqOrgId: string, inventoryOrgId?: string, search?: string) => {
     try {
       // Load all distributor organizations under the HQ
-      const { data, error } = await supabase
+      let query = supabase
         .from('organizations')
         .select('*')
         .eq('parent_org_id', hqOrgId)
         .eq('org_type_code', 'DIST')
         .eq('is_active', true)
         .order('org_name')
+        
+      if (search && search.length >= 2) {
+        query = query.ilike('org_name', `%${search}%`)
+      } else {
+        query = query.limit(50)
+      }
+      
+      const { data, error } = await query
       
       if (error) throw error
       
       setAvailableDistributors(data || [])
       
-      if (data && data.length === 0 && !toastShownRef.current) {
+      if (data && data.length === 0 && !toastShownRef.current && !search) {
         toastShownRef.current = true
         toast({
           title: 'No Distributors Found',
@@ -703,19 +739,43 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Distributor <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={selectedDistributorId}
-                  onChange={(e) => handleDistributorChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  disabled={availableDistributors.length === 0}
-                >
-                  <option value="">Choose distributor...</option>
-                  {availableDistributors.map((dist) => (
-                    <option key={dist.id} value={dist.id}>
-                      {dist.org_name} ({dist.org_code})
-                    </option>
-                  ))}
-                </select>
+                <div className="relative" ref={distributorSearchRef}>
+                  <Input
+                    value={selectedDistributorId ? (availableDistributors.find(d => d.id === selectedDistributorId)?.org_name || distributorSearchQuery) : distributorSearchQuery}
+                    onChange={(e) => {
+                      setDistributorSearchQuery(e.target.value)
+                      if (selectedDistributorId) {
+                         setSelectedDistributorId('')
+                         setBuyerOrg(null)
+                      }
+                      setIsDistributorDropdownOpen(true)
+                    }}
+                    onFocus={() => setIsDistributorDropdownOpen(true)}
+                    placeholder="Search distributor (min 2 chars)..."
+                    className="w-full"
+                  />
+                  {isDistributorDropdownOpen && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {availableDistributors.length === 0 ? (
+                        <div className="p-2 text-sm text-gray-500">No distributors found</div>
+                      ) : (
+                        availableDistributors.map((dist) => (
+                          <div
+                            key={dist.id}
+                            className="px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer"
+                            onClick={() => {
+                              handleDistributorChange(dist.id)
+                              setDistributorSearchQuery(dist.org_name)
+                              setIsDistributorDropdownOpen(false)
+                            }}
+                          >
+                            {dist.org_name} ({dist.org_code})
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
                 {!selectedDistributorId && availableDistributors.length > 0 && (
                   <p className="text-xs text-amber-600 mt-2">
                     ⚠️ Please select a distributor to view available products

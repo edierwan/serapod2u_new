@@ -18,11 +18,20 @@ export interface MenuItem {
   submenu?: SubMenuItem[]
 }
 
+export interface NestedSubMenuItem {
+  id: string
+  label: string
+  icon: any
+  targetView?: string  // Optional: different view to navigate to
+  access?: MenuAccessRule  // Access rules for nested submenu items
+}
+
 export interface SubMenuItem {
   id: string
   label: string
   icon: any
   access?: MenuAccessRule  // Access rules for submenu items
+  nestedSubmenu?: NestedSubMenuItem[]  // Nested submenu items
 }
 
 /**
@@ -120,11 +129,31 @@ export function filterMenuItems(
     .map(item => {
       // Filter submenu items if they exist
       if (item.submenu && item.submenu.length > 0) {
+        const filteredSubmenu = item.submenu
+          .filter(subItem => hasMenuAccess(userProfile, subItem.access))
+          .map(subItem => {
+            // Filter nested submenu items if they exist
+            if (subItem.nestedSubmenu && subItem.nestedSubmenu.length > 0) {
+              return {
+                ...subItem,
+                nestedSubmenu: subItem.nestedSubmenu.filter(nestedItem =>
+                  hasMenuAccess(userProfile, nestedItem.access)
+                )
+              }
+            }
+            return subItem
+          })
+          // Remove submenu items with empty nested submenus
+          .filter(subItem => {
+            if (subItem.nestedSubmenu) {
+              return subItem.nestedSubmenu.length > 0
+            }
+            return true
+          })
+        
         return {
           ...item,
-          submenu: item.submenu.filter(subItem =>
-            hasMenuAccess(userProfile, subItem.access)
-          )
+          submenu: filteredSubmenu
         }
       }
       return item

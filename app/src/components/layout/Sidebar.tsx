@@ -21,6 +21,7 @@ import {
   X,
   Store,
   ChevronDown,
+  ChevronRight,
   QrCode,
   Scan,
   Gift,
@@ -33,7 +34,9 @@ import {
   Plus,
   TrendingUp,
   ListTree,
-  Database
+  Database,
+  Calculator,
+  Receipt
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
@@ -358,6 +361,60 @@ const navigationItems: MenuItem[] = [
     ]
   },
   {
+    id: 'accounting',
+    label: 'Accounting',
+    icon: Calculator,
+    description: 'Financial management',
+    access: {
+      allowedOrgTypes: ['HQ', 'DIST', 'WH'],
+      maxRoleLevel: 40
+    },
+    submenu: [
+      {
+        id: 'accounting-sales',
+        label: 'Sales',
+        icon: TrendingUp,
+        access: {
+          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
+          maxRoleLevel: 40
+        },
+        nestedSubmenu: [
+          {
+            id: 'sales-invoice',
+            label: 'Sales Invoice',
+            icon: Receipt,
+            targetView: 'distributor-order',
+            access: {
+              allowedOrgTypes: ['HQ', 'DIST', 'WH'],
+              maxRoleLevel: 40
+            }
+          }
+        ]
+      },
+      {
+        id: 'accounting-purchase',
+        label: 'Purchase',
+        icon: ShoppingCart,
+        access: {
+          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
+          maxRoleLevel: 40
+        },
+        nestedSubmenu: [
+          {
+            id: 'purchase-invoice',
+            label: 'Purchase Invoice',
+            icon: Receipt,
+            targetView: 'orders',
+            access: {
+              allowedOrgTypes: ['HQ', 'DIST', 'WH'],
+              maxRoleLevel: 40
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
     id: 'organizations',
     label: 'Organizations',
     icon: Building2,
@@ -406,6 +463,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
+  const [expandedNestedMenu, setExpandedNestedMenu] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [isMounted, setIsMounted] = useState(false)
@@ -538,11 +596,36 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
     }
   }, [expandedMenu])
 
-  // Auto-expand parent menu when navigating to a submenu item
+  // Auto-expand parent menu when navigating to a submenu item (including nested)
   useEffect(() => {
-    const parentMenu = navigationItems.find(item => 
+    // Check for direct submenu match
+    let parentMenu = navigationItems.find(item => 
       item.submenu?.some(sub => sub.id === currentView)
     )
+    
+    // Check for nested submenu match (by id or targetView)
+    if (!parentMenu) {
+      parentMenu = navigationItems.find(item => 
+        item.submenu?.some((sub: any) => 
+          sub.nestedSubmenu?.some((nested: any) => 
+            nested.id === currentView || nested.targetView === currentView
+          )
+        )
+      )
+      
+      // Also expand the nested submenu
+      if (parentMenu) {
+        const nestedParent = parentMenu.submenu?.find((sub: any) => 
+          sub.nestedSubmenu?.some((nested: any) => 
+            nested.id === currentView || nested.targetView === currentView
+          )
+        )
+        if (nestedParent && expandedNestedMenu !== nestedParent.id) {
+          setExpandedNestedMenu(nestedParent.id)
+        }
+      }
+    }
+    
     if (parentMenu && expandedMenu !== parentMenu.id) {
       setExpandedMenu(parentMenu.id)
     }
@@ -779,7 +862,15 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           <div className="space-y-1">
             {filteredNavigationItems.map((item: any) => {
               const Icon = item.icon
-              const isActive = currentView === item.id || (item.submenu?.some((sub: any) => sub.id === currentView))
+              // Check if current view matches any submenu or nested submenu
+              const isActive = currentView === item.id || 
+                (item.submenu?.some((sub: any) => 
+                  sub.id === currentView || 
+                  sub.targetView === currentView ||
+                  (sub.nestedSubmenu?.some((nested: any) => 
+                    nested.id === currentView || nested.targetView === currentView
+                  ))
+                ))
               const isMenuOpen = expandedMenu === item.id
 
               return (
@@ -813,22 +904,70 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                                     {/* Submenu */}
                   {item.submenu && isMenuOpen && !isCollapsed && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
-                      {item.submenu.map((subitem: any) => (
-                        <button
-                          key={subitem.id}
-                          onClick={() => {
-                            onViewChange(subitem.id)
-                            setIsMobileMenuOpen(false) // Close mobile menu on navigation
-                          }}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${currentView === subitem.id
-                              ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
-                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                            }`}
-                        >
-                          <subitem.icon className="h-4 w-4" />
-                          <span>{subitem.label}</span>
-                        </button>
-                      ))}
+                      {item.submenu.map((subitem: any) => {
+                        const hasNestedSubmenu = subitem.nestedSubmenu && subitem.nestedSubmenu.length > 0
+                        const isNestedMenuOpen = expandedNestedMenu === subitem.id
+                        const SubIcon = subitem.icon
+                        
+                        // Check if this submenu or any of its nested items are active
+                        const isSubitemActive = currentView === subitem.id || 
+                          (hasNestedSubmenu && subitem.nestedSubmenu.some((nested: any) => 
+                            currentView === nested.id || currentView === nested.targetView
+                          ))
+                        
+                        return (
+                          <div key={subitem.id}>
+                            <button
+                              onClick={() => {
+                                if (hasNestedSubmenu) {
+                                  setExpandedNestedMenu(isNestedMenuOpen ? null : subitem.id)
+                                } else {
+                                  onViewChange(subitem.id)
+                                  setIsMobileMenuOpen(false)
+                                }
+                              }}
+                              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isSubitemActive
+                                  ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
+                                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                }`}
+                            >
+                              <SubIcon className="h-4 w-4" />
+                              <span className="flex-1 text-left">{subitem.label}</span>
+                              {hasNestedSubmenu && (
+                                <ChevronRight className={`h-3 w-3 transition-transform ${isNestedMenuOpen ? 'rotate-90' : ''}`} />
+                              )}
+                            </button>
+                            
+                            {/* Nested Submenu */}
+                            {hasNestedSubmenu && isNestedMenuOpen && (
+                              <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
+                                {subitem.nestedSubmenu.map((nestedItem: any) => {
+                                  const NestedIcon = nestedItem.icon
+                                  const targetView = nestedItem.targetView || nestedItem.id
+                                  const isNestedActive = currentView === nestedItem.id || currentView === targetView
+                                  
+                                  return (
+                                    <button
+                                      key={nestedItem.id}
+                                      onClick={() => {
+                                        onViewChange(targetView)
+                                        setIsMobileMenuOpen(false)
+                                      }}
+                                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isNestedActive
+                                          ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
+                                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                        }`}
+                                    >
+                                      <NestedIcon className="h-4 w-4" />
+                                      <span>{nestedItem.label}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

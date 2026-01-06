@@ -6,6 +6,8 @@ import Papa from "papaparse";
 // Configure route to be dynamic
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// Increase max duration for large file processing (5 minutes)
+export const maxDuration = 300;
 
 /**
  * Normalize full name to Title Case
@@ -92,6 +94,286 @@ function parseDate(dateStr: any): string {
   return new Date().toISOString();
 }
 
+/**
+ * Validate email format
+ * Returns null if valid, error message if invalid
+ */
+function validateEmail(email: string | undefined | null): string | null {
+  if (!email || email.trim() === "") {
+    return "Email is required. Please provide a valid email address.";
+  }
+
+  const trimmedEmail = email.trim();
+
+  // Basic email format validation
+  // Must have @ symbol
+  if (!trimmedEmail.includes("@")) {
+    return "Invalid email format. Email must contain '@' symbol.";
+  }
+
+  // Must have domain after @
+  const parts = trimmedEmail.split("@");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return "Invalid email format. Please check the email address.";
+  }
+
+  const domain = parts[1];
+
+  // Domain must have at least one dot and valid extension
+  if (!domain.includes(".")) {
+    return "Invalid email format. Domain must include extension (e.g., .com, .my).";
+  }
+
+  // Check for valid domain structure
+  const domainParts = domain.split(".");
+  const extension = domainParts[domainParts.length - 1];
+
+  if (extension.length < 2) {
+    return "Invalid email format. Please check the domain extension.";
+  }
+
+  // More comprehensive email regex check
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(trimmedEmail)) {
+    return "Invalid email format. Please enter a valid email address.";
+  }
+
+  return null; // Valid
+}
+
+/**
+ * Validate required fields and return specific error messages
+ */
+function validateRow(row: any, passwordMode: string): string | null {
+  // Validate Name
+  if (!row.name || row.name.trim() === "") {
+    return "Name is required. Please provide the user's name.";
+  }
+
+  // Validate Phone
+  if (!row.phone || String(row.phone).trim() === "") {
+    return "Phone number is required. Please provide a valid phone number.";
+  }
+
+  // Validate Email
+  const emailError = validateEmail(row.email);
+  if (emailError) {
+    return emailError;
+  }
+
+  // Validate Password (only for file mode)
+  if (passwordMode === "file" && (!row.password || row.password.trim() === "")) {
+    return "Password is required when using file mode. Please fill in Column G (Password).";
+  }
+
+  // Validate Points (should be a valid number)
+  if (row.points !== undefined && row.points !== null && row.points !== "") {
+    const pointsNum = Number(row.points);
+    if (isNaN(pointsNum)) {
+      return "Invalid points value. Points must be a valid number.";
+    }
+    if (pointsNum < 0) {
+      return "Invalid points value. Points cannot be negative.";
+    }
+  }
+
+  return null; // All validations passed
+}
+
+// Process records in batches to handle large files
+const BATCH_SIZE = 50;
+
+async function processBatch(
+  rows: any[],
+  supabaseAdmin: any,
+  passwordMode: string,
+  defaultPassword: string
+): Promise<any[]> {
+  const results: any[] = [];
+
+  for (const row of rows) {
+    try {
+      // 0. Validate all fields first with specific error messages
+      const validationError = validateRow(row, passwordMode);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      // 1. Validate Phone (Strict)
+      let normalizedPhone: string;
+      try {
+        normalizedPhone = normalizePhone(row.phone);
+      } catch (e: any) {
+        throw new Error(e.message);
+      }
+
+      // Determine password for this row
+      let userPassword: string | null = null;
+      if (passwordMode === "file") {
+        userPassword = row.password;
+      } else {
+        userPassword = defaultPassword;
+      }
+
+      // 2. Find user by phone OR email separately to handle conflicts
+      const { data: phoneUsers } = await supabaseAdmin
+        .from("users")
+        .select("*")
+        .eq("phone", normalizedPhone);
+
+      let emailUser = null;
+      if (row.email) {
+        const { data: emailUsers } = await supabaseAdmin
+          .from("users")
+          .select("*")
+          .eq("email", row.email.trim());
+        emailUser = emailUsers?.[0];
+      }
+
+      let user = phoneUsers?.[0];
+
+      // Conflict Check
+      if (user && emailUser && user.id !== emailUser.id) {
+        throw new Error(
+          `Data conflict: This phone number is already registered to a different user than this email.`
+        );
+      }
+
+      if (!user && emailUser) {
+        user = emailUser;
+      }
+
+      // If user not found, create new user
+      if (!user) {
+        if (!userPassword) {
+          throw new Error("New user requires a password. Please provide a password.");
+        }
+
+        const { data: authUser, error: authError } =
+          await supabaseAdmin.auth.admin.createUser({
+            email: row.email.trim(),
+            password: userPassword,
+            phone: normalizedPhone,
+            email_confirm: true,
+            phone_confirm: true,
+            user_metadata: {
+              full_name: row.name,
+              location: row.location,
+            },
+          });
+
+        if (authError) {
+          // Parse auth error for user-friendly message
+          let friendlyError = authError.message;
+          if (authError.message.includes("already been registered")) {
+            friendlyError = "This email or phone is already registered in the system.";
+          } else if (authError.message.includes("invalid")) {
+            friendlyError = "Invalid data provided. Please check email and phone format.";
+          }
+          throw new Error(friendlyError);
+        }
+
+        if (!authUser.user) throw new Error("Failed to create user account.");
+
+        user = {
+          id: authUser.user.id,
+          email: row.email.trim(),
+          phone: normalizedPhone,
+          full_name: row.name,
+          location: row.location,
+          role_code: "GUEST",
+          organization_id: null,
+          created_at: parseDate(row.joinedDate),
+          last_migration_point_value: 0,
+        };
+      }
+
+      // 3. Update User Details
+      const updates: any = {
+        full_name: row.name,
+        location: row.location,
+      };
+
+      if (row.email) updates.email = row.email.trim();
+      if (normalizedPhone) updates.phone = normalizedPhone;
+      if (row.joinedDate) updates.created_at = parseDate(row.joinedDate);
+
+      // 4. Calculate Points
+      const { data: balanceData } = await supabaseAdmin
+        .from("v_consumer_points_balance")
+        .select("current_balance")
+        .eq("user_id", user.id)
+        .single();
+
+      const realCurrentBalance = balanceData?.current_balance || 0;
+      const lastMigrationValue = user.last_migration_point_value || 0;
+      const newMigrationValue = row.points;
+      const delta = newMigrationValue - lastMigrationValue;
+
+      if (delta !== 0) {
+        const { error: transactionError } = await supabaseAdmin
+          .from("points_transactions")
+          .insert({
+            user_id: user.id,
+            company_id: null,
+            consumer_phone: normalizedPhone,
+            consumer_email: row.email || user.email,
+            transaction_type: "MIGRATION",
+            points_amount: delta,
+            balance_after: realCurrentBalance + delta,
+            description: `Migration: ${newMigrationValue} (Prev: ${lastMigrationValue})`,
+            transaction_date: new Date().toISOString(),
+          });
+
+        if (transactionError) {
+          throw new Error(`Failed to record points transaction. Please try again.`);
+        }
+
+        updates.last_migration_point_value = newMigrationValue;
+      }
+
+      // Update User
+      const { error: updateError } = await supabaseAdmin
+        .from("users")
+        .update(updates)
+        .eq("id", user.id);
+
+      if (updateError) {
+        throw new Error(`Failed to update user details. Please try again.`);
+      }
+
+      results.push({
+        rowNumber: row.rowNumber,
+        joinedDate: row.joinedDate,
+        name: row.name,
+        phone: row.phone,
+        email: row.email,
+        location: row.location,
+        points: row.points,
+        password: row.password,
+        status: "Success",
+        message: `Delta: ${delta}`,
+      });
+    } catch (err: any) {
+      console.error(err);
+      results.push({
+        rowNumber: row.rowNumber,
+        joinedDate: row.joinedDate,
+        name: row.name,
+        phone: row.phone,
+        email: row.email,
+        location: row.location,
+        points: row.points,
+        password: row.password,
+        status: "Error",
+        message: err.message,
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Initialize Supabase Admin Client inside the handler
@@ -175,215 +457,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const results: any[] = [];
+    // Process rows in batches to handle large files
+    const allResults: any[] = [];
 
-    for (const row of rows) {
-      try {
-        // 0. Validate Phone (Strict)
-        let normalizedPhone: string;
-        try {
-          normalizedPhone = normalizePhone(row.phone);
-        } catch (e: any) {
-          throw new Error(e.message);
-        }
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const batch = rows.slice(i, i + BATCH_SIZE);
+      const batchResults = await processBatch(
+        batch,
+        supabaseAdmin,
+        passwordMode,
+        defaultPassword
+      );
+      allResults.push(...batchResults);
 
-        // Determine password for this row
-        let userPassword: string | null = null;
-        if (passwordMode === "file") {
-          if (!row.password) {
-            throw new Error(
-              'Password column is empty. When using "file" mode, each row must have a password in Column G.',
-            );
-          }
-          userPassword = row.password;
-        } else {
-          userPassword = defaultPassword;
-        }
-
-        // 1. Find user by phone OR email separately to handle conflicts
-        // Check Phone first
-        const { data: phoneUsers } = await supabaseAdmin
-          .from("users")
-          .select("*")
-          .eq("phone", normalizedPhone);
-
-        // Check Email second
-        let emailUser = null;
-        if (row.email) {
-          const { data: emailUsers } = await supabaseAdmin
-            .from("users")
-            .select("*")
-            .eq("email", row.email);
-          emailUser = emailUsers?.[0];
-        }
-
-        let user = phoneUsers?.[0];
-
-        // Conflict Check: Phone belongs to User A, Email belongs to User B
-        if (user && emailUser && user.id !== emailUser.id) {
-          throw new Error(
-            `Conflict: Phone belongs to user ${user.id}, Email belongs to user ${emailUser.id}`,
-          );
-        }
-
-        // If found by email but not phone, use the email user
-        if (!user && emailUser) {
-          user = emailUser;
-        }
-
-        // If user not found, create new user
-        if (!user) {
-          if (!userPassword) {
-            throw new Error("User not found and no password provided");
-          }
-
-          // Create Auth User
-          // We need to handle the case where Auth user exists but Public user doesn't (rare edge case)
-          // Or if our lookup failed for some reason.
-          const { data: authUser, error: authError } =
-            await supabaseAdmin.auth.admin.createUser({
-              email: row.email,
-              password: userPassword, // Use row-specific password or default
-              phone: normalizedPhone,
-              email_confirm: true,
-              phone_confirm: true,
-              user_metadata: {
-                full_name: row.name,
-                location: row.location,
-              },
-            });
-
-          if (authError) {
-            // If email/phone exists in Auth but we didn't find it in public.users, we can't proceed easily without manual intervention
-            // or we could try to link it. For now, treat as error.
-            throw new Error(`Auth Creation Failed: ${authError.message}`);
-          }
-
-          if (!authUser.user) throw new Error("Failed to create auth user");
-
-          // NOTE: A trigger on auth.users automatically creates the public.users record.
-          // We do NOT need to insert manually, as that causes a duplicate key error.
-          // We just prepare the user object for the subsequent update steps.
-
-          user = {
-            id: authUser.user.id,
-            email: row.email,
-            phone: normalizedPhone,
-            full_name: row.name,
-            location: row.location,
-            role_code: "GUEST", // Use GUEST role (the correct role for end-user consumers)
-            organization_id: null,
-            created_at: parseDate(row.joinedDate),
-            last_migration_point_value: 0,
-          };
-
-          // No need to update role since trigger creates it as GUEST already
-        }
-
-        // 2. Update User Details
-        const updates: any = {
-          full_name: row.name,
-          location: row.location,
-        };
-
-        // Only update email/phone if they are missing or we want to enforce sync?
-        // For migration, we usually trust the file.
-        if (row.email) updates.email = row.email;
-        if (normalizedPhone) updates.phone = normalizedPhone;
-
-        if (row.joinedDate) {
-          updates.created_at = parseDate(row.joinedDate);
-        }
-
-        // 3. Calculate Points
-        // Get current balance from view
-        const { data: balanceData } = await supabaseAdmin
-          .from("v_consumer_points_balance")
-          .select("current_balance")
-          .eq("user_id", user.id)
-          .single();
-
-        const realCurrentBalance = balanceData?.current_balance || 0;
-        const lastMigrationValue = user.last_migration_point_value || 0;
-        const newMigrationValue = row.points;
-        const delta = newMigrationValue - lastMigrationValue;
-
-        if (delta !== 0) {
-          // Add Transaction
-          const { error: transactionError } = await supabaseAdmin
-            .from("points_transactions")
-            .insert({
-              user_id: user.id,
-              company_id: null,
-              consumer_phone: normalizedPhone,
-              consumer_email: row.email || user.email,
-              transaction_type: "MIGRATION",
-              points_amount: delta,
-              balance_after: realCurrentBalance + delta,
-              description: `Migration: ${newMigrationValue} (Prev: ${lastMigrationValue})`,
-              transaction_date: new Date().toISOString(),
-            });
-
-          if (transactionError) {
-            throw new Error(
-              `Transaction Insert Failed: ${transactionError.message}`,
-            );
-          }
-
-          // Update last_migration_point_value
-          updates.last_migration_point_value = newMigrationValue;
-        }
-
-        // Update User
-        const { error: updateError } = await supabaseAdmin
-          .from("users")
-          .update(updates)
-          .eq("id", user.id);
-
-        if (updateError)
-          throw new Error(`Update Failed: ${updateError.message}`);
-
-        results.push({
-          rowNumber: row.rowNumber,
-          joinedDate: row.joinedDate,
-          name: row.name,
-          phone: row.phone,
-          email: row.email,
-          location: row.location,
-          points: row.points,
-          password: row.password,
-          status: "Success",
-          message: `Delta: ${delta}`,
-        });
-      } catch (err: any) {
-        console.error(err);
-        results.push({
-          rowNumber: row.rowNumber,
-          joinedDate: row.joinedDate,
-          name: row.name,
-          phone: row.phone,
-          email: row.email,
-          location: row.location,
-          points: row.points,
-          password: row.password,
-          status: "Error",
-          message: err.message,
-        });
+      // Small delay between batches to prevent overwhelming the database
+      if (i + BATCH_SIZE < rows.length) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 
     // Return JSON response with results
-    const successCount = results.filter((r) => r.status === "Success").length;
-    const errorCount = results.filter((r) => r.status === "Error").length;
+    const successCount = allResults.filter((r) => r.status === "Success").length;
+    const errorCount = allResults.filter((r) => r.status === "Error").length;
 
     return NextResponse.json({
       success: true,
       summary: {
-        total: results.length,
+        total: allResults.length,
         success: successCount,
         error: errorCount,
       },
-      results,
+      results: allResults,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

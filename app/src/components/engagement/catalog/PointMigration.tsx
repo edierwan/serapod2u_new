@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Progress } from "@/components/ui/progress"
 import {
   Upload,
   FileSpreadsheet,
@@ -16,7 +17,10 @@ import {
   XCircle,
   FileDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react"
 
 interface MigrationResult {
@@ -32,11 +36,25 @@ interface MigrationResult {
   message: string
 }
 
+interface ProgressState {
+  current: number
+  total: number
+  progress: number
+  success: number
+  errors: number
+  message: string
+}
+
 type PasswordMode = 'default' | 'file'
+type SortField = 'rowNumber' | 'joinedDate' | 'name' | 'phone' | 'email' | 'location' | 'points' | 'status'
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100] as const
 
-export function PointMigration() {
+interface PointMigrationProps {
+  onMigrationComplete?: () => void
+}
+
+export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   const [file, setFile] = useState<File | null>(null)
   const [defaultPassword, setDefaultPassword] = useState("")
   const [passwordMode, setPasswordMode] = useState<PasswordMode>('default')
@@ -45,10 +63,18 @@ export function PointMigration() {
   const [results, setResults] = useState<MigrationResult[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  // Progress tracking state
+  const [progressState, setProgressState] = useState<ProgressState | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string>("")
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(20)
   const [filterStatus, setFilterStatus] = useState<'all' | 'Success' | 'Error'>('all')
+
+  // Sorting state
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -56,6 +82,8 @@ export function PointMigration() {
       setResults([])
       setUploadComplete(false)
       setError(null)
+      setProgressState(null)
+      setStatusMessage("")
     }
   }
 
@@ -70,6 +98,8 @@ export function PointMigration() {
     setError(null)
     setResults([])
     setUploadComplete(false)
+    setProgressState(null)
+    setStatusMessage("Processing file...")
 
     const formData = new FormData()
     formData.append('file', file)
@@ -79,25 +109,115 @@ export function PointMigration() {
     }
 
     try {
-      const res = await fetch('/api/admin/point-migration', {
-        method: 'POST',
-        body: formData
-      })
+      // Try streaming endpoint first, fallback to regular endpoint
+      let useStreaming = true
+      let response: Response
 
-      const data = await res.json()
+      try {
+        response = await fetch('/api/admin/point-migration-stream', {
+          method: 'POST',
+          body: formData
+        })
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Upload failed')
+        if (!response.ok || !response.body) {
+          useStreaming = false
+        }
+      } catch {
+        useStreaming = false
       }
 
-      // Set results from JSON response
-      setResults(data.results || [])
-      setUploadComplete(true)
-      setCurrentPage(1)
-      setFilterStatus('all')
+      if (useStreaming && response!.body) {
+        // Use streaming for progress updates
+        const reader = response!.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+
+                switch (data.type) {
+                  case 'status':
+                    setStatusMessage(data.message)
+                    break
+                  case 'init':
+                    setStatusMessage(data.message)
+                    setProgressState({
+                      current: 0,
+                      total: data.total,
+                      progress: 0,
+                      success: 0,
+                      errors: 0,
+                      message: data.message
+                    })
+                    break
+                  case 'progress':
+                    setProgressState({
+                      current: data.current,
+                      total: data.total,
+                      progress: data.progress,
+                      success: data.success,
+                      errors: data.errors,
+                      message: data.message
+                    })
+                    setStatusMessage(data.message)
+                    break
+                  case 'complete':
+                    setResults(data.results || [])
+                    setUploadComplete(true)
+                    setCurrentPage(1)
+                    setFilterStatus('all')
+                    setSortField(null)
+                    setStatusMessage(`Completed! ${data.summary.success} success, ${data.summary.error} errors`)
+                    // Notify parent that migration completed so it can refresh data
+                    if (onMigrationComplete) {
+                      onMigrationComplete()
+                    }
+                    break
+                  case 'error':
+                    throw new Error(data.message)
+                }
+              } catch (parseError) {
+                console.error('Parse error:', parseError)
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback to regular endpoint
+        setStatusMessage("Processing... Please wait.")
+        const res = await fetch('/api/admin/point-migration', {
+          method: 'POST',
+          body: formData
+        })
+
+        const data = await res.json()
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Upload failed')
+        }
+
+        setResults(data.results || [])
+        setUploadComplete(true)
+        setCurrentPage(1)
+        setFilterStatus('all')
+        setSortField(null)
+        // Notify parent that migration completed so it can refresh data
+        if (onMigrationComplete) {
+          onMigrationComplete()
+        }
+      }
     } catch (error: any) {
-      console.error(error)
+      console.error('Upload error:', error)
       setError(error.message || 'Upload failed')
     } finally {
       setUploading(false)
@@ -153,8 +273,55 @@ export function PointMigration() {
     document.body.removeChild(link)
   }
 
-  // Filter and paginate results
-  const filteredResults = results.filter(r => filterStatus === 'all' || r.status === filterStatus)
+  // Handle column sorting
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // Set new field with ascending direction
+      setSortField(field)
+      setSortDirection('asc')
+    }
+    setCurrentPage(1) // Reset to first page when sorting
+  }
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 inline opacity-40" />
+    }
+    return sortDirection === 'asc'
+      ? <ArrowUp className="w-3 h-3 ml-1 inline" />
+      : <ArrowDown className="w-3 h-3 ml-1 inline" />
+  }
+
+  // Filter results
+  let filteredResults = results.filter(r => filterStatus === 'all' || r.status === filterStatus)
+
+  // Apply sorting
+  if (sortField) {
+    filteredResults = [...filteredResults].sort((a, b) => {
+      let aVal: any = a[sortField]
+      let bVal: any = b[sortField]
+
+      // Handle different data types
+      if (sortField === 'points' || sortField === 'rowNumber') {
+        aVal = Number(aVal) || 0
+        bVal = Number(bVal) || 0
+      } else if (sortField === 'joinedDate') {
+        aVal = new Date(aVal || 0).getTime()
+        bVal = new Date(bVal || 0).getTime()
+      } else {
+        aVal = String(aVal || '').toLowerCase()
+        bVal = String(bVal || '').toLowerCase()
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }
+
   const totalPages = Math.ceil(filteredResults.length / pageSize)
   const startIndex = (currentPage - 1) * pageSize
   const paginatedResults = filteredResults.slice(startIndex, startIndex + pageSize)
@@ -242,6 +409,36 @@ export function PointMigration() {
             </Button>
           </div>
 
+          {/* Progress Section - shown during upload */}
+          {uploading && (
+            <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                <span className="text-sm font-medium text-blue-700">{statusMessage || 'Processing...'}</span>
+              </div>
+
+              {progressState && (
+                <>
+                  <Progress value={progressState.progress} className="h-2" />
+                  <div className="flex justify-between text-xs text-blue-600">
+                    <span>{progressState.current} of {progressState.total} records</span>
+                    <span>{progressState.progress}%</span>
+                  </div>
+                  <div className="flex gap-4 text-xs">
+                    <span className="text-green-600 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {progressState.success} success
+                    </span>
+                    <span className="text-red-600 flex items-center gap-1">
+                      <XCircle className="h-3 w-3" />
+                      {progressState.errors} errors
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {error && (
             <Alert className="border-red-500/50 text-red-600 dark:border-red-500 [&>svg]:text-red-600 bg-red-50">
               <AlertCircle className="h-4 w-4" />
@@ -265,11 +462,25 @@ export function PointMigration() {
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <Badge
+                    variant="outline"
+                    className="bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors"
+                    onClick={() => {
+                      setFilterStatus('Success')
+                      setCurrentPage(1)
+                    }}
+                  >
                     <CheckCircle2 className="w-3 h-3 mr-1" />
                     {successCount} Success
                   </Badge>
-                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                  <Badge
+                    variant="outline"
+                    className="bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors"
+                    onClick={() => {
+                      setFilterStatus('Error')
+                      setCurrentPage(1)
+                    }}
+                  >
                     <XCircle className="w-3 h-3 mr-1" />
                     {errorCount} Errors
                   </Badge>
@@ -315,14 +526,54 @@ export function PointMigration() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Joined Date</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead className="text-right">Points</TableHead>
-                    <TableHead className="w-24">Status</TableHead>
+                    <TableHead
+                      className="w-12 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('rowNumber')}
+                    >
+                      #{getSortIcon('rowNumber')}
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('joinedDate')}
+                    >
+                      Joined Date{getSortIcon('joinedDate')}
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('name')}
+                    >
+                      Name{getSortIcon('name')}
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('phone')}
+                    >
+                      Phone{getSortIcon('phone')}
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('email')}
+                    >
+                      Email{getSortIcon('email')}
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('location')}
+                    >
+                      Location{getSortIcon('location')}
+                    </TableHead>
+                    <TableHead
+                      className="text-right cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('points')}
+                    >
+                      Points{getSortIcon('points')}
+                    </TableHead>
+                    <TableHead
+                      className="w-24 cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('status')}
+                    >
+                      Status{getSortIcon('status')}
+                    </TableHead>
                     <TableHead>Message</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -330,7 +581,7 @@ export function PointMigration() {
                   {paginatedResults.length > 0 ? (
                     paginatedResults.map((result, index) => (
                       <TableRow key={`${result.rowNumber}-${index}`} className={result.status === 'Error' ? 'bg-red-50/50' : ''}>
-                        <TableCell className="text-gray-500">{result.rowNumber}</TableCell>
+                        <TableCell className="text-gray-500">{startIndex + index + 1}</TableCell>
                         <TableCell className="text-sm">{result.joinedDate}</TableCell>
                         <TableCell className="font-medium">{result.name}</TableCell>
                         <TableCell className="text-sm">{result.phone}</TableCell>

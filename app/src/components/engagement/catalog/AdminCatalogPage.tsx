@@ -1503,6 +1503,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               setPointsAdjustment({ amount: 0, type: 'add', description: '' })
               setShowAdjustPointsModal(true)
             }}
+            onRefresh={() => loadConsumerUsers()}
           />
         </TabsContent>
 

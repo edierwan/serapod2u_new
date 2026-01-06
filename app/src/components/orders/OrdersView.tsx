@@ -1200,7 +1200,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         onClick={() => handleSort('created_by')}
                       >
                         <div className="flex items-center gap-1">
-                          By
+                          <span>By</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </div>
                       </th>

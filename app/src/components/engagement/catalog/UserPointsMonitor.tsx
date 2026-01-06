@@ -28,9 +28,10 @@ interface UserPointsMonitorProps {
   users: ConsumerUser[]
   loading: boolean
   onAdjustPoints: (user: ConsumerUser) => void
+  onRefresh?: () => void
 }
 
-export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPointsMonitorProps) {
+export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }: UserPointsMonitorProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
@@ -331,7 +332,7 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints }: UserPoints
       </TabsContent>
 
       <TabsContent value="migration">
-        <PointMigration />
+        <PointMigration onMigrationComplete={onRefresh} />
       </TabsContent>
     </Tabs>
   )

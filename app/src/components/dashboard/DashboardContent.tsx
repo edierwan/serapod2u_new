@@ -86,7 +86,20 @@ interface DashboardContentProps {
 
 export default function DashboardContent({ userProfile, initialView, initialOrderId }: DashboardContentProps) {
   const router = useRouter()
-  const [currentView, setCurrentView] = useState(initialView || 'dashboard')
+
+  // Check for stored view from sessionStorage (set by EngagementShell when navigating from other pages)
+  const getInitialView = () => {
+    if (typeof window !== 'undefined') {
+      const storedView = sessionStorage.getItem('dashboardView')
+      if (storedView) {
+        sessionStorage.removeItem('dashboardView') // Clear after reading
+        return storedView
+      }
+    }
+    return initialView || 'dashboard'
+  }
+
+  const [currentView, setCurrentView] = useState(getInitialView)
 
   const handleViewChange = (view: string) => {
     // Don't clear org selection for edit/view flows
@@ -162,9 +175,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <JourneyBuilderV2 userProfile={userProfile} />
       case 'lucky-draw':
         return (
-          <LuckyDrawView 
-            userProfile={userProfile} 
-            onViewChange={handleViewChange} 
+          <LuckyDrawView
+            userProfile={userProfile}
+            onViewChange={handleViewChange}
             initialOrderId={initialOrderId}
           />
         )
@@ -172,9 +185,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <ScratchCardGameView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'redeem-gift-management':
         return (
-          <RedeemGiftManagementView 
-            userProfile={userProfile} 
-            onViewChange={handleViewChange} 
+          <RedeemGiftManagementView
+            userProfile={userProfile}
+            onViewChange={handleViewChange}
             initialOrderId={initialOrderId}
           />
         )
