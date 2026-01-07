@@ -99,8 +99,14 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
-  const isAdmin = userProfile.role_code === 'ADMIN' || userProfile.role_code === 'SUPER_ADMIN';
-  const isShop = userProfile.org_type === 'SHOP';
+  // Check if user is admin based on role_level (1 = SUPERADMIN, 10 = HQ_ADMIN, 30 = DIST_ADMIN)
+  // or if they are HQ org type with appropriate role
+  const roleLevel = userProfile.roles?.role_level || userProfile.role_level || 999;
+  const orgType = userProfile.organizations?.org_type_code || userProfile.org_type;
+  const isAdmin = roleLevel <= 30 || orgType === 'HQ';
+  
+  // Check if user is a shop user or independent consumer (no organization)
+  const isShop = orgType === 'SHOP' || !userProfile.organization_id;
 
   // Tier definitions
   const tiers = [

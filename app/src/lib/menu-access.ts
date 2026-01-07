@@ -78,6 +78,9 @@ export function hasMenuAccess(
   const userEmail = userProfile.email
   const userOrgType = userProfile.organizations?.org_type_code
   const userRoleLevel = userProfile.roles?.role_level
+  
+  // Check if user is an independent user (no organization)
+  const isIndependentUser = !userProfile.organizations || !userOrgType
 
   // Check if user's email is in the allowed emails list (bypass other checks)
   if (access.allowedEmails && access.allowedEmails.length > 0) {
@@ -95,7 +98,13 @@ export function hasMenuAccess(
 
   // Check organization type access
   if (access.allowedOrgTypes && access.allowedOrgTypes.length > 0) {
-    if (!access.allowedOrgTypes.includes(userOrgType)) {
+    // For independent users, check if 'INDEPENDENT' is in allowed types
+    // Independent users can access menus that allow 'INDEPENDENT' or 'SHOP' org types
+    if (isIndependentUser) {
+      if (!access.allowedOrgTypes.includes('INDEPENDENT') && !access.allowedOrgTypes.includes('SHOP')) {
+        return false
+      }
+    } else if (!access.allowedOrgTypes.includes(userOrgType)) {
       return false
     }
   }

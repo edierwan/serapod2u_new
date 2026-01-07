@@ -211,9 +211,9 @@ const navigationItems: MenuItem[] = [
     icon: Gift,
     description: 'Rewards & campaigns',
     access: {
-      // HQ and shops
-      allowedOrgTypes: ['HQ', 'SHOP'],
-      maxRoleLevel: 50
+      // HQ, shops, and independent consumers
+      allowedOrgTypes: ['HQ', 'SHOP', 'INDEPENDENT'],
+      maxRoleLevel: 70
     },
     submenu: [
       {
@@ -230,8 +230,9 @@ const navigationItems: MenuItem[] = [
         label: 'Point Catalog',
         icon: Gift,
         access: {
-          allowedOrgTypes: ['HQ', 'SHOP'],
-          maxRoleLevel: 50,
+          // HQ, shops, and independent consumers can see point catalog
+          allowedOrgTypes: ['HQ', 'SHOP', 'INDEPENDENT'],
+          maxRoleLevel: 70,
         }
       },
       {

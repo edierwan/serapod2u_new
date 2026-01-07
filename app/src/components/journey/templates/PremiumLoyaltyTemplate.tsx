@@ -676,14 +676,28 @@ export default function PremiumLoyaltyTemplate({
             try {
                 console.log('🔐 Checking auth status...')
 
-                // CONSUMER QR PAGES FIX: Check if session was created for this specific page/session
-                // If no active session marker exists in sessionStorage, clear any old sessions
-                // This ensures each QR scan is a fresh experience
+                // CONSUMER QR PAGES FIX: Check if there's an existing authenticated session
+                // Instead of clearing on every new QR scan, check if user is already logged in
                 const activeSessionMarker = sessionStorage.getItem('serapod_active_session')
                 const currentQrCode = qrCode // The QR code being viewed
 
-                if (!activeSessionMarker) {
-                    console.log('🔐 No active session marker - this is a fresh QR scan, clearing old sessions')
+                // First, check if there's a valid session with Supabase
+                const { data: sessionData } = await supabase.auth.getSession()
+                const hasValidSession = sessionData?.session !== null
+
+                // If no active session marker but has valid Supabase session, preserve it
+                // This handles the case where user scans new QR after logging in
+                if (!activeSessionMarker && hasValidSession) {
+                    console.log('🔐 Found valid Supabase session, preserving it')
+                    // Mark that we have an active session
+                    sessionStorage.setItem('serapod_active_session', 'logged_in')
+                }
+                
+                // Only clear session if:
+                // 1. No active session marker AND 
+                // 2. No valid Supabase session exists
+                if (!activeSessionMarker && !hasValidSession) {
+                    console.log('🔐 No active session marker and no valid session - this is a fresh QR scan')
 
                     // Clear localStorage sessions (these persist across browser sessions)
                     if (typeof window !== 'undefined') {
