@@ -132,9 +132,9 @@ export async function POST(request: NextRequest) {
     if (existingCollection) {
       console.log('⚠️ Points already collected for this QR code')
       
-      const totalBalance = existingCollection.shop_id 
-        ? await calculateShopTotalPoints(supabaseAdmin, existingCollection.shop_id)
-        : existingCollection.points_amount || 0
+      // For independent consumers, use user.id; for shop users, use organization_id
+      const balanceId = shopUser.organization_id || user.id
+      const totalBalance = await calculateShopTotalPoints(supabaseAdmin, balanceId)
       
       return NextResponse.json(
         {
@@ -192,19 +192,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate organization relationship
-    const isSameOrg = organization.id === orderOrganization.id
-    const isShopCollectingFromHQ = organization.org_type_code === 'SHOP' && orderOrganization.org_type_code === 'HQ'
-    const isParentMatch = organization.parent_org_id && organization.parent_org_id === orderOrganization.id
-    const isChildMatch = orderOrganization.parent_org_id && orderOrganization.parent_org_id === organization.id
-    const isSiblingMatch = organization.parent_org_id && orderOrganization.parent_org_id && organization.parent_org_id === orderOrganization.parent_org_id
+    // Independent consumers can collect from any QR code
+    // Shop users need organization relationship validation
+    const isIndependentConsumer = !organization
+    
+    if (!isIndependentConsumer) {
+      // Validate organization relationship for shop users
+      const isSameOrg = organization.id === orderOrganization.id
+      const isShopCollectingFromHQ = organization.org_type_code === 'SHOP' && orderOrganization.org_type_code === 'HQ'
+      const isParentMatch = organization.parent_org_id && organization.parent_org_id === orderOrganization.id
+      const isChildMatch = orderOrganization.parent_org_id && orderOrganization.parent_org_id === organization.id
+      const isSiblingMatch = organization.parent_org_id && orderOrganization.parent_org_id && organization.parent_org_id === orderOrganization.parent_org_id
 
-    if (!isSameOrg && !isShopCollectingFromHQ && !isParentMatch && !isChildMatch && !isSiblingMatch) {
-      console.error('Organization mismatch')
-      return NextResponse.json(
-        { success: false, error: 'This product does not belong to your organization' },
-        { status: 403 }
-      )
+      if (!isSameOrg && !isShopCollectingFromHQ && !isParentMatch && !isChildMatch && !isSiblingMatch) {
+        console.error('Organization mismatch')
+        return NextResponse.json(
+          { success: false, error: 'This product does not belong to your organization' },
+          { status: 403 }
+        )
+      }
+    } else {
+      console.log('✅ Independent consumer - skipping organization validation')
     }
 
     // Get points configuration - try multiple sources
@@ -225,8 +233,8 @@ export async function POST(request: NextRequest) {
     if (rule1) {
       pointRule = rule1
       console.log('✅ Found point rule from order company:', orderData.company_id, 'Points:', rule1.points_per_scan)
-    } else if (organization.parent_org_id) {
-      // Fallback: shop's parent organization
+    } else if (organization?.parent_org_id) {
+      // Fallback: shop's parent organization (only for shop users)
       console.log('🔍 Trying shop parent org:', organization.parent_org_id)
       const { data: rule2 } = await supabaseAdmin
         .from('points_rules')
@@ -264,7 +272,7 @@ export async function POST(request: NextRequest) {
     // Final fallback: search all related orgs
     if (!pointRule) {
       console.log('🔍 Final fallback: Looking for any active rule in related organizations')
-      const orgIds = [orderData.company_id, organization.id, organization.parent_org_id, orderOrganization.parent_org_id].filter(Boolean)
+      const orgIds = [orderData.company_id, organization?.id, organization?.parent_org_id, orderOrganization.parent_org_id].filter(Boolean)
       const { data: anyRule } = await supabaseAdmin
         .from('points_rules')
         .select('points_per_scan, name, id, org_id, is_active')
@@ -300,9 +308,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // For balance calculation: use organization_id for shop users, user.id for independent consumers
+    const balanceId = shopUser.organization_id || user.id
+
     if (!result.success) {
       if (result.already_collected) {
-        const totalBalance = await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
+        const totalBalance = await calculateShopTotalPoints(supabaseAdmin, balanceId)
         
         return NextResponse.json(
           {
@@ -321,7 +332,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Points awarded successfully:', pointsToAward)
 
-    const totalBalance = await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
+    const totalBalance = await calculateShopTotalPoints(supabaseAdmin, balanceId)
 
     return NextResponse.json({
       success: true,
