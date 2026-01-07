@@ -1897,16 +1897,28 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
-    const executeAction = (action: string) => {
+    const executeAction = async (action: string) => {
         switch (action) {
             case 'collect-points':
                 // If user is authenticated (shop user OR independent consumer), collect points with session
                 console.log('🔐 Collect points action - isAuthenticated:', isAuthenticated, 'isShopUser:', isShopUser, 'authLoading:', authLoading)
 
-                // If auth is still loading after 2 seconds, just show login modal
+                // If auth is still loading, do a quick direct session check instead of showing login modal
                 if (authLoading) {
-                    console.log('🔐 Auth still loading, showing shop login modal anyway')
-                    // Don't wait forever - show login modal so user can proceed
+                    console.log('🔐 Auth still loading, doing quick session check...')
+                    try {
+                        const { data: { user } } = await supabase.auth.getUser()
+                        if (user) {
+                            console.log('🔐 Quick check found valid session, proceeding to collect')
+                            // User has valid session - proceed directly
+                            handleCollectPointsWithSession()
+                            return
+                        }
+                    } catch (e) {
+                        console.log('🔐 Quick session check failed:', e)
+                    }
+                    // No session found - show login modal
+                    console.log('🔐 No session found in quick check, showing login modal')
                     setPointsError('')
                     setShowPointsLoginModal(true)
                     return
