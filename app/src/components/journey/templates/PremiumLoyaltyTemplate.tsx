@@ -676,88 +676,30 @@ export default function PremiumLoyaltyTemplate({
             try {
                 console.log('🔐 Checking auth status...')
 
-                // CONSUMER QR PAGES FIX: Check if there's an existing authenticated session
-                // Instead of clearing on every new QR scan, check if user is already logged in
+                // Check for active session marker in sessionStorage
                 const activeSessionMarker = sessionStorage.getItem('serapod_active_session')
-                const currentQrCode = qrCode // The QR code being viewed
 
-                // First, check if there's a valid session with Supabase
-                const { data: sessionData } = await supabase.auth.getSession()
-                const hasValidSession = sessionData?.session !== null
-
-                // If no active session marker but has valid Supabase session, preserve it
-                // This handles the case where user scans new QR after logging in
-                if (!activeSessionMarker && hasValidSession) {
-                    console.log('🔐 Found valid Supabase session, preserving it')
-                    // Mark that we have an active session
-                    sessionStorage.setItem('serapod_active_session', 'logged_in')
-                }
-                
-                // Only clear session if:
-                // 1. No active session marker AND 
-                // 2. No valid Supabase session exists
-                if (!activeSessionMarker && !hasValidSession) {
-                    console.log('🔐 No active session marker and no valid session - this is a fresh QR scan')
-
-                    // Clear localStorage sessions (these persist across browser sessions)
-                    if (typeof window !== 'undefined') {
-                        const localKeys = Object.keys(localStorage)
-                        localKeys.forEach(key => {
-                            if (key.includes('supabase') || key.includes('sb-')) {
-                                localStorage.removeItem(key)
-                            }
-                        })
-                    }
-
-                    // Sign out any existing session
-                    await supabase.auth.signOut({ scope: 'local' })
-
-                    // Mark that we've done initial cleanup for this session
+                // If user has logged in during this browser session, preserve their session
+                if (activeSessionMarker === 'logged_in') {
+                    console.log('🔐 Active session marker found - user previously logged in this session')
+                    // Continue to validate the session below
+                } else if (!activeSessionMarker) {
+                    // No session marker - this could be a fresh scan or returning user
+                    // Don't clear sessions immediately - check if there's a valid session first
+                    console.log('🔐 No session marker - checking for existing valid session')
                     sessionStorage.setItem('serapod_active_session', 'checked')
-
-                    // No user after cleanup
-                    setIsAuthenticated(false)
-                    setIsShopUser(false)
-                    setUserEmail('')
-                    setUserName('')
-                    setUserPoints(0)
-                    setUserAvatarUrl(null)
-                    setShopName('')
-                    setUserPhone('')
-                    setUserId(null)
-                    clearTimeout(authTimeout)
-                    setAuthLoading(false)
-                    initialAuthCheckDoneRef.current = true
-                    return
                 }
 
-                // Active session exists - validate with server using getUser()
+                // Validate session with server using getUser()
                 const { data: userData, error: getUserError } = await supabase.auth.getUser()
                 let user = userData?.user || null
                 let authError = getUserError || null
 
                 console.log('🔐 getUser result:', user?.id, user?.email, 'Error:', authError?.message)
 
-                // If getUser fails with auth error, clear session
-                if (authError) {
-                    console.log('🔐 Auth validation failed, clearing session:', authError.message)
-
-                    if (typeof window !== 'undefined') {
-                        const localKeys = Object.keys(localStorage)
-                        localKeys.forEach(key => {
-                            if (key.includes('supabase') || key.includes('sb-')) {
-                                localStorage.removeItem(key)
-                            }
-                        })
-                        const sessionKeys = Object.keys(sessionStorage)
-                        sessionKeys.forEach(key => {
-                            if (key.includes('supabase') || key.includes('sb-')) {
-                                sessionStorage.removeItem(key)
-                            }
-                        })
-                    }
-
-                    await supabase.auth.signOut({ scope: 'local' })
+                // If getUser fails with auth error or no user, user is not authenticated
+                if (authError || !user) {
+                    console.log('🔐 No valid session found')
                     setIsAuthenticated(false)
                     setIsShopUser(false)
                     setUserEmail('')
@@ -773,66 +715,65 @@ export default function PremiumLoyaltyTemplate({
                     return
                 }
 
-                // User exists and is valid
-                if (user && !authError) {
-                    console.log('🔐 User session validated with server')
-                    setIsAuthenticated(true)
-                    setUserEmail(user.email || '')
-                    setUserId(user.id)
-                    setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
+                // User exists and is valid - they are authenticated!
+                console.log('🔐 User session validated with server')
+                setIsAuthenticated(true)
+                setUserEmail(user.email || '')
+                setUserId(user.id)
+                setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
+                
+                // Mark session as logged in so it persists across QR scans
+                sessionStorage.setItem('serapod_active_session', 'logged_in')
 
-                    // Fetch profile data
-                    console.log('🔐 User found, fetching profile data...')
+                // Fetch profile data
+                console.log('🔐 User found, fetching profile data...')
 
-                    try {
-                        const profileResult = await checkUserOrganization(user.id)
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
+                try {
+                    const profileResult = await checkUserOrganization(user.id)
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
 
-                        if (sessionInvalid) {
-                            console.log('🔐 Session was invalid, clearing auth state')
-                            await supabase.auth.signOut()
-                            setIsAuthenticated(false)
-                            setIsShopUser(false)
-                            setUserEmail('')
-                            setUserName('')
-                            setUserPoints(0)
-                            setUserAvatarUrl(null)
-                            setShopName('')
-                            setUserPhone('')
-                            setUserId(null)
-                            initialAuthCheckDoneRef.current = true
-                            return
-                        }
+                    if (sessionInvalid) {
+                        console.log('🔐 Session was invalid, clearing auth state')
+                        await supabase.auth.signOut()
+                        setIsAuthenticated(false)
+                        setIsShopUser(false)
+                        setUserEmail('')
+                        setUserName('')
+                        setUserPoints(0)
+                        setUserAvatarUrl(null)
+                        setShopName('')
+                        setUserPhone('')
+                        setUserId(null)
+                        initialAuthCheckDoneRef.current = true
+                        return
+                    }
 
-                        if (success) {
-                            console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
-                            setIsShopUser(isShop)
-                            setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                            setUserAvatarUrl(avatarUrl)
-                            setShopName(orgName)
-                            setUserPhone(phone)
-                            setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                            setNewPhone(phone)
+                    if (success) {
+                        console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
+                        setIsShopUser(isShop)
+                        setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                        setUserAvatarUrl(avatarUrl)
+                        setShopName(orgName)
+                        setUserPhone(phone)
+                        setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
+                        setNewPhone(phone)
 
-                            // Set points and bank details for ALL users (Shop and Independent)
-                            console.log('🔐 Setting user points balance:', pointsBalance)
-                            setUserPoints(pointsBalance)
-                            // Set bank details
-                            setBankId(bankId || '')
-                            setBankAccountNumber(bankAccountNumber || '')
-                            setBankAccountHolderName(bankAccountHolderName || '')
-                        } else {
-                            console.warn('🔐 Profile fetch failed, using basic info')
-                            setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
-                            setIsShopUser(false)
-                        }
-                    } catch (profileError) {
-                        console.error('🔐 Profile fetch error:', profileError)
+                        // Set points and bank details for ALL users (Shop and Independent)
+                        console.log('🔐 Setting user points balance:', pointsBalance)
+                        setUserPoints(pointsBalance)
+                        // Set bank details
+                        setBankId(bankId || '')
+                        setBankAccountNumber(bankAccountNumber || '')
+                        setBankAccountHolderName(bankAccountHolderName || '')
+                    } else {
+                        console.warn('🔐 Profile fetch failed, using basic info')
                         setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
                         setIsShopUser(false)
                     }
-                } else {
-                    console.log('🔐 No authenticated user found')
+                } catch (profileError) {
+                    console.error('🔐 Profile fetch error:', profileError)
+                    setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
+                    setIsShopUser(false)
                 }
             } catch (error) {
                 console.error('Auth check error:', error)
