@@ -1903,37 +1903,33 @@ export default function PremiumLoyaltyTemplate({
                 // If user is authenticated (shop user OR independent consumer), collect points with session
                 console.log('🔐 Collect points action - isAuthenticated:', isAuthenticated, 'isShopUser:', isShopUser, 'authLoading:', authLoading)
 
-                // If auth is still loading, do a quick direct session check instead of showing login modal
-                if (authLoading) {
-                    console.log('🔐 Auth still loading, doing quick session check...')
-                    try {
-                        const { data: { user } } = await supabase.auth.getUser()
-                        if (user) {
-                            console.log('🔐 Quick check found valid session, proceeding to collect')
-                            // User has valid session - proceed directly
-                            handleCollectPointsWithSession()
-                            return
+                // ALWAYS do a direct session check to ensure we don't show login modal unnecessarily
+                // This handles cases where isAuthenticated state might be stale or incorrect
+                console.log('🔐 Doing direct session check before collect...')
+                try {
+                    const { data: { user }, error } = await supabase.auth.getUser()
+                    console.log('🔐 Direct session check result:', user?.id, user?.email, 'Error:', error?.message)
+                    
+                    if (user && !error) {
+                        console.log('🔐 Valid session found, proceeding to collect points with session')
+                        // Update auth state if it was incorrect
+                        if (!isAuthenticated) {
+                            setIsAuthenticated(true)
+                            setUserEmail(user.email || '')
+                            setUserId(user.id)
+                            sessionStorage.setItem('serapod_active_session', 'logged_in')
                         }
-                    } catch (e) {
-                        console.log('🔐 Quick session check failed:', e)
+                        handleCollectPointsWithSession()
+                        return
                     }
-                    // No session found - show login modal
-                    console.log('🔐 No session found in quick check, showing login modal')
-                    setPointsError('')
-                    setShowPointsLoginModal(true)
-                    return
+                } catch (e) {
+                    console.log('🔐 Session check error:', e)
                 }
-
-                // ANY authenticated user can collect points - both shop users and independent consumers
-                if (isAuthenticated) {
-                    console.log('🔐 User authenticated, collecting points with session')
-                    handleCollectPointsWithSession()
-                } else {
-                    // Not authenticated - show login modal
-                    console.log('🔐 User not authenticated, showing login modal')
-                    setPointsError('')
-                    setShowPointsLoginModal(true)
-                }
+                
+                // No valid session - show login modal
+                console.log('🔐 No valid session, showing login modal')
+                setPointsError('')
+                setShowPointsLoginModal(true)
                 break
             case 'lucky-draw':
                 setActiveTab('lucky-draw')
