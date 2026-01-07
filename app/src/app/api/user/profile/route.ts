@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       if (authHeader?.startsWith('Bearer ')) {
         const token = authHeader.split(' ')[1]
         const { data: { user: userFromToken }, error: tokenError } = await supabase.auth.getUser(token)
-        
+
         if (userFromToken && !tokenError) {
           user = userFromToken
           authError = null
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
       if (orgData && !orgError) {
         isShop = orgData.org_type_code === 'SHOP'
         orgName = orgData.org_name || ''
-        
+
         if (isShop) {
           bankId = orgData.bank_id
           // Prefer the joined bank name, fallback to legacy if needed (though we are moving away from it)
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
             .select('points_amount')
             .eq('consumer_id', user.id)
             .eq('collected_points', true)
-          
+
           if (scans && scans.length > 0) {
             pointsBalance = scans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
           }

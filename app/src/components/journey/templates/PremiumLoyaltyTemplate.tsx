@@ -721,7 +721,7 @@ export default function PremiumLoyaltyTemplate({
                 setUserEmail(user.email || '')
                 setUserId(user.id)
                 setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
-                
+
                 // Mark session as logged in so it persists across QR scans
                 sessionStorage.setItem('serapod_active_session', 'logged_in')
 
@@ -1027,23 +1027,23 @@ export default function PremiumLoyaltyTemplate({
             }
 
             setCheckingQrStatus(true)
-            
+
             // Add timeout to prevent infinite loading
             const timeoutId = setTimeout(() => {
                 console.warn('⚠️ QR status check timed out, enabling buttons')
                 setCheckingQrStatus(false)
             }, 10000) // 10 second timeout
-            
+
             try {
                 const controller = new AbortController()
                 const fetchTimeoutId = setTimeout(() => controller.abort(), 8000)
-                
+
                 const response = await fetch(
                     `/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`,
                     { signal: controller.signal }
                 )
                 clearTimeout(fetchTimeoutId)
-                
+
                 const data = await response.json()
 
                 if (data.success) {
@@ -1935,7 +1935,7 @@ export default function PremiumLoyaltyTemplate({
                 try {
                     const { data: { user }, error } = await supabase.auth.getUser()
                     console.log('🔐 Direct session check result:', user?.id, user?.email, 'Error:', error?.message)
-                    
+
                     if (user && !error) {
                         console.log('🔐 Valid session found, proceeding to collect points with session')
                         // Update auth state if it was incorrect
@@ -1951,7 +1951,7 @@ export default function PremiumLoyaltyTemplate({
                 } catch (e) {
                     console.log('🔐 Session check error:', e)
                 }
-                
+
                 // No valid session - show login modal
                 console.log('🔐 No valid session, showing login modal')
                 setPointsError('')
@@ -2974,8 +2974,8 @@ export default function PremiumLoyaltyTemplate({
                                 key={cat}
                                 onClick={() => handleCategoryChange(cat)}
                                 className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors ${rewardCategory === cat
-                                        ? 'text-white'
-                                        : 'text-gray-600 hover:bg-gray-50'
+                                    ? 'text-white'
+                                    : 'text-gray-600 hover:bg-gray-50'
                                     }`}
                                 style={rewardCategory === cat ? { backgroundColor: config.primary_color } : {}}
                             >
@@ -3155,8 +3155,8 @@ export default function PremiumLoyaltyTemplate({
                                         <button
                                             onClick={() => setScannedViewMode('list')}
                                             className={`p-2 rounded-lg transition-colors ${scannedViewMode === 'list'
-                                                    ? 'bg-gray-900 text-white'
-                                                    : 'bg-white text-gray-600 border border-gray-200'
+                                                ? 'bg-gray-900 text-white'
+                                                : 'bg-white text-gray-600 border border-gray-200'
                                                 }`}
                                         >
                                             <List className="w-4 h-4" />
@@ -3164,8 +3164,8 @@ export default function PremiumLoyaltyTemplate({
                                         <button
                                             onClick={() => setScannedViewMode('grid')}
                                             className={`p-2 rounded-lg transition-colors ${scannedViewMode === 'grid'
-                                                    ? 'bg-gray-900 text-white'
-                                                    : 'bg-white text-gray-600 border border-gray-200'
+                                                ? 'bg-gray-900 text-white'
+                                                : 'bg-white text-gray-600 border border-gray-200'
                                                 }`}
                                         >
                                             <Grid3x3 className="w-4 h-4" />
@@ -4519,8 +4519,8 @@ export default function PremiumLoyaltyTemplate({
                                                 value={signUpConfirmPassword}
                                                 onChange={(e) => setSignUpConfirmPassword(e.target.value)}
                                                 className={`h-11 pr-10 ${signUpConfirmPassword && loginPassword === signUpConfirmPassword
-                                                        ? 'border-green-500 focus-visible:ring-green-500'
-                                                        : ''
+                                                    ? 'border-green-500 focus-visible:ring-green-500'
+                                                    : ''
                                                     }`}
                                                 autoComplete="new-password"
                                             />

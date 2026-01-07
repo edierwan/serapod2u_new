@@ -9,13 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { getStorageUrl } from '@/lib/utils';
-import { 
+import {
   Trophy,
-  Gift, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search, 
+  Gift,
+  Plus,
+  Edit,
+  Trash2,
+  Search,
   TrendingUp,
   Target,
   Award,
@@ -79,7 +79,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
   const [editingReward, setEditingReward] = useState<PointReward | null>(null);
   const [selectedTier, setSelectedTier] = useState<string>('all');
   const [timeFilter, setTimeFilter] = useState<'all' | 'month' | 'week'>('month');
-  
+
   // Form state
   const [rewardName, setRewardName] = useState('');
   const [rewardDescription, setRewardDescription] = useState('');
@@ -104,7 +104,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
   const roleLevel = userProfile.roles?.role_level || userProfile.role_level || 999;
   const orgType = userProfile.organizations?.org_type_code || userProfile.org_type;
   const isAdmin = roleLevel <= 30 || orgType === 'HQ';
-  
+
   // Check if user is a shop user or independent consumer (no organization)
   const isShop = orgType === 'SHOP' || !userProfile.organization_id;
 
@@ -125,7 +125,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
   const fetchAdminDashboardData = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       // Fetch all shops with their points
       const { data: shopsData, error: shopsError } = await supabase
         .from('organizations')
@@ -142,7 +142,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
           .eq('shop_id', shop.id);
 
         const totalPoints = pointsData?.reduce((sum, record) => sum + (record.points_awarded || 0), 0) || 0;
-        
+
         // Calculate this month's points
         const now = new Date();
         const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -157,8 +157,8 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
           return date >= firstDayOfLastMonth && date <= lastDayOfLastMonth;
         }).reduce((sum, record) => sum + (record.points_awarded || 0), 0) || 0;
 
-        const trend = pointsThisMonth > pointsLastMonth ? 'up' : 
-                     pointsThisMonth < pointsLastMonth ? 'down' : 'stable';
+        const trend = pointsThisMonth > pointsLastMonth ? 'up' :
+          pointsThisMonth < pointsLastMonth ? 'down' : 'stable';
 
         const currentTier = tiers.find(t => totalPoints >= t.minPoints && totalPoints <= t.maxPoints)?.name || 'Bronze';
 
@@ -175,7 +175,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
       });
 
       const shopPoints = await Promise.all(shopPointsPromises);
-      
+
       // Sort by total points and assign ranks
       shopPoints.sort((a, b) => b.total_points - a.total_points);
       shopPoints.forEach((shop, index) => shop.rank = index + 1);
@@ -184,7 +184,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
       setTotalShops(shopPoints.length);
       setActiveShops(shopPoints.filter(s => s.points_this_month > 0).length);
       setTotalPointsAwarded(shopPoints.reduce((sum, shop) => sum + shop.total_points, 0));
-      
+
     } catch (error) {
       console.error('Error fetching admin dashboard:', error);
       showAlert('error', 'Failed to load dashboard data');
@@ -206,7 +206,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
 
       const totalPoints = data?.reduce((sum, record) => sum + (record.points_awarded || 0), 0) || 0;
       const tier = tiers.find(t => totalPoints >= t.minPoints && totalPoints <= t.maxPoints)?.name || 'Bronze';
-      
+
       setMyPoints(totalPoints);
       setMyTier(tier);
     } catch (error) {
@@ -543,21 +543,19 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
                   {topShops.map((shop, index) => (
                     <div
                       key={shop.shop_id}
-                      className={`p-4 rounded-lg border-2 ${
-                        index === 0 ? 'border-yellow-400 bg-yellow-50' :
-                        index === 1 ? 'border-gray-400 bg-gray-50' :
-                        index === 2 ? 'border-amber-600 bg-amber-50' :
-                        'border-gray-200 bg-white'
-                      }`}
+                      className={`p-4 rounded-lg border-2 ${index === 0 ? 'border-yellow-400 bg-yellow-50' :
+                          index === 1 ? 'border-gray-400 bg-gray-50' :
+                            index === 2 ? 'border-amber-600 bg-amber-50' :
+                              'border-gray-200 bg-white'
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl ${
-                            index === 0 ? 'bg-yellow-400 text-white' :
-                            index === 1 ? 'bg-gray-400 text-white' :
-                            index === 2 ? 'bg-amber-600 text-white' :
-                            'bg-gray-200 text-gray-700'
-                          }`}>
+                          <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl ${index === 0 ? 'bg-yellow-400 text-white' :
+                              index === 1 ? 'bg-gray-400 text-white' :
+                                index === 2 ? 'bg-amber-600 text-white' :
+                                  'bg-gray-200 text-gray-700'
+                            }`}>
                             {index + 1}
                           </div>
                           <div>
@@ -863,7 +861,7 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
                         {reward.reward_description}
                       </p>
                     )}
-                    
+
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-1 text-blue-600">
                         <Trophy className="h-5 w-5" />
@@ -953,17 +951,15 @@ export default function PointRewardsDashboard({ userProfile, onViewChange }: Poi
                   {tiers.map((tier, index) => (
                     <div
                       key={tier.name}
-                      className={`p-4 rounded-lg border-2 ${
-                        myTier === tier.name
+                      className={`p-4 rounded-lg border-2 ${myTier === tier.name
                           ? `${tier.borderColor} ${tier.bgColor}`
                           : 'border-gray-200 bg-gray-50'
-                      }`}
+                        }`}
                     >
                       <div className="text-center">
-                        {React.createElement(tier.icon, { 
-                          className: `h-8 w-8 mx-auto mb-2 ${
-                            myTier === tier.name ? 'text-gray-900' : 'text-gray-400'
-                          }`
+                        {React.createElement(tier.icon, {
+                          className: `h-8 w-8 mx-auto mb-2 ${myTier === tier.name ? 'text-gray-900' : 'text-gray-400'
+                            }`
                         })}
                         <h3 className="font-bold text-lg">{tier.name}</h3>
                         <p className="text-sm text-gray-600">

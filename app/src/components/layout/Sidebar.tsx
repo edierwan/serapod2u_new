@@ -480,7 +480,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   useEffect(() => {
     setIsMounted(true)
   }, [])
-  
+
   // Load branding settings from organization
   useEffect(() => {
     const loadBranding = async () => {
@@ -492,10 +492,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           .select('settings, logo_url, updated_at')
           .eq('id', userProfile.organization_id)
           .single()
-        
+
         if (!error && data) {
           let settings = data.settings
-          
+
           // Handle case where settings is a string (JSON)
           if (typeof settings === 'string') {
             try {
@@ -567,18 +567,18 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
         console.error('Failed to load branding:', error)
       }
     }
-    
+
     loadBranding()
 
     // Listen for settings updates
     const handleSettingsUpdate = () => {
       loadBranding()
     }
-    
+
     if (typeof window !== 'undefined') {
       window.addEventListener('settingsUpdated', handleSettingsUpdate)
     }
-    
+
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('settingsUpdated', handleSettingsUpdate)
@@ -600,24 +600,24 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   // Auto-expand parent menu when navigating to a submenu item (including nested)
   useEffect(() => {
     // Check for direct submenu match
-    let parentMenu = navigationItems.find(item => 
+    let parentMenu = navigationItems.find(item =>
       item.submenu?.some(sub => sub.id === currentView)
     )
-    
+
     // Check for nested submenu match (by id or targetView)
     if (!parentMenu) {
-      parentMenu = navigationItems.find(item => 
-        item.submenu?.some((sub: any) => 
-          sub.nestedSubmenu?.some((nested: any) => 
+      parentMenu = navigationItems.find(item =>
+        item.submenu?.some((sub: any) =>
+          sub.nestedSubmenu?.some((nested: any) =>
             nested.id === currentView || nested.targetView === currentView
           )
         )
       )
-      
+
       // Also expand the nested submenu
       if (parentMenu) {
-        const nestedParent = parentMenu.submenu?.find((sub: any) => 
-          sub.nestedSubmenu?.some((nested: any) => 
+        const nestedParent = parentMenu.submenu?.find((sub: any) =>
+          sub.nestedSubmenu?.some((nested: any) =>
             nested.id === currentView || nested.targetView === currentView
           )
         )
@@ -626,7 +626,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
         }
       }
     }
-    
+
     if (parentMenu && expandedMenu !== parentMenu.id) {
       setExpandedMenu(parentMenu.id)
     }
@@ -674,14 +674,14 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
         const filteredSubmenu = item.submenu.filter(sub => {
           // Always show QR Batches if user has access (it's not controlled by visibility settings)
           if (sub.id === 'qr-batches') return true
-          
+
           // Check visibility settings for other items
           if (sub.id === 'manufacturer-scan-v2') return qrTrackingVisibility.manufacturer.scan
           if (sub.id === 'manufacturer-scan-2') return qrTrackingVisibility.manufacturer.scan2
           if (sub.id === 'warehouse-receive') return qrTrackingVisibility.warehouse.receive
           if (sub.id === 'warehouse-receive-2') return qrTrackingVisibility.warehouse.receive2
           if (sub.id === 'warehouse-ship-v2') return qrTrackingVisibility.warehouse.ship
-          
+
           // Default to true for any other items in this submenu
           return true
         })
@@ -718,12 +718,12 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
       e.preventDefault()
       e.stopPropagation()
     }
-    
+
     // Confirm before logging out to prevent accidental logouts
     if (!confirm('Are you sure you want to sign out?')) {
       return
     }
-    
+
     setIsSigningOut(true)
     try {
       // Use server action to properly clear cookies and session
@@ -781,277 +781,277 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
       `}>
         {/* Header */}
         <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between">
-          {!isCollapsed && (
-            <div className="flex items-center gap-3 flex-1">
-              {brandingSettings?.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img 
-                  src={brandingSettings.logoUrl}
-                  alt="Logo" 
-                  className="h-8 w-8 rounded-lg object-cover flex-shrink-0"
-                  onError={(e) => {
-                    // Fallback to default icon if image fails to load
-                    e.currentTarget.style.display = 'none'
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                  }}
-                />
-              ) : null}
-              <div className={`h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 ${brandingSettings?.logoUrl ? 'hidden' : ''}`}>
-                <Package className="h-5 w-5 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="font-semibold text-foreground">
-                  {brandingSettings?.appName || 'Serapod2U'}
-                </h1>
-                <p className="text-xs text-muted-foreground">
-                  {brandingSettings?.appTagline || 'Supply Chain'}
-                </p>
-                {/* Date & Time Display */}
-                <div className="mt-1.5 pt-1.5 border-t border-gray-200">
-                  <div className="text-[10px] text-gray-600 space-y-0.5 leading-tight">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-gray-500">Date:</span>
-                      <span className="text-gray-700">{isMounted ? date : '--'}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-gray-500">Day:</span>
-                      <span className="text-gray-700">{isMounted ? day : '--'}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-gray-500">Time:</span>
-                      <span className="text-gray-700">{isMounted ? time : '--:-- --'}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 pt-1 mt-1 border-t border-gray-100">
-                      <span className="font-medium text-gray-500">Login:</span>
-                      <span className="text-gray-700 truncate max-w-[140px]" title={userProfile?.email}>{userProfile?.email || '--'}</span>
+          <div className="flex items-center justify-between">
+            {!isCollapsed && (
+              <div className="flex items-center gap-3 flex-1">
+                {brandingSettings?.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={brandingSettings.logoUrl}
+                    alt="Logo"
+                    className="h-8 w-8 rounded-lg object-cover flex-shrink-0"
+                    onError={(e) => {
+                      // Fallback to default icon if image fails to load
+                      e.currentTarget.style.display = 'none'
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                    }}
+                  />
+                ) : null}
+                <div className={`h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 ${brandingSettings?.logoUrl ? 'hidden' : ''}`}>
+                  <Package className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h1 className="font-semibold text-foreground">
+                    {brandingSettings?.appName || 'Serapod2U'}
+                  </h1>
+                  <p className="text-xs text-muted-foreground">
+                    {brandingSettings?.appTagline || 'Supply Chain'}
+                  </p>
+                  {/* Date & Time Display */}
+                  <div className="mt-1.5 pt-1.5 border-t border-gray-200">
+                    <div className="text-[10px] text-gray-600 space-y-0.5 leading-tight">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-gray-500">Date:</span>
+                        <span className="text-gray-700">{isMounted ? date : '--'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-gray-500">Day:</span>
+                        <span className="text-gray-700">{isMounted ? day : '--'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-gray-500">Time:</span>
+                        <span className="text-gray-700">{isMounted ? time : '--:-- --'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 pt-1 mt-1 border-t border-gray-100">
+                        <span className="font-medium text-gray-500">Login:</span>
+                        <span className="text-gray-700 truncate max-w-[140px]" title={userProfile?.email}>{userProfile?.email || '--'}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-          <div className="flex items-center gap-1">
-            {!isCollapsed && (
+            )}
+            <div className="flex items-center gap-1">
+              {!isCollapsed && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSignOut}
+                  disabled={isSigningOut}
+                  className="h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                  title="Sign Out"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleSignOut}
-                disabled={isSigningOut}
-                className="h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-destructive"
-                title="Sign Out"
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="h-8 w-8 p-0 flex-shrink-0"
               >
-                <LogOut className="h-4 w-4" />
+                {isCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="h-8 w-8 p-0 flex-shrink-0"
-            >
-              {isCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
-            </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Navigation */}
-      <div className="flex-1 overflow-y-auto">
-        <nav className="p-4 space-y-2">
-          {/* Main Navigation */}
-          <div className="space-y-1">
-            {filteredNavigationItems.map((item: any) => {
-              const Icon = item.icon
-              // Check if current view matches any submenu or nested submenu
-              const isActive = currentView === item.id || 
-                (item.submenu?.some((sub: any) => 
-                  sub.id === currentView || 
-                  sub.targetView === currentView ||
-                  (sub.nestedSubmenu?.some((nested: any) => 
-                    nested.id === currentView || nested.targetView === currentView
+        {/* Navigation */}
+        <div className="flex-1 overflow-y-auto">
+          <nav className="p-4 space-y-2">
+            {/* Main Navigation */}
+            <div className="space-y-1">
+              {filteredNavigationItems.map((item: any) => {
+                const Icon = item.icon
+                // Check if current view matches any submenu or nested submenu
+                const isActive = currentView === item.id ||
+                  (item.submenu?.some((sub: any) =>
+                    sub.id === currentView ||
+                    sub.targetView === currentView ||
+                    (sub.nestedSubmenu?.some((nested: any) =>
+                      nested.id === currentView || nested.targetView === currentView
+                    ))
                   ))
-                ))
-              const isMenuOpen = expandedMenu === item.id
+                const isMenuOpen = expandedMenu === item.id
 
-              return (
-                <div key={item.id}>
-                  <button
-                    onClick={() => {
-                      if (item.submenu) {
-                        setExpandedMenu(isMenuOpen ? null : item.id)
-                      } else {
-                        onViewChange(item.id)
-                        setIsMobileMenuOpen(false) // Close mobile menu on navigation
-                      }
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                return (
+                  <div key={item.id}>
+                    <button
+                      onClick={() => {
+                        if (item.submenu) {
+                          setExpandedMenu(isMenuOpen ? null : item.id)
+                        } else {
+                          onViewChange(item.id)
+                          setIsMobileMenuOpen(false) // Close mobile menu on navigation
+                        }
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
                         ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
                         : 'text-foreground hover:bg-accent'
+                        }`}
+                      title={isCollapsed ? item.label : undefined}
+                    >
+                      <Icon className="h-5 w-5 flex-shrink-0" />
+                      {!isCollapsed && (
+                        <div className="text-left flex-1">
+                          <div>{item.label}</div>
+                        </div>
+                      )}
+                      {!isCollapsed && item.submenu && (
+                        <ChevronDown className={`h-4 w-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
+                      )}
+                    </button>
+
+                    {/* Submenu */}
+                    {item.submenu && isMenuOpen && !isCollapsed && (
+                      <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
+                        {item.submenu.map((subitem: any) => {
+                          const hasNestedSubmenu = subitem.nestedSubmenu && subitem.nestedSubmenu.length > 0
+                          const isNestedMenuOpen = expandedNestedMenu === subitem.id
+                          const SubIcon = subitem.icon
+
+                          // Check if this submenu or any of its nested items are active
+                          const isSubitemActive = currentView === subitem.id ||
+                            (hasNestedSubmenu && subitem.nestedSubmenu.some((nested: any) =>
+                              currentView === nested.id || currentView === nested.targetView
+                            ))
+
+                          return (
+                            <div key={subitem.id}>
+                              <button
+                                onClick={() => {
+                                  if (hasNestedSubmenu) {
+                                    setExpandedNestedMenu(isNestedMenuOpen ? null : subitem.id)
+                                  } else {
+                                    onViewChange(subitem.id)
+                                    setIsMobileMenuOpen(false)
+                                  }
+                                }}
+                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isSubitemActive
+                                  ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
+                                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                  }`}
+                              >
+                                <SubIcon className="h-4 w-4" />
+                                <span className="flex-1 text-left">{subitem.label}</span>
+                                {hasNestedSubmenu && (
+                                  <ChevronRight className={`h-3 w-3 transition-transform ${isNestedMenuOpen ? 'rotate-90' : ''}`} />
+                                )}
+                              </button>
+
+                              {/* Nested Submenu */}
+                              {hasNestedSubmenu && isNestedMenuOpen && (
+                                <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
+                                  {subitem.nestedSubmenu.map((nestedItem: any) => {
+                                    const NestedIcon = nestedItem.icon
+                                    const targetView = nestedItem.targetView || nestedItem.id
+                                    const isNestedActive = currentView === nestedItem.id || currentView === targetView
+
+                                    return (
+                                      <button
+                                        key={nestedItem.id}
+                                        onClick={() => {
+                                          onViewChange(targetView)
+                                          setIsMobileMenuOpen(false)
+                                        }}
+                                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isNestedActive
+                                          ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
+                                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                          }`}
+                                      >
+                                        <NestedIcon className="h-4 w-4" />
+                                        <span>{nestedItem.label}</span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-border my-4" />
+
+            {/* Secondary Navigation */}
+            <div className="space-y-1">
+              {filteredSecondaryItems.map((item) => {
+                const Icon = item.icon
+                const isActive = currentView === item.id
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      onViewChange(item.id)
+                      setIsMobileMenuOpen(false) // Close mobile menu on navigation
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
+                      : 'text-foreground hover:bg-accent'
                       }`}
                     title={isCollapsed ? item.label : undefined}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
                     {!isCollapsed && (
-                      <div className="text-left flex-1">
+                      <div className="text-left">
                         <div>{item.label}</div>
                       </div>
                     )}
-                    {!isCollapsed && item.submenu && (
-                      <ChevronDown className={`h-4 w-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
-                    )}
                   </button>
+                )
+              })}
+            </div>
+          </nav>
+        </div>
 
-                                    {/* Submenu */}
-                  {item.submenu && isMenuOpen && !isCollapsed && (
-                    <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
-                      {item.submenu.map((subitem: any) => {
-                        const hasNestedSubmenu = subitem.nestedSubmenu && subitem.nestedSubmenu.length > 0
-                        const isNestedMenuOpen = expandedNestedMenu === subitem.id
-                        const SubIcon = subitem.icon
-                        
-                        // Check if this submenu or any of its nested items are active
-                        const isSubitemActive = currentView === subitem.id || 
-                          (hasNestedSubmenu && subitem.nestedSubmenu.some((nested: any) => 
-                            currentView === nested.id || currentView === nested.targetView
-                          ))
-                        
-                        return (
-                          <div key={subitem.id}>
-                            <button
-                              onClick={() => {
-                                if (hasNestedSubmenu) {
-                                  setExpandedNestedMenu(isNestedMenuOpen ? null : subitem.id)
-                                } else {
-                                  onViewChange(subitem.id)
-                                  setIsMobileMenuOpen(false)
-                                }
-                              }}
-                              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isSubitemActive
-                                  ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
-                                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                                }`}
-                            >
-                              <SubIcon className="h-4 w-4" />
-                              <span className="flex-1 text-left">{subitem.label}</span>
-                              {hasNestedSubmenu && (
-                                <ChevronRight className={`h-3 w-3 transition-transform ${isNestedMenuOpen ? 'rotate-90' : ''}`} />
-                              )}
-                            </button>
-                            
-                            {/* Nested Submenu */}
-                            {hasNestedSubmenu && isNestedMenuOpen && (
-                              <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
-                                {subitem.nestedSubmenu.map((nestedItem: any) => {
-                                  const NestedIcon = nestedItem.icon
-                                  const targetView = nestedItem.targetView || nestedItem.id
-                                  const isNestedActive = currentView === nestedItem.id || currentView === targetView
-                                  
-                                  return (
-                                    <button
-                                      key={nestedItem.id}
-                                      onClick={() => {
-                                        onViewChange(targetView)
-                                        setIsMobileMenuOpen(false)
-                                      }}
-                                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isNestedActive
-                                          ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
-                                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                                        }`}
-                                    >
-                                      <NestedIcon className="h-4 w-4" />
-                                      <span>{nestedItem.label}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
+        {/* User Profile Section */}
+        <div className="p-4 border-t border-border">
+          {!isCollapsed && (
+            <div className="mb-3">
+              <div className="flex items-center gap-3 p-2 rounded-lg bg-accent">
+                <Avatar className="h-8 w-8">
+                  {userProfile?.avatar_url && (
+                    <AvatarImage
+                      src={getStorageUrl(`${userProfile.avatar_url.split('?')[0]}?t=${new Date(userProfile.updated_at || Date.now()).getTime()}`) || userProfile.avatar_url}
+                      alt={userProfile.full_name || 'User'}
+                    />
                   )}
+                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-semibold">
+                    {getInitials(userProfile?.full_name, userProfile?.email)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {userProfile?.email || 'User'}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {userProfile?.roles?.role_name || 'Guest'} • {userProfile?.organizations?.org_name || 'No Org'}
+                  </p>
                 </div>
-              )
-            })}
-          </div>
-
-          {/* Divider */}
-          <div className="border-t border-border my-4" />
-
-          {/* Secondary Navigation */}
-          <div className="space-y-1">
-            {filteredSecondaryItems.map((item) => {
-              const Icon = item.icon
-              const isActive = currentView === item.id
-
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onViewChange(item.id)
-                    setIsMobileMenuOpen(false) // Close mobile menu on navigation
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
-                      : 'text-foreground hover:bg-accent'
-                    }`}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  {!isCollapsed && (
-                    <div className="text-left">
-                      <div>{item.label}</div>
-                    </div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </nav>
-      </div>
-
-      {/* User Profile Section */}
-      <div className="p-4 border-t border-border">
-        {!isCollapsed && (
-          <div className="mb-3">
-            <div className="flex items-center gap-3 p-2 rounded-lg bg-accent">
-              <Avatar className="h-8 w-8">
-                {userProfile?.avatar_url && (
-                  <AvatarImage 
-                    src={getStorageUrl(`${userProfile.avatar_url.split('?')[0]}?t=${new Date(userProfile.updated_at || Date.now()).getTime()}`) || userProfile.avatar_url}
-                    alt={userProfile.full_name || 'User'}
-                  />
-                )}
-                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-semibold">
-                  {getInitials(userProfile?.full_name, userProfile?.email)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {userProfile?.email || 'User'}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {userProfile?.roles?.role_name || 'Guest'} • {userProfile?.organizations?.org_name || 'No Org'}
-                </p>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleSignOut}
-          disabled={isSigningOut}
-          className="w-full justify-start gap-3 text-foreground hover:bg-accent"
-          title={isCollapsed ? 'Sign Out' : undefined}
-        >
-          <LogOut className="h-4 w-4 flex-shrink-0" />
-          {!isCollapsed && (isSigningOut ? 'Signing out...' : 'Sign Out')}
-        </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="w-full justify-start gap-3 text-foreground hover:bg-accent"
+            title={isCollapsed ? 'Sign Out' : undefined}
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            {!isCollapsed && (isSigningOut ? 'Signing out...' : 'Sign Out')}
+          </Button>
+        </div>
       </div>
-    </div>
     </>
   )
 }

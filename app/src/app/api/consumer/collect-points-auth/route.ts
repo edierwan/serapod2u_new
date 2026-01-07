@@ -90,15 +90,15 @@ export async function POST(request: NextRequest) {
 
     // Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    
+
     // Allow if:
     // 1. User has no organization (Independent Consumer)
     // 2. User belongs to a SHOP organization
     if (organization && organization.org_type_code !== 'SHOP') {
       console.error('User is from non-shop organization:', organization?.org_type_code)
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Only users from shop organizations or independent consumers can collect points.',
           requiresLogin: true,
           details: `Your organization type is: ${organization?.org_type_code || 'unknown'}`
@@ -115,8 +115,8 @@ export async function POST(request: NextRequest) {
     if (!qrCodeData) {
       console.error('❌ QR code not found in database')
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'This QR code is not registered in our system. It may be a preview code or hasn\'t been activated yet. Please scan a QR code from an actual product.',
           preview: true
         },
@@ -131,11 +131,11 @@ export async function POST(request: NextRequest) {
 
     if (existingCollection) {
       console.log('⚠️ Points already collected for this QR code')
-      
+
       // For independent consumers, use user.id; for shop users, use organization_id
       const balanceId = shopUser.organization_id || user.id
       const totalBalance = await calculateShopTotalPoints(supabaseAdmin, balanceId)
-      
+
       return NextResponse.json(
         {
           success: false,
@@ -168,8 +168,8 @@ export async function POST(request: NextRequest) {
     if (orderError || !orderData) {
       console.error('❌ Order not found:', orderError)
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Order not found',
           details: 'The order associated with this QR code does not exist in the database.'
         },
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
     // Independent consumers can collect from any QR code
     // Shop users need organization relationship validation
     const isIndependentConsumer = !organization
-    
+
     if (!isIndependentConsumer) {
       // Validate organization relationship for shop users
       const isSameOrg = organization.id === orderOrganization.id
@@ -217,9 +217,9 @@ export async function POST(request: NextRequest) {
 
     // Get points configuration - try multiple sources
     let pointRule = null
-    
+
     console.log('🔍 Looking for point rule for org_id:', orderData.company_id)
-    
+
     // First try order's company
     const { data: rule1 } = await supabaseAdmin
       .from('points_rules')
@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-    
+
     if (rule1) {
       pointRule = rule1
       console.log('✅ Found point rule from order company:', orderData.company_id, 'Points:', rule1.points_per_scan)
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       if (rule2) {
         pointRule = rule2
         console.log('✅ Found point rule from shop parent:', organization.parent_org_id, 'Points:', rule2.points_per_scan)
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       if (rule3) {
         pointRule = rule3
         console.log('✅ Found point rule from order company parent:', orderOrganization.parent_org_id, 'Points:', rule3.points_per_scan)
@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       if (anyRule) {
         pointRule = anyRule
         console.log('✅ Found point rule via fallback:', anyRule.org_id, 'Points:', anyRule.points_per_scan)
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       if (result.already_collected) {
         const totalBalance = await calculateShopTotalPoints(supabaseAdmin, balanceId)
-        
+
         return NextResponse.json(
           {
             success: false,
@@ -326,7 +326,7 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         )
       }
-      
+
       return NextResponse.json(result, { status: 400 })
     }
 

@@ -78,7 +78,7 @@ export function hasMenuAccess(
   const userEmail = userProfile.email
   const userOrgType = userProfile.organizations?.org_type_code
   const userRoleLevel = userProfile.roles?.role_level
-  
+
   // Check if user is an independent user (no organization)
   const isIndependentUser = !userProfile.organizations || !userOrgType
 
@@ -159,7 +159,7 @@ export function filterMenuItems(
             }
             return true
           })
-        
+
         return {
           ...item,
           submenu: filteredSubmenu

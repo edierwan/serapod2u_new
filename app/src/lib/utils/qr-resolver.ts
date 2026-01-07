@@ -45,31 +45,31 @@ export async function resolveQrCodeRecord(
   qr_code: string
 ): Promise<QRCodeRecord | null> {
   console.log('🔍 Resolving QR code:', qr_code)
-  
+
   // Extract base code (remove hash suffix if present)
   const baseCode = getBaseCode(qr_code)
   console.log('📋 Base code (without hash):', baseCode)
-  
+
   // Step 1: Try exact match with full code (including hash if present)
   const { data: fullCodeMatch, error: fullCodeError } = await supabase
     .from('qr_codes')
     .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
     .eq('code', qr_code)
     .maybeSingle()
-  
+
   // Handle unexpected errors (not "no rows" - PGRST116)
   if (fullCodeError && fullCodeError.code !== 'PGRST116') {
     console.error('❌ Unexpected database error on full code lookup:', fullCodeError)
     throw new Error(`Database error: ${fullCodeError.message}`)
   }
-  
+
   if (fullCodeMatch) {
     console.log('✅ Found match with full code:', fullCodeMatch.code)
     return fullCodeMatch
   }
-  
+
   console.log('⚠️ No match with full code, trying base code...')
-  
+
   // Step 2: Fallback to base code (for legacy codes without hash)
   // Only try base code if it's different from the full code
   if (baseCode === qr_code) {
@@ -77,44 +77,44 @@ export async function resolveQrCodeRecord(
     console.log('❌ QR code not found (base code same as full code)')
     return null
   }
-  
+
   const { data: baseCodeMatch, error: baseCodeError } = await supabase
     .from('qr_codes')
     .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
     .eq('code', baseCode)
     .maybeSingle()
-  
+
   // Handle unexpected errors
   if (baseCodeError && baseCodeError.code !== 'PGRST116') {
     console.error('❌ Unexpected database error on base code lookup:', baseCodeError)
     throw new Error(`Database error: ${baseCodeError.message}`)
   }
-  
+
   if (baseCodeMatch) {
     console.log('✅ Found match with base code (legacy):', baseCodeMatch.code)
     return baseCodeMatch
   }
-  
+
   // Step 3: Try pattern match for truncated URLs (missing last 2 characters)
   // This handles cases where security truncation removed characters
   console.log('⚠️ No match with base code, trying pattern match for truncated URL...')
-  
+
   const { data: patternMatch, error: patternError } = await supabase
     .from('qr_codes')
     .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
     .like('code', `${qr_code}__`)
     .maybeSingle()
-  
+
   if (patternError && patternError.code !== 'PGRST116') {
     console.error('❌ Unexpected database error on pattern lookup:', patternError)
     // Don't throw here, just log - we'll return null
   }
-  
+
   if (patternMatch) {
     console.log('✅ Found match with pattern (truncated URL):', patternMatch.code)
     return patternMatch
   }
-  
+
   // Step 4: Not found in any format
   console.log('❌ QR code not found in database')
   return null
@@ -145,13 +145,13 @@ export async function checkPointsCollected(
     .order('points_collected_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-  
+
   // Handle unexpected errors (not "no rows" - PGRST116)
   if (error && error.code !== 'PGRST116') {
     console.error('❌ Unexpected database error checking collection status:', error)
     throw new Error(`Database error: ${error.message}`)
   }
-  
+
   return collectionRecord
 }
 
@@ -185,25 +185,25 @@ export async function calculateShopTotalPoints(
   // Fallback: Use the shop_points_ledger view which handles both shop_id and consumer_id
   // and includes points_transactions (migration points)
   let totalFromLedger = 0
-  
+
   // Try by shop_id first
   const { data: ledgerByShop, error: ledgerShopError } = await supabase
     .from('shop_points_ledger')
     .select('points_change')
     .eq('shop_id', shop_id)
-  
+
   if (!ledgerShopError && ledgerByShop && ledgerByShop.length > 0) {
     totalFromLedger = ledgerByShop.reduce((sum, row) => sum + (row.points_change || 0), 0)
     console.log(`💰 Total points for shop ${shop_id} from ledger (shop_id): ${totalFromLedger}`)
     return totalFromLedger
   }
-  
+
   // Try by consumer_id (for independent consumers who have no organization)
   const { data: ledgerByConsumer, error: ledgerConsumerError } = await supabase
     .from('shop_points_ledger')
     .select('points_change')
     .eq('consumer_id', shop_id)
-  
+
   if (!ledgerConsumerError && ledgerByConsumer && ledgerByConsumer.length > 0) {
     totalFromLedger = ledgerByConsumer.reduce((sum, row) => sum + (row.points_change || 0), 0)
     console.log(`💰 Total points for consumer ${shop_id} from ledger (consumer_id): ${totalFromLedger}`)
@@ -216,7 +216,7 @@ export async function calculateShopTotalPoints(
     .select('points_amount')
     .eq('shop_id', shop_id)
     .eq('collected_points', true)
-  
+
   if (!shopError && shopScans && shopScans.length > 0) {
     const total = shopScans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
     console.log(`💰 Total points for shop ${shop_id} from scans: ${total}`)
@@ -229,7 +229,7 @@ export async function calculateShopTotalPoints(
     .select('points_amount')
     .eq('consumer_id', shop_id)
     .eq('collected_points', true)
-  
+
   if (!consumerError && consumerScans && consumerScans.length > 0) {
     const total = consumerScans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
     console.log(`💰 Total points for consumer ${shop_id} from scans: ${total}`)
