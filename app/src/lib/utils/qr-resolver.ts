@@ -179,10 +179,38 @@ export async function calculateShopTotalPoints(
   }
 
   if (viewError) {
-    console.warn('⚠️ Error fetching balance from view, falling back to scan sum:', viewError)
+    console.warn('⚠️ Error fetching balance from view, falling back to ledger sum:', viewError)
   }
 
-  // Fallback 1: Try by shop_id (organization)
+  // Fallback: Use the shop_points_ledger view which handles both shop_id and consumer_id
+  // and includes points_transactions (migration points)
+  let totalFromLedger = 0
+  
+  // Try by shop_id first
+  const { data: ledgerByShop, error: ledgerShopError } = await supabase
+    .from('shop_points_ledger')
+    .select('points_change')
+    .eq('shop_id', shop_id)
+  
+  if (!ledgerShopError && ledgerByShop && ledgerByShop.length > 0) {
+    totalFromLedger = ledgerByShop.reduce((sum, row) => sum + (row.points_change || 0), 0)
+    console.log(`💰 Total points for shop ${shop_id} from ledger (shop_id): ${totalFromLedger}`)
+    return totalFromLedger
+  }
+  
+  // Try by consumer_id (for independent consumers who have no organization)
+  const { data: ledgerByConsumer, error: ledgerConsumerError } = await supabase
+    .from('shop_points_ledger')
+    .select('points_change')
+    .eq('consumer_id', shop_id)
+  
+  if (!ledgerConsumerError && ledgerByConsumer && ledgerByConsumer.length > 0) {
+    totalFromLedger = ledgerByConsumer.reduce((sum, row) => sum + (row.points_change || 0), 0)
+    console.log(`💰 Total points for consumer ${shop_id} from ledger (consumer_id): ${totalFromLedger}`)
+    return totalFromLedger
+  }
+
+  // Final fallback: Sum from consumer_qr_scans directly
   const { data: shopScans, error: shopError } = await supabase
     .from('consumer_qr_scans')
     .select('points_amount')
@@ -191,11 +219,11 @@ export async function calculateShopTotalPoints(
   
   if (!shopError && shopScans && shopScans.length > 0) {
     const total = shopScans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
-    console.log(`💰 Total points for shop ${shop_id}: ${total}`)
+    console.log(`💰 Total points for shop ${shop_id} from scans: ${total}`)
     return total
   }
 
-  // Fallback 2: Try by consumer_id (for independent consumers who have no organization)
+  // Try by consumer_id in scans
   const { data: consumerScans, error: consumerError } = await supabase
     .from('consumer_qr_scans')
     .select('points_amount')
@@ -204,7 +232,7 @@ export async function calculateShopTotalPoints(
   
   if (!consumerError && consumerScans && consumerScans.length > 0) {
     const total = consumerScans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
-    console.log(`💰 Total points for consumer ${shop_id}: ${total}`)
+    console.log(`💰 Total points for consumer ${shop_id} from scans: ${total}`)
     return total
   }
 

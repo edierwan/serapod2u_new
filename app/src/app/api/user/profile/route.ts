@@ -148,25 +148,37 @@ export async function GET(request: NextRequest) {
 
       pointsBalance = balanceData?.current_balance || 0
     } else if (!userProfile.organization_id) {
-      // Independent Consumer - try view first
-      const { data: balanceData } = await supabaseAdmin
-        .from('v_consumer_points_balance')
-        .select('current_balance')
-        .eq('user_id', user.id)
-        .maybeSingle()
+      // Independent Consumer - Use shop_points_ledger which includes all point sources
+      // (consumer_qr_scans + points_transactions for migration/manual adjustments)
+      const { data: ledgerData, error: ledgerError } = await supabaseAdmin
+        .from('shop_points_ledger')
+        .select('points_change')
+        .eq('consumer_id', user.id)
 
-      if (balanceData?.current_balance) {
-        pointsBalance = balanceData.current_balance
+      if (!ledgerError && ledgerData && ledgerData.length > 0) {
+        pointsBalance = ledgerData.reduce((sum, row) => sum + (row.points_change || 0), 0)
+        console.log(`💰 Points balance for consumer ${user.id} from ledger: ${pointsBalance}`)
       } else {
-        // Fallback: Query consumer_qr_scans directly
-        const { data: scans } = await supabaseAdmin
-          .from('consumer_qr_scans')
-          .select('points_amount')
-          .eq('consumer_id', user.id)
-          .eq('collected_points', true)
-        
-        if (scans && scans.length > 0) {
-          pointsBalance = scans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
+        // Fallback: Try v_consumer_points_balance view
+        const { data: balanceData } = await supabaseAdmin
+          .from('v_consumer_points_balance')
+          .select('current_balance')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (balanceData?.current_balance) {
+          pointsBalance = balanceData.current_balance
+        } else {
+          // Final fallback: Query consumer_qr_scans directly
+          const { data: scans } = await supabaseAdmin
+            .from('consumer_qr_scans')
+            .select('points_amount')
+            .eq('consumer_id', user.id)
+            .eq('collected_points', true)
+          
+          if (scans && scans.length > 0) {
+            pointsBalance = scans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
+          }
         }
       }
     }
