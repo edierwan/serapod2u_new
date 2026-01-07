@@ -1959,7 +1959,7 @@ export default function PremiumLoyaltyTemplate({
     const executeAction = (action: string) => {
         switch (action) {
             case 'collect-points':
-                // If user is authenticated AND is a shop user, collect points with session
+                // If user is authenticated (shop user OR independent consumer), collect points with session
                 console.log('🔐 Collect points action - isAuthenticated:', isAuthenticated, 'isShopUser:', isShopUser, 'authLoading:', authLoading)
 
                 // If auth is still loading after 2 seconds, just show login modal
@@ -1971,12 +1971,13 @@ export default function PremiumLoyaltyTemplate({
                     return
                 }
 
-                if (isAuthenticated && isShopUser) {
-                    console.log('🔐 Shop user authenticated, collecting points with session')
+                // ANY authenticated user can collect points - both shop users and independent consumers
+                if (isAuthenticated) {
+                    console.log('🔐 User authenticated, collecting points with session')
                     handleCollectPointsWithSession()
                 } else {
-                    // Not authenticated OR not a shop user - show shop login modal
-                    console.log('🔐 User not authenticated or not a shop user, showing shop login modal', { isAuthenticated, isShopUser })
+                    // Not authenticated - show login modal
+                    console.log('🔐 User not authenticated, showing login modal')
                     setPointsError('')
                     setShowPointsLoginModal(true)
                 }
