@@ -1021,11 +1021,29 @@ export default function PremiumLoyaltyTemplate({
     // Check QR status on mount - this prevents button clicks if already used
     useEffect(() => {
         const checkQrStatus = async () => {
-            if (!qrCode) return
+            if (!qrCode) {
+                setCheckingQrStatus(false)
+                return
+            }
 
             setCheckingQrStatus(true)
+            
+            // Add timeout to prevent infinite loading
+            const timeoutId = setTimeout(() => {
+                console.warn('⚠️ QR status check timed out, enabling buttons')
+                setCheckingQrStatus(false)
+            }, 10000) // 10 second timeout
+            
             try {
-                const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
+                const controller = new AbortController()
+                const fetchTimeoutId = setTimeout(() => controller.abort(), 8000)
+                
+                const response = await fetch(
+                    `/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`,
+                    { signal: controller.signal }
+                )
+                clearTimeout(fetchTimeoutId)
+                
                 const data = await response.json()
 
                 if (data.success) {
@@ -1065,9 +1083,14 @@ export default function PremiumLoyaltyTemplate({
                         setQrCodeDbId(data.qr_code_id)
                     }
                 }
-            } catch (error) {
-                console.error('Error checking QR status:', error)
+            } catch (error: any) {
+                if (error.name === 'AbortError') {
+                    console.warn('⚠️ QR status check aborted (timeout)')
+                } else {
+                    console.error('Error checking QR status:', error)
+                }
             } finally {
+                clearTimeout(timeoutId)
                 setCheckingQrStatus(false)
             }
         }
@@ -1075,6 +1098,9 @@ export default function PremiumLoyaltyTemplate({
         // Check on mount - always check QR status for returning visitors
         if (isLive && qrCode) {
             checkQrStatus()
+        } else {
+            // Not live or no QR code - immediately set checking to false
+            setCheckingQrStatus(false)
         }
     }, [isLive, qrCode]) // Only run on mount and when qrCode changes
 
