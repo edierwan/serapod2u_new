@@ -148,14 +148,27 @@ export async function GET(request: NextRequest) {
 
       pointsBalance = balanceData?.current_balance || 0
     } else if (!userProfile.organization_id) {
-      // Independent Consumer
+      // Independent Consumer - try view first
       const { data: balanceData } = await supabaseAdmin
         .from('v_consumer_points_balance')
         .select('current_balance')
         .eq('user_id', user.id)
         .maybeSingle()
 
-      pointsBalance = balanceData?.current_balance || 0
+      if (balanceData?.current_balance) {
+        pointsBalance = balanceData.current_balance
+      } else {
+        // Fallback: Query consumer_qr_scans directly
+        const { data: scans } = await supabaseAdmin
+          .from('consumer_qr_scans')
+          .select('points_amount')
+          .eq('consumer_id', user.id)
+          .eq('collected_points', true)
+        
+        if (scans && scans.length > 0) {
+          pointsBalance = scans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
+        }
+      }
     }
 
     // Add cache-busting to avatar URL

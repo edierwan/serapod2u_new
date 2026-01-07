@@ -156,11 +156,11 @@ export async function checkPointsCollected(
 }
 
 /**
- * Calculate total points balance for a shop
+ * Calculate total points balance for a shop or independent consumer
  * 
  * @param supabase - Supabase client instance
- * @param shop_id - The shop organization ID
- * @returns Total points collected by this shop
+ * @param shop_id - The shop organization ID OR user ID for independent consumers
+ * @returns Total points collected
  */
 export async function calculateShopTotalPoints(
   supabase: SupabaseClient,
@@ -182,22 +182,32 @@ export async function calculateShopTotalPoints(
     console.warn('⚠️ Error fetching balance from view, falling back to scan sum:', viewError)
   }
 
-  // Fallback: Sum only scans (Note: This ignores redemptions!)
-  const { data: allScans, error } = await supabase
+  // Fallback 1: Try by shop_id (organization)
+  const { data: shopScans, error: shopError } = await supabase
     .from('consumer_qr_scans')
     .select('points_amount')
     .eq('shop_id', shop_id)
     .eq('collected_points', true)
   
-  if (error) {
-    console.error('⚠️ Error calculating total points, returning 0:', error)
-    return 0
+  if (!shopError && shopScans && shopScans.length > 0) {
+    const total = shopScans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
+    console.log(`💰 Total points for shop ${shop_id}: ${total}`)
+    return total
   }
+
+  // Fallback 2: Try by consumer_id (for independent consumers who have no organization)
+  const { data: consumerScans, error: consumerError } = await supabase
+    .from('consumer_qr_scans')
+    .select('points_amount')
+    .eq('consumer_id', shop_id)
+    .eq('collected_points', true)
   
-  const total = allScans?.reduce((sum, scan) => {
-    return sum + (scan.points_amount || 0)
-  }, 0) || 0
-  
-  console.log(`💰 Total points for shop ${shop_id} (fallback): ${total}`)
-  return total
+  if (!consumerError && consumerScans && consumerScans.length > 0) {
+    const total = consumerScans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
+    console.log(`💰 Total points for consumer ${shop_id}: ${total}`)
+    return total
+  }
+
+  console.warn(`⚠️ No points found for ${shop_id}`)
+  return 0
 }
