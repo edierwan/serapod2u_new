@@ -22,6 +22,8 @@ interface Group {
   group_name: string
   group_description: string | null
   is_active: boolean
+  hide_price?: boolean
+  hide_product?: boolean
 }
 
 interface GroupDialogProps {
@@ -45,7 +47,9 @@ export default function GroupDialog({
     category_id: '',
     group_name: '',
     group_description: '',
-    is_active: true
+    is_active: true,
+    hide_price: false,
+    hide_product: false
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -58,14 +62,18 @@ export default function GroupDialog({
           category_id: group.category_id,
           group_name: group.group_name,
           group_description: group.group_description || '',
-          is_active: group.is_active
+          is_active: group.is_active,
+          hide_price: group.hide_price || false,
+          hide_product: group.hide_product || false
         })
       } else {
         setFormData({
           category_id: categories.length > 0 ? categories[0].id : '',
           group_name: '',
           group_description: '',
-          is_active: true
+          is_active: true,
+          hide_price: false,
+          hide_product: false
         })
       }
       setErrors({})
@@ -193,13 +201,33 @@ export default function GroupDialog({
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="is_active"
-              checked={formData.is_active !== false}
-              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: Boolean(checked) }))}
-            />
-            <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="is_active"
+                checked={formData.is_active !== false}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: Boolean(checked) }))}
+              />
+              <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="hide_price"
+                checked={formData.hide_price === true}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, hide_price: Boolean(checked) }))}
+              />
+              <Label htmlFor="hide_price" className="font-normal cursor-pointer">Hide Price (Catalog)</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="hide_product"
+                checked={formData.hide_product === true}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, hide_product: Boolean(checked) }))}
+              />
+              <Label htmlFor="hide_product" className="font-normal cursor-pointer">Hide Product (Catalog)</Label>
+            </div>
           </div>
         </div>
 

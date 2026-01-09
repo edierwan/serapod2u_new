@@ -2,16 +2,17 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { 
+import {
   Package,
-  Search, 
-  Download, 
+  Search,
+  Download,
   AlertTriangle,
   TrendingUp,
   Warehouse,
@@ -72,8 +73,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
-  
+
   const { isReady, supabase } = useSupabaseAuth()
+  const { hasPermission } = usePermissions(userProfile?.roles?.role_level)
   const itemsPerPage = 15
 
   const formatNumber = (value?: number | null) => {
@@ -230,7 +232,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     if (sortColumn !== column) {
       return <ArrowUpDown className="w-4 h-4 ml-1 opacity-40" />
     }
-    return sortDirection === 'asc' 
+    return sortDirection === 'asc'
       ? <ArrowUp className="w-4 h-4 ml-1" />
       : <ArrowDown className="w-4 h-4 ml-1" />
   }
@@ -246,7 +248,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       let query = supabase
         .from('vw_inventory_on_hand' as any)
         .select('*')
-      
+
       if (locationFilter && locationFilter !== 'all') {
         query = query.eq('organization_id', locationFilter)
       }
@@ -305,7 +307,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             )
           `)
           .eq('is_active', true)
-        
+
         if (locationFilter && locationFilter !== 'all') {
           fallbackQuery = fallbackQuery.eq('organization_id', locationFilter)
         }
@@ -437,9 +439,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
         const variantBaseCost = variantBaseCostCandidates.find(cost => cost !== null) ?? null
 
-  const quantityOnHand = parseNumber(item.quantity_on_hand) ?? 0
-  const allocatedQuantity = parseNumber(item.quantity_allocated) ?? 0
-  const quantityAvailable = parseNumber(item.quantity_available) ?? quantityOnHand
+        const quantityOnHand = parseNumber(item.quantity_on_hand) ?? 0
+        const allocatedQuantity = parseNumber(item.quantity_allocated) ?? 0
+        const quantityAvailable = parseNumber(item.quantity_available) ?? quantityOnHand
 
         const resolvedUnitCost = (() => {
           if (variantBaseCost !== null) return variantBaseCost
@@ -462,8 +464,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           return null
         })()
 
-        const variantImage = variantId && variantImageMap.has(variantId) 
-          ? variantImageMap.get(variantId) 
+        const variantImage = variantId && variantImageMap.has(variantId)
+          ? variantImageMap.get(variantId)
           : (item.variant_image_url ?? rawVariant?.image_url ?? null)
 
         return {
@@ -591,7 +593,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 if (toOrg && organizationIdSet.has(toOrg)) {
                   const key = `${toOrg}:${variantId}`
                   movementTotalsMap.set(key, (movementTotalsMap.get(key) ?? 0) + qty)
-                  
+
                   // Track warranty_bonus quantities
                   const movementType = movement.movement_type ? movement.movement_type.toLowerCase().trim() : ''
                   if (movementType === 'warranty_bonus') {
@@ -636,7 +638,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 ? item.total_value
                 : null
               const previousOnHand = Number(item.quantity_on_hand ?? 0)
-              
+
               // Exclude warranty_bonus quantities from value calculation
               const warrantyBonusQty = warrantyBonusMap.get(key) ?? 0
               const valuableQty = recalculatedOnHand - warrantyBonusQty
@@ -679,7 +681,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
   const fetchLocations = async () => {
     try {
-      const { data, error} = await supabase
+      const { data, error } = await supabase
         .from('organizations')
         .select('id, org_name, org_code')
         .in('org_type_code', ['WH', 'HQ'])
@@ -709,12 +711,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         .gt('quantity_on_hand', 0)
 
       if (error) throw error
-      
+
       // Extract unique product names from inventory records
       const productNames = new Set<string>()
       data?.forEach((item: any) => {
-        const variant = Array.isArray(item.product_variants) 
-          ? item.product_variants[0] 
+        const variant = Array.isArray(item.product_variants)
+          ? item.product_variants[0]
           : item.product_variants
         const product = variant?.products
           ? Array.isArray(variant.products)
@@ -725,7 +727,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           productNames.add(product.product_name)
         }
       })
-      
+
       const uniqueProducts = Array.from(productNames).sort()
       setProducts(uniqueProducts.map(name => ({ product_name: name })))
     } catch (error) {
@@ -751,19 +753,19 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         .gt('quantity_on_hand', 0)
 
       if (error) throw error
-      
+
       // Extract unique variants from inventory records
       const variantMap = new Map()
       data?.forEach((item: any) => {
-        const variant = Array.isArray(item.product_variants) 
-          ? item.product_variants[0] 
+        const variant = Array.isArray(item.product_variants)
+          ? item.product_variants[0]
           : item.product_variants
         if (variant?.variant_code) {
           variantMap.set(variant.variant_code, variant)
         }
       })
-      
-      const uniqueVariants = Array.from(variantMap.values()).sort((a, b) => 
+
+      const uniqueVariants = Array.from(variantMap.values()).sort((a, b) =>
         a.variant_code.localeCompare(b.variant_code)
       )
       setVariants(uniqueVariants)
@@ -778,8 +780,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       return variants
     }
     return variants.filter(variant => {
-      const product = Array.isArray(variant.products) 
-        ? variant.products[0] 
+      const product = Array.isArray(variant.products)
+        ? variant.products[0]
         : variant.products
       return product?.product_name === productFilter
     })
@@ -824,8 +826,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const canEditSettings = () => {
     // Allow users with role_level <= 40 to edit settings
     // role_level: 1=SUPERADMIN, 10=HQ_ADMIN, 20=MANU_ADMIN, 30=DIST_ADMIN, 40=WH_MANAGER
-    // Temporarily return true for testing - will add proper check later
-    return true
+    return hasPermission('manage_inventory_settings')
+  }
+
+  const canViewTotalValue = () => {
+    // Use dynamic permission from database
+    return hasPermission('view_inventory_value')
   }
 
   const handleOpenSettings = (item: InventoryItem) => {
@@ -864,8 +870,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             Export
           </Button>
           {canEditSettings() && (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => onViewChange?.('inventory-settings')}
               className="border-blue-600 text-blue-600 hover:bg-blue-50"
@@ -990,8 +996,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
               <div>
                 <label className="text-xs font-medium text-gray-700 mb-1.5 block">Variant</label>
-                <Select 
-                  value={variantFilter} 
+                <Select
+                  value={variantFilter}
                   onValueChange={setVariantFilter}
                   disabled={productFilter === 'all'}
                 >
@@ -1086,7 +1092,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead 
+                <TableHead
                   className="cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('product_name')}
                 >
@@ -1095,7 +1101,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {renderSortIcon('product_name')}
                   </div>
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('location')}
                 >
@@ -1104,7 +1110,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {renderSortIcon('location')}
                   </div>
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('on_hand')}
                 >
@@ -1113,7 +1119,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {renderSortIcon('on_hand')}
                   </div>
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('allocated')}
                 >
@@ -1122,7 +1128,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {renderSortIcon('allocated')}
                   </div>
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('available')}
                 >
@@ -1132,15 +1138,17 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </div>
                 </TableHead>
                 <TableHead>Stock Level</TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-gray-100 select-none text-right"
-                  onClick={() => handleSort('total_value')}
-                >
-                  <div className="flex items-center justify-end">
-                    Total Value
-                    {renderSortIcon('total_value')}
-                  </div>
-                </TableHead>
+                {canViewTotalValue() && (
+                  <TableHead
+                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    onClick={() => handleSort('total_value')}
+                  >
+                    <div className="flex items-center justify-end">
+                      Total Value
+                      {renderSortIcon('total_value')}
+                    </div>
+                  </TableHead>
+                )}
                 {canEditSettings() && <TableHead className="text-center">Actions</TableHead>}
               </TableRow>
             </TableHeader>
@@ -1198,14 +1206,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                       <div className="space-y-2">
                         {getStockLevelBadge(item.quantity_available, item.reorder_point)}
                         <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full ${
-                              item.quantity_available === 0 ? 'bg-red-500' :
-                              item.quantity_available <= item.reorder_point * 0.5 ? 'bg-red-500' :
-                              item.quantity_available <= item.reorder_point ? 'bg-orange-500' : 'bg-green-500'
-                            }`}
-                            style={{ 
-                              width: `${getStockPercentage(item.quantity_available, item.reorder_point)}%` 
+                          <div
+                            className={`h-2 rounded-full ${item.quantity_available === 0 ? 'bg-red-500' :
+                                item.quantity_available <= item.reorder_point * 0.5 ? 'bg-red-500' :
+                                  item.quantity_available <= item.reorder_point ? 'bg-orange-500' : 'bg-green-500'
+                              }`}
+                            style={{
+                              width: `${getStockPercentage(item.quantity_available, item.reorder_point)}%`
                             }}
                           />
                         </div>
@@ -1214,14 +1221,16 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                         </p>
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-right">
-                      <span className="font-medium">
-                        RM {formatCurrency(item.total_value ?? 0)}
-                      </span>
-                      <p className="text-xs text-gray-600">
-                        @ RM {formatCurrency(item.unit_cost ?? 0)} per unit
-                      </p>
-                    </TableCell>
+                    {canViewTotalValue() && (
+                      <TableCell className="text-xs text-right">
+                        <span className="font-medium">
+                          RM {formatCurrency(item.total_value ?? 0)}
+                        </span>
+                        <p className="text-xs text-gray-600">
+                          @ RM {formatCurrency(item.unit_cost ?? 0)} per unit
+                        </p>
+                      </TableCell>
+                    )}
                     {canEditSettings() && (
                       <TableCell className="text-center">
                         <Button
@@ -1249,23 +1258,23 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, filteredInventory.length)} of ${filteredInventory.length} items`}
             </p>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
               >
                 Previous
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="bg-blue-50 text-blue-600 border-blue-200"
               >
                 {currentPage}
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(currentPage + 1)}
                 disabled={currentPage * itemsPerPage >= filteredInventory.length}

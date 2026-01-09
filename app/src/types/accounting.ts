@@ -277,3 +277,90 @@ export const CONTROL_ACCOUNT_CONFIGS: ControlAccountConfig[] = [
     accountTypes: ['ASSET']
   }
 ];
+
+// ============================================================================
+// Currency Settings
+// ============================================================================
+
+export interface CurrencySettings {
+  id?: string;
+  company_id?: string;
+  base_currency_code: string;
+  base_currency_name: string;
+  base_currency_symbol: string;
+  decimal_places: number;
+  thousand_separator: string;
+  decimal_separator: string;
+  symbol_position: 'before' | 'after';
+  created_at?: string;
+  updated_at?: string;
+}
+
+// ============================================================================
+// Fiscal Year & Period Management
+// ============================================================================
+
+export type FiscalYearStatus = 'open' | 'closed' | 'locked';
+export type FiscalPeriodStatus = 'future' | 'open' | 'closed' | 'locked';
+export type FiscalPeriodType = 'normal' | 'adjustment' | 'opening';
+
+export interface FiscalYear {
+  id: string;
+  company_id: string;
+  fiscal_year_name: string;
+  fiscal_year_code: string;
+  start_date: string;
+  end_date: string;
+  status: FiscalYearStatus;
+  closed_at: string | null;
+  closed_by: string | null;
+  retained_earnings_posted: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  // Joined
+  fiscal_periods?: FiscalPeriod[];
+}
+
+export interface FiscalPeriod {
+  id: string;
+  company_id: string;
+  fiscal_year_id: string;
+  period_number: number;
+  period_name: string;
+  start_date: string;
+  end_date: string;
+  status: FiscalPeriodStatus;
+  period_type: FiscalPeriodType;
+  closed_at: string | null;
+  closed_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FiscalYearInsert {
+  company_id: string;
+  fiscal_year_name: string;
+  fiscal_year_code: string;
+  start_date: string;
+  end_date: string;
+  status?: FiscalYearStatus;
+}
+
+export interface FiscalYearUpdate {
+  fiscal_year_name?: string;
+  status?: FiscalYearStatus;
+}
+
+export interface FiscalPeriodUpdate {
+  status?: FiscalPeriodStatus;
+}
+
+// System Settings Response
+export interface AccountingSystemSettings {
+  currency: CurrencySettings;
+  fiscalYears: FiscalYear[];
+  currentFiscalYear: FiscalYear | null;
+  currentPeriod: FiscalPeriod | null;
+  company_id: string;
+}

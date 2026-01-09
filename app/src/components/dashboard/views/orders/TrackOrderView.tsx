@@ -274,17 +274,17 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
 
       let balanceRequestFileUrl: string | null = null
       if (paymentRequestDoc) {
-        const { data: balanceFile, error: balanceFileError } = await supabase
+        const { data: balanceFiles, error: balanceFileError } = await supabase
           .from('document_files')
           .select('file_url')
           .eq('document_id', paymentRequestDoc.id)
-          .maybeSingle()
+          .limit(1)
 
         if (balanceFileError) {
           console.error('Error fetching balance payment support file:', balanceFileError)
         }
 
-        balanceRequestFileUrl = balanceFile?.file_url ?? null
+        balanceRequestFileUrl = balanceFiles?.[0]?.file_url ?? null
       }
 
       // Extract document dates and creators

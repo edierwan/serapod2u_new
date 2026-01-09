@@ -69,7 +69,8 @@ export async function POST(request: Request) {
       'SUPPLIER_DEPOSIT_PAYMENT',
       'SUPPLIER_INVOICE_RECOGNITION', 
       'SUPPLIER_BALANCE_PAYMENT',
-      'SALES_INVOICE'
+      'SALES_INVOICE',
+      'RECEIPT'
     ]
     
     if (!validTypes.includes(documentType)) {

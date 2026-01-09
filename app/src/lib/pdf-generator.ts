@@ -2352,15 +2352,95 @@ export class PDFGenerator {
     // Parties Section
     y = this.addPartiesSection(orderData, y, 'DO')
 
-    // Order Lines Section
-    y = this.addOrderLinesSection(orderData, y)
+    // Check if this is a DH (D2H) order - DO should not show pricing info for DH orders
+    const isDHOrder = orderData.order_type === 'DH' || orderData.order_type === 'D2H'
 
-    // Summary Section
-    y = this.addSummarySection(orderData, y)
+    // Order Lines Section - use simplified version for DH orders (no pricing)
+    if (isDHOrder) {
+      y = this.addOrderLinesSectionNoPricing(orderData, y)
+      // Skip Summary Section for DH orders - DO is just for delivery tracking
+    } else {
+      y = this.addOrderLinesSection(orderData, y)
+      // Summary Section - only for non-DH orders
+      y = this.addSummarySection(orderData, y)
+    }
 
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
 
     return this.doc.output('blob')
+  }
+
+  /**
+   * Order Lines Section without pricing columns - used for DH Delivery Orders
+   * DH orders use DO purely for delivery tracking, not for pricing
+   */
+  private addOrderLinesSectionNoPricing(orderData: OrderData, yPosition: number): number {
+    let y = yPosition
+
+    // ORDER LINES Section Header
+    this.doc.setFontSize(11)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text('ORDER LINES', this.margin, y)
+    y += 7
+
+    // Prepare table data - without pricing columns
+    const tableData = orderData.order_items.map((item, index) => {
+      // Column 2: Product Name
+      const productName = item.product?.product_name || 'Product'
+      
+      // Column 3: Variant Name
+      const variantName = item.variant?.variant_name || ''
+
+      const qtyUnits = Number(item.qty || 0).toLocaleString()
+      const qtyCases = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
+      
+      return [
+        (index + 1).toString(),
+        productName,
+        variantName,
+        qtyUnits,
+        qtyCases.toString()
+      ]
+    })
+
+    autoTable(this.doc, {
+      startY: y,
+      head: [[
+        '#',
+        'Product Name',
+        'Description',
+        'Qty Units',
+        'Qty Cases'
+      ]],
+      body: tableData,
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        lineColor: [100, 100, 100],
+        lineWidth: 0.3
+      },
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: 'bold',
+        halign: 'left',
+        lineWidth: 0.3,
+        lineColor: [100, 100, 100]
+      },
+      columnStyles: {
+        0: { cellWidth: 12, halign: 'center' },
+        1: { cellWidth: 45 },
+        2: { cellWidth: 80 },
+        3: { cellWidth: 25, halign: 'right' },
+        4: { cellWidth: 25, halign: 'right' }
+      },
+      margin: { left: this.margin, right: this.margin },
+      tableWidth: this.pageWidth - 2 * this.margin
+    })
+
+    return (this.doc as any).lastAutoTable.finalY + 8
   }
 }

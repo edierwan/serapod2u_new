@@ -9,8 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/use-toast'
-import ChartOfAccountsTab from './ChartOfAccountsTab'
-import DefaultAccountsSettings from './DefaultAccountsSettings'
+import ConfigurationTab from './ConfigurationTab'
 import GLJournalView from '../accounting/GLJournalView'
 import {
   Calculator,
@@ -26,7 +25,8 @@ import {
   Sparkles,
   Settings2,
   Trash2,
-  ShieldAlert
+  ShieldAlert,
+  Cog
 } from 'lucide-react'
 
 interface AccountingTabProps {
@@ -62,7 +62,7 @@ interface AccountingStatus {
 }
 
 export default function AccountingTab({ userProfile }: AccountingTabProps) {
-  const [activeSubTab, setActiveSubTab] = useState('chart-of-accounts')
+  const [activeSubTab, setActiveSubTab] = useState('gl-journals')
   const [status, setStatus] = useState<AccountingStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
@@ -192,8 +192,8 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
         setResetModalOpen(false)
         setResetConfirmation('')
         loadStatus()
-        // Switch to Chart of Accounts tab to show empty state
-        setActiveSubTab('chart-of-accounts')
+        // Switch to Configuration tab to show empty state
+        setActiveSubTab('configuration')
       } else {
         toast({
           title: 'Error',
@@ -295,200 +295,35 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
     <div className="space-y-6">
       {/* Sub-navigation tabs */}
       <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
-          <TabsTrigger value="chart-of-accounts" className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4" />
-            Chart of Accounts
-          </TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:inline-flex">
           <TabsTrigger value="gl-journals" className="flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4" />
             GL Journals
           </TabsTrigger>
-          <TabsTrigger value="settings" className="flex items-center gap-2">
-            <Settings2 className="w-4 h-4" />
-            Default Accounts
-          </TabsTrigger>
-          <TabsTrigger value="status" className="flex items-center gap-2">
-            <Database className="w-4 h-4" />
-            Status
+          <TabsTrigger value="configuration" className="flex items-center gap-2">
+            <Cog className="w-4 h-4" />
+            Configuration
           </TabsTrigger>
         </TabsList>
-
-        {/* Chart of Accounts Tab */}
-        <TabsContent value="chart-of-accounts" className="mt-6">
-          <ChartOfAccountsTab userProfile={userProfile} />
-        </TabsContent>
 
         {/* GL Journals Tab */}
         <TabsContent value="gl-journals" className="mt-6">
           <GLJournalView userProfile={userProfile} />
         </TabsContent>
 
-        {/* Default Accounts Settings Tab */}
-        <TabsContent value="settings" className="mt-6">
-          <DefaultAccountsSettings userProfile={userProfile} />
-        </TabsContent>
-
-        {/* Status Tab */}
-        <TabsContent value="status" className="mt-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Calculator className="w-6 h-6 text-blue-500" />
-                  <CardTitle>Accounting Module Status</CardTitle>
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                    {status?.phase || 'Phase 1'}
-                  </Badge>
-                </div>
-                <Button variant="outline" size="sm" onClick={loadStatus}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh
-                </Button>
-              </div>
-              <CardDescription>
-                Monitor the accounting module configuration and readiness
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Readiness Checklist */}
-              <div>
-                <h4 className="font-medium text-gray-900 mb-3">Readiness Checklist</h4>
-                <div className="space-y-2">
-                  {status?.checklist?.map((item, index) => (
-                    <div 
-                      key={index}
-                      className={`flex items-start gap-3 p-3 rounded-lg ${
-                        item.status === 'ok' ? 'bg-green-50' :
-                        item.status === 'warning' ? 'bg-yellow-50' :
-                        'bg-red-50'
-                      }`}
-                    >
-                      {getStatusIcon(item.status)}
-                      <div>
-                        <p className="font-medium text-gray-900">{item.item}</p>
-                        <p className="text-sm text-gray-600">{item.message}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              {canManage && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-3">Quick Actions</h4>
-                  <div className="flex flex-wrap gap-3">
-                    <Button 
-                      variant="outline" 
-                      onClick={handleSeedAccounts}
-                      disabled={seeding}
-                    >
-                      {seeding ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4 mr-2" />
-                      )}
-                      Seed Default Accounts
-                    </Button>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Seed the default Chart of Accounts template. This is idempotent and won't duplicate existing accounts.
-                  </p>
-                </div>
-              )}
-
-              {/* Feature Status */}
-              <div>
-                <h4 className="font-medium text-gray-900 mb-3">Feature Status</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className={`p-3 rounded-lg ${status?.features?.chart_of_accounts ? 'bg-green-50' : 'bg-gray-50'}`}>
-                    <div className="flex items-center gap-2">
-                      {status?.features?.chart_of_accounts ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-gray-400" />
-                      )}
-                      <span className="text-sm font-medium">Chart of Accounts</span>
-                    </div>
-                  </div>
-                  <div className={`p-3 rounded-lg ${status?.features?.journals_view ? 'bg-green-50' : 'bg-gray-50'}`}>
-                    <div className="flex items-center gap-2">
-                      {status?.features?.journals_view ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-gray-400" />
-                      )}
-                      <span className="text-sm font-medium">Journals View</span>
-                    </div>
-                  </div>
-                  <div className={`p-3 rounded-lg ${status?.features?.posting ? 'bg-green-50' : 'bg-gray-50'}`}>
-                    <div className="flex items-center gap-2">
-                      {status?.features?.posting ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-gray-400" />
-                      )}
-                      <span className="text-sm font-medium">GL Posting</span>
-                    </div>
-                  </div>
-                  <div className={`p-3 rounded-lg ${status?.features?.reports ? 'bg-green-50' : 'bg-gray-50'}`}>
-                    <div className="flex items-center gap-2">
-                      {status?.features?.reports ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-gray-400" />
-                      )}
-                      <span className="text-sm font-medium">Reports</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Phase Information */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-800 mb-2">Current Phase: Foundation</h4>
-                <p className="text-sm text-blue-700">
-                  Phase 1 provides the Chart of Accounts setup. GL posting, journal management, 
-                  and financial reports will be available in future phases.
-                </p>
-                <div className="mt-3 text-xs text-blue-600">
-                  <strong>Roadmap:</strong> Phase 2 (Manual Posting) → Phase 3 (Reports) → Phase 4 (Inventory/COGS)
-                </div>
-              </div>
-
-              {/* DEV-ONLY: Reset Section */}
-              {resetAvailable && canManage && (
-                <div className="border-t pt-6">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <ShieldAlert className="w-5 h-5 text-red-500 mt-0.5" />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-medium text-red-800">DEV-ONLY: Reset Accounting Setup</h4>
-                          <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300 text-xs">
-                            Development
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-red-700 mb-3">
-                          Clear all accounting data for this company. This will delete all accounts, 
-                          settings, and any journal entries. Use this for rapid dev iteration.
-                        </p>
-                        <Button 
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => setResetModalOpen(true)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Reset Accounting Setup
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Configuration Tab - Contains Chart of Accounts, Default Accounts, Currency, Fiscal Year, Status */}
+        <TabsContent value="configuration" className="mt-6">
+          <ConfigurationTab 
+            userProfile={userProfile} 
+            status={status}
+            loadStatus={loadStatus}
+            canManage={canManage}
+            seeding={seeding}
+            handleSeedAccounts={handleSeedAccounts}
+            resetAvailable={resetAvailable}
+            setResetModalOpen={setResetModalOpen}
+            getStatusIcon={getStatusIcon}
+          />
         </TabsContent>
       </Tabs>
 

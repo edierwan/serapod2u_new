@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber } from '@/lib/utils/formatters'
+import { usePermissions } from '@/hooks/usePermissions'
 import {
   FileText,
   Plus,
@@ -81,6 +82,18 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
   const supabase = createClient()
   const { toast } = useToast()
+  
+  // Permission check for creating orders
+  const { hasPermission, loading: permissionsLoading } = usePermissions(userProfile.roles.role_level, userProfile.role_code)
+  const canCreateOrders = hasPermission('create_orders')
+  
+  // Debug: Log permission state
+  console.log('[OrdersView] Permission check:', {
+    roleLevel: userProfile.roles.role_level,
+    permissionsLoading,
+    canCreateOrders,
+    hasCreateOrderPermission: hasPermission('create_orders')
+  })
 
   // Extract unique sellers from orders
   const uniqueSellers = orders.reduce((acc, order) => {
@@ -124,8 +137,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         bValue = b.order_no
         break
       case 'seller':
-        aValue = a.seller_org?.org_name || ''
-        bValue = b.seller_org?.org_name || ''
+        aValue = getDisplayOrgName(a)
+        bValue = getDisplayOrgName(b)
         break
       case 'total':
         aValue = calculateOrderTotal(a)
@@ -797,7 +810,24 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           .in('order_id', orderIds)
           .eq('doc_type', 'PO')
 
+        // 3. Fetch acknowledged PAYMENT documents to calculate paid amounts
+        const { data: paymentData } = await supabase
+          .from('documents')
+          .select('order_id, status, payment_percentage, payload')
+          .in('order_id', orderIds)
+          .eq('doc_type', 'PAYMENT')
+          .eq('status', 'acknowledged')
+
+        // 4. Fetch RECEIPT documents for D2H orders (customer receipts)
+        const { data: receiptData } = await supabase
+          .from('documents')
+          .select('order_id, status, payment_percentage, payload')
+          .in('order_id', orderIds)
+          .eq('doc_type', 'RECEIPT')
+
         console.log('Order items query result:', itemsData?.length || 0, 'items')
+        console.log('Acknowledged payments found:', paymentData?.length || 0)
+        console.log('Receipts found:', receiptData?.length || 0)
 
         if (itemsError) {
           console.error('Error loading order items:', itemsError)
@@ -806,11 +836,38 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           const ordersWithItems = ordersData.map(order => {
             const items = itemsData.filter(item => item.order_id === order.id)
             const poDoc = poData?.find(d => d.order_id === order.id)
+            
+            // Calculate paid amount from acknowledged payment documents
+            const orderPayments = paymentData?.filter(p => p.order_id === order.id) || []
+            const orderReceipts = receiptData?.filter(r => r.order_id === order.id) || []
+            const orderTotal = items.reduce((sum, item) => sum + (item.line_total || 0), 0)
+            
+            // Sum up paid amounts from payment percentages (for H2M orders)
+            let paidAmount = 0
+            orderPayments.forEach(payment => {
+              // Get payment percentage from document or payload
+              const paymentPct = payment.payment_percentage || 
+                (payment.payload as any)?.payment_percentage || 
+                (payment.payload as any)?.requested_percent || 
+                30 // default deposit percentage
+              paidAmount += (orderTotal * paymentPct / 100)
+            })
+
+            // Add receipt amounts (for D2H orders - customer receipts have amount in payload)
+            orderReceipts.forEach(receipt => {
+              const receiptAmount = (receipt.payload as any)?.amount || 0
+              if (receiptAmount > 0) {
+                paidAmount += receiptAmount
+              } else if (receipt.payment_percentage) {
+                // Fallback to percentage calculation
+                paidAmount += (orderTotal * receipt.payment_percentage / 100)
+              }
+            })
 
             return {
               ...order,
               order_items: items,
-              paid_amount: (order as any).paid_amount || 0,
+              paid_amount: paidAmount,
               po_acknowledged: poDoc?.status === 'acknowledged' || poDoc?.status === 'completed'
             }
           })
@@ -928,6 +985,48 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       .trim()
   }
 
+  // Helper function to get the organization name to display in the Name column
+  // For D2H orders, we want to show the distributor (seller) name
+  // For H2M orders, we want to show the manufacturer (seller) name
+  // For S2D orders, we want to show the shop (buyer) name from distributor's view, or distributor (seller) from shop's view
+  const getDisplayOrgName = (order: Order): string => {
+    // For D2H (Distributor → HQ), show the distributor name (seller)
+    // If seller is HQ (wrong data), use buyer instead
+    if (order.order_type === 'D2H') {
+      const sellerIsHQ = order.seller_org?.org_type_code === 'HQ'
+      const buyerIsHQ = order.buyer_org?.org_type_code === 'HQ'
+      
+      // If data is correct (seller is distributor), return seller name
+      if (!sellerIsHQ && order.seller_org?.org_name) {
+        return order.seller_org.org_name
+      }
+      // If data is reversed (buyer is distributor), return buyer name
+      if (!buyerIsHQ && order.buyer_org?.org_name) {
+        return order.buyer_org.org_name
+      }
+      // Fallback
+      return order.seller_org?.org_name || order.buyer_org?.org_name || 'N/A'
+    }
+    
+    // For H2M (HQ → Manufacturer), show the manufacturer name (seller)
+    if (order.order_type === 'H2M') {
+      return order.seller_org?.org_name || 'N/A'
+    }
+    
+    // For S2D (Shop → Distributor), show the shop name (buyer) or distributor (seller) based on perspective
+    if (order.order_type === 'S2D') {
+      // If current user is the seller (distributor), show buyer (shop) name
+      if (order.seller_org_id === userProfile.organization_id) {
+        return order.buyer_org?.org_name || 'N/A'
+      }
+      // If current user is the buyer (shop), show seller (distributor) name
+      return order.seller_org?.org_name || 'N/A'
+    }
+    
+    // Default: show seller name
+    return order.seller_org?.org_name || 'N/A'
+  }
+
   if (loading && orders.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -947,8 +1046,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           <h2 className="text-lg font-bold text-gray-900">Orders</h2>
           <p className="text-xs text-gray-600 mt-1">Manage and track all your orders</p>
         </div>
-        {/* Hide Create Order button for Manufacturer (MANU/MFG) organizations */}
-        {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+        {/* Hide Create Order button for Manufacturer (MANU/MFG) organizations or if user doesn't have permission */}
+        {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders && (
           <Button className="gap-2" onClick={handleCreateOrder}>
             <Plus className="w-4 h-4" />
             Create Order
@@ -1122,8 +1221,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       ? 'No orders available. Manufacturers receive orders from HQ.'
                       : 'Create your first order to get started'}
                 </p>
-                {/* Hide Create Order button for Manufacturer organizations */}
-                {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+                {/* Hide Create Order button for Manufacturer organizations or if user doesn't have permission */}
+                {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders && (
                   <Button className="gap-2" onClick={handleCreateOrder}>
                     <Plus className="w-4 h-4" />
                     Create Order
@@ -1237,8 +1336,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                           {/* Seller Name */}
                           <td className="px-4 py-3 text-xs text-gray-900">
-                            <div className="max-w-[200px] truncate" title={order.seller_org?.org_name || 'N/A'}>
-                              {order.seller_org?.org_name || 'N/A'}
+                            <div className="max-w-[200px] truncate" title={getDisplayOrgName(order)}>
+                              {getDisplayOrgName(order)}
                             </div>
                           </td>
 
@@ -1518,8 +1617,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Store className="w-4 h-4 text-green-500 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <div className="text-xs text-gray-500">Seller</div>
-                          <div className="text-sm font-medium text-gray-900 truncate" title={order.seller_org?.org_name || 'Unknown'}>
-                            {shortenOrgName(order.seller_org?.org_name || 'Unknown')}
+                          <div className="text-sm font-medium text-gray-900 truncate" title={getDisplayOrgName(order)}>
+                            {shortenOrgName(getDisplayOrgName(order))}
                           </div>
                         </div>
                       </div>

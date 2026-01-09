@@ -5,10 +5,11 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText } from 'lucide-react'
+import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
+import DHReceiptDialog from '@/components/orders/DHReceiptDialog'
 
 interface UserProfile {
   id: string
@@ -35,6 +36,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
   const [qrStats, setQrStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [documentsDialogOpen, setDocumentsDialogOpen] = useState(false)
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -130,6 +132,55 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         })
       )
 
+      // Load PO document to check acknowledgement status
+      const { data: poDoc } = await supabase
+        .from('documents')
+        .select('status')
+        .eq('order_id', orderId)
+        .eq('doc_type', 'PO')
+        .maybeSingle()
+
+      // Load acknowledged PAYMENT documents to calculate paid amount
+      const { data: paymentDocs } = await supabase
+        .from('documents')
+        .select('payment_percentage, payload')
+        .eq('order_id', orderId)
+        .eq('doc_type', 'PAYMENT')
+        .eq('status', 'acknowledged')
+
+      // Calculate order total and paid amount
+      const orderTotal = itemsWithDetails.reduce((sum, item) => sum + (item.line_total || 0), 0)
+      let paidAmount = 0
+      
+      if (paymentDocs && paymentDocs.length > 0) {
+        paymentDocs.forEach((payment: any) => {
+          const paymentPct = payment.payment_percentage || 
+            (payment.payload as any)?.payment_percentage || 
+            (payment.payload as any)?.requested_percent || 
+            30 // default deposit percentage
+          paidAmount += (orderTotal * paymentPct / 100)
+        })
+      }
+
+      // Determine payment status
+      const poAcknowledged = poDoc?.status === 'acknowledged' || poDoc?.status === 'completed'
+      let paymentStatus = 'submitted' // default
+      if (order.status === 'approved' && poAcknowledged) {
+        if (paidAmount >= orderTotal && orderTotal > 0) {
+          paymentStatus = 'paid'
+        } else if (paidAmount > 0) {
+          paymentStatus = 'partial'
+        } else {
+          paymentStatus = 'unpaid'
+        }
+      } else if (order.status === 'approved') {
+        paymentStatus = 'approved'
+      } else if (order.status === 'closed') {
+        paymentStatus = 'closed'
+      } else {
+        paymentStatus = order.status
+      }
+
       // Combine all data
       const completeOrderData = {
         ...order,
@@ -137,7 +188,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         seller_org: sellerOrg,
         created_by_user: createdByUser,
         approved_by_user: approvedByUser,
-        order_items: itemsWithDetails
+        order_items: itemsWithDetails,
+        paid_amount: paidAmount,
+        order_total: orderTotal,
+        payment_status: paymentStatus,
+        po_acknowledged: poAcknowledged
       }
 
       console.log('✅ Complete order data loaded:', completeOrderData)
@@ -304,15 +359,26 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
   const subtotal = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.line_total || 0), 0) || 0
   const totalQuantity = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
 
-  // Helper to get status color
+  // Helper to get status color based on payment status
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'paid': return 'text-green-600'
+      case 'partial': return 'text-orange-600'
+      case 'unpaid': return 'text-red-600'
       case 'approved': return 'text-green-600'
       case 'closed': return 'text-gray-600'
       case 'cancelled': return 'text-red-600'
       case 'draft': return 'text-gray-500'
-      default: return 'text-red-500' // submitted/pending usually red/orange in invoices
+      default: return 'text-yellow-600' // submitted/pending
     }
+  }
+
+  // Get display status (payment status takes priority for approved orders)
+  const getDisplayStatus = () => {
+    if (orderData.payment_status && ['paid', 'partial', 'unpaid'].includes(orderData.payment_status)) {
+      return orderData.payment_status.toUpperCase()
+    }
+    return orderData.status === 'submitted' ? 'SUBMITTED' : orderData.status?.toUpperCase()
   }
 
   return (
@@ -329,6 +395,17 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
             Back to Orders
           </Button>
           <div className="flex gap-3">
+            {/* Receipt Button - Only show for D2H orders that are approved */}
+            {(orderData?.order_type === 'D2H' || orderData?.order_type === 'DH') && orderData?.status === 'approved' && (
+              <Button
+                onClick={() => setReceiptDialogOpen(true)}
+                variant="outline"
+                className="gap-2 border-green-300 text-green-700 hover:bg-green-50"
+              >
+                <Receipt className="w-4 h-4" />
+                Receipt
+              </Button>
+            )}
             <Button
               onClick={() => setDocumentsDialogOpen(true)}
               variant="outline"
@@ -441,8 +518,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
           <div className="w-48">
             <div className="border border-gray-200 p-4 text-center rounded-sm">
               <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Status</p>
-              <p className={`text-xl font-bold uppercase ${getStatusColor(orderData.status)}`}>
-                {orderData.status === 'submitted' ? 'SUBMITTED' : orderData.status}
+              <p className={`text-xl font-bold uppercase ${getStatusColor(orderData.payment_status || orderData.status)}`}>
+                {getDisplayStatus()}
               </p>
             </div>
           </div>
@@ -569,6 +646,25 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
           userProfile={userProfile}
           open={documentsDialogOpen}
           onClose={() => setDocumentsDialogOpen(false)}
+        />
+      )}
+
+      {/* DH Receipt Dialog - For recording payments from distributors */}
+      {orderData && (orderData.order_type === 'D2H' || orderData.order_type === 'DH') && (
+        <DHReceiptDialog
+          orderId={orderData.id}
+          orderNo={orderData.order_no}
+          orderTotal={subtotal}
+          paidAmount={orderData.paid_amount || 0}
+          buyerOrgId={orderData.buyer_org_id}
+          sellerOrgId={orderData.seller_org_id}
+          companyId={orderData.company_id}
+          open={receiptDialogOpen}
+          onClose={() => setReceiptDialogOpen(false)}
+          onSuccess={() => {
+            // Reload order data to update paid amounts
+            loadOrderData(orderData.id)
+          }}
         />
       )}
     </div>

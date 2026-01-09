@@ -1,0 +1,190 @@
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+
+/**
+ * GET /api/accounting/fiscal-years/[id]
+ * Get a specific fiscal year with periods
+ */
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient() as any
+    const { id } = await params
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: fiscalYear, error } = await supabase
+      .from('fiscal_years')
+      .select(`
+        *,
+        fiscal_periods (
+          id, period_number, period_name, start_date, end_date, status, period_type,
+          closed_at, closed_by
+        )
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 404 })
+    }
+
+    // Sort periods
+    if (fiscalYear.fiscal_periods) {
+      fiscalYear.fiscal_periods.sort((a: any, b: any) => a.period_number - b.period_number)
+    }
+
+    return NextResponse.json({ fiscalYear })
+  } catch (error) {
+    console.error('Error fetching fiscal year:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+/**
+ * PUT /api/accounting/fiscal-years/[id]
+ * Update a fiscal year (limited fields)
+ */
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient() as any
+    const { id } = await params
+    const body = await request.json()
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: userData } = await supabase
+      .from('users')
+      .select('roles!inner(role_level)')
+      .eq('id', user.id)
+      .single()
+
+    if (!userData || userData.roles.role_level > 20) {
+      return NextResponse.json({ error: 'Forbidden - HQ Admin only' }, { status: 403 })
+    }
+
+    // Get existing fiscal year
+    const { data: existing, error: fetchError } = await supabase
+      .from('fiscal_years')
+      .select('status')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !existing) {
+      return NextResponse.json({ error: 'Fiscal year not found' }, { status: 404 })
+    }
+
+    // Can only update name if locked
+    if (existing.status === 'locked' && (body.start_date || body.end_date || body.status)) {
+      return NextResponse.json({ error: 'Cannot modify locked fiscal year' }, { status: 400 })
+    }
+
+    const updateData: any = {}
+    if (body.fiscal_year_name) updateData.fiscal_year_name = body.fiscal_year_name
+    if (body.status && ['open', 'closed', 'locked'].includes(body.status)) {
+      updateData.status = body.status
+      if (body.status === 'closed') {
+        updateData.closed_at = new Date().toISOString()
+        updateData.closed_by = user.id
+      }
+    }
+
+    const { data: fiscalYear, error: updateError } = await supabase
+      .from('fiscal_years')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, fiscalYear })
+  } catch (error) {
+    console.error('Error updating fiscal year:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+/**
+ * DELETE /api/accounting/fiscal-years/[id]
+ * Delete a fiscal year (only if open and no journals)
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient() as any
+    const { id } = await params
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: userData } = await supabase
+      .from('users')
+      .select('roles!inner(role_level)')
+      .eq('id', user.id)
+      .single()
+
+    if (!userData || userData.roles.role_level > 20) {
+      return NextResponse.json({ error: 'Forbidden - HQ Admin only' }, { status: 403 })
+    }
+
+    // Check if fiscal year can be deleted
+    const { data: existing } = await supabase
+      .from('fiscal_years')
+      .select('status, start_date, end_date')
+      .eq('id', id)
+      .single()
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Fiscal year not found' }, { status: 404 })
+    }
+
+    if (existing.status !== 'open') {
+      return NextResponse.json({ error: 'Can only delete open fiscal years' }, { status: 400 })
+    }
+
+    // Check for journals in this period
+    const { data: journals } = await supabase
+      .from('gl_journals')
+      .select('id')
+      .gte('journal_date', existing.start_date)
+      .lte('journal_date', existing.end_date)
+      .limit(1)
+
+    if (journals && journals.length > 0) {
+      return NextResponse.json({ error: 'Cannot delete fiscal year with posted journals' }, { status: 400 })
+    }
+
+    // Delete fiscal year (periods cascade)
+    const { error: deleteError } = await supabase
+      .from('fiscal_years')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting fiscal year:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

@@ -12,11 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/use-toast'
+import { Badge } from '@/components/ui/badge'
 import DangerZoneTab from './DangerZoneTab'
 import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
 import DocumentTemplateTab from './DocumentTemplateTab'
 import AccountingTab from './AccountingTab'
+import AuthorizationTab from './AuthorizationTab'
 import MigrationView from '../migration/MigrationView'
 import {
   Settings,
@@ -27,11 +29,9 @@ import {
   Database,
   Mail,
   Palette,
+  Lock,
   Globe,
   Save,
-  Eye,
-  EyeOff,
-  Key,
   Phone,
   MapPin,
   Edit,
@@ -113,7 +113,6 @@ interface OrganizationSettings {
 export default function SettingsView({ userProfile }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState('profile')
   const [loading, setLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
   const { theme, setTheme } = useTheme()
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
@@ -153,11 +152,6 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
       manufacturer: { scan: true, scan2: true },
       warehouse: { receive: true, receive2: true, ship: true }
     }
-  })
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
   })
 
   // Branding settings state for live preview
@@ -508,144 +502,6 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     }
   }
 
-  const handleChangePassword = async () => {
-    // Validation
-    if (!passwordData.currentPassword) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please enter your current password',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    if (!passwordData.newPassword) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please enter a new password',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast({
-        title: 'Validation Error',
-        description: 'New passwords do not match',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    if (passwordData.newPassword.length < 6) {
-      toast({
-        title: 'Validation Error',
-        description: 'Password must be at least 6 characters long',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    if (passwordData.currentPassword === passwordData.newPassword) {
-      toast({
-        title: 'Validation Error',
-        description: 'New password must be different from current password',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      console.log('🔐 Step 1: Verifying current password for:', userProfile.email)
-
-      // Step 1: Verify current password using API endpoint
-      // We use an API route to ensure fresh authentication check
-      const verifyResponse = await fetch('/api/auth/verify-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: userProfile.email,
-          password: passwordData.currentPassword
-        })
-      })
-
-      console.log('🔐 API Response Status:', verifyResponse.status, verifyResponse.statusText)
-
-      if (!verifyResponse.ok) {
-        const errorText = await verifyResponse.text()
-        console.error('❌ API request failed:', errorText)
-        toast({
-          title: 'Verification Error',
-          description: 'Failed to verify password. Please try again.',
-          variant: 'destructive'
-        })
-        return
-      }
-
-      const verifyData = await verifyResponse.json()
-      console.log('🔐 Password verification result:', JSON.stringify(verifyData, null, 2))
-
-      // CRITICAL: Check if password is valid
-      if (verifyData.valid !== true) {
-        console.error('❌ Current password is INCORRECT')
-        toast({
-          title: 'Authentication Failed',
-          description: verifyData.error || 'Current password is incorrect. Please try again.',
-          variant: 'destructive'
-        })
-        return
-      }
-
-      console.log('✅ Step 2: Current password VERIFIED, updating to new password...')
-
-      // Step 2: Current password is correct, now update to new password
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: passwordData.newPassword
-      })
-
-      if (updateError) {
-        console.error('❌ Password update error:', updateError)
-        toast({
-          title: 'Update Failed',
-          description: updateError.message || 'Failed to update password. Please try again.',
-          variant: 'destructive'
-        })
-        return
-      }
-
-      console.log('✅ Step 3: Password updated successfully in Supabase Auth')
-
-      // Step 3: Success - clear form and show success message
-      const userId = userProfile.phone || userProfile.email
-      toast({
-        title: 'Password Updated Successfully',
-        description: `Your password for ID ${userId} has been updated.`,
-        variant: 'success',
-        duration: 3000
-      })
-
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      })
-
-    } catch (error: any) {
-      console.error('❌ Unexpected error changing password:', error)
-      toast({
-        title: 'Error',
-        description: error.message || 'An unexpected error occurred. Please try again.',
-        variant: 'destructive'
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // Handle logo file selection
   const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -776,6 +632,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'preferences', label: 'Preferences', icon: Settings },
     ...(userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? [{ id: 'migration', label: 'Data Migration', icon: Database }] : []),
+    ...(userProfile.roles.role_level === 1 ? [{ id: 'authorization', label: 'Authorization', icon: Lock }] : []),
     ...(userProfile.roles.role_level === 1 ? [{ id: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle }] : [])
   ]
 
@@ -800,8 +657,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 justify-start rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium transition sm:rounded-none sm:border-0 sm:border-b-2 sm:border-transparent sm:px-2 sm:py-2 sm:flex-shrink-0 sm:justify-center ${activeTab === tab.id
-                    ? 'bg-blue-50 text-blue-600 sm:bg-transparent sm:border-blue-500'
-                    : 'text-gray-600 hover:bg-gray-50 sm:text-gray-500 sm:hover:text-gray-700 sm:hover:border-gray-300'
+                  ? 'bg-blue-50 text-blue-600 sm:bg-transparent sm:border-blue-500'
+                  : 'text-gray-600 hover:bg-gray-50 sm:text-gray-500 sm:hover:text-gray-700 sm:hover:border-gray-300'
                   }`}
               >
                 <div className="flex items-center gap-2">
@@ -1604,169 +1461,61 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
           </Card>
         )}
 
-        {/* Security Settings */}
+        {/* Security Settings - Placeholder for future security features */}
         {activeTab === 'security' && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Change Password</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5" />
+                  Security Settings
+                </CardTitle>
                 <CardDescription>
-                  Update your password to keep your account secure
+                  Manage your account security settings
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="currentPassword">Current Password <span className="text-red-500">*</span></Label>
-                    <div className="relative">
-                      <Input
-                        id="currentPassword"
-                        type={showPassword ? 'text' : 'password'}
-                        value={passwordData.currentPassword}
-                        onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                        placeholder="Enter current password"
-                        className="pr-10"
-                        required
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Enter your current password to verify your identity
-                    </p>
-                  </div>
-
-                  <div className="border-t pt-4 mt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="newPassword">New Password <span className="text-red-500">*</span></Label>
-                      <div className="relative">
-                        <Input
-                          id="newPassword"
-                          type={showPassword ? 'text' : 'password'}
-                          value={passwordData.newPassword}
-                          onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                          placeholder="Enter new password (min 6 characters)"
-                          className="pr-10"
-                          required
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                      {passwordData.newPassword && (
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-xs">
-                            <div className={`h-1.5 flex-1 rounded-full ${passwordData.newPassword.length < 6 ? 'bg-red-200' :
-                                passwordData.newPassword.length < 8 ? 'bg-yellow-200' :
-                                  passwordData.newPassword.length < 12 ? 'bg-blue-200' :
-                                    'bg-green-200'
-                              }`}>
-                              <div className={`h-full rounded-full transition-all ${passwordData.newPassword.length < 6 ? 'bg-red-500 w-1/4' :
-                                  passwordData.newPassword.length < 8 ? 'bg-yellow-500 w-2/4' :
-                                    passwordData.newPassword.length < 12 ? 'bg-blue-500 w-3/4' :
-                                      'bg-green-500 w-full'
-                                }`} />
-                            </div>
-                            <span className={`font-medium ${passwordData.newPassword.length < 6 ? 'text-red-600' :
-                                passwordData.newPassword.length < 8 ? 'text-yellow-600' :
-                                  passwordData.newPassword.length < 12 ? 'text-blue-600' :
-                                    'text-green-600'
-                              }`}>
-                              {passwordData.newPassword.length < 6 ? 'Weak' :
-                                passwordData.newPassword.length < 8 ? 'Fair' :
-                                  passwordData.newPassword.length < 12 ? 'Good' :
-                                    'Strong'}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 mt-4">
-                      <Label htmlFor="confirmPassword">Confirm New Password <span className="text-red-500">*</span></Label>
-                      <div className="relative">
-                        <Input
-                          id="confirmPassword"
-                          type={showPassword ? 'text' : 'password'}
-                          value={passwordData.confirmPassword}
-                          onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                          placeholder="Confirm new password"
-                          className="pr-10"
-                          required
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                      {passwordData.confirmPassword && passwordData.newPassword !== passwordData.confirmPassword && (
-                        <p className="text-xs text-red-600 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          Passwords do not match
-                        </p>
-                      )}
-                      {passwordData.confirmPassword && passwordData.newPassword === passwordData.confirmPassword && (
-                        <p className="text-xs text-green-600 flex items-center gap-1">
-                          ✓ Passwords match
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
                     <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-blue-900">
-                      <p className="font-semibold mb-1">Password Requirements</p>
-                      <ul className="space-y-1 text-blue-800">
-                        <li>• Minimum 6 characters (8+ recommended)</li>
-                        <li>• Must be different from current password</li>
-                        <li>• Will be synced with Supabase Auth</li>
-                        <li>• You'll remain logged in after changing</li>
-                      </ul>
+                      <p className="font-semibold mb-1">Password Management</p>
+                      <p>To change your password, please go to <span className="font-medium">My Profile</span> page where you can securely update your credentials.</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setPasswordData({
-                      currentPassword: '',
-                      newPassword: '',
-                      confirmPassword: ''
-                    })}
-                    disabled={loading || (!passwordData.currentPassword && !passwordData.newPassword && !passwordData.confirmPassword)}
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    onClick={handleChangePassword}
-                    disabled={loading || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Key className="w-4 h-4 mr-2" />
-                    {loading ? 'Changing Password...' : 'Change Password'}
-                  </Button>
+                {/* Two-Factor Authentication - Coming Soon */}
+                <div className="border border-gray-200 rounded-lg p-4 opacity-60">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">Two-Factor Authentication</h4>
+                      <p className="text-sm text-gray-500">Add an extra layer of security to your account</p>
+                    </div>
+                    <Badge variant="outline" className="text-gray-500 border-gray-300">Coming Soon</Badge>
+                  </div>
+                </div>
+
+                {/* Session Management - Coming Soon */}
+                <div className="border border-gray-200 rounded-lg p-4 opacity-60">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">Active Sessions</h4>
+                      <p className="text-sm text-gray-500">Manage your active login sessions</p>
+                    </div>
+                    <Badge variant="outline" className="text-gray-500 border-gray-300">Coming Soon</Badge>
+                  </div>
+                </div>
+
+                {/* Login History - Coming Soon */}
+                <div className="border border-gray-200 rounded-lg p-4 opacity-60">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">Login History</h4>
+                      <p className="text-sm text-gray-500">View your recent login activity</p>
+                    </div>
+                    <Badge variant="outline" className="text-gray-500 border-gray-300">Coming Soon</Badge>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -2107,6 +1856,11 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         {/* Accounting Tab - HQ Admin/Power User Only */}
         {activeTab === 'accounting' && userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && (
           <AccountingTab userProfile={userProfile} />
+        )}
+
+        {/* Authorization Tab - Super Admin Only */}
+        {activeTab === 'authorization' && userProfile.roles.role_level === 1 && (
+          <AuthorizationTab userProfile={userProfile} />
         )}
 
         {/* Danger Zone Tab - Super Admin Only */}

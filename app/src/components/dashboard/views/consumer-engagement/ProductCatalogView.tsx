@@ -38,6 +38,8 @@ interface Product {
   manufacturer_name?: string
   primary_image_url?: string | null
   variants?: Variant[]
+  hide_price?: boolean
+  hide_product?: boolean
 }
 
 interface Variant {
@@ -118,6 +120,10 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
           is_active,
           brands (brand_name),
           product_categories (category_name),
+          product_groups (
+            hide_price,
+            hide_product
+          ),
           product_images (
             image_url,
             is_primary
@@ -140,11 +146,16 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
         category_name: item.product_categories?.category_name || 'Uncategorized',
         primary_image_url: item.product_images?.find((img: any) => img.is_primary)?.image_url || 
                           item.product_images?.[0]?.image_url || null,
-        variants: (item.product_variants || []).filter((v: any) => v.is_active)
+        variants: (item.product_variants || []).filter((v: any) => v.is_active),
+        hide_price: item.product_groups?.hide_price || false,
+        hide_product: item.product_groups?.hide_product || false
       }))
 
-      setProducts(transformedProducts)
-      setFilteredProducts(transformedProducts)
+      // Filter out hidden products
+      const visibleProducts = transformedProducts.filter((p: Product) => !p.hide_product)
+
+      setProducts(visibleProducts)
+      setFilteredProducts(visibleProducts)
     } catch (error: any) {
       console.error('Error loading products:', error)
       toast({
@@ -315,7 +326,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                     </Badge>
                   </div>
 
-                  {product.variants && product.variants.length > 0 && (
+                  {product.variants && product.variants.length > 0 && !product.hide_price && (
                     <div className="pt-2">
                       <p className="text-sm text-gray-600">Starting from</p>
                       <p className="text-2xl font-bold text-purple-600">
@@ -324,6 +335,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                     </div>
                   )}
 
+                  {!product.hide_price && (
                   <Button
                     className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                     onClick={() => {
@@ -339,6 +351,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                     <ShoppingCart className="h-4 w-4 mr-2" />
                     Order Now
                   </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -378,7 +391,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                     </div>
 
                     <div className="text-right">
-                      {product.variants && product.variants.length > 0 && (
+                      {product.variants && product.variants.length > 0 && !product.hide_price && (
                         <>
                           <p className="text-sm text-gray-600">Starting from</p>
                           <p className="text-2xl font-bold text-purple-600">
@@ -386,6 +399,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                           </p>
                         </>
                       )}
+                      {!product.hide_price && (
                       <Button
                         className="mt-4"
                         onClick={() => {
@@ -401,6 +415,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                         <ShoppingCart className="h-4 w-4 mr-2" />
                         Order Now
                       </Button>
+                      )}
                     </div>
                   </div>
                 </div>
