@@ -429,6 +429,11 @@ export default function PremiumLoyaltyTemplate({
     const [showBankInfo, setShowBankInfo] = useState(false)
     const [bankError, setBankError] = useState('')
 
+    // Address states
+    const [userAddress, setUserAddress] = useState('')
+    const [editingAddress, setEditingAddress] = useState(false)
+    const [newAddress, setNewAddress] = useState('')
+
     // Password change states
     const [showChangePassword, setShowChangePassword] = useState(false)
     const [currentPassword, setCurrentPassword] = useState('')
@@ -639,6 +644,7 @@ export default function PremiumLoyaltyTemplate({
                 avatarUrl: profile.avatarUrl,
                 orgName: profile.orgName || '',
                 phone: profile.phone || '',
+                address: profile.address || '',
                 pointsBalance: profile.pointsBalance || 0,
                 bankId: profile.bankId || '',
                 bankName: profile.bankName || '',
@@ -730,7 +736,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -765,6 +771,9 @@ export default function PremiumLoyaltyTemplate({
                         setBankId(bankId || '')
                         setBankAccountNumber(bankAccountNumber || '')
                         setBankAccountHolderName(bankAccountHolderName || '')
+                        // Set address
+                        setUserAddress(address || '')
+                        setNewAddress(address || '')
                     } else {
                         console.warn('🔐 Profile fetch failed, using basic info')
                         setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
@@ -830,7 +839,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
 
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -847,6 +856,9 @@ export default function PremiumLoyaltyTemplate({
                             setBankId(bankId || '')
                             setBankAccountNumber(bankAccountNumber || '')
                             setBankAccountHolderName(bankAccountHolderName || '')
+                            // Set address
+                            setUserAddress(address || '')
+                            setNewAddress(address || '')
                         }
                     } catch (error) {
                         console.error('🔐 Profile fetch error on auth change:', error)
@@ -1720,6 +1732,11 @@ export default function PremiumLoyaltyTemplate({
                 updateData.phone = newPhone.trim() || null
             }
 
+            // Add address if changed
+            if (newAddress !== userAddress) {
+                updateData.address = newAddress.trim() || null
+            }
+
             // Add bank details if shop user or independent consumer
             if (isShopUser || !shopName) {
                 // If any bank field is filled, validate all required fields
@@ -1794,10 +1811,14 @@ export default function PremiumLoyaltyTemplate({
             if (updateData.phone !== undefined) {
                 setUserPhone(updateData.phone || '')
             }
+            if (updateData.address !== undefined) {
+                setUserAddress(updateData.address || '')
+            }
 
             setProfileSaveSuccess(true)
             setEditingName(false)
             setEditingPhone(false)
+            setEditingAddress(false)
 
             // Clear success message after 3 seconds
             setTimeout(() => setProfileSaveSuccess(false), 3000)
@@ -4879,7 +4900,7 @@ export default function PremiumLoyaltyTemplate({
                             </div>
 
                             {/* Email (Read-only) */}
-                            <div className="p-4">
+                            <div className="p-4 border-b border-gray-100">
                                 <label className="text-sm font-medium text-gray-700 block mb-2">Email</label>
                                 <div className="flex items-center gap-2">
                                     <Mail className="w-4 h-4 text-gray-400" />
@@ -4887,8 +4908,63 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                             </div>
 
+                            {/* Address */}
+                            <div className="p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-sm font-medium text-gray-700">Address</label>
+                                    {!editingAddress && (
+                                        <button
+                                            onClick={() => {
+                                                setEditingAddress(true)
+                                                setNewAddress(userAddress)
+                                            }}
+                                            className="text-sm font-medium"
+                                            style={{ color: config.primary_color }}
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
+                                </div>
+                                {editingAddress ? (
+                                    <div className="space-y-2">
+                                        <textarea
+                                            value={newAddress}
+                                            onChange={(e) => {
+                                                const value = e.target.value
+                                                // Convert to title case as user types
+                                                const titleCased = value.replace(/\b\w/g, (char) => char.toUpperCase())
+                                                if (titleCased.length <= 255) {
+                                                    setNewAddress(titleCased)
+                                                }
+                                            }}
+                                            placeholder="Enter your delivery address"
+                                            className="w-full h-20 p-2 text-sm border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            maxLength={255}
+                                        />
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-gray-500">{newAddress.length}/255</span>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    setEditingAddress(false)
+                                                    setNewAddress(userAddress)
+                                                }}
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-start gap-2">
+                                        <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                                        <span className="text-gray-900 text-sm">{userAddress || 'Not set'}</span>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Save Button */}
-                            {(editingName || editingPhone) && (newName !== userName || newPhone !== userPhone) && (
+                            {(editingName || editingPhone || editingAddress) && (newName !== userName || newPhone !== userPhone || newAddress !== userAddress) && (
                                 <div className="p-4 border-t border-gray-100">
                                     <Button
                                         onClick={handleSaveProfile}
@@ -5392,6 +5468,33 @@ export default function PremiumLoyaltyTemplate({
                                     }}
                                 >
                                     Update Bank Details
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* Address Required for Physical Rewards (non-Cashback) */}
+                        {!selectedReward.item_code.toLowerCase().includes('cashback') && !userAddress && (
+                            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+                                <div className="flex items-start gap-3">
+                                    <MapPin className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-medium text-blue-900">Delivery Address Required</p>
+                                        <p className="text-xs text-blue-700 leading-relaxed">
+                                            Please update your delivery address to ensure we can ship your reward. Missing address may cause delays in delivery.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full bg-white border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                                    onClick={() => {
+                                        setShowRedeemConfirm(false)
+                                        setActiveTab('account-settings')
+                                        setShowProfileInfo(true)
+                                    }}
+                                >
+                                    Update Address
                                 </Button>
                             </div>
                         )}

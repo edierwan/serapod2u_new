@@ -73,7 +73,8 @@ import {
   Truck,
   MessageSquare,
   RefreshCw,
-  ArrowUpDown
+  ArrowUpDown,
+  Home
 } from "lucide-react"
 import { PointsConfigurationSettings } from './PointsConfigurationSettings'
 import { CategorySettingsDialog } from './CategorySettingsDialog'
@@ -1667,6 +1668,13 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                                     <Phone className="h-4 w-4" />
                                     <span>{redemption.shop_phone || redemption.staff_phone}</span>
                                   </div>
+                                  {/* Delivery Address */}
+                                  {redemption.staff_address && (
+                                    <div className="flex items-start gap-2 text-muted-foreground">
+                                      <Home className="h-4 w-4 mt-0.5 shrink-0" />
+                                      <span className="text-xs">{redemption.staff_address}</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-2 text-muted-foreground">
                                     <Calendar className="h-4 w-4" />
                                     <span>

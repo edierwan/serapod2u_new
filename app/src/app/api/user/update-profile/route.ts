@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, bank_id, bank_account_number, bank_account_holder_name } = body
+    const { userId, full_name, phone, address, bank_id, bank_account_number, bank_account_holder_name } = body
 
     // Verify user is updating their own profile
     if (authUser.id !== userId) {
@@ -229,6 +229,18 @@ export async function POST(request: NextRequest) {
         if (bank_account_number !== undefined) updateData.bank_account_number = bank_account_number
         if (bank_account_holder_name !== undefined) updateData.bank_account_holder_name = bank_account_holder_name
       }
+    }
+
+    // Handle address update
+    if (address !== undefined) {
+      // Validate address length (max 255 characters)
+      if (address && address.length > 255) {
+        return NextResponse.json(
+          { success: false, error: 'Address must be 255 characters or less' },
+          { status: 400 }
+        )
+      }
+      updateData.address = address?.trim() || null
     }
 
     // Update database
