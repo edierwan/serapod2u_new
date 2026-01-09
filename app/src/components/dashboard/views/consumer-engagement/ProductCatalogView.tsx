@@ -302,7 +302,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                 className="relative h-48 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden cursor-pointer"
                 onClick={() => {
                   sessionStorage.setItem('selectedProductId', product.id)
-                  onViewChange('product-details')
+                  onViewChange('view-product')
                 }}
               >
                 {product.primary_image_url ? (
@@ -330,7 +330,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                     className="font-semibold text-gray-900 line-clamp-2 min-h-[3rem] cursor-pointer hover:text-blue-600 transition-colors"
                     onClick={() => {
                       sessionStorage.setItem('selectedProductId', product.id)
-                      onViewChange('product-details')
+                      onViewChange('view-product')
                     }}
                   >
                     {product.product_name}
@@ -387,7 +387,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                       className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
                       onClick={() => {
                         sessionStorage.setItem('selectedProductId', product.id)
-                        onViewChange('product-details')
+                        onViewChange('view-product')
                       }}
                     >
                       {product.primary_image_url ? (
@@ -407,7 +407,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                         className="font-semibold text-lg text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
                         onClick={() => {
                           sessionStorage.setItem('selectedProductId', product.id)
-                          onViewChange('product-details')
+                          onViewChange('view-product')
                         }}
                       >
                         {product.product_name}
