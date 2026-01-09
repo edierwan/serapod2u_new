@@ -225,9 +225,10 @@ export async function POST(request: NextRequest) {
       } else {
         // Independent Consumer (No Organization)
         // Save bank details directly to users table
-        if (bank_id !== undefined) updateData.bank_id = bank_id
-        if (bank_account_number !== undefined) updateData.bank_account_number = bank_account_number
-        if (bank_account_holder_name !== undefined) updateData.bank_account_holder_name = bank_account_holder_name
+        // Convert empty strings to null for UUID fields
+        if (bank_id !== undefined) updateData.bank_id = bank_id || null
+        if (bank_account_number !== undefined) updateData.bank_account_number = bank_account_number || null
+        if (bank_account_holder_name !== undefined) updateData.bank_account_holder_name = bank_account_holder_name || null
       }
     }
 

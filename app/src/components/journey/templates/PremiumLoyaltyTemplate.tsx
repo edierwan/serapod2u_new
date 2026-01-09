@@ -1777,9 +1777,12 @@ export default function PremiumLoyaltyTemplate({
                     }
                 }
 
-                updateData.bank_id = bankId
-                updateData.bank_account_number = bankAccountNumber
-                updateData.bank_account_holder_name = bankAccountHolderName
+                // Only send bank fields if user is editing bank info (at least one field has value)
+                if (bankId || bankAccountNumber || bankAccountHolderName) {
+                    updateData.bank_id = bankId || null
+                    updateData.bank_account_number = bankAccountNumber || null
+                    updateData.bank_account_holder_name = bankAccountHolderName || null
+                }
             }
 
             if (Object.keys(updateData).length === 0) {
