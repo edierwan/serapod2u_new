@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { 
   User, Mail, Building2, Shield, Calendar, Phone, Edit2, Save, X, 
-  Loader2, Camera, CheckCircle, XCircle, Clock, MapPin, AlertCircle 
+  Loader2, Camera, CheckCircle, XCircle, Clock, MapPin, AlertCircle, CreditCard, Landmark 
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import SignatureUpload from '@/components/profile/SignatureUpload'
@@ -37,6 +37,9 @@ interface UserProfile {
   last_login_ip: string | null
   created_at: string
   updated_at: string
+  bank_id: string | null
+  bank_account_number: string | null
+  bank_account_holder_name: string | null
   organizations?: {
     id: string
     org_name: string
@@ -47,6 +50,16 @@ interface UserProfile {
     role_name: string
     role_level: number
   }
+  msia_banks?: {
+    id: string
+    short_name: string
+  }
+}
+
+interface MsiaBank {
+  id: string
+  short_name: string
+  is_active: boolean
 }
 
 interface MyProfileViewNewProps {
@@ -63,18 +76,37 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     full_name: '',
-    phone: ''
+    phone: '',
+    bank_id: '',
+    bank_account_number: '',
+    bank_account_holder_name: ''
   })
+  const [banks, setBanks] = useState<MsiaBank[]>([])
+  const [isSavingBank, setIsSavingBank] = useState(false)
+  const [isEditingBank, setIsEditingBank] = useState(false)
   const { toast } = useToast()
   const supabase = createClient()
 
   // Load fresh user data on mount and when editing is cancelled
   useEffect(() => {
     loadUserProfile()
+    loadBanks()
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const loadBanks = async () => {
+    const { data, error } = await supabase
+      .from('msia_banks')
+      .select('id, short_name, is_active')
+      .eq('is_active', true)
+      .order('short_name')
+
+    if (data) {
+      setBanks(data)
+    }
+  }
 
   const loadUserProfile = async () => {
     try {
@@ -104,6 +136,10 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           roles:role_code (
             role_name,
             role_level
+          ),
+          msia_banks:bank_id (
+            id,
+            short_name
           )
         `)
         .eq('id', user.id)
@@ -120,13 +156,19 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             : (profile as any).organizations,
           roles: Array.isArray((profile as any).roles) 
             ? (profile as any).roles[0] 
-            : (profile as any).roles
+            : (profile as any).roles,
+          msia_banks: Array.isArray((profile as any).msia_banks) 
+            ? (profile as any).msia_banks[0] 
+            : (profile as any).msia_banks
         }
         
         setUserProfile(transformedProfile)
         setFormData({
           full_name: transformedProfile.full_name || '',
-          phone: transformedProfile.phone || ''
+          phone: transformedProfile.phone || '',
+          bank_id: transformedProfile.bank_id || '',
+          bank_account_number: transformedProfile.bank_account_number || '',
+          bank_account_holder_name: transformedProfile.bank_account_holder_name || ''
         })
       }
     } catch (error: any) {
@@ -392,11 +434,70 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const handleCancel = () => {
     setFormData({
       full_name: userProfile.full_name || '',
-      phone: userProfile.phone || ''
+      phone: userProfile.phone || '',
+      bank_id: userProfile.bank_id || '',
+      bank_account_number: userProfile.bank_account_number || '',
+      bank_account_holder_name: userProfile.bank_account_holder_name || ''
     })
     setAvatarFile(null)
     setAvatarPreview(null)
     setIsEditing(false)
+  }
+
+  const handleSaveBankDetails = async () => {
+    setIsSavingBank(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          bank_id: formData.bank_id || null,
+          bank_account_number: formData.bank_account_number || null,
+          bank_account_holder_name: formData.bank_account_holder_name || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Success",
+        description: "Bank details saved successfully!",
+      })
+
+      // Update local state
+      setUserProfile(prev => ({
+        ...prev,
+        bank_id: formData.bank_id || null,
+        bank_account_number: formData.bank_account_number || null,
+        bank_account_holder_name: formData.bank_account_holder_name || null
+      }))
+      setIsEditingBank(false)
+      
+      // Refresh profile to get updated bank name
+      loadUserProfile()
+    } catch (error: any) {
+      console.error('Error saving bank details:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save bank details",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingBank(false)
+    }
+  }
+
+  const handleCancelBankEdit = () => {
+    setFormData(prev => ({
+      ...prev,
+      bank_id: userProfile.bank_id || '',
+      bank_account_number: userProfile.bank_account_number || '',
+      bank_account_holder_name: userProfile.bank_account_holder_name || ''
+    }))
+    setIsEditingBank(false)
   }
 
   const getInitials = (name: string | null, email: string): string => {
@@ -860,6 +961,131 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Bank Information Card */}
+      <Card className="shadow-lg">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Bank Information</CardTitle>
+              <CardDescription>Your bank account details for payouts and transfers</CardDescription>
+            </div>
+            {!isEditingBank && (
+              <Button onClick={() => setIsEditingBank(true)} variant="outline" size="sm" className="gap-2">
+                <Edit2 className="h-4 w-4" />
+                Edit
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isEditingBank ? (
+            <>
+              <div>
+                <Label htmlFor="bank_account_holder_name" className="text-sm font-medium">Account Holder Name</Label>
+                <Input
+                  id="bank_account_holder_name"
+                  value={formData.bank_account_holder_name}
+                  onChange={(e) => setFormData({ ...formData, bank_account_holder_name: e.target.value.toUpperCase() })}
+                  placeholder="e.g., ALI BIN ABU"
+                  disabled={isSavingBank}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="bank_id" className="text-sm font-medium">Bank Name</Label>
+                <select
+                  id="bank_id"
+                  value={formData.bank_id}
+                  onChange={(e) => setFormData({ ...formData, bank_id: e.target.value })}
+                  disabled={isSavingBank}
+                  className="w-full mt-1 h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">Select Bank</option>
+                  {banks.map(bank => (
+                    <option key={bank.id} value={bank.id}>{bank.short_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="bank_account_number" className="text-sm font-medium">Account Number</Label>
+                <Input
+                  id="bank_account_number"
+                  value={formData.bank_account_number}
+                  onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value.replace(/\D/g, '') })}
+                  placeholder="e.g., 1234567890"
+                  disabled={isSavingBank}
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  onClick={handleSaveBankDetails} 
+                  className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+                  disabled={isSavingBank}
+                >
+                  {isSavingBank ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Save Bank Details
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  onClick={handleCancelBankEdit} 
+                  variant="outline" 
+                  className="flex-1 gap-2"
+                  disabled={isSavingBank}
+                >
+                  <X className="h-4 w-4" />
+                  Cancel
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 text-gray-700">
+                <User className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-500 font-medium">Account Holder Name</p>
+                  <p className="text-base font-medium text-gray-900 mt-1">
+                    {userProfile.bank_account_holder_name || (
+                      <span className="text-gray-400 italic">Not set</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 text-gray-700">
+                <Landmark className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-500 font-medium">Bank Name</p>
+                  <p className="text-base font-medium text-gray-900 mt-1">
+                    {userProfile.msia_banks?.short_name || (
+                      <span className="text-gray-400 italic">Not set</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 text-gray-700">
+                <CreditCard className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-500 font-medium">Account Number</p>
+                  <p className="text-base font-medium text-gray-900 mt-1">
+                    {userProfile.bank_account_number || (
+                      <span className="text-gray-400 italic">Not set</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
