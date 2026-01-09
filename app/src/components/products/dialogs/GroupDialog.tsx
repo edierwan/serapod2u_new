@@ -224,7 +224,14 @@ export default function GroupDialog({
               <Checkbox
                 id="hide_product"
                 checked={formData.hide_product === true}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, hide_product: Boolean(checked) }))}
+                onCheckedChange={(checked) => {
+                  // If hiding product, also hide price automatically
+                  if (checked) {
+                    setFormData(prev => ({ ...prev, hide_product: true, hide_price: true }))
+                  } else {
+                    setFormData(prev => ({ ...prev, hide_product: false }))
+                  }
+                }}
               />
               <Label htmlFor="hide_product" className="font-normal cursor-pointer">Hide Product (Catalog)</Label>
             </div>

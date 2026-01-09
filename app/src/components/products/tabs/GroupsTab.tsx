@@ -22,6 +22,8 @@ interface Group {
   group_name: string
   group_description: string | null
   is_active: boolean
+  hide_price?: boolean
+  hide_product?: boolean
   created_at: string
   category_name?: string
 }
@@ -85,6 +87,8 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
           group_name,
           group_description,
           is_active,
+          hide_price,
+          hide_product,
           created_at,
           product_categories (
             category_name
@@ -101,6 +105,8 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
         group_name: group.group_name,
         group_description: group.group_description,
         is_active: group.is_active,
+        hide_price: group.hide_price || false,
+        hide_product: group.hide_product || false,
         created_at: group.created_at,
         category_name: Array.isArray(group.product_categories) 
           ? group.product_categories[0]?.category_name || '-'
