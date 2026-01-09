@@ -4914,94 +4914,92 @@ export default function PremiumLoyaltyTemplate({
                     )}
                 </div>
 
-                {/* Bank Account Section (Shop Users and Independent Consumers) */}
-                {(isShopUser || !shopName) && (
-                    <div className="bg-transparent">
-                        <button
-                            onClick={() => setShowBankInfo(!showBankInfo)}
-                            className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors bg-white rounded-xl mb-3"
-                        >
-                            <div className="flex items-center gap-3">
-                                <CreditCard className="w-5 h-5 text-gray-600" />
-                                <span className="font-medium text-gray-900">Bank Account</span>
+                {/* Bank Account Section (All Users) */}
+                <div className="bg-transparent">
+                    <button
+                        onClick={() => setShowBankInfo(!showBankInfo)}
+                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors bg-white rounded-xl mb-3"
+                    >
+                        <div className="flex items-center gap-3">
+                            <CreditCard className="w-5 h-5 text-gray-600" />
+                            <span className="font-medium text-gray-900">Bank Account</span>
+                        </div>
+                        <ChevronRight className={`w-5 h-5 text-gray-400 transition-transform ${showBankInfo ? 'rotate-90' : ''}`} />
+                    </button>
+
+                    {showBankInfo && (
+                        <div className="bg-gray-50 rounded-xl mb-3 overflow-hidden p-4 space-y-4">
+                            <p className="text-sm text-gray-500 mb-2">Update your bank account details for payouts.</p>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name (Account Holder)</label>
+                                <Input
+                                    value={bankAccountHolderName}
+                                    onChange={(e) => setBankAccountHolderName(e.target.value)}
+                                    placeholder="e.g., ALI BIN ABU"
+                                    className="bg-white"
+                                />
                             </div>
-                            <ChevronRight className={`w-5 h-5 text-gray-400 transition-transform ${showBankInfo ? 'rotate-90' : ''}`} />
-                        </button>
 
-                        {showBankInfo && (
-                            <div className="bg-gray-50 rounded-xl mb-3 overflow-hidden p-4 space-y-4">
-                                <p className="text-sm text-gray-500 mb-2">Update your bank account details for payouts.</p>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name (Account Holder)</label>
-                                    <Input
-                                        value={bankAccountHolderName}
-                                        onChange={(e) => setBankAccountHolderName(e.target.value)}
-                                        placeholder="e.g., ALI BIN ABU"
-                                        className="bg-white"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
-                                    <select
-                                        value={bankId}
-                                        onChange={(e) => setBankId(e.target.value)}
-                                        className="w-full h-10 px-3 rounded-md border border-input bg-white text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    >
-                                        <option value="">Select Bank</option>
-                                        {banks.map(bank => (
-                                            <option key={bank.id} value={bank.id}>{bank.short_name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
-                                    <Input
-                                        value={bankAccountNumber}
-                                        onChange={(e) => setBankAccountNumber(e.target.value)}
-                                        placeholder="e.g., 1234567890"
-                                        className="bg-white"
-                                    />
-                                </div>
-
-                                {profileSaveError && (
-                                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-                                        <p className="text-sm text-red-600">{profileSaveError}</p>
-                                    </div>
-                                )}
-
-                                {profileSaveSuccess && (
-                                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
-                                        <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                                        <p className="text-sm text-green-600">Bank details saved successfully!</p>
-                                    </div>
-                                )}
-
-                                <Button
-                                    onClick={handleSaveProfile}
-                                    disabled={savingProfile}
-                                    className="w-full h-11 font-semibold mt-2"
-                                    style={{ backgroundColor: config.button_color }}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
+                                <select
+                                    value={bankId}
+                                    onChange={(e) => setBankId(e.target.value)}
+                                    className="w-full h-10 px-3 rounded-md border border-input bg-white text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                 >
-                                    {savingProfile ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Saving...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Save className="w-4 h-4 mr-2" />
-                                            Save Bank Details
-                                        </>
-                                    )}
-                                </Button>
+                                    <option value="">Select Bank</option>
+                                    {banks.map(bank => (
+                                        <option key={bank.id} value={bank.id}>{bank.short_name}</option>
+                                    ))}
+                                </select>
                             </div>
-                        )}
-                    </div>
-                )}
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
+                                <Input
+                                    value={bankAccountNumber}
+                                    onChange={(e) => setBankAccountNumber(e.target.value)}
+                                    placeholder="e.g., 1234567890"
+                                    className="bg-white"
+                                />
+                            </div>
+
+                            {profileSaveError && (
+                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                                    <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                                    <p className="text-sm text-red-600">{profileSaveError}</p>
+                                </div>
+                            )}
+
+                            {profileSaveSuccess && (
+                                <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
+                                    <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                                    <p className="text-sm text-green-600">Bank details saved successfully!</p>
+                                </div>
+                            )}
+
+                            <Button
+                                onClick={handleSaveProfile}
+                                disabled={savingProfile}
+                                className="w-full h-11 font-semibold mt-2"
+                                style={{ backgroundColor: config.button_color }}
+                            >
+                                {savingProfile ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="w-4 h-4 mr-2" />
+                                        Save Bank Details
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     )
