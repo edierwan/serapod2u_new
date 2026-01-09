@@ -140,18 +140,25 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
 
       if (error) throw error
 
-      const transformedProducts = (data || []).map((item: any) => ({
-        ...item,
-        brand_name: item.brands?.brand_name || 'No Brand',
-        category_name: item.product_categories?.category_name || 'Uncategorized',
-        primary_image_url: item.product_images?.find((img: any) => img.is_primary)?.image_url || 
-                          item.product_images?.[0]?.image_url || null,
-        variants: (item.product_variants || []).filter((v: any) => v.is_active),
-        hide_price: item.product_groups?.hide_price || false,
-        hide_product: item.product_groups?.hide_product || false
-      }))
+      const transformedProducts = (data || []).map((item: any) => {
+        // Handle both array and object responses from Supabase
+        const groupData = Array.isArray(item.product_groups) 
+          ? item.product_groups[0] 
+          : item.product_groups
+        
+        return {
+          ...item,
+          brand_name: item.brands?.brand_name || 'No Brand',
+          category_name: item.product_categories?.category_name || 'Uncategorized',
+          primary_image_url: item.product_images?.find((img: any) => img.is_primary)?.image_url || 
+                            item.product_images?.[0]?.image_url || null,
+          variants: (item.product_variants || []).filter((v: any) => v.is_active),
+          hide_price: groupData?.hide_price === true,
+          hide_product: groupData?.hide_product === true
+        }
+      })
 
-      // Filter out hidden products
+      // Filter out products from groups marked as hidden
       const visibleProducts = transformedProducts.filter((p: Product) => !p.hide_product)
 
       setProducts(visibleProducts)
