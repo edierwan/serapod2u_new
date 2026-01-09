@@ -5558,6 +5558,11 @@ export default function PremiumLoyaltyTemplate({
                     newBalance={redemptionDetails.newBalance}
                     redemptionCode={redemptionDetails.redemptionCode}
                     onClose={handleRedeemSuccessClose}
+                    isCashback={selectedReward?.item_code?.toLowerCase().includes('cashback') || false}
+                    deliveryAddress={userAddress || undefined}
+                    bankName={banks.find(b => b.id === bankId)?.short_name}
+                    bankAccount={bankAccountNumber || undefined}
+                    bankHolder={bankAccountHolderName || undefined}
                 />
             )}
 

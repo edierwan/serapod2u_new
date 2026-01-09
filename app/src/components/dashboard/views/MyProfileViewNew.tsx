@@ -9,9 +9,9 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { createClient } from '@/lib/supabase/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { 
-  User, Mail, Building2, Shield, Calendar, Phone, Edit2, Save, X, 
-  Loader2, Camera, CheckCircle, XCircle, Clock, MapPin, AlertCircle, CreditCard, Landmark, Home 
+import {
+  User, Mail, Building2, Shield, Calendar, Phone, Edit2, Save, X,
+  Loader2, Camera, CheckCircle, XCircle, Clock, MapPin, AlertCircle, CreditCard, Landmark, Home
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import SignatureUpload from '@/components/profile/SignatureUpload'
@@ -93,9 +93,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   useEffect(() => {
     loadUserProfile()
     loadBanks()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadBanks = async () => {
@@ -114,7 +114,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     try {
       setIsLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (!user) {
         toast({
           title: "Error",
@@ -153,17 +153,17 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         // Transform the data structure
         const transformedProfile: UserProfile = {
           ...(profile as any),
-          organizations: Array.isArray((profile as any).organizations) 
-            ? (profile as any).organizations[0] 
+          organizations: Array.isArray((profile as any).organizations)
+            ? (profile as any).organizations[0]
             : (profile as any).organizations,
-          roles: Array.isArray((profile as any).roles) 
-            ? (profile as any).roles[0] 
+          roles: Array.isArray((profile as any).roles)
+            ? (profile as any).roles[0]
             : (profile as any).roles,
-          msia_banks: Array.isArray((profile as any).msia_banks) 
-            ? (profile as any).msia_banks[0] 
+          msia_banks: Array.isArray((profile as any).msia_banks)
+            ? (profile as any).msia_banks[0]
             : (profile as any).msia_banks
         }
-        
+
         setUserProfile(transformedProfile)
         setFormData({
           full_name: transformedProfile.full_name || '',
@@ -198,7 +198,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         })
         return
       }
-      
+
       // Check for AVIF format - not supported by Supabase Storage
       if (file.type === 'image/avif') {
         toast({
@@ -215,9 +215,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       try {
         // Compress image to be under 5KB
         const compressedFile = await compressImage(file)
-        
+
         setAvatarFile(compressedFile)
-        
+
         // Create preview
         const reader = new FileReader()
         reader.onloadend = () => {
@@ -246,7 +246,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           const canvas = document.createElement('canvas')
           let width = img.width
           let height = img.height
-          
+
           // Resize to max 150px to ensure small size
           const MAX_SIZE = 150
           if (width > height) {
@@ -260,22 +260,22 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               height = MAX_SIZE
             }
           }
-          
+
           canvas.width = width
           canvas.height = height
           const ctx = canvas.getContext('2d')
           ctx?.drawImage(img, 0, 0, width, height)
-          
+
           // Start with quality 0.7
           let quality = 0.7
-          
+
           const compress = () => {
             canvas.toBlob((blob) => {
               if (!blob) {
                 reject(new Error('Canvas is empty'))
                 return
               }
-              
+
               // If still > 5KB and quality > 0.1, reduce quality and try again
               if (blob.size > 5 * 1024 && quality > 0.1) {
                 quality -= 0.1
@@ -290,7 +290,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               }
             }, 'image/jpeg', quality)
           }
-          
+
           compress()
         }
         img.onerror = (error) => reject(error)
@@ -321,18 +321,18 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           return
         }
       }
-      
+
       // Check if phone is already in use if changed
       if (formData.phone && formData.phone !== userProfile.phone) {
         const normalizedPhone = normalizePhone(formData.phone)
         const { data: exists, error: checkError } = await supabase
-          .rpc('check_phone_exists', { 
+          .rpc('check_phone_exists', {
             p_phone: normalizedPhone,
             p_exclude_user_id: userProfile.id
           })
-        
+
         if (checkError) throw checkError
-        
+
         if (exists) {
           toast({
             title: "Error",
@@ -356,7 +356,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         try {
           // Compress the avatar first
           const compressionResult = await compressAvatar(avatarFile)
-          
+
           toast({
             title: '🖼️ Avatar Compressed',
             description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
@@ -370,11 +370,11 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               await supabase.storage.from('avatars').remove([pathToDelete])
             }
           }
-          
+
           // Upload new avatar
           const fileName = `${Date.now()}.jpg`
           const filePath = `${userProfile.id}/${fileName}`
-          
+
           const { error: uploadError } = await supabase.storage
             .from('avatars')
             .upload(filePath, compressionResult.file, {
@@ -382,21 +382,21 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               cacheControl: '3600',
               upsert: true
             })
-          
+
           if (uploadError) throw uploadError
-          
+
           // Get public URL
           const { data: urlData } = supabase.storage
             .from('avatars')
             .getPublicUrl(filePath)
-          
+
           updateData.avatar_url = `${urlData.publicUrl}?v=${Date.now()}`
         } catch (avatarError: any) {
           console.error('Avatar upload error:', avatarError)
-          toast({ 
-            title: 'Warning', 
-            description: `Avatar upload failed: ${avatarError.message}`, 
-            variant: 'destructive' 
+          toast({
+            title: 'Warning',
+            description: `Avatar upload failed: ${avatarError.message}`,
+            variant: 'destructive'
           })
           // Don't return - continue with other updates
         }
@@ -414,15 +414,15 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         title: "Success",
         description: "Your profile has been updated successfully.",
       })
-      
+
       // Reset editing state
       setIsEditing(false)
       setAvatarFile(null)
       setAvatarPreview(null)
-      
+
       // Reload fresh data from database
       await loadUserProfile()
-      
+
     } catch (error: any) {
       console.error('Error updating profile:', error)
       toast({
@@ -485,7 +485,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         bank_account_holder_name: formData.bank_account_holder_name || null
       }))
       setIsEditingBank(false)
-      
+
       // Refresh profile to get updated bank name
       loadUserProfile()
     } catch (error: any) {
@@ -541,10 +541,10 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const formatDate = (dateString: string | null): string => {
     if (!dateString) return 'N/A'
     try {
-      return new Date(dateString).toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
       })
     } catch { return 'Invalid date' }
   }
@@ -552,9 +552,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const formatDateTime = (dateString: string | null): string => {
     if (!dateString) return 'Never'
     try {
-      return new Date(dateString).toLocaleString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
+      return new Date(dateString).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
@@ -638,9 +638,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               <div className="relative">
                 <Avatar className="h-24 w-24 cursor-pointer border-4 border-gray-100" onClick={handleAvatarClick}>
                   {(avatarPreview || userProfile.avatar_url) && (
-                    <AvatarImage 
-                      src={avatarPreview || getStorageUrl(`${userProfile.avatar_url?.split('?')[0]}?v=${Date.now()}`) || userProfile.avatar_url} 
-                      alt={userProfile.full_name || 'User'} 
+                    <AvatarImage
+                      src={avatarPreview || getStorageUrl(`${userProfile.avatar_url?.split('?')[0]}?v=${Date.now()}`) || userProfile.avatar_url}
+                      alt={userProfile.full_name || 'User'}
                     />
                   )}
                   <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-3xl font-semibold">
@@ -742,8 +742,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     <p className="text-xs text-gray-500 mt-1">{formData.address.length}/255 characters</p>
                   </div>
                   <div className="flex gap-3 pt-4">
-                    <Button 
-                      onClick={handleSave} 
+                    <Button
+                      onClick={handleSave}
                       className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
                       disabled={isSaving}
                     >
@@ -759,9 +759,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                         </>
                       )}
                     </Button>
-                    <Button 
-                      onClick={handleCancel} 
-                      variant="outline" 
+                    <Button
+                      onClick={handleCancel}
+                      variant="outline"
                       className="flex-1 gap-2"
                       disabled={isSaving}
                     >
@@ -777,7 +777,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-500 font-medium">Full Name</p>
-                        <button 
+                        <button
                           onClick={() => setIsEditing(true)}
                           className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
                         >
@@ -796,7 +796,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-500 font-medium">Phone Number</p>
-                        <button 
+                        <button
                           onClick={() => setIsEditing(true)}
                           className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
                         >
@@ -815,7 +815,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-500 font-medium">Address</p>
-                        <button 
+                        <button
                           onClick={() => setIsEditing(true)}
                           className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
                         >
@@ -1070,8 +1070,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                 />
               </div>
               <div className="flex gap-3 pt-4">
-                <Button 
-                  onClick={handleSaveBankDetails} 
+                <Button
+                  onClick={handleSaveBankDetails}
                   className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
                   disabled={isSavingBank}
                 >
@@ -1087,9 +1087,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     </>
                   )}
                 </Button>
-                <Button 
-                  onClick={handleCancelBankEdit} 
-                  variant="outline" 
+                <Button
+                  onClick={handleCancelBankEdit}
+                  variant="outline"
                   className="flex-1 gap-2"
                   disabled={isSavingBank}
                 >
@@ -1171,9 +1171,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                 </div>
               </AlertDescription>
             </Alert>
-            
-            <SignatureUpload 
-              userId={userProfile.id} 
+
+            <SignatureUpload
+              userId={userProfile.id}
               currentSignatureUrl={userProfile.signature_url}
               onSignatureUpdated={(url) => {
                 setUserProfile(prev => ({ ...prev, signature_url: url || null }))

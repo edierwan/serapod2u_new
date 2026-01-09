@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Gift, Check, Sparkles, Package, Clock } from 'lucide-react'
+import { Gift, Check, Sparkles, Package, Clock, MapPin, Building2 } from 'lucide-react'
 import confetti from 'canvas-confetti'
 
 interface RewardRedemptionAnimationProps {
@@ -13,6 +13,12 @@ interface RewardRedemptionAnimationProps {
     redemptionCode: string
     onClose: () => void
     autoCloseDelay?: number
+    // Optional delivery info
+    isCashback?: boolean
+    deliveryAddress?: string
+    bankName?: string
+    bankAccount?: string
+    bankHolder?: string
 }
 
 export function RewardRedemptionAnimation({
@@ -22,7 +28,12 @@ export function RewardRedemptionAnimation({
     newBalance,
     redemptionCode,
     onClose,
-    autoCloseDelay = 0 // 0 means no auto-close, user must click Done
+    autoCloseDelay = 0, // 0 means no auto-close, user must click Done
+    isCashback = false,
+    deliveryAddress,
+    bankName,
+    bankAccount,
+    bankHolder
 }: RewardRedemptionAnimationProps) {
     const [showCheck, setShowCheck] = useState(false)
     const [showDetails, setShowDetails] = useState(false)
@@ -182,10 +193,36 @@ export function RewardRedemptionAnimation({
                                         </p>
                                     </div>
 
-                                    {/* Processing message */}
-                                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500 pt-2">
-                                        <Clock className="w-4 h-4" />
-                                        <p>Your reward will be processed and delivered soon</p>
+                                    {/* Processing message with delivery/bank info */}
+                                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-100">
+                                        {isCashback && bankName && bankAccount && bankHolder ? (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-green-700">
+                                                    <Building2 className="w-5 h-5" />
+                                                    <p className="text-sm font-medium">Your cash will be transferred to:</p>
+                                                </div>
+                                                <div className="bg-white/60 rounded-xl p-3 space-y-1">
+                                                    <p className="text-sm"><span className="text-gray-500">Bank:</span> <span className="font-semibold text-gray-900">{bankName}</span></p>
+                                                    <p className="text-sm"><span className="text-gray-500">Account:</span> <span className="font-semibold text-gray-900">{bankAccount}</span></p>
+                                                    <p className="text-sm"><span className="text-gray-500">Holder:</span> <span className="font-semibold text-gray-900">{bankHolder}</span></p>
+                                                </div>
+                                            </div>
+                                        ) : !isCashback && deliveryAddress ? (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-green-700">
+                                                    <MapPin className="w-5 h-5" />
+                                                    <p className="text-sm font-medium">Your item will be delivered to:</p>
+                                                </div>
+                                                <div className="bg-white/60 rounded-xl p-3">
+                                                    <p className="text-sm font-semibold text-gray-900">{deliveryAddress}</p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                                                <Clock className="w-4 h-4" />
+                                                <p>Your reward will be processed and delivered soon</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
