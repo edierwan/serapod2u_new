@@ -55,6 +55,10 @@ export async function GET(request: NextRequest) {
         product_description,
         brands (brand_name),
         product_categories (category_name, hide_price),
+        product_groups (
+          hide_price,
+          hide_product
+        ),
         product_images (
           image_url,
           is_primary
@@ -80,18 +84,28 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform products data
-    const transformedProducts = (products || []).map((item: any) => ({
-      id: item.id,
-      product_code: item.product_code,
-      product_name: item.product_name,
-      product_description: item.product_description,
-      brand_name: item.brands?.brand_name || 'No Brand',
-      category_name: item.product_categories?.category_name || 'Uncategorized',
-      hide_price: item.product_categories?.hide_price || false,
-      primary_image_url: item.product_images?.find((img: any) => img.is_primary)?.image_url || 
-                        item.product_images?.[0]?.image_url || null,
-      variants: item.product_variants || []
-    }))
+    const transformedProducts = (products || [])
+      .map((item: any) => {
+        // Handle both array and object responses from Supabase
+        const groupData = Array.isArray(item.product_groups) 
+          ? item.product_groups[0] 
+          : item.product_groups
+
+        return {
+          id: item.id,
+          product_code: item.product_code,
+          product_name: item.product_name,
+          product_description: item.product_description,
+          brand_name: item.brands?.brand_name || 'No Brand',
+          category_name: item.product_categories?.category_name || 'Uncategorized',
+          hide_price: (groupData?.hide_price === true) || (item.product_categories?.hide_price === true) || false,
+          hide_product: groupData?.hide_product === true,
+          primary_image_url: item.product_images?.find((img: any) => img.is_primary)?.image_url || 
+                            item.product_images?.[0]?.image_url || null,
+          variants: item.product_variants || []
+        }
+      })
+      .filter((item: any) => !item.hide_product)
 
     return NextResponse.json({
       success: true,
