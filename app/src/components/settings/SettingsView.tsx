@@ -97,6 +97,7 @@ interface OrganizationSettings {
   signature_type: 'none' | 'upload' | 'electronic'
   signature_url: string | null
   journey_builder_activation: 'shipped_distributor' | 'received_warehouse'
+  auto_journey_creation: boolean
   qr_tracking_visibility: {
     manufacturer: {
       scan: boolean
@@ -148,6 +149,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     signature_type: 'none',
     signature_url: null,
     journey_builder_activation: 'shipped_distributor',
+    auto_journey_creation: false,
     qr_tracking_visibility: {
       manufacturer: { scan: true, scan2: true },
       warehouse: { receive: true, receive2: true, ship: true }
@@ -258,6 +260,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         signature_type: orgData.signature_type || 'none',
         signature_url: orgData.signature_url || null,
         journey_builder_activation: settings.journey_builder_activation || 'shipped_distributor',
+        auto_journey_creation: settings.auto_journey_creation ?? false,
         qr_tracking_visibility: qrVisibility
       })
 
@@ -351,6 +354,7 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               ...rawSettings,
               require_payment_proof: orgSettings.require_payment_proof,
               journey_builder_activation: orgSettings.journey_builder_activation,
+              auto_journey_creation: orgSettings.auto_journey_creation,
               qr_tracking_visibility: orgSettings.qr_tracking_visibility // Keeping as fallback
             },
             updated_at: new Date().toISOString()
@@ -1715,6 +1719,23 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
                       <p className="text-sm text-gray-500">
                         Determines the earliest status at which a product's journey becomes active for consumers.
                       </p>
+                    </div>
+
+                    {/* Auto Journey Creation */}
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <div className="space-y-1">
+                        <Label htmlFor="auto-journey" className="cursor-pointer font-medium">
+                          Auto Journey Creation
+                        </Label>
+                        <p className="text-sm text-gray-500">
+                          Automatically create a journey when warehouse completes receiving an order
+                        </p>
+                      </div>
+                      <Switch
+                        id="auto-journey"
+                        checked={orgSettings.auto_journey_creation}
+                        onCheckedChange={(checked) => setOrgSettings({ ...orgSettings, auto_journey_creation: checked })}
+                      />
                     </div>
                   </div>
 

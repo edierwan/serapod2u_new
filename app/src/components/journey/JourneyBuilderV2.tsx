@@ -28,11 +28,14 @@ import {
     QrCode,
     Scan,
     BarChart3,
-    Loader2
+    Loader2,
+    LayoutGrid,
+    List
 } from 'lucide-react'
 import JourneyOrderSelectorV2 from './JourneyOrderSelectorV2'
 import JourneyDesignerV2 from './JourneyDesignerV2'
 import JourneyCardWithStats from './JourneyCardWithStats'
+import JourneyListRow from './JourneyListRow'
 
 interface UserProfile {
     id: string
@@ -90,6 +93,8 @@ interface Order {
     company_id: string
 }
 
+const ITEMS_PER_PAGE = 12
+
 export default function JourneyBuilderV2({ userProfile }: { userProfile: UserProfile }) {
     const [step, setStep] = useState<'select-order' | 'design-journey' | 'preview'>('select-order')
     const [journeys, setJourneys] = useState<JourneyConfig[]>([])
@@ -98,6 +103,8 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
     const [loading, setLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState('')
     const [activeTab, setActiveTab] = useState('existing')
+    const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
+    const [currentPage, setCurrentPage] = useState(1)
 
     const supabase = createClient()
 
@@ -299,6 +306,18 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
         j.order_info?.order_no.toLowerCase().includes(searchQuery.toLowerCase())
     )
 
+    // Pagination for existing journeys
+    const totalPages = Math.ceil(filteredJourneys.length / ITEMS_PER_PAGE)
+    const paginatedJourneys = filteredJourneys.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    )
+
+    // Reset page when search changes
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchQuery])
+
     if (step === 'design-journey' && selectedOrder) {
         return (
             <JourneyDesignerV2
@@ -393,17 +412,37 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
 
                 {/* Existing Journeys Tab */}
                 <TabsContent value="existing" className="space-y-4">
-                    {/* Search */}
+                    {/* Search and View Toggle */}
                     <Card>
                         <CardContent className="pt-6">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                <Input
-                                    placeholder="Search journeys by name or order number..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="pl-10"
-                                />
+                            <div className="flex gap-4 items-center">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <Input
+                                        placeholder="Search journeys by name or order number..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-10"
+                                    />
+                                </div>
+                                <div className="flex border rounded-md">
+                                    <Button
+                                        variant={viewMode === 'card' ? 'default' : 'ghost'}
+                                        size="sm"
+                                        onClick={() => setViewMode('card')}
+                                        className="rounded-r-none"
+                                    >
+                                        <LayoutGrid className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                        variant={viewMode === 'list' ? 'default' : 'ghost'}
+                                        size="sm"
+                                        onClick={() => setViewMode('list')}
+                                        className="rounded-l-none"
+                                    >
+                                        <List className="w-4 h-4" />
+                                    </Button>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
@@ -436,9 +475,9 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                                 )}
                             </CardContent>
                         </Card>
-                    ) : (
+                    ) : viewMode === 'card' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredJourneys.map((journey) => (
+                            {paginatedJourneys.map((journey) => (
                                 <JourneyCardWithStats
                                     key={journey.id}
                                     journey={journey}
@@ -447,6 +486,57 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                                     onDelete={() => handleDeleteJourney(journey.id)}
                                 />
                             ))}
+                        </div>
+                    ) : (
+                        <Card>
+                            <CardContent className="p-0">
+                                <div className="divide-y">
+                                    {paginatedJourneys.map((journey) => (
+                                        <JourneyListRow
+                                            key={journey.id}
+                                            journey={journey}
+                                            onEdit={() => handleEditJourney(journey)}
+                                            onDuplicate={() => handleDuplicateJourney(journey)}
+                                            onDelete={() => handleDeleteJourney(journey.id)}
+                                        />
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                Previous
+                            </Button>
+                            <div className="flex items-center gap-1">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                    <Button
+                                        key={page}
+                                        variant={currentPage === page ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => setCurrentPage(page)}
+                                        className="w-8 h-8 p-0"
+                                    >
+                                        {page}
+                                    </Button>
+                                ))}
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                            >
+                                Next
+                            </Button>
                         </div>
                     )}
                 </TabsContent>

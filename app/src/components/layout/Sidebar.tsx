@@ -494,18 +494,18 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           .single()
 
         if (!error && data) {
-          let settings = data.settings
+          let settings: Record<string, any> = {}
 
           // Handle case where settings is a string (JSON)
-          if (typeof settings === 'string') {
+          if (typeof data.settings === 'string') {
             try {
-              settings = JSON.parse(settings)
+              settings = JSON.parse(data.settings)
             } catch (e) {
               console.error('Failed to parse settings JSON in Sidebar:', e)
               settings = {}
             }
-          } else if (typeof settings !== 'object' || settings === null) {
-            settings = {}
+          } else if (typeof data.settings === 'object' && data.settings !== null) {
+            settings = data.settings as Record<string, any>
           }
 
           const branding = settings?.branding
@@ -521,11 +521,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
           let loadedFromPrefs = false
           try {
             const { data: prefs, error: prefsError } = await supabase
-              .schema('core')
-              .from('system_preferences')
+              .from('system_preferences' as any)
               .select('*')
               .eq('company_id', userProfile.organization_id)
-              .eq('module', 'qr_tracking')
+              .eq('module', 'qr_tracking') as { data: any[] | null, error: any }
 
             if (prefsError) {
               // Log warning but don't crash - likely migration missing
@@ -554,11 +553,11 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
             setQrTrackingVisibility(prev => ({
               manufacturer: {
                 ...prev.manufacturer,
-                ...(settings.qr_tracking_visibility.manufacturer || {})
+                ...(settings.qr_tracking_visibility?.manufacturer || {})
               },
               warehouse: {
                 ...prev.warehouse,
-                ...(settings.qr_tracking_visibility.warehouse || {})
+                ...(settings.qr_tracking_visibility?.warehouse || {})
               }
             }))
           }

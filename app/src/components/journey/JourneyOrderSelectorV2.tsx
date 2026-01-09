@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Search, Package, ArrowRight, Gift, Star, Coins, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Search, Package, ArrowRight, Gift, Star, Coins, CheckCircle2, AlertCircle, LayoutGrid, List } from 'lucide-react'
 
 interface Order {
     id: string
@@ -38,6 +38,9 @@ export default function JourneyOrderSelectorV2({
     const [orders, setOrders] = useState<Order[]>([])
     const [loading, setLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState('')
+    const [viewMode, setViewMode] = useState<'card' | 'list'>('list') // Default to list view
+    const [currentPage, setCurrentPage] = useState(1)
+    const ITEMS_PER_PAGE = 12
     const supabase = createClient()
 
     useEffect(() => {
@@ -50,10 +53,12 @@ export default function JourneyOrderSelectorV2({
             setLoading(true)
 
             // Get orders for this organization - use buyer_org_id or seller_org_id
+            // Filter to only show HM (H2M) orders - DH orders have QR codes that are part of HM orders
             const { data: orders, error: ordersError } = await supabase
                 .from('orders')
                 .select('id, order_no, order_type, status, has_redeem, has_lucky_draw, company_id, created_at')
                 .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
+                .eq('order_type', 'H2M') // Only HM orders - QR codes for DH are already part of HM orders
                 .order('created_at', { ascending: false })
 
             if (ordersError) {
@@ -141,6 +146,18 @@ export default function JourneyOrderSelectorV2({
         order.order_no.toLowerCase().includes(searchQuery.toLowerCase())
     )
 
+    // Pagination
+    const totalPages = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE)
+    const paginatedOrders = filteredOrders.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    )
+
+    // Reset page when search changes
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchQuery])
+
     if (loading) {
         return (
             <Card>
@@ -162,14 +179,34 @@ export default function JourneyOrderSelectorV2({
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <Input
-                            placeholder="Search orders by order number..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10"
-                        />
+                    <div className="flex gap-4 items-center">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <Input
+                                placeholder="Search orders by order number..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10"
+                            />
+                        </div>
+                        <div className="flex border rounded-md">
+                            <Button
+                                variant={viewMode === 'card' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => setViewMode('card')}
+                                className="rounded-r-none"
+                            >
+                                <LayoutGrid className="w-4 h-4" />
+                            </Button>
+                            <Button
+                                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => setViewMode('list')}
+                                className="rounded-l-none"
+                            >
+                                <List className="w-4 h-4" />
+                            </Button>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -189,9 +226,9 @@ export default function JourneyOrderSelectorV2({
                         </p>
                     </CardContent>
                 </Card>
-            ) : (
+            ) : viewMode === 'card' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredOrders.map((order) => {
+                    {paginatedOrders.map((order) => {
                         const journeyCheck = canCreateJourney(order)
 
                         return (
@@ -263,6 +300,101 @@ export default function JourneyOrderSelectorV2({
                             </Card>
                         )
                     })}
+                </div>
+            ) : (
+                <Card>
+                    <CardContent className="p-0">
+                        <div className="divide-y">
+                            {paginatedOrders.map((order) => {
+                                const journeyCheck = canCreateJourney(order)
+                                return (
+                                    <div
+                                        key={order.id}
+                                        className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${!journeyCheck.can ? 'opacity-60' : ''}`}
+                                    >
+                                        {/* Order Info */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="font-medium text-gray-900">{order.order_no}</h3>
+                                                {getStatusBadge(order.status)}
+                                            </div>
+                                            <p className="text-sm text-gray-500">{getOrderTypeLabel(order.order_type)}</p>
+                                        </div>
+
+                                        {/* Features */}
+                                        <div className="hidden md:flex items-center gap-1">
+                                            {order.has_lucky_draw && (
+                                                <div className="p-1.5 rounded-md bg-purple-100 text-purple-600" title="Lucky Draw">
+                                                    <Star className="w-3.5 h-3.5" />
+                                                </div>
+                                            )}
+                                            {order.has_redeem && (
+                                                <div className="p-1.5 rounded-md bg-green-100 text-green-600" title="Redemption">
+                                                    <Gift className="w-3.5 h-3.5" />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Date & Items */}
+                                        <div className="hidden lg:block text-xs text-gray-500 w-32">
+                                            <p>Created: {new Date(order.created_at).toLocaleDateString()}</p>
+                                            <p>Items: {order.order_items?.length || 0} products</p>
+                                        </div>
+
+                                        {/* Action */}
+                                        {journeyCheck.can ? (
+                                            <Button
+                                                size="sm"
+                                                onClick={() => onOrderSelected(order)}
+                                            >
+                                                Create Journey
+                                                <ArrowRight className="w-4 h-4 ml-1" />
+                                            </Button>
+                                        ) : (
+                                            <Button size="sm" disabled>
+                                                Cannot Create
+                                            </Button>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                    >
+                        Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            <Button
+                                key={page}
+                                variant={currentPage === page ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setCurrentPage(page)}
+                                className="w-8 h-8 p-0"
+                            >
+                                {page}
+                            </Button>
+                        ))}
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                    >
+                        Next
+                    </Button>
                 </div>
             )}
         </div>

@@ -173,6 +173,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       .select(`
         id,
         order_no,
+        order_type,
         status,
         created_at,
         seller_org_id,
@@ -463,6 +464,33 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         title: 'Receiving Complete! 🎉',
         description: `Batch ${currentBatch.batch_code} has been received in warehouse.`,
       })
+
+      // Try to auto-create journey if enabled
+      try {
+        console.log('[Warehouse] Attempting auto-journey creation for order_id:', currentBatch.order_id)
+        const autoJourneyResponse = await fetch('/api/journey/auto-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: currentBatch.order_id })
+        })
+        
+        const autoJourneyData = await autoJourneyResponse.json()
+        console.log('[Warehouse] Auto-journey response:', autoJourneyData)
+        
+        if (autoJourneyData.success && autoJourneyData.journey) {
+          toast({
+            title: 'Journey Created! 🚀',
+            description: autoJourneyData.message || `Journey has been automatically created for this order.`,
+          })
+        } else if (autoJourneyData.skipped) {
+          console.log('[Warehouse] Auto-journey creation skipped:', autoJourneyData.reason)
+        } else if (autoJourneyData.error) {
+          console.error('[Warehouse] Auto-journey creation error:', autoJourneyData.error)
+        }
+      } catch (journeyError) {
+        console.error('[Warehouse] Error auto-creating journey:', journeyError)
+        // Don't fail the whole process if journey creation fails
+      }
 
       // Refresh batch data
       await fetchBatchProgress(currentBatch.batch_id, orders.find(o => o.id === selectedOrder))

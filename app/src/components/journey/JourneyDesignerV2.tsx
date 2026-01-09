@@ -308,7 +308,7 @@ export default function JourneyDesignerV2({
         scratch_card_icon: journey?.scratch_card_icon || 'Gift',
 
         start_at: journey?.start_at ? journey.start_at.split('T')[0] : new Date().toISOString().split('T')[0],
-        end_at: journey?.end_at ? journey.end_at.split('T')[0] : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        end_at: journey?.end_at ? journey.end_at.split('T')[0] : '', // Empty by default for infinite duration
         welcome_title: journey?.welcome_title || 'Welcome!',
         welcome_message: journey?.welcome_message || 'Thank you for scanning our QR code. Enjoy exclusive rewards and benefits!',
         thank_you_message: journey?.thank_you_message || 'Thank you for your participation!',
@@ -374,7 +374,7 @@ export default function JourneyDesignerV2({
                 scratch_card_icon: journey.scratch_card_icon || 'Gift',
 
                 start_at: journey.start_at ? journey.start_at.split('T')[0] : new Date().toISOString().split('T')[0],
-                end_at: journey.end_at ? journey.end_at.split('T')[0] : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                end_at: journey.end_at ? journey.end_at.split('T')[0] : '', // Empty by default for infinite duration
                 welcome_title: journey.welcome_title || 'Welcome!',
                 welcome_message: journey.welcome_message || 'Thank you for scanning our QR code. Enjoy exclusive rewards and benefits!',
                 thank_you_message: journey.thank_you_message || 'Thank you for your participation!',
