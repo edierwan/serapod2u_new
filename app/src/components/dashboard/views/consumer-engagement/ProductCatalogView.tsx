@@ -298,13 +298,19 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map(product => (
             <Card key={product.id} className="group hover:shadow-xl transition-all duration-300">
-              <div className="relative h-48 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
+              <div 
+                className="relative h-48 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden cursor-pointer"
+                onClick={() => {
+                  sessionStorage.setItem('selectedProductId', product.id)
+                  onViewChange('product-details')
+                }}
+              >
                 {product.primary_image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img 
                     src={getStorageUrl(product.primary_image_url) || product.primary_image_url} 
                     alt={product.product_name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
@@ -320,7 +326,13 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
               
               <CardContent className="pt-4">
                 <div className="space-y-2">
-                  <h3 className="font-semibold text-gray-900 line-clamp-2 min-h-[3rem]">
+                  <h3 
+                    className="font-semibold text-gray-900 line-clamp-2 min-h-[3rem] cursor-pointer hover:text-blue-600 transition-colors"
+                    onClick={() => {
+                      sessionStorage.setItem('selectedProductId', product.id)
+                      onViewChange('product-details')
+                    }}
+                  >
                     {product.product_name}
                   </h3>
                   
@@ -371,7 +383,13 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
               {filteredProducts.map(product => (
                 <div key={product.id} className="p-6 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center gap-6">
-                    <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                    <div 
+                      className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                      onClick={() => {
+                        sessionStorage.setItem('selectedProductId', product.id)
+                        onViewChange('product-details')
+                      }}
+                    >
                       {product.primary_image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img 
@@ -385,7 +403,13 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                     </div>
 
                     <div className="flex-1">
-                      <h3 className="font-semibold text-lg text-gray-900">
+                      <h3 
+                        className="font-semibold text-lg text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
+                        onClick={() => {
+                          sessionStorage.setItem('selectedProductId', product.id)
+                          onViewChange('product-details')
+                        }}
+                      >
                         {product.product_name}
                       </h3>
                       <p className="text-sm text-gray-600 mt-1">
