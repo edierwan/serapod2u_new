@@ -177,13 +177,13 @@ async function prefetchUsersForBatch(
         phones.length > 0 
             ? supabaseAdmin
                 .from("users")
-                .select("id, email, phone, full_name, location, last_migration_point_value")
+                .select("id, email, phone, full_name, location, last_migration_point_value, role_code")
                 .in("phone", phones)
             : Promise.resolve({ data: [] }),
         emails.length > 0 
             ? supabaseAdmin
                 .from("users")
-                .select("id, email, phone, full_name, location, last_migration_point_value")
+                .select("id, email, phone, full_name, location, last_migration_point_value, role_code")
                 .in("email", emails)
             : Promise.resolve({ data: [] }),
     ]);
@@ -274,8 +274,12 @@ async function processRowOptimized(
         user = emailUser;
     }
 
+    let isNewUser = false;
+
     // If user not found, create new user
     if (!user) {
+        isNewUser = true;
+
         if (!userPassword) {
             throw new Error("New user requires a password. Please provide a password.");
         }
@@ -357,6 +361,8 @@ async function processRowOptimized(
         lastMigrationValue,
         updates,
         row,
+        isNewUser,
+        userRole: user.role_code
     };
 }
 
@@ -578,6 +584,16 @@ export async function POST(request: NextRequest) {
 
                     // Add successful results
                     for (const r of processedRows) {
+                        let message = `Delta: ${r.delta}`;
+                        
+                        // Add context about user status
+                        if (r.isNewUser) {
+                             message = `New User Created. ${message}`;
+                        } else {
+                             const roleInfo = r.userRole && r.userRole !== 'GUEST' ? ` (${r.userRole})` : '';
+                             message = `Existing User Updated${roleInfo}. ${message}`;
+                        }
+
                         allResults.push({
                             rowNumber: r.row.rowNumber,
                             joinedDate: r.row.joinedDate,
@@ -588,7 +604,9 @@ export async function POST(request: NextRequest) {
                             points: r.row.points,
                             password: r.row.password,
                             status: "Success",
-                            message: `Delta: ${r.delta}`,
+                            message: message,
+                            isNewUser: r.isNewUser,
+                            userRole: r.userRole
                         });
                         successCount++;
                     }

@@ -34,6 +34,8 @@ interface MigrationResult {
   password?: string
   status: 'Success' | 'Error'
   message: string
+  isNewUser?: boolean
+  userRole?: string
 }
 
 interface ProgressState {
@@ -333,10 +335,26 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   const downloadAllResults = () => {
     if (results.length === 0) return
 
-    const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'Status', 'Message']
-    const rows = results.map(r =>
-      [r.joinedDate, r.name, r.phone, r.email, r.location, r.points, r.password || '', r.status, r.message].join(',')
-    )
+    const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'Status', 'UserType', 'MatchedRole', 'Message']
+    const rows = results.map(r => {
+      const userType = r.status === 'Success' ? (r.isNewUser ? 'New Account' : 'Existing Account') : ''
+      const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
+      const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
+      
+      return [
+        r.joinedDate, 
+        safeName, 
+        r.phone, 
+        r.email, 
+        r.location, 
+        r.points, 
+        r.password || '', 
+        r.status, 
+        userType,
+        r.userRole || '',
+        safeMessage
+      ].join(',')
+    })
     const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.join("\n")
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement("a")
@@ -404,6 +422,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
 
   const successCount = results.filter(r => r.status === 'Success').length
   const errorCount = results.filter(r => r.status === 'Error').length
+  const newUsersCount = results.filter(r => r.status === 'Success' && r.isNewUser).length
+  const existingUsersCount = results.filter(r => r.status === 'Success' && r.isNewUser === false).length
 
   return (
     <div className="space-y-6">
@@ -538,20 +558,33 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge
+                      variant="outline"
+                      className="bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors"
+                      onClick={() => {
+                        setFilterStatus('Success')
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      {successCount} Success
+                    </Badge>
+                    {successCount > 0 && (
+                      <div className="flex gap-1 text-[10px] items-center">
+                         <span className="text-gray-500 font-medium bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200" title="New accounts created">
+                           New: {newUsersCount}
+                         </span>
+                         <span className="text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="Existing users updated">
+                           Exist: {existingUsersCount}
+                         </span>
+                      </div>
+                    )}
+                  </div>
+
                   <Badge
                     variant="outline"
-                    className="bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors"
-                    onClick={() => {
-                      setFilterStatus('Success')
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    {successCount} Success
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className="bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors"
+                    className="bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors self-start mt-0.5"
                     onClick={() => {
                       setFilterStatus('Error')
                       setCurrentPage(1)
@@ -707,7 +740,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                     }}
                   >
                     {PAGE_SIZE_OPTIONS.map(size => (
-                      <option key={size} value={size}>{size}</option>
+                      <option key={size} value={size}>{size === -1 ? 'All' : size}</option>
                     ))}
                   </select>
                 </div>
