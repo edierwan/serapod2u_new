@@ -475,6 +475,8 @@ export async function POST(request: NextRequest) {
                 const allResults: any[] = [];
                 let successCount = 0;
                 let errorCount = 0;
+                let newUsersCount = 0;
+                let existingUsersCount = 0;
 
                 // Process rows in optimized batches
                 for (let i = 0; i < rows.length; i += BATCH_SIZE) {
@@ -609,6 +611,11 @@ export async function POST(request: NextRequest) {
                             userRole: r.userRole
                         });
                         successCount++;
+                        if (r.isNewUser) {
+                            newUsersCount++;
+                        } else {
+                            existingUsersCount++;
+                        }
                     }
 
                     // Send progress update
@@ -620,6 +627,8 @@ export async function POST(request: NextRequest) {
                         progress,
                         success: successCount,
                         errors: errorCount,
+                        newUsers: newUsersCount,
+                        existingUsers: existingUsersCount,
                         message: `Processing ${currentProcessed} of ${totalRows} records (${progress}%)`
                     });
                 }
@@ -634,6 +643,8 @@ export async function POST(request: NextRequest) {
                         total: totalRows,
                         success: successCount,
                         error: errorCount,
+                        newUsers: newUsersCount,
+                        existingUsers: existingUsersCount,
                     },
                     results: allResults,
                 });

@@ -7,6 +7,7 @@ import { Search, Users, Trophy, Edit, History, ArrowUpDown } from "lucide-react"
 import { formatNumber, formatDateLabel } from "./catalog-utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PointMigration } from "./PointMigration"
+import { MigrationHistory } from "./MigrationHistory"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface ConsumerUser {
@@ -101,6 +102,7 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
       <TabsList>
         <TabsTrigger value="monitor">Monitor Points</TabsTrigger>
         <TabsTrigger value="migration">Point Migration</TabsTrigger>
+        <TabsTrigger value="history">Migration History</TabsTrigger>
       </TabsList>
 
       <TabsContent value="monitor" className="space-y-4">
@@ -333,6 +335,10 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
 
       <TabsContent value="migration">
         <PointMigration onMigrationComplete={onRefresh} />
+      </TabsContent>
+
+      <TabsContent value="history">
+        <MigrationHistory onRefresh={onRefresh} />
       </TabsContent>
     </Tabs>
   )

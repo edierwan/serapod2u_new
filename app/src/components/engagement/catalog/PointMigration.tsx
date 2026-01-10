@@ -22,6 +22,7 @@ import {
   ArrowUp,
   ArrowDown
 } from "lucide-react"
+import { useSupabaseAuth } from "@/lib/hooks/useSupabaseAuth"
 
 interface MigrationResult {
   rowNumber: number
@@ -44,6 +45,8 @@ interface ProgressState {
   progress: number
   success: number
   errors: number
+  newUsers: number
+  existingUsers: number
   message: string
 }
 
@@ -82,6 +85,32 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   // Sorting state
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const { supabase, isReady } = useSupabaseAuth()
+
+  // Save migration results to history
+  const saveMigrationHistory = async (fileName: string, migrationResults: MigrationResult[], summary: any) => {
+    if (!isReady || !supabase) return
+    
+    try {
+      const { error } = await supabase.from('migration_history').insert({
+        file_name: fileName,
+        total_records: summary.total || migrationResults.length,
+        success_count: summary.success || 0,
+        new_users_count: summary.newUsers || 0,
+        existing_users_count: summary.existingUsers || 0,
+        error_count: summary.error || 0,
+        results: migrationResults,
+        migration_date: new Date().toISOString()
+      })
+      
+      if (error) {
+        console.error('Failed to save migration history:', error)
+      }
+    } catch (err) {
+      console.error('Error saving migration history:', err)
+    }
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -209,6 +238,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                       progress: 0,
                       success: 0,
                       errors: 0,
+                      newUsers: 0,
+                      existingUsers: 0,
                       message: data.message
                     })
                     break
@@ -219,6 +250,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                       progress: data.progress,
                       success: data.success,
                       errors: data.errors,
+                      newUsers: data.newUsers || 0,
+                      existingUsers: data.existingUsers || 0,
                       message: data.message
                     })
                     setStatusMessage(data.message)
@@ -234,6 +267,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                     setFilterStatus('all')
                     setSortField(null)
                     setStatusMessage(`Completed! ${data.summary.success} success, ${data.summary.error} errors`)
+                    // Save to migration history
+                    saveMigrationHistory(file?.name || 'unknown.csv', data.results || [], data.summary)
                     // Notify parent that migration completed so it can refresh data
                     if (onMigrationComplete) {
                       onMigrationComplete()
@@ -366,26 +401,33 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   }
 
   const downloadExistingRecords = () => {
-    const existingRecords = results.filter(r => r.status === 'Success' && r.isNewUser === false)
-    if (existingRecords.length === 0) return
+    // Filter for existing users - check for isNewUser explicitly false (not undefined)
+    const existingRecords = results.filter(r => r.status === 'Success' && r.isNewUser !== undefined && r.isNewUser === false)
+    console.log('Existing records for download:', existingRecords.length, 'out of', results.length, 'total')
+    
+    if (existingRecords.length === 0) {
+      alert('No existing user records found to download.')
+      return
+    }
 
     const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'Status', 'UserType', 'MatchedRole', 'Message']
     const rows = existingRecords.map(r => {
-      const userType = r.isNewUser ? 'New Account' : 'Existing Account'
+      const userType = 'Existing Account'
       const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
       const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
+      const safeEmail = r.email ? `"${r.email.replace(/"/g, '""')}"` : ''
       
       return [
-        r.joinedDate, 
+        r.joinedDate || '', 
         safeName, 
-        r.phone, 
-        r.email, 
-        r.location, 
-        r.points, 
+        r.phone || '', 
+        safeEmail, 
+        r.location || '', 
+        r.points || 0, 
         r.password || '', 
         r.status, 
         userType,
-        r.userRole || '',
+        r.userRole || 'GUEST',
         safeMessage
       ].join(',')
     })
@@ -424,7 +466,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   // Filter results
   let filteredResults = results.filter(r => {
     if (filterStatus === 'all') return true
-    if (filterStatus === 'Existing') return r.status === 'Success' && r.isNewUser === false
+    if (filterStatus === 'Existing') return r.status === 'Success' && r.isNewUser !== undefined && r.isNewUser === false
     if (filterStatus === 'New') return r.status === 'Success' && r.isNewUser === true
     return r.status === filterStatus
   })
@@ -461,8 +503,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
 
   const successCount = results.filter(r => r.status === 'Success').length
   const errorCount = results.filter(r => r.status === 'Error').length
-  const newUsersCount = results.filter(r => r.status === 'Success' && r.isNewUser).length
-  const existingUsersCount = results.filter(r => r.status === 'Success' && r.isNewUser === false).length
+  const newUsersCount = results.filter(r => r.status === 'Success' && r.isNewUser === true).length
+  const existingUsersCount = results.filter(r => r.status === 'Success' && r.isNewUser !== undefined && r.isNewUser === false).length
 
   return (
     <div className="space-y-6">
@@ -559,10 +601,18 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                     <span>{progressState.current} of {progressState.total} records</span>
                     <span>{progressState.progress}%</span>
                   </div>
-                  <div className="flex gap-4 text-xs">
+                  <div className="flex flex-wrap gap-3 text-xs">
                     <span className="text-green-600 flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" />
                       {progressState.success} success
+                    </span>
+                    <span className="text-slate-600 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                      {progressState.newUsers} new
+                    </span>
+                    <span className="text-amber-600 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      {progressState.existingUsers} existing
                     </span>
                     <span className="text-red-600 flex items-center gap-1">
                       <XCircle className="h-3 w-3" />
