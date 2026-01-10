@@ -5,16 +5,13 @@ import {
   Camera, 
   X, 
   Upload, 
-  Flashlight, 
-  FlashlightOff,
-  SwitchCamera,
   AlertCircle,
   CheckCircle2,
   Loader2,
-  ExternalLink,
   Scan
 } from 'lucide-react'
-import { useQrScanner, ScannerStatus } from '@/hooks/useQrScanner'
+
+type ScannerStatus = 'idle' | 'requesting-permission' | 'scanning' | 'detected' | 'permission-denied' | 'no-camera' | 'error'
 
 interface QrScannerProps {
   onResult: (result: string) => void
@@ -23,87 +20,152 @@ interface QrScannerProps {
 }
 
 export default function QrScanner({ onResult, onClose, primaryColor = '#f97316' }: QrScannerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [isStarting, setIsStarting] = useState(false)
+  const scannerRef = useRef<any>(null)
+  const [status, setStatus] = useState<ScannerStatus>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
   const [detectedCode, setDetectedCode] = useState<string | null>(null)
-  const [showInstructions, setShowInstructions] = useState(false)
+  const [isStarting, setIsStarting] = useState(false)
+  const lastDetectedRef = useRef<string>('')
+  const lastDetectionTimeRef = useRef<number>(0)
 
-  const handleResult = useCallback((result: string) => {
-    setDetectedCode(result)
-    // Auto-navigate after short delay
+  // Detect in-app browser
+  const isInAppBrowser = typeof navigator !== 'undefined' && 
+    /FBAN|FBAV|Instagram|TikTok|Line|Snapchat|Twitter/i.test(navigator.userAgent)
+
+  // Handle QR code detection
+  const handleDetection = useCallback((decodedText: string) => {
+    const now = Date.now()
+    // Debounce - ignore same code within 2 seconds
+    if (decodedText === lastDetectedRef.current && now - lastDetectionTimeRef.current < 2000) {
+      return
+    }
+    
+    lastDetectedRef.current = decodedText
+    lastDetectionTimeRef.current = now
+    setDetectedCode(decodedText)
+    setStatus('detected')
+    
+    // Stop scanner
+    if (scannerRef.current) {
+      try {
+        scannerRef.current.stop().catch(() => {})
+      } catch (e) {}
+    }
+    
+    // Navigate after short delay
     setTimeout(() => {
-      onResult(result)
+      onResult(decodedText)
     }, 800)
   }, [onResult])
 
-  const {
-    status,
-    errorMessage,
-    cameras,
-    selectedCamera,
-    torchEnabled,
-    torchSupported,
-    isInAppBrowser,
-    startScanning,
-    stopScanning,
-    switchCamera,
-    toggleTorch,
-    scanImage,
-    resetStatus,
-  } = useQrScanner({
-    onResult: handleResult,
-    onError: (err) => console.error('Scanner error:', err),
-    debounceMs: 2000
-  })
-
-  // Start scanning when button is clicked
-  const handleStartScan = useCallback(async () => {
-    if (!videoRef.current) return
+  // Start scanning
+  const startScanning = useCallback(async () => {
+    if (isStarting || status === 'scanning') return
+    
     setIsStarting(true)
-    await startScanning(videoRef.current)
-    setIsStarting(false)
-  }, [startScanning])
+    setStatus('requesting-permission')
+    setErrorMessage('')
+
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode')
+      
+      // Clean up existing scanner
+      if (scannerRef.current) {
+        try {
+          await scannerRef.current.stop()
+        } catch (e) {}
+        scannerRef.current = null
+      }
+
+      const scanner = new Html5Qrcode('qr-reader-container')
+      scannerRef.current = scanner
+
+      await scanner.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        (decodedText) => {
+          handleDetection(decodedText)
+        },
+        () => {
+          // QR code not found in frame - this is normal
+        }
+      )
+
+      setStatus('scanning')
+    } catch (error: any) {
+      console.error('Scanner error:', error)
+      
+      if (error.name === 'NotAllowedError' || error.message?.includes('Permission')) {
+        setStatus('permission-denied')
+        setErrorMessage('Camera permission denied. Please enable camera access in your browser settings.')
+      } else if (error.name === 'NotFoundError' || error.message?.includes('No camera')) {
+        setStatus('no-camera')
+        setErrorMessage('No camera found on this device.')
+      } else {
+        setStatus('error')
+        setErrorMessage(error.message || 'Failed to start camera')
+      }
+    } finally {
+      setIsStarting(false)
+    }
+  }, [isStarting, status, handleDetection])
+
+  // Stop scanning
+  const stopScanning = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop()
+      } catch (e) {}
+      scannerRef.current = null
+    }
+    setStatus('idle')
+  }, [])
 
   // Handle file upload
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     
-    const result = await scanImage(file)
-    if (result) {
-      handleResult(result)
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode')
+      const scanner = new Html5Qrcode('qr-file-scanner')
+      
+      const result = await scanner.scanFile(file, true)
+      scanner.clear()
+      
+      handleDetection(result)
+    } catch (error: any) {
+      console.error('Image scan error:', error)
+      setErrorMessage('Could not detect QR code in image. Try a clearer image.')
     }
-  }, [scanImage, handleResult])
+  }, [handleDetection])
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopScanning()
+      if (scannerRef.current) {
+        try {
+          scannerRef.current.stop().catch(() => {})
+        } catch (e) {}
+      }
     }
-  }, [stopScanning])
+  }, [])
 
   // Get status text
   const getStatusText = () => {
     switch (status) {
-      case 'idle':
-        return 'Tap Start to scan'
-      case 'requesting-permission':
-        return 'Requesting camera access...'
-      case 'scanning':
-        return 'Point at QR code'
-      case 'detected':
-        return 'QR Code detected!'
-      case 'permission-denied':
-        return 'Camera permission denied'
-      case 'no-camera':
-        return 'No camera found'
-      case 'not-secure':
-        return 'HTTPS required'
-      case 'error':
-        return 'Camera error'
-      default:
-        return 'Ready'
+      case 'idle': return 'Tap Start to scan'
+      case 'requesting-permission': return 'Requesting camera access...'
+      case 'scanning': return 'Point at QR code'
+      case 'detected': return 'QR Code detected!'
+      case 'permission-denied': return 'Camera permission denied'
+      case 'no-camera': return 'No camera found'
+      case 'error': return 'Camera error'
+      default: return 'Ready'
     }
   }
 
@@ -118,7 +180,6 @@ export default function QrScanner({ onResult, onClose, primaryColor = '#f97316' 
         return <Loader2 className="w-5 h-5 animate-spin" />
       case 'permission-denied':
       case 'no-camera':
-      case 'not-secure':
       case 'error':
         return <AlertCircle className="w-5 h-5 text-red-500" />
       default:
@@ -126,20 +187,23 @@ export default function QrScanner({ onResult, onClose, primaryColor = '#f97316' 
     }
   }
 
-  const isError = ['permission-denied', 'no-camera', 'not-secure', 'error'].includes(status)
+  const isError = ['permission-denied', 'no-camera', 'error'].includes(status)
   const isScanning = status === 'scanning'
   const isDetected = status === 'detected'
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      {/* Hidden element for html5-qrcode */}
-      <div id="qr-reader-hidden" style={{ display: 'none' }} />
+    <div className="fixed inset-0 bg-black z-[9999] flex flex-col">
+      {/* Hidden elements for html5-qrcode file scanning */}
+      <div id="qr-file-scanner" style={{ display: 'none' }} />
       
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 safe-area-top">
+      <div className="absolute top-0 left-0 right-0 z-10" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="flex items-center justify-between p-4">
           <button
-            onClick={onClose}
+            onClick={() => {
+              stopScanning()
+              onClose()
+            }}
             className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
           >
             <X className="w-6 h-6" />
@@ -150,7 +214,7 @@ export default function QrScanner({ onResult, onClose, primaryColor = '#f97316' 
             <span className="text-white text-sm font-medium">{getStatusText()}</span>
           </div>
           
-          <div className="w-10" /> {/* Spacer for centering */}
+          <div className="w-10" />
         </div>
       </div>
 
@@ -167,16 +231,61 @@ export default function QrScanner({ onResult, onClose, primaryColor = '#f97316' 
         </div>
       )}
 
-      {/* Video Feed / Scanner Area */}
+      {/* Main Content */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Video element */}
-        <video
-          ref={videoRef}
-          className={`absolute inset-0 w-full h-full object-cover ${isScanning || isDetected ? '' : 'hidden'}`}
-          playsInline
-          muted
-          autoPlay
+        {/* Scanner Container - html5-qrcode renders video here */}
+        <div 
+          id="qr-reader-container" 
+          className={`absolute inset-0 ${isScanning || isDetected ? '' : 'hidden'}`}
+          style={{ 
+            width: '100%', 
+            height: '100%',
+          }}
         />
+
+        {/* Custom overlay when scanning */}
+        {(isScanning || isDetected) && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div className="relative w-64 h-64">
+              {/* Scan frame corners */}
+              <div 
+                className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 rounded-tl-lg"
+                style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
+              />
+              <div 
+                className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 rounded-tr-lg"
+                style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
+              />
+              <div 
+                className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 rounded-bl-lg"
+                style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
+              />
+              <div 
+                className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 rounded-br-lg"
+                style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Detection success overlay */}
+        {isDetected && detectedCode && (
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20">
+            <div className="bg-white rounded-2xl p-6 mx-4 text-center max-w-sm">
+              <div className="w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-4">
+                <CheckCircle2 className="w-10 h-10 text-green-500" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">QR Code Detected!</h3>
+              <p className="text-sm text-gray-500 mt-2 break-all">
+                {detectedCode.length > 100 ? `${detectedCode.substring(0, 100)}...` : detectedCode}
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Processing...
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Idle/Error State */}
         {!isScanning && !isDetected && (
@@ -189,7 +298,6 @@ export default function QrScanner({ onResult, onClose, primaryColor = '#f97316' 
                 <h3 className="text-xl font-bold text-white">
                   {status === 'permission-denied' && 'Camera Access Denied'}
                   {status === 'no-camera' && 'No Camera Found'}
-                  {status === 'not-secure' && 'HTTPS Required'}
                   {status === 'error' && 'Camera Error'}
                 </h3>
                 <p className="text-gray-400 text-sm">{errorMessage}</p>
@@ -224,177 +332,95 @@ export default function QrScanner({ onResult, onClose, primaryColor = '#f97316' 
             )}
           </div>
         )}
-
-        {/* Scan Frame Overlay */}
-        {(isScanning || isDetected) && (
-          <div className="absolute inset-0 pointer-events-none">
-            {/* Semi-transparent overlay with cutout */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="relative w-64 h-64">
-                {/* Scan frame corners */}
-                <div 
-                  className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 rounded-tl-lg"
-                  style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
-                />
-                <div 
-                  className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 rounded-tr-lg"
-                  style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
-                />
-                <div 
-                  className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 rounded-bl-lg"
-                  style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
-                />
-                <div 
-                  className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 rounded-br-lg"
-                  style={{ borderColor: isDetected ? '#22c55e' : primaryColor }}
-                />
-                
-                {/* Scanning animation line */}
-                {isScanning && !isDetected && (
-                  <div 
-                    className="absolute left-2 right-2 h-0.5 animate-scan"
-                    style={{ backgroundColor: primaryColor }}
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* Detection success overlay */}
-            {isDetected && detectedCode && (
-              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                <div className="bg-white rounded-2xl p-6 mx-4 text-center max-w-sm animate-scale-in">
-                  <div className="w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-4">
-                    <CheckCircle2 className="w-10 h-10 text-green-500" />
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900">QR Code Detected!</h3>
-                  <p className="text-sm text-gray-500 mt-2 break-all">
-                    {detectedCode.length > 100 
-                      ? `${detectedCode.substring(0, 100)}...` 
-                      : detectedCode
-                    }
-                  </p>
-                  <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Processing...
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Bottom Controls */}
-      <div className="absolute bottom-0 left-0 right-0 safe-area-bottom bg-gradient-to-t from-black/80 to-transparent">
-        <div className="p-6 space-y-4">
-          {/* Camera Controls */}
-          {isScanning && (
-            <div className="flex justify-center gap-4">
-              {/* Switch Camera */}
-              {cameras.length > 1 && (
-                <button
-                  onClick={() => {
-                    const currentIndex = cameras.findIndex(c => c.deviceId === selectedCamera)
-                    const nextIndex = (currentIndex + 1) % cameras.length
-                    switchCamera(cameras[nextIndex].deviceId)
-                  }}
-                  className="p-3 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
-                >
-                  <SwitchCamera className="w-6 h-6" />
-                </button>
+      <div 
+        className="bg-gradient-to-t from-black/80 to-transparent p-6 space-y-4"
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}
+      >
+        {/* Main Action Buttons */}
+        <div className="flex flex-col gap-3">
+          {/* Start Scan Button */}
+          {!isScanning && !isDetected && (
+            <button
+              onClick={startScanning}
+              disabled={isStarting || status === 'requesting-permission'}
+              className="w-full py-4 rounded-xl font-semibold text-white text-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {isStarting || status === 'requesting-permission' ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Opening Camera...
+                </>
+              ) : (
+                <>
+                  <Camera className="w-5 h-5" />
+                  Start Scan
+                </>
               )}
-              
-              {/* Torch Toggle */}
-              {torchSupported && (
-                <button
-                  onClick={toggleTorch}
-                  className={`p-3 rounded-full transition-colors ${
-                    torchEnabled ? 'bg-yellow-500 text-black' : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  {torchEnabled ? <Flashlight className="w-6 h-6" /> : <FlashlightOff className="w-6 h-6" />}
-                </button>
-              )}
-            </div>
+            </button>
           )}
 
-          {/* Main Action Buttons */}
-          <div className="flex flex-col gap-3">
-            {/* Start/Stop Scan Button */}
-            {!isScanning && !isDetected && (
-              <button
-                onClick={handleStartScan}
-                disabled={isStarting || status === 'requesting-permission'}
-                className="w-full py-4 rounded-xl font-semibold text-white text-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-                style={{ backgroundColor: primaryColor }}
-              >
-                {isStarting || status === 'requesting-permission' ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Opening Camera...
-                  </>
-                ) : (
-                  <>
-                    <Camera className="w-5 h-5" />
-                    Start Scan
-                  </>
-                )}
-              </button>
-            )}
-
-            {isScanning && (
-              <button
-                onClick={stopScanning}
-                className="w-full py-4 rounded-xl font-semibold text-white text-lg bg-gray-700 hover:bg-gray-600 transition-colors"
-              >
-                Stop Scanning
-              </button>
-            )}
-
-            {/* Upload Image Fallback */}
-            {!isDetected && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full py-3 rounded-xl font-medium text-white bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center gap-2"
-              >
-                <Upload className="w-5 h-5" />
-                Upload QR Image
-              </button>
-            )}
-            
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </div>
-
-          {/* Help Text */}
+          {/* Stop Button */}
           {isScanning && (
-            <p className="text-center text-white/70 text-sm">
-              Position QR code within the frame
-            </p>
+            <button
+              onClick={stopScanning}
+              className="w-full py-4 rounded-xl font-semibold text-white text-lg bg-gray-700 hover:bg-gray-600 transition-colors"
+            >
+              Stop Scanning
+            </button>
           )}
+
+          {/* Upload Image Fallback */}
+          {!isDetected && (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full py-3 rounded-xl font-medium text-white bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center gap-2"
+            >
+              <Upload className="w-5 h-5" />
+              Upload QR Image
+            </button>
+          )}
+          
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileChange}
+            className="hidden"
+          />
         </div>
+
+        {/* Help Text */}
+        {isScanning && (
+          <p className="text-center text-white/70 text-sm">
+            Position QR code within the frame
+          </p>
+        )}
       </div>
 
-      {/* Global CSS for animations - injected once */}
+      {/* Override html5-qrcode default styles */}
       <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes qr-scan-line {
-          0%, 100% { top: 8px; }
-          50% { top: calc(100% - 10px); }
+        #qr-reader-container video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
         }
-        .animate-scan { animation: qr-scan-line 2s ease-in-out infinite; }
-        @keyframes qr-scale-in {
-          from { transform: scale(0.9); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
+        #qr-reader-container {
+          border: none !important;
         }
-        .animate-scale-in { animation: qr-scale-in 0.3s ease-out; }
-        .safe-area-top { padding-top: env(safe-area-inset-top, 0px); }
-        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+        #qr-reader-container > div {
+          display: none !important;
+        }
+        #qr-reader-container > video {
+          display: block !important;
+        }
+        #qr-shaded-region {
+          display: none !important;
+        }
       ` }} />
     </div>
   )

@@ -42,7 +42,7 @@ export function RewardRedemptionAnimation({
         if (isOpen) {
             // Trigger confetti
             const colors = ['#f59e0b', '#fbbf24', '#fcd34d', '#fde68a', '#fef3c7']
-            
+
             confetti({
                 particleCount: 100,
                 spread: 100,
@@ -56,7 +56,7 @@ export function RewardRedemptionAnimation({
             const checkTimer = setTimeout(() => setShowCheck(true), 400)
             // Show details after checkmark
             const detailsTimer = setTimeout(() => setShowDetails(true), 700)
-            
+
             // Auto-close if delay is set
             if (autoCloseDelay > 0) {
                 const closeTimer = setTimeout(onClose, autoCloseDelay)
@@ -90,10 +90,10 @@ export function RewardRedemptionAnimation({
                         initial={{ scale: 0.5, opacity: 0, y: 50 }}
                         animate={{ scale: 1, opacity: 1, y: 0 }}
                         exit={{ scale: 0.5, opacity: 0, y: 50 }}
-                        transition={{ 
-                            type: 'spring', 
-                            stiffness: 300, 
-                            damping: 25 
+                        transition={{
+                            type: 'spring',
+                            stiffness: 300,
+                            damping: 25
                         }}
                         className="relative bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl overflow-hidden"
                     >
@@ -107,7 +107,7 @@ export function RewardRedemptionAnimation({
                             <motion.div
                                 initial={{ scale: 0, rotate: -180 }}
                                 animate={{ scale: 1, rotate: 0 }}
-                                transition={{ 
+                                transition={{
                                     type: 'spring',
                                     stiffness: 200,
                                     damping: 15,
