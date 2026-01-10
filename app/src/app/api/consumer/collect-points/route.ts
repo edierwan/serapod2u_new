@@ -200,9 +200,11 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ No existing collection found, proceeding with validation')
 
-    // Only allow valid statuses
-    const validStatuses = ['received_warehouse', 'warehouse_packed', 'shipped_distributor', 'activated', 'verified']
+    // Only allow valid statuses - must be shipped/activated/verified to collect points
+    // Include 'redeemed' and 'scanned' for already-used codes that might still need points collection
+    const validStatuses = ['received_warehouse', 'warehouse_packed', 'shipped_distributor', 'activated', 'verified', 'redeemed', 'scanned']
     if (!qrCodeData.status || !validStatuses.includes(qrCodeData.status)) {
+      console.log('❌ Invalid QR status:', qrCodeData.status, '| Valid:', validStatuses)
       return NextResponse.json(
         { success: false, error: 'QR code is not active or has not been shipped yet' },
         { status: 400 }
