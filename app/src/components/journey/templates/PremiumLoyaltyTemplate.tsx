@@ -54,7 +54,8 @@ import {
     Ghost,
     AlertTriangle,
     AlertCircle,
-    Camera
+    Camera,
+    ScanLine
 } from 'lucide-react'
 import { SecurityCodeModal } from '../SecurityCodeModal'
 import { AnnouncementBanner } from '../AnnouncementBanner'
@@ -68,6 +69,10 @@ import { GenuineProductAnimation } from '@/components/animations/GenuineProductA
 import { RewardRedemptionAnimation } from '@/components/animations/RewardRedemptionAnimation'
 import { GiftClaimedAnimation } from '@/components/animations/GiftClaimedAnimation'
 import { InsufficientPointsAnimation } from '@/components/animations/InsufficientPointsAnimation'
+import dynamic from 'next/dynamic'
+
+// Dynamically import QrScanner to avoid SSR issues
+const QrScanner = dynamic(() => import('@/components/scanner/QrScanner'), { ssr: false })
 import { validatePhoneNumber, normalizePhone, getStorageUrl } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -150,7 +155,7 @@ interface ProductItem {
     }[]
 }
 
-type TabType = 'home' | 'rewards' | 'products' | 'games' | 'profile' | 'account-settings' | 'lucky-draw' | 'play-scratch-card' | 'spin-wheel' | 'daily-quiz'
+type TabType = 'home' | 'rewards' | 'scan' | 'products' | 'games' | 'profile' | 'account-settings' | 'lucky-draw' | 'play-scratch-card' | 'spin-wheel' | 'daily-quiz'
 
 interface ProductInfo {
     product_name?: string
@@ -178,6 +183,7 @@ export default function PremiumLoyaltyTemplate({
     const supabase = createClient()
     const { toast } = useToast()
     const [activeTab, setActiveTab] = useState<TabType>('home')
+    const [showScanner, setShowScanner] = useState(false)
 
     // Scratch Card State
     const [scratchResult, setScratchResult] = useState<{ isWin: boolean, rewardName: string } | null>(null)
@@ -1639,6 +1645,74 @@ export default function PremiumLoyaltyTemplate({
             }
         } finally {
             setLoginLoading(false)
+        }
+    }
+
+    // Handle QR scan result - navigate to the scanned URL or track page
+    const handleQrScanResult = (result: string) => {
+        console.log('📱 QR Scan Result:', result)
+        
+        try {
+            // Check if it's a URL
+            if (result.startsWith('http://') || result.startsWith('https://')) {
+                const url = new URL(result)
+                const hostname = url.hostname.toLowerCase()
+                
+                // Check if it's a Serapod2u domain
+                const allowedDomains = [
+                    'serapod2u.com',
+                    'dev.serapod2u.com',
+                    'staging.serapod2u.com',
+                    'localhost',
+                    '127.0.0.1'
+                ]
+                
+                const isAllowed = allowedDomains.some(domain => 
+                    hostname === domain || hostname.endsWith('.' + domain)
+                )
+                
+                if (isAllowed) {
+                    // Navigate to the URL path within our app
+                    const path = url.pathname + url.search
+                    window.location.href = path
+                } else {
+                    // External URL - show warning or navigate
+                    toast({
+                        title: 'External Link',
+                        description: 'This QR code links to an external site. Opening...',
+                    })
+                    window.open(result, '_blank', 'noopener,noreferrer')
+                }
+            } else if (result.startsWith('/track/') || result.startsWith('/verify/')) {
+                // Direct path - navigate
+                window.location.href = result
+            } else {
+                // Assume it's a code and try to navigate to track
+                // Could be a product code or QR code
+                const cleanCode = result.replace(/[^a-zA-Z0-9-_]/g, '')
+                if (cleanCode.length > 0) {
+                    window.location.href = `/track/product/${cleanCode}`
+                } else {
+                    toast({
+                        title: 'Invalid QR Code',
+                        description: 'Could not process this QR code.',
+                        variant: 'destructive'
+                    })
+                }
+            }
+        } catch (error) {
+            console.error('Error processing QR result:', error)
+            // If URL parsing fails, try treating it as a code
+            const cleanCode = result.replace(/[^a-zA-Z0-9-_]/g, '')
+            if (cleanCode.length > 0) {
+                window.location.href = `/track/product/${cleanCode}`
+            } else {
+                toast({
+                    title: 'Invalid QR Code',
+                    description: 'Could not process this QR code.',
+                    variant: 'destructive'
+                })
+            }
         }
     }
 
@@ -5172,14 +5246,26 @@ export default function PremiumLoyaltyTemplate({
             {/* Main Content */}
             {renderContent()}
 
+            {/* QR Scanner Modal */}
+            {showScanner && (
+                <QrScanner
+                    primaryColor={config.primary_color}
+                    onClose={() => setShowScanner(false)}
+                    onResult={(result) => {
+                        setShowScanner(false)
+                        // Handle QR code result
+                        handleQrScanResult(result)
+                    }}
+                />
+            )}
+
             {/* Bottom Navigation */}
             <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-1 safe-area-bottom z-50">
-                <div className="flex items-center justify-around max-w-md mx-auto">
+                <div className="flex items-center justify-around max-w-md mx-auto relative">
+                    {/* Left tabs: Home, Rewards */}
                     {[
                         { id: 'home' as TabType, icon: Home, label: 'Home' },
                         { id: 'rewards' as TabType, icon: Gift, label: 'Rewards' },
-                        { id: 'products' as TabType, icon: Package, label: 'Product' },
-                        { id: 'profile' as TabType, icon: User, label: 'Profile' },
                     ].map((tab) => {
                         const Icon = tab.icon
                         const isActive = activeTab === tab.id
@@ -5192,6 +5278,44 @@ export default function PremiumLoyaltyTemplate({
                                     if (tab.id === 'rewards') {
                                         setShowFreeGifts(false)
                                     }
+                                }}
+                                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${isActive ? 'text-white' : 'text-gray-500'
+                                    }`}
+                                style={isActive ? { backgroundColor: config.primary_color } : {}}
+                            >
+                                <Icon className="w-5 h-5" />
+                                <span className="text-[10px] mt-1 font-medium">{tab.label}</span>
+                            </button>
+                        )
+                    })}
+
+                    {/* Center Scan Button - Elevated */}
+                    <button
+                        onClick={() => setShowScanner(true)}
+                        className="relative flex flex-col items-center -mt-6"
+                    >
+                        <div 
+                            className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 border-white"
+                            style={{ backgroundColor: config.primary_color }}
+                        >
+                            <ScanLine className="w-7 h-7 text-white" />
+                        </div>
+                        <span className="text-[10px] mt-1 font-medium text-gray-500">Scan</span>
+                    </button>
+
+                    {/* Right tabs: Product, Profile */}
+                    {[
+                        { id: 'products' as TabType, icon: Package, label: 'Product' },
+                        { id: 'profile' as TabType, icon: User, label: 'Profile' },
+                    ].map((tab) => {
+                        const Icon = tab.icon
+                        const isActive = activeTab === tab.id
+
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => {
+                                    setActiveTab(tab.id)
                                 }}
                                 className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${isActive ? 'text-white' : 'text-gray-500'
                                     }`}
