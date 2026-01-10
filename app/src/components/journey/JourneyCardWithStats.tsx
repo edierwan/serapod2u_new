@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,7 +17,8 @@ import {
     BarChart3,
     Loader2,
     Clock,
-    Truck
+    Truck,
+    RefreshCw
 } from 'lucide-react'
 
 interface JourneyConfig {
@@ -49,6 +50,49 @@ interface QRStats {
     scratch_card_plays?: number
 }
 
+// Animated number component for smooth transitions
+function AnimatedNumber({ value, className }: { value: number; className?: string }) {
+    const [displayValue, setDisplayValue] = useState(value)
+    const [isAnimating, setIsAnimating] = useState(false)
+    const prevValueRef = useRef(value)
+
+    useEffect(() => {
+        if (prevValueRef.current !== value) {
+            setIsAnimating(true)
+            // Quick animation
+            const duration = 300
+            const startValue = prevValueRef.current
+            const endValue = value
+            const startTime = Date.now()
+
+            const animate = () => {
+                const elapsed = Date.now() - startTime
+                const progress = Math.min(elapsed / duration, 1)
+                // Ease out
+                const easeProgress = 1 - Math.pow(1 - progress, 3)
+                const currentValue = Math.round(startValue + (endValue - startValue) * easeProgress)
+                setDisplayValue(currentValue)
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate)
+                } else {
+                    setDisplayValue(endValue)
+                    setIsAnimating(false)
+                    prevValueRef.current = value
+                }
+            }
+
+            requestAnimationFrame(animate)
+        }
+    }, [value])
+
+    return (
+        <span className={`${className} ${isAnimating ? 'text-blue-600' : ''} transition-colors duration-200`}>
+            {displayValue.toLocaleString()}
+        </span>
+    )
+}
+
 interface JourneyCardWithStatsProps {
     journey: JourneyConfig
     onEdit: () => void
@@ -62,9 +106,18 @@ export default function JourneyCardWithStats({
     onDuplicate,
     onDelete
 }: JourneyCardWithStatsProps) {
-    const [stats, setStats] = useState<QRStats | null>(null)
-    const [loadingStats, setLoadingStats] = useState(false)
+    // Initialize with default stats so we never show loading state
+    const [stats, setStats] = useState<QRStats>({
+        total_valid_links: 0,
+        links_scanned: 0,
+        lucky_draw_entries: 0,
+        redemptions: 0,
+        points_collected: 0,
+        scratch_card_plays: 0
+    })
+    const [isRefreshing, setIsRefreshing] = useState(false)
     const [downloadingExcel, setDownloadingExcel] = useState(false)
+    const hasInitialLoadRef = useRef(false)
 
     // Fetch stats when journey is active and has an order
     useEffect(() => {
@@ -73,28 +126,31 @@ export default function JourneyCardWithStats({
             
             // Auto-refresh stats every 30 seconds
             const interval = setInterval(() => {
-                fetchStats()
+                fetchStats(true) // Silent refresh
             }, 30000)
             
             return () => clearInterval(interval)
         }
     }, [journey.is_active, journey.order_info?.order_id])
 
-    const fetchStats = async () => {
+    const fetchStats = async (silent = false) => {
         if (!journey.order_info?.order_id) return
         
         try {
-            setLoadingStats(true)
+            if (!silent) {
+                setIsRefreshing(true)
+            }
             const response = await fetch(`/api/journey/qr-stats?order_id=${journey.order_info.order_id}`)
             const data = await response.json()
             
-            if (data.success) {
+            if (data.success && data.data) {
                 setStats(data.data)
+                hasInitialLoadRef.current = true
             }
         } catch (error) {
             console.error('Error fetching QR stats:', error)
         } finally {
-            setLoadingStats(false)
+            setIsRefreshing(false)
         }
     }
 
@@ -206,62 +262,53 @@ export default function JourneyCardWithStats({
                             <h4 className="text-xs font-semibold text-blue-900">QR Code Statistics</h4>
                         </div>
                         
-                        {loadingStats ? (
-                            <div className="flex items-center justify-center py-2">
-                                <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                                <span className="ml-2 text-xs text-blue-600">Loading stats...</span>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-white rounded p-2 border border-blue-100">
+                                <div className="flex items-center gap-1 mb-1">
+                                    <QrCode className="w-3 h-3 text-gray-600" />
+                                    <p className="text-[10px] text-gray-600">Valid Links</p>
+                                </div>
+                                <AnimatedNumber value={stats.total_valid_links} className="text-lg font-bold text-blue-900" />
                             </div>
-                        ) : stats ? (
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="bg-white rounded p-2 border border-blue-100">
-                                    <div className="flex items-center gap-1 mb-1">
-                                        <QrCode className="w-3 h-3 text-gray-600" />
-                                        <p className="text-[10px] text-gray-600">Valid Links</p>
-                                    </div>
-                                    <p className="text-lg font-bold text-blue-900">{stats.total_valid_links}</p>
+                            
+                            <div className="bg-white rounded p-2 border border-green-100">
+                                <div className="flex items-center gap-1 mb-1">
+                                    <Scan className="w-3 h-3 text-gray-600" />
+                                    <p className="text-[10px] text-gray-600">Scanned</p>
                                 </div>
-                                
-                                <div className="bg-white rounded p-2 border border-green-100">
+                                <AnimatedNumber value={stats.links_scanned} className="text-lg font-bold text-green-900" />
+                            </div>
+                            
+                            {journey.redemption_enabled && (
+                                <div className="bg-white rounded p-2 border border-emerald-100">
                                     <div className="flex items-center gap-1 mb-1">
-                                        <Scan className="w-3 h-3 text-gray-600" />
-                                        <p className="text-[10px] text-gray-600">Scanned</p>
+                                        <Gift className="w-3 h-3 text-gray-600" />
+                                        <p className="text-[10px] text-gray-600">Redemptions</p>
                                     </div>
-                                    <p className="text-lg font-bold text-green-900">{stats.links_scanned}</p>
+                                    <AnimatedNumber value={stats.redemptions} className="text-lg font-bold text-emerald-900" />
                                 </div>
-                                
-                                {journey.redemption_enabled && (
-                                    <div className="bg-white rounded p-2 border border-emerald-100">
-                                        <div className="flex items-center gap-1 mb-1">
-                                            <Gift className="w-3 h-3 text-gray-600" />
-                                            <p className="text-[10px] text-gray-600">Redemptions</p>
-                                        </div>
-                                        <p className="text-lg font-bold text-emerald-900">{stats.redemptions}</p>
+                            )}
+                            
+                            {journey.lucky_draw_enabled && (
+                                <div className="bg-white rounded p-2 border border-purple-100">
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <Star className="w-3 h-3 text-gray-600" />
+                                        <p className="text-[10px] text-gray-600">Lucky Draw</p>
                                     </div>
-                                )}
-                                
-                                {journey.lucky_draw_enabled && (
-                                    <div className="bg-white rounded p-2 border border-purple-100">
-                                        <div className="flex items-center gap-1 mb-1">
-                                            <Star className="w-3 h-3 text-gray-600" />
-                                            <p className="text-[10px] text-gray-600">Lucky Draw</p>
-                                        </div>
-                                        <p className="text-lg font-bold text-purple-900">{stats.lucky_draw_entries}</p>
-                                    </div>
-                                )}
+                                    <AnimatedNumber value={stats.lucky_draw_entries} className="text-lg font-bold text-purple-900" />
+                                </div>
+                            )}
 
-                                {journey.enable_scratch_card_game && (
-                                    <div className="bg-white rounded p-2 border border-pink-100">
-                                        <div className="flex items-center gap-1 mb-1">
-                                            <Gift className="w-3 h-3 text-gray-600" />
-                                            <p className="text-[10px] text-gray-600">Scratch Card</p>
-                                        </div>
-                                        <p className="text-lg font-bold text-pink-900">{stats.scratch_card_plays || 0}</p>
+                            {journey.enable_scratch_card_game && (
+                                <div className="bg-white rounded p-2 border border-pink-100">
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <Gift className="w-3 h-3 text-gray-600" />
+                                        <p className="text-[10px] text-gray-600">Scratch Card</p>
                                     </div>
-                                )}
-                            </div>
-                        ) : (
-                            <p className="text-xs text-gray-500 text-center py-2">No data available</p>
-                        )}
+                                    <AnimatedNumber value={stats.scratch_card_plays || 0} className="text-lg font-bold text-pink-900" />
+                                </div>
+                            )}
+                        </div>
 
                         {/* Action Buttons */}
                         <div className="flex gap-2 mt-3">
@@ -272,20 +319,16 @@ export default function JourneyCardWithStats({
                                     e.stopPropagation()
                                     fetchStats()
                                 }}
-                                disabled={loadingStats}
+                                disabled={isRefreshing}
                                 className="h-8 text-xs bg-white hover:bg-blue-50 border-blue-300"
                             >
-                                {loadingStats ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                    <Clock className="w-3 h-3" />
-                                )}
+                                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
                             </Button>
                             <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={handleDownloadExcel}
-                                disabled={downloadingExcel || !stats || stats.total_valid_links === 0}
+                                disabled={downloadingExcel || stats.total_valid_links === 0}
                                 className="flex-1 h-8 text-xs bg-white hover:bg-blue-50 border-blue-300"
                             >
                                 {downloadingExcel ? (
@@ -296,7 +339,7 @@ export default function JourneyCardWithStats({
                                 ) : (
                                     <>
                                         <Download className="w-3 h-3 mr-2" />
-                                        Download QR Excel ({stats?.total_valid_links || 0} codes)
+                                        Download QR Excel ({stats.total_valid_links} codes)
                                     </>
                                 )}
                             </Button>
