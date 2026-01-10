@@ -60,13 +60,14 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
   const loadHistory = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      // Cast to any since migration_history table types are not generated yet
+      const { data, error } = await (supabase as any)
         .from('migration_history')
         .select('*')
         .order('migration_date', { ascending: false })
 
       if (error) throw error
-      setHistory(data || [])
+      setHistory((data as MigrationRecord[]) || [])
     } catch (error: any) {
       console.error('Error loading migration history:', error)
       toast({
@@ -86,7 +87,8 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
 
     try {
       setDeleting(id)
-      const { error } = await supabase
+      // Cast to any since migration_history table types are not generated yet
+      const { error } = await (supabase as any)
         .from('migration_history')
         .delete()
         .eq('id', id)

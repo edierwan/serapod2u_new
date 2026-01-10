@@ -93,7 +93,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     if (!isReady || !supabase) return
     
     try {
-      const { error } = await supabase.from('migration_history').insert({
+      // Cast to any since migration_history table types are not generated yet
+      const { error } = await (supabase as any).from('migration_history').insert({
         file_name: fileName,
         total_records: summary.total || migrationResults.length,
         success_count: summary.success || 0,
