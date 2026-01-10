@@ -751,6 +751,7 @@ export default function JourneyDesignerV2({
                     description: "Please enter a journey name",
                     variant: "destructive",
                 })
+                setSaving(false)
                 return
             }
 
@@ -760,6 +761,7 @@ export default function JourneyDesignerV2({
                     description: "Please enable at least one feature (Points, Lucky Draw, or Redemption)",
                     variant: "destructive",
                 })
+                setSaving(false)
                 return
             }
 
@@ -769,6 +771,7 @@ export default function JourneyDesignerV2({
                     description: "End date must be after start date",
                     variant: "destructive",
                 })
+                setSaving(false)
                 return
             }
 

@@ -27,43 +27,43 @@ interface QRStats {
 
 // Animated number component for smooth transitions
 function AnimatedNumber({ value, className }: { value: number; className?: string }) {
-    const [displayValue, setDisplayValue] = useState(value)
-    const [isAnimating, setIsAnimating] = useState(false)
-    const prevValueRef = useRef(value)
+  const [displayValue, setDisplayValue] = useState(value)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const prevValueRef = useRef(value)
 
-    useEffect(() => {
-        if (prevValueRef.current !== value) {
-            setIsAnimating(true)
-            const duration = 300
-            const startValue = prevValueRef.current
-            const endValue = value
-            const startTime = Date.now()
+  useEffect(() => {
+    if (prevValueRef.current !== value) {
+      setIsAnimating(true)
+      const duration = 300
+      const startValue = prevValueRef.current
+      const endValue = value
+      const startTime = Date.now()
 
-            const animate = () => {
-                const elapsed = Date.now() - startTime
-                const progress = Math.min(elapsed / duration, 1)
-                const easeProgress = 1 - Math.pow(1 - progress, 3)
-                const currentValue = Math.round(startValue + (endValue - startValue) * easeProgress)
-                setDisplayValue(currentValue)
+      const animate = () => {
+        const elapsed = Date.now() - startTime
+        const progress = Math.min(elapsed / duration, 1)
+        const easeProgress = 1 - Math.pow(1 - progress, 3)
+        const currentValue = Math.round(startValue + (endValue - startValue) * easeProgress)
+        setDisplayValue(currentValue)
 
-                if (progress < 1) {
-                    requestAnimationFrame(animate)
-                } else {
-                    setDisplayValue(endValue)
-                    setIsAnimating(false)
-                    prevValueRef.current = value
-                }
-            }
-
-            requestAnimationFrame(animate)
+        if (progress < 1) {
+          requestAnimationFrame(animate)
+        } else {
+          setDisplayValue(endValue)
+          setIsAnimating(false)
+          prevValueRef.current = value
         }
-    }, [value])
+      }
 
-    return (
-        <span className={`${className} ${isAnimating ? 'text-blue-600' : ''} transition-colors duration-200`}>
-            {displayValue.toLocaleString()}
-        </span>
-    )
+      requestAnimationFrame(animate)
+    }
+  }, [value])
+
+  return (
+    <span className={`${className} ${isAnimating ? 'text-blue-600' : ''} transition-colors duration-200`}>
+      {displayValue.toLocaleString()}
+    </span>
+  )
 }
 
 interface JourneyConfigCardProps {
@@ -101,26 +101,26 @@ export default function JourneyConfigCard({
   useEffect(() => {
     if (journey.is_active && orderId) {
       fetchStats()
-      
+
       // Auto-refresh stats every 30 seconds
       const interval = setInterval(() => {
         fetchStats(true) // Silent refresh
       }, 30000)
-      
+
       return () => clearInterval(interval)
     }
   }, [journey.is_active, orderId])
 
   const fetchStats = async (silent = false) => {
     if (!orderId) return
-    
+
     try {
       if (!silent) {
         setIsRefreshing(true)
       }
       const response = await fetch(`/api/journey/qr-stats?order_id=${orderId}`)
       const data = await response.json()
-      
+
       if (data.success && data.data) {
         setStats(data.data)
       }
@@ -138,7 +138,7 @@ export default function JourneyConfigCard({
     try {
       setDownloadingExcel(true)
       const response = await fetch(`/api/journey/download-qr-excel?order_id=${orderId}`)
-      
+
       if (!response.ok) {
         throw new Error('Failed to download Excel')
       }
@@ -163,9 +163,8 @@ export default function JourneyConfigCard({
 
   return (
     <Card
-      className={`cursor-pointer transition-all hover:shadow-md ${
-        isSelected ? 'ring-2 ring-blue-600 shadow-md' : ''
-      } ${journey.is_active ? '' : 'opacity-60'}`}
+      className={`cursor-pointer transition-all hover:shadow-md ${isSelected ? 'ring-2 ring-blue-600 shadow-md' : ''
+        } ${journey.is_active ? '' : 'opacity-60'}`}
       onClick={onSelect}
     >
       <CardContent className="p-4">
@@ -226,7 +225,7 @@ export default function JourneyConfigCard({
                 <RefreshCw className={`w-3 h-3 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-white rounded p-2 border border-blue-100">
                 <div className="flex items-center gap-1 mb-1">
@@ -235,7 +234,7 @@ export default function JourneyConfigCard({
                 </div>
                 <AnimatedNumber value={stats.total_valid_links} className="text-lg font-bold text-blue-900" />
               </div>
-              
+
               <div className="bg-white rounded p-2 border border-green-100">
                 <div className="flex items-center gap-1 mb-1">
                   <Scan className="w-3 h-3 text-gray-600" />
@@ -243,7 +242,7 @@ export default function JourneyConfigCard({
                 </div>
                 <AnimatedNumber value={stats.links_scanned} className="text-lg font-bold text-green-900" />
               </div>
-              
+
               {journey.redemption_enabled && (
                 <div className="bg-white rounded p-2 border border-emerald-100">
                   <div className="flex items-center gap-1 mb-1">
@@ -253,7 +252,7 @@ export default function JourneyConfigCard({
                   <AnimatedNumber value={stats.redemptions} className="text-lg font-bold text-emerald-900" />
                 </div>
               )}
-              
+
               {journey.lucky_draw_enabled && (
                 <div className="bg-white rounded p-2 border border-purple-100">
                   <div className="flex items-center gap-1 mb-1">

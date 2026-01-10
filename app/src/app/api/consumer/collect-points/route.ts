@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         }
       }
     )
-    
+
     const { qr_code, shop_id, password } = await request.json()
 
     // Validate required fields
@@ -59,20 +59,20 @@ export async function POST(request: NextRequest) {
 
     // 1. Authenticate shop user using Supabase Auth
     console.log('🔐 Authenticating shop user:', shop_id)
-    
+
     let emailToAuth = shop_id
 
     // Check if shop_id is a phone number (simple check: doesn't contain @)
     if (!shop_id.includes('@')) {
       console.log('📱 Detected phone number login, looking up email...')
-      
+
       // Lookup user by phone number using admin client
       const { data: userByPhone, error: phoneError } = await supabaseAdmin
         .from('users')
         .select('email')
         .eq('phone', shop_id)
         .single()
-      
+
       if (phoneError || !userByPhone) {
         console.error('Phone lookup failed:', phoneError)
         return NextResponse.json(
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         )
       }
-      
+
       emailToAuth = userByPhone.email
       console.log('📱 Found email for phone login:', emailToAuth)
     }
@@ -136,15 +136,15 @@ export async function POST(request: NextRequest) {
 
     // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    
+
     // Allow if:
     // 1. User has no organization (Independent Consumer)
     // 2. User belongs to a SHOP organization
     if (organization && organization.org_type_code !== 'SHOP') {
       console.error('User is from non-shop organization:', organization?.org_type_code)
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Only users from shop organizations or independent consumers can collect points.',
           details: `Your organization type is: ${organization?.org_type_code || 'unknown'}`
         },
@@ -160,8 +160,8 @@ export async function POST(request: NextRequest) {
     if (!qrCodeData) {
       console.error('❌ QR code not found in database')
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'This QR code is not registered in our system. It may be a preview code or hasn\'t been activated yet. Please scan a QR code from an actual product.',
           preview: true
         },
@@ -180,12 +180,12 @@ export async function POST(request: NextRequest) {
       console.log('   Collected at:', existingCollection.points_collected_at)
       console.log('   Shop:', existingCollection.shop_id)
       console.log('   Points:', existingCollection.points_amount)
-      
+
       // Calculate total balance for response
-      const totalBalance = existingCollection.shop_id 
+      const totalBalance = existingCollection.shop_id
         ? await calculateShopTotalPoints(supabaseAdmin, existingCollection.shop_id)
         : existingCollection.points_amount || 0
-      
+
       return NextResponse.json(
         {
           success: false,
@@ -223,8 +223,8 @@ export async function POST(request: NextRequest) {
       console.error('❌ Order not found:', orderError)
       console.error('QR Code:', qrCodeData.code, 'has order_id:', qrCodeData.order_id)
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Order not found',
           details: 'The order associated with this QR code does not exist in the database.'
         },
@@ -290,10 +290,10 @@ export async function POST(request: NextRequest) {
     // 4. Get points configuration from organization's point rules
     // Try multiple sources: Order's company, Shop's parent org, or Shop's org
     console.log('🔍 Looking for point rule for org_id:', orderData.company_id)
-    
+
     let pointRule = null
     let ruleError = null
-    
+
     // First, try to get rule from order's company (HQ organization)
     const { data: rule1, error: error1 } = await supabaseAdmin
       .from('points_rules')
@@ -303,7 +303,7 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-    
+
     if (rule1) {
       pointRule = rule1
       console.log('✅ Found point rule from order company:', orderData.company_id, 'Points:', rule1.points_per_scan)
@@ -313,7 +313,7 @@ export async function POST(request: NextRequest) {
     } else {
       console.log('⚠️ No point rule found for order company:', orderData.company_id)
     }
-    
+
     // Fallback: Try shop's parent organization (if shop is under HQ)
     if (!pointRule && organization && organization.parent_org_id) {
       console.log('🔍 Trying shop parent org:', organization.parent_org_id)
@@ -325,7 +325,7 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       if (rule2) {
         pointRule = rule2
         console.log('✅ Found point rule from shop parent org:', organization.parent_org_id, 'Points:', rule2.points_per_scan)
@@ -347,7 +347,7 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       if (rule3) {
         pointRule = rule3
         console.log('✅ Found point rule from order company parent:', orderOrganization.parent_org_id, 'Points:', rule3.points_per_scan)
@@ -360,12 +360,12 @@ export async function POST(request: NextRequest) {
     if (!pointRule) {
       console.log('🔍 Final fallback: Looking for any active rule associated with order or shop orgs')
       const orgIds = [
-        orderData.company_id, 
-        organization?.id, 
-        organization?.parent_org_id, 
+        orderData.company_id,
+        organization?.id,
+        organization?.parent_org_id,
         orderOrganization.parent_org_id
       ].filter(Boolean)
-      
+
       const { data: anyRule, error: anyError } = await supabaseAdmin
         .from('points_rules')
         .select('points_per_scan, name, id, org_id, is_active')
@@ -374,7 +374,7 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       if (anyRule) {
         pointRule = anyRule
         console.log('✅ Found point rule via fallback search:', anyRule.org_id, 'Points:', anyRule.points_per_scan)
@@ -389,7 +389,7 @@ export async function POST(request: NextRequest) {
     }
 
     const pointsToAward = pointRule?.points_per_scan || 100 // Default to 100 if no rule
-    
+
     console.log('💰 Points configuration:', {
       rule_id: pointRule?.id,
       rule_name: pointRule?.name,
@@ -410,7 +410,7 @@ export async function POST(request: NextRequest) {
       p_shop_id: authData.user.id, // Pass user ID, RPC will look up org
       p_points_amount: pointsToAward
     })
-    
+
     console.log('⚠️ RPC RESULT:', result)
 
     if (rpcError) {
@@ -428,10 +428,10 @@ export async function POST(request: NextRequest) {
       } else {
         // Independent consumer balance
         const { data: consumerBalance } = await supabaseAdmin
-            .from('v_consumer_points_balance')
-            .select('current_balance')
-            .eq('user_id', authData.user.id)
-            .maybeSingle()
+          .from('v_consumer_points_balance')
+          .select('current_balance')
+          .eq('user_id', authData.user.id)
+          .maybeSingle()
         return consumerBalance?.current_balance || 0
       }
     }
@@ -441,7 +441,7 @@ export async function POST(request: NextRequest) {
       if (result.already_collected) {
         // Calculate total balance for response
         const totalBalance = await calculateBalance()
-        
+
         return NextResponse.json(
           {
             success: false,
@@ -454,14 +454,14 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         )
       }
-      
+
       if (result.code === 'QR_NOT_FOUND') {
         return NextResponse.json(result, { status: 404 })
       }
       if (result.code === 'INVALID_STATUS') {
         return NextResponse.json(result, { status: 400 })
       }
-      
+
       return NextResponse.json(result, { status: 400 })
     }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 import { formatNumber } from '@/lib/utils/formatters'
@@ -204,6 +204,42 @@ export default function PremiumLoyaltyTemplate({
     const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
     const [selectedRewardForDetail, setSelectedRewardForDetail] = useState<RewardItem | null>(null)
     const [currentRewardImageIndex, setCurrentRewardImageIndex] = useState(0)
+
+    // Calculate next reward based on user points and available rewards
+    const nextRewardInfo = useMemo(() => {
+        if (!rewards || rewards.length === 0) {
+            return { pointsAway: 100, rewardName: '', nextRewardPoints: 0 }
+        }
+
+        // Filter active rewards and sort by points required (ascending)
+        const activeRewards = rewards
+            .filter(r => r.is_active && (r.stock_quantity === null || r.stock_quantity > 0))
+            .sort((a, b) => a.points_required - b.points_required)
+
+        if (activeRewards.length === 0) {
+            return { pointsAway: 100, rewardName: '', nextRewardPoints: 0 }
+        }
+
+        // Find the next reward that user can work towards (points_required > userPoints)
+        const nextReward = activeRewards.find(r => r.points_required > userPoints)
+
+        if (nextReward) {
+            const pointsAway = nextReward.points_required - userPoints
+            return {
+                pointsAway,
+                rewardName: nextReward.item_name,
+                nextRewardPoints: nextReward.points_required
+            }
+        }
+
+        // User has enough points for all rewards - show the highest one they can claim
+        const highestReward = activeRewards[activeRewards.length - 1]
+        return {
+            pointsAway: 0,
+            rewardName: highestReward.item_name,
+            nextRewardPoints: highestReward.points_required
+        }
+    }, [rewards, userPoints])
 
     const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -998,12 +1034,17 @@ export default function PremiumLoyaltyTemplate({
                     return
                 }
 
-                setIsShopUser(profile.isShop)
-                setUserName(profile.fullName || userName)
-                setUserAvatarUrl(profile.avatarUrl)
-                setShopName(profile.orgName || shopName)
-                setUserPhone(profile.phone || userPhone)
-                if (profile.isShop) {
+                // Only update state if values have actually changed to prevent unnecessary re-renders/flickers
+                if (profile.isShop !== isShopUser) setIsShopUser(profile.isShop)
+                const newName = profile.fullName || userName
+                if (newName !== userName) setUserName(newName)
+                // Only update avatar if it's different (prevents flicker on profile tab)
+                if (profile.avatarUrl !== userAvatarUrl) setUserAvatarUrl(profile.avatarUrl)
+                const newOrgName = profile.orgName || shopName
+                if (newOrgName !== shopName) setShopName(newOrgName)
+                const newPhone = profile.phone || userPhone
+                if (newPhone !== userPhone) setUserPhone(newPhone)
+                if (profile.isShop && profile.pointsBalance !== userPoints) {
                     setUserPoints(profile.pointsBalance)
                 }
             } catch (err) {
@@ -1014,7 +1055,7 @@ export default function PremiumLoyaltyTemplate({
         }
 
         refreshProfileIfNeeded()
-    }, [activeTab, isAuthenticated, userId, supabase, userName, shopName, userPhone])
+    }, [activeTab, isAuthenticated, userId, supabase, userName, shopName, userPhone, userAvatarUrl, isShopUser, userPoints])
 
     // Check QR status function - reusable for multiple calls
     const checkQrStatusFromApi = async (): Promise<{ isLuckyDrawEntered: boolean, isPointsCollected: boolean }> => {
@@ -2743,7 +2784,16 @@ export default function PremiumLoyaltyTemplate({
                             </div>
                             <div className="text-right">
                                 <p className="text-white/70 text-xs">Next Reward</p>
-                                <p className="text-sm font-medium">100 pts away</p>
+                                <p className="text-sm font-medium">
+                                    {nextRewardInfo.pointsAway > 0 
+                                        ? `${nextRewardInfo.pointsAway.toLocaleString()} pts away` 
+                                        : 'Ready to claim!'}
+                                </p>
+                                {nextRewardInfo.rewardName && (
+                                    <p className="text-[10px] text-white/60 mt-0.5 truncate max-w-[100px]">
+                                        {nextRewardInfo.rewardName}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -2753,16 +2803,28 @@ export default function PremiumLoyaltyTemplate({
                                 <div
                                     className="h-full bg-yellow-400 rounded-full transition-all ease-out"
                                     style={{
-                                        width: showPointsAnimation ? `${Math.min((userPoints / 50000) * 100, 100)}%` : '0%',
+                                        width: showPointsAnimation 
+                                            ? `${Math.min((userPoints / (nextRewardInfo.nextRewardPoints || 50000)) * 100, 100)}%` 
+                                            : '0%',
                                         transitionDuration: '2000ms'
                                     }}
                                 />
                             </div>
                             <div className="flex justify-between mt-2 text-xs text-white/60">
                                 <span>0</span>
-                                <span>10,000</span>
-                                <span>25,000</span>
-                                <span>50,000</span>
+                                {nextRewardInfo.nextRewardPoints > 0 ? (
+                                    <>
+                                        <span>{Math.round(nextRewardInfo.nextRewardPoints * 0.25).toLocaleString()}</span>
+                                        <span>{Math.round(nextRewardInfo.nextRewardPoints * 0.5).toLocaleString()}</span>
+                                        <span>{nextRewardInfo.nextRewardPoints.toLocaleString()}</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>10,000</span>
+                                        <span>25,000</span>
+                                        <span>50,000</span>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

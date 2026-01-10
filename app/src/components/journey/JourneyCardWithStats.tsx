@@ -123,26 +123,26 @@ export default function JourneyCardWithStats({
     useEffect(() => {
         if (journey.is_active && journey.order_info?.order_id) {
             fetchStats()
-            
+
             // Auto-refresh stats every 30 seconds
             const interval = setInterval(() => {
                 fetchStats(true) // Silent refresh
             }, 30000)
-            
+
             return () => clearInterval(interval)
         }
     }, [journey.is_active, journey.order_info?.order_id])
 
     const fetchStats = async (silent = false) => {
         if (!journey.order_info?.order_id) return
-        
+
         try {
             if (!silent) {
                 setIsRefreshing(true)
             }
             const response = await fetch(`/api/journey/qr-stats?order_id=${journey.order_info.order_id}`)
             const data = await response.json()
-            
+
             if (data.success && data.data) {
                 setStats(data.data)
                 hasInitialLoadRef.current = true
@@ -161,7 +161,7 @@ export default function JourneyCardWithStats({
         try {
             setDownloadingExcel(true)
             const response = await fetch(`/api/journey/download-qr-excel?order_id=${journey.order_info.order_id}`)
-            
+
             if (!response.ok) {
                 throw new Error('Failed to download Excel')
             }
@@ -261,7 +261,7 @@ export default function JourneyCardWithStats({
                             <BarChart3 className="w-4 h-4 text-blue-600" />
                             <h4 className="text-xs font-semibold text-blue-900">QR Code Statistics</h4>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-2">
                             <div className="bg-white rounded p-2 border border-blue-100">
                                 <div className="flex items-center gap-1 mb-1">
@@ -270,7 +270,7 @@ export default function JourneyCardWithStats({
                                 </div>
                                 <AnimatedNumber value={stats.total_valid_links} className="text-lg font-bold text-blue-900" />
                             </div>
-                            
+
                             <div className="bg-white rounded p-2 border border-green-100">
                                 <div className="flex items-center gap-1 mb-1">
                                     <Scan className="w-3 h-3 text-gray-600" />
@@ -278,7 +278,7 @@ export default function JourneyCardWithStats({
                                 </div>
                                 <AnimatedNumber value={stats.links_scanned} className="text-lg font-bold text-green-900" />
                             </div>
-                            
+
                             {journey.redemption_enabled && (
                                 <div className="bg-white rounded p-2 border border-emerald-100">
                                     <div className="flex items-center gap-1 mb-1">
@@ -288,7 +288,7 @@ export default function JourneyCardWithStats({
                                     <AnimatedNumber value={stats.redemptions} className="text-lg font-bold text-emerald-900" />
                                 </div>
                             )}
-                            
+
                             {journey.lucky_draw_enabled && (
                                 <div className="bg-white rounded p-2 border border-purple-100">
                                     <div className="flex items-center gap-1 mb-1">
