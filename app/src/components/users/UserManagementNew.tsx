@@ -922,10 +922,10 @@ export default function UserManagementNew({
   ]);
 
   const stats = {
-    total: filteredUsers.length,
-    active: filteredUsers.filter((u) => u.is_active).length,
-    verified: filteredUsers.filter((u) => u.is_verified).length,
-    online: filteredUsers.filter((u) => isUserOnline(u.last_login_at)).length,
+    total: users.length, // Show total users they have access to, not filtered count
+    active: users.filter((u) => u.is_active).length,
+    verified: users.filter((u) => u.is_verified).length,
+    online: users.filter((u) => isUserOnline(u.last_login_at)).length,
   };
 
   const getInitials = (name: string | null): string => {

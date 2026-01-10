@@ -19,7 +19,6 @@ import NotificationProvidersTab from './NotificationProvidersTab'
 import DocumentTemplateTab from './DocumentTemplateTab'
 import AccountingTab from './AccountingTab'
 import AuthorizationTab from './AuthorizationTab'
-import MigrationView from '../migration/MigrationView'
 import {
   Settings,
   User,
@@ -635,7 +634,6 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'preferences', label: 'Preferences', icon: Settings },
-    ...(userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? [{ id: 'migration', label: 'Data Migration', icon: Database }] : []),
     ...(userProfile.roles.role_level === 1 ? [{ id: 'authorization', label: 'Authorization', icon: Lock }] : []),
     ...(userProfile.roles.role_level === 1 ? [{ id: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle }] : [])
   ]
@@ -1867,11 +1865,6 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               <DocumentTemplateTab userProfile={userProfile} />
             </TabsContent2>
           </TabsComponent>
-        )}
-
-        {/* Data Migration Tab - HQ Admin Only */}
-        {activeTab === 'migration' && userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && (
-          <MigrationView userProfile={userProfile} />
         )}
 
         {/* Accounting Tab - HQ Admin/Power User Only */}
