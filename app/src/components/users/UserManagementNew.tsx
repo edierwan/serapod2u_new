@@ -134,7 +134,7 @@ export default function UserManagementNew({
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(20);
-  
+
   // Delete progress state
   const [deleteProgress, setDeleteProgress] = useState<{
     isDeleting: boolean;
@@ -145,7 +145,7 @@ export default function UserManagementNew({
     errors: number;
     message: string;
   } | null>(null);
-  
+
   const { isReady, supabase } = useSupabaseAuth();
   const { toast } = useToast();
 
@@ -169,28 +169,48 @@ export default function UserManagementNew({
       const isPowerUser = userProfile?.roles?.role_level <= 20;
       const currentUserLevel = userProfile?.roles?.role_level || 999;
 
-      let query = supabase
-        .from("users")
-        .select(
-          `
-          *,
-          roles:role_code (
-            role_name,
-            role_level
-          )
-        `,
-        )
-        .order("created_at", { ascending: false })
-        .range(0, 9999); // Override Supabase default 1000 row limit
+      // Fetch all users using pagination to overcome Supabase 1000 row limit
+      const allUsers: any[] = [];
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+      let hasMore = true;
 
-      // Filter by organization only for non-power users
-      if (!isPowerUser) {
-        query = query.eq("organization_id", userProfile.organization_id);
+      while (hasMore) {
+        let query = supabase
+          .from("users")
+          .select(
+            `
+            *,
+            roles:role_code (
+              role_name,
+              role_level
+            )
+          `,
+            { count: "exact" }
+          )
+          .order("created_at", { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        // Filter by organization only for non-power users
+        if (!isPowerUser) {
+          query = query.eq("organization_id", userProfile.organization_id);
+        }
+
+        const { data, error, count } = await query;
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allUsers.push(...data);
+          offset += PAGE_SIZE;
+          // Check if we've fetched all records
+          hasMore = count ? allUsers.length < count : data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
       }
 
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const data = allUsers;
 
       // Filter users based on role level visibility
       // Users can only see other users with role_level >= their own role_level
@@ -1377,7 +1397,7 @@ export default function UserManagementNew({
                               </Avatar>
                               {/* Online status indicator */}
                               {isUserOnline(user.last_login_at) && (
-                                <span 
+                                <span
                                   className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"
                                   title="Online now"
                                 />
