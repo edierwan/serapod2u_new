@@ -45,7 +45,7 @@ import type { User as UserType, Role, Organization } from "@/types/user";
 import { getStorageUrl } from "@/lib/utils";
 import { compressAvatar, formatFileSize } from "@/lib/utils/imageCompression";
 
-const PAGE_SIZE_OPTIONS = [20, 50, 100, 200] as const;
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
 
 const formatRelativeTime = (dateString: string | null): string => {
   if (!dateString) return "Never";
@@ -180,7 +180,8 @@ export default function UserManagementNew({
           )
         `,
         )
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(0, 9999); // Override Supabase default 1000 row limit
 
       // Filter by organization only for non-power users
       if (!isPowerUser) {
@@ -903,10 +904,11 @@ export default function UserManagementNew({
     roles,
   ]);
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredUsers.length / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
+  // Pagination calculations - handle "All" option when pageSize is -1
+  const effectivePageSize = pageSize === -1 ? filteredUsers.length : pageSize;
+  const totalPages = pageSize === -1 ? 1 : Math.ceil(filteredUsers.length / pageSize);
+  const startIndex = (currentPage - 1) * effectivePageSize;
+  const endIndex = startIndex + effectivePageSize;
   const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
 
   // Reset to page 1 when filters change
@@ -1250,6 +1252,7 @@ export default function UserManagementNew({
                           }
                         />
                       </TableHead>
+                      <TableHead className="w-12 text-center">#</TableHead>
                       <TableHead>
                         <button
                           onClick={() => handleSort("full_name")}
@@ -1339,7 +1342,7 @@ export default function UserManagementNew({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedUsers.map((user) => (
+                    {paginatedUsers.map((user, index) => (
                       <TableRow key={user.id} className="hover:bg-gray-50">
                         <TableCell>
                           <Checkbox
@@ -1349,6 +1352,9 @@ export default function UserManagementNew({
                             }
                             disabled={user.id === userProfile.id}
                           />
+                        </TableCell>
+                        <TableCell className="text-center text-gray-500 text-sm">
+                          {startIndex + index + 1}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
@@ -1531,7 +1537,7 @@ export default function UserManagementNew({
                   >
                     {PAGE_SIZE_OPTIONS.map((size) => (
                       <option key={size} value={size}>
-                        {size}
+                        {size === -1 ? "All" : size}
                       </option>
                     ))}
                   </select>
@@ -1549,7 +1555,7 @@ export default function UserManagementNew({
                       variant="outline"
                       size="sm"
                       onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
+                      disabled={currentPage === 1 || pageSize === -1}
                       className="hidden sm:flex"
                     >
                       First
@@ -1560,12 +1566,12 @@ export default function UserManagementNew({
                       onClick={() =>
                         setCurrentPage((prev) => Math.max(1, prev - 1))
                       }
-                      disabled={currentPage === 1}
+                      disabled={currentPage === 1 || pageSize === -1}
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <span className="px-3 py-1 text-sm font-medium">
-                      Page {currentPage} of {totalPages || 1}
+                      {pageSize === -1 ? "All" : `Page ${currentPage} of ${totalPages || 1}`}
                     </span>
                     <Button
                       variant="outline"
@@ -1573,7 +1579,7 @@ export default function UserManagementNew({
                       onClick={() =>
                         setCurrentPage((prev) => Math.min(totalPages, prev + 1))
                       }
-                      disabled={currentPage >= totalPages}
+                      disabled={currentPage >= totalPages || pageSize === -1}
                     >
                       <ChevronRight className="w-4 h-4" />
                     </Button>
@@ -1581,7 +1587,7 @@ export default function UserManagementNew({
                       variant="outline"
                       size="sm"
                       onClick={() => setCurrentPage(totalPages)}
-                      disabled={currentPage >= totalPages}
+                      disabled={currentPage >= totalPages || pageSize === -1}
                       className="hidden sm:flex"
                     >
                       Last
