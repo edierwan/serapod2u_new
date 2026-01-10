@@ -35,6 +35,9 @@ interface MigrationRecord {
   created_by: string
   created_at: string
   notes: string | null
+  // Joined user info
+  user_email?: string
+  user_name?: string
 }
 
 interface MigrationHistoryProps {
@@ -63,11 +66,25 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
       // Cast to any since migration_history table types are not generated yet
       const { data, error } = await (supabase as any)
         .from('migration_history')
-        .select('*')
+        .select(`
+          *,
+          users!migration_history_created_by_fkey (
+            email,
+            full_name
+          )
+        `)
         .order('migration_date', { ascending: false })
 
       if (error) throw error
-      setHistory((data as MigrationRecord[]) || [])
+      
+      // Map the user info to flat structure
+      const historyWithUserInfo = (data || []).map((record: any) => ({
+        ...record,
+        user_email: record.users?.email,
+        user_name: record.users?.full_name
+      }))
+      
+      setHistory(historyWithUserInfo as MigrationRecord[])
     } catch (error: any) {
       console.error('Error loading migration history:', error)
       toast({
@@ -285,6 +302,11 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
                         <div className="text-xs text-muted-foreground">
                           {formatDate(record.migration_date)} • {record.total_records} records
                         </div>
+                        {(record.user_name || record.user_email) && (
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            Run by: {record.user_name || record.user_email}
+                          </div>
+                        )}
                       </div>
                     </div>
                     

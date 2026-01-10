@@ -93,6 +93,9 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     if (!isReady || !supabase) return
     
     try {
+      // Get current user for audit trail
+      const { data: { user } } = await supabase.auth.getUser()
+      
       // Cast to any since migration_history table types are not generated yet
       const { error } = await (supabase as any).from('migration_history').insert({
         file_name: fileName,
@@ -102,7 +105,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
         existing_users_count: summary.existingUsers || 0,
         error_count: summary.error || 0,
         results: migrationResults,
-        migration_date: new Date().toISOString()
+        migration_date: new Date().toISOString(),
+        created_by: user?.id || null
       })
       
       if (error) {
