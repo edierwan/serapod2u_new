@@ -2773,138 +2773,85 @@ export default function PremiumLoyaltyTemplate({
             <div className="px-5 -mt-6 relative z-20">
                 <div className="bg-white rounded-2xl shadow-lg p-3 flex justify-between gap-2">
                     {config.points_enabled && (
-                        qrCode ? (
-                            // QR code exists - show Collect button with full functionality
-                            <button
-                                onClick={() => handleProtectedAction('collect-points')}
-                                disabled={collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus}
-                                className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${(pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                                    }`}
+                        <button
+                            onClick={() => qrCode ? handleProtectedAction('collect-points') : setShowScanner(true)}
+                            disabled={qrCode ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                                }`}
+                        >
+                            <div
+                                className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
+                                style={{ backgroundColor: (qrCode && (pointsCollected || qrPointsCollected)) ? '#dcfce7' : `${config.primary_color}15` }}
                             >
-                                <div
-                                    className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                    style={{ backgroundColor: (pointsCollected || qrPointsCollected) ? '#dcfce7' : `${config.primary_color}15` }}
-                                >
-                                    {collectingPoints || checkingQrStatus ? (
-                                        <Loader2 className="w-5 h-5 animate-spin" style={{ color: config.primary_color }} />
-                                    ) : (pointsCollected || qrPointsCollected) ? (
-                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                    ) : (
-                                        <Coins className="w-5 h-5" style={{ color: config.primary_color }} />
-                                    )}
-                                </div>
-                                <span className="text-[10px] font-medium text-gray-700">
-                                    {collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : 'Collect'}
-                                </span>
-                            </button>
-                        ) : (
-                            // No QR code - show "Scan to collect" message
-                            <button
-                                onClick={() => setShowScanner(true)}
-                                className="flex-1 flex flex-col items-center p-2 rounded-xl transition-colors hover:bg-gray-50"
-                            >
-                                <div
-                                    className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                    style={{ backgroundColor: `${config.primary_color}15` }}
-                                >
+                                {qrCode && (collectingPoints || checkingQrStatus) ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" style={{ color: config.primary_color }} />
+                                ) : (qrCode && (pointsCollected || qrPointsCollected)) ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                ) : (
                                     <Coins className="w-5 h-5" style={{ color: config.primary_color }} />
-                                </div>
-                                <span className="text-[10px] font-medium text-gray-500">
-                                    Scan to collect
-                                </span>
-                            </button>
-                        )
+                                )}
+                            </div>
+                            <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
+                                {!qrCode ? 'Scan to collect' : collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : 'Collect'}
+                            </span>
+                        </button>
                     )}
 
                     {config.lucky_draw_enabled && (
-                        qrCode ? (
-                            // QR code exists - show Lucky Draw button with full functionality
-                            <button
-                                onClick={() => handleProtectedAction('lucky-draw')}
-                                disabled={checkingQrStatus || luckyDrawQrUsed || luckyDrawEntered}
-                                className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${(luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                                    }`}
+                        <button
+                            onClick={() => qrCode ? handleProtectedAction('lucky-draw') : setShowScanner(true)}
+                            disabled={qrCode ? (checkingQrStatus || luckyDrawQrUsed || luckyDrawEntered) : false}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                                }`}
+                        >
+                            <div
+                                className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
+                                style={{ backgroundColor: (qrCode && (luckyDrawQrUsed || luckyDrawEntered)) ? '#dcfce7' : '#fef3c7' }}
                             >
-                                <div
-                                    className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                    style={{ backgroundColor: (luckyDrawQrUsed || luckyDrawEntered) ? '#dcfce7' : '#fef3c7' }}
-                                >
-                                    {checkingQrStatus ? (
-                                        <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
-                                    ) : (luckyDrawQrUsed || luckyDrawEntered) ? (
-                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                    ) : (
-                                        <Trophy className="w-5 h-5 text-amber-500" />
-                                    )}
-                                </div>
-                                <span className="text-[10px] font-medium text-gray-700">
-                                    {checkingQrStatus ? 'Checking...' : (luckyDrawQrUsed || luckyDrawEntered) ? 'Already In' : 'Lucky Draw'}
-                                </span>
-                            </button>
-                        ) : (
-                            // No QR code - show "Scan first" message
-                            <button
-                                onClick={() => setShowScanner(true)}
-                                className="flex-1 flex flex-col items-center p-2 rounded-xl transition-colors hover:bg-gray-50"
-                            >
-                                <div
-                                    className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                    style={{ backgroundColor: '#fef3c7' }}
-                                >
+                                {qrCode && checkingQrStatus ? (
+                                    <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                                ) : (qrCode && (luckyDrawQrUsed || luckyDrawEntered)) ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                ) : (
                                     <Trophy className="w-5 h-5 text-amber-500" />
-                                </div>
-                                <span className="text-[10px] font-medium text-gray-500">
-                                    Scan first
-                                </span>
-                            </button>
-                        )
+                                )}
+                            </div>
+                            <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
+                                {!qrCode ? 'Scan first' : checkingQrStatus ? 'Checking...' : (luckyDrawQrUsed || luckyDrawEntered) ? 'Already In' : 'Lucky Draw'}
+                            </span>
+                        </button>
                     )}
 
                     {config.redemption_enabled && (
-                        qrCode ? (
-                            // QR code exists - show Redeem button with full functionality
-                            <button
-                                onClick={() => {
+                        <button
+                            onClick={() => {
+                                if (qrCode) {
                                     handleProtectedAction('redeem')
                                     fetchFreeGifts()
-                                }}
-                                disabled={checkingQrStatus || giftQrUsed || giftRedeemed}
-                                className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${(giftQrUsed || giftRedeemed) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
-                                    }`}
+                                } else {
+                                    setShowScanner(true)
+                                }
+                            }}
+                            disabled={qrCode ? (checkingQrStatus || giftQrUsed || giftRedeemed) : false}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (giftQrUsed || giftRedeemed) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                                }`}
+                        >
+                            <div
+                                className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
+                                style={{ backgroundColor: (qrCode && (giftQrUsed || giftRedeemed)) ? '#dcfce7' : '#dcfce7' }}
                             >
-                                <div
-                                    className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                    style={{ backgroundColor: (giftQrUsed || giftRedeemed) ? '#dcfce7' : '#dcfce7' }}
-                                >
-                                    {checkingQrStatus ? (
-                                        <Loader2 className="w-5 h-5 animate-spin text-green-500" />
-                                    ) : (giftQrUsed || giftRedeemed) ? (
-                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                    ) : (
-                                        <Gift className="w-5 h-5 text-green-500" />
-                                    )}
-                                </div>
-                                <span className="text-[10px] font-medium text-gray-700">
-                                    {checkingQrStatus ? 'Checking...' : (giftQrUsed || giftRedeemed) ? 'Redeemed' : 'Redeem'}
-                                </span>
-                            </button>
-                        ) : (
-                            // No QR code - show "Scan first" message
-                            <button
-                                onClick={() => setShowScanner(true)}
-                                className="flex-1 flex flex-col items-center p-2 rounded-xl transition-colors hover:bg-gray-50"
-                            >
-                                <div
-                                    className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                    style={{ backgroundColor: '#dcfce7' }}
-                                >
+                                {qrCode && checkingQrStatus ? (
+                                    <Loader2 className="w-5 h-5 animate-spin text-green-500" />
+                                ) : (qrCode && (giftQrUsed || giftRedeemed)) ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                ) : (
                                     <Gift className="w-5 h-5 text-green-500" />
-                                </div>
-                                <span className="text-[10px] font-medium text-gray-500">
-                                    Scan first
-                                </span>
-                            </button>
-                        )
+                                )}
+                            </div>
+                            <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
+                                {!qrCode ? 'Scan first' : checkingQrStatus ? 'Checking...' : (giftQrUsed || giftRedeemed) ? 'Redeemed' : 'Redeem'}
+                            </span>
+                        </button>
                     )}
 
                     {config.enable_scratch_card_game && (
