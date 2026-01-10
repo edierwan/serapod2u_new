@@ -77,7 +77,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(20)
-  const [filterStatus, setFilterStatus] = useState<'all' | 'Success' | 'Error'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'Success' | 'Error' | 'Existing' | 'New'>('all')
 
   // Sorting state
   const [sortField, setSortField] = useState<SortField | null>(null)
@@ -365,6 +365,40 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     document.body.removeChild(link)
   }
 
+  const downloadExistingRecords = () => {
+    const existingRecords = results.filter(r => r.status === 'Success' && r.isNewUser === false)
+    if (existingRecords.length === 0) return
+
+    const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'Status', 'UserType', 'MatchedRole', 'Message']
+    const rows = existingRecords.map(r => {
+      const userType = r.isNewUser ? 'New Account' : 'Existing Account'
+      const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
+      const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
+      
+      return [
+        r.joinedDate, 
+        safeName, 
+        r.phone, 
+        r.email, 
+        r.location, 
+        r.points, 
+        r.password || '', 
+        r.status, 
+        userType,
+        r.userRole || '',
+        safeMessage
+      ].join(',')
+    })
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.join("\n")
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    link.setAttribute("download", `migration_existing_users_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   // Handle column sorting
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -388,7 +422,12 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   }
 
   // Filter results
-  let filteredResults = results.filter(r => filterStatus === 'all' || r.status === filterStatus)
+  let filteredResults = results.filter(r => {
+    if (filterStatus === 'all') return true
+    if (filterStatus === 'Existing') return r.status === 'Success' && r.isNewUser === false
+    if (filterStatus === 'New') return r.status === 'Success' && r.isNewUser === true
+    return r.status === filterStatus
+  })
 
   // Apply sorting
   if (sortField) {
@@ -558,33 +597,49 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <div className="flex flex-col items-end gap-1">
-                    <Badge
-                      variant="outline"
-                      className="bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors"
-                      onClick={() => {
-                        setFilterStatus('Success')
-                        setCurrentPage(1)
-                      }}
-                    >
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      {successCount} Success
-                    </Badge>
-                    {successCount > 0 && (
-                      <div className="flex gap-1 text-[10px] items-center">
-                         <span className="text-gray-500 font-medium bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200" title="New accounts created">
-                           New: {newUsersCount}
-                         </span>
-                         <span className="text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="Existing users updated">
-                           Exist: {existingUsersCount}
-                         </span>
-                      </div>
-                    )}
-                  </div>
-
                   <Badge
                     variant="outline"
-                    className="bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors self-start mt-0.5"
+                    className={`bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors ${filterStatus === 'Success' ? 'ring-2 ring-green-500' : ''}`}
+                    onClick={() => {
+                      setFilterStatus('Success')
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    {successCount} Success
+                  </Badge>
+
+                  {newUsersCount > 0 && (
+                    <Badge
+                       variant="outline"
+                       className={`bg-gray-100 text-gray-700 border-gray-200 cursor-pointer hover:bg-gray-200 transition-colors ${filterStatus === 'New' ? 'ring-2 ring-gray-400' : ''}`}
+                       onClick={() => {
+                         setFilterStatus('New')
+                         setCurrentPage(1)
+                       }}
+                     >
+                       <span className="w-2 h-2 rounded-full bg-gray-500 mr-1.5"></span>
+                       {newUsersCount} New
+                     </Badge>
+                  )}
+
+                  {existingUsersCount > 0 && (
+                     <Badge
+                       variant="outline"
+                       className={`bg-amber-50 text-amber-700 border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors ${filterStatus === 'Existing' ? 'ring-2 ring-amber-500' : ''}`}
+                       onClick={() => {
+                         setFilterStatus('Existing')
+                         setCurrentPage(1)
+                       }}
+                     >
+                       <span className="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>
+                       {existingUsersCount} Exist
+                     </Badge>
+                  )}
+                  
+                  <Badge
+                    variant="outline"
+                    className={`bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors ${filterStatus === 'Error' ? 'ring-2 ring-red-500' : ''}`}
                     onClick={() => {
                       setFilterStatus('Error')
                       setCurrentPage(1)
@@ -606,12 +661,14 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                   className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   value={filterStatus}
                   onChange={(e) => {
-                    setFilterStatus(e.target.value as 'all' | 'Success' | 'Error')
+                    setFilterStatus(e.target.value as 'all' | 'Success' | 'Error' | 'Existing' | 'New')
                     setCurrentPage(1)
                   }}
                 >
                   <option value="all">All Records ({results.length})</option>
-                  <option value="Success">Success Only ({successCount})</option>
+                  <option value="Success">All Success ({successCount})</option>
+                  {newUsersCount > 0 && <option value="New">New Users ({newUsersCount})</option>}
+                  {existingUsersCount > 0 && <option value="Existing">Existing Users ({existingUsersCount})</option>}
                   <option value="Error">Errors Only ({errorCount})</option>
                 </select>
               </div>
@@ -621,6 +678,12 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                   <FileDown className="mr-2 h-4 w-4" />
                   Download All Results
                 </Button>
+                {filterStatus === 'Existing' && existingUsersCount > 0 && (
+                   <Button variant="outline" size="sm" onClick={downloadExistingRecords} className="text-amber-700 hover:text-amber-800 border-amber-200 hover:bg-amber-50">
+                    <FileDown className="mr-2 h-4 w-4" />
+                    Download Existing Records
+                  </Button>
+                )}
                 {errorCount > 0 && (
                   <Button variant="outline" size="sm" onClick={downloadErrorRecords} className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50">
                     <FileDown className="mr-2 h-4 w-4" />
