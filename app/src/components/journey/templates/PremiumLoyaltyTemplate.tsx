@@ -2967,13 +2967,13 @@ export default function PremiumLoyaltyTemplate({
                                 className="flex-shrink-0 w-36 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
                                 onClick={() => setActiveTab('rewards')}
                             >
-                                <div className="h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative overflow-hidden">
+                                <div className="h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative overflow-hidden p-2">
                                     {reward.item_image_url ? (
                                         <Image
                                             src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
                                             alt={reward.item_name}
                                             fill
-                                            className="object-cover"
+                                            className="object-contain"
                                         />
                                     ) : (
                                         <Gift className="w-10 h-10 text-gray-400" />
@@ -4202,7 +4202,7 @@ export default function PremiumLoyaltyTemplate({
                     <div
                         className="px-5 pt-6 pb-8 text-white sticky top-0 z-30"
                         style={{
-                            background: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`
+                            background: `linear-gradient(135deg, ${config.primary_color} 0%, ${adjustColor(config.primary_color, -20)} 100%)`
                         }}
                     >
                         <button
@@ -4318,7 +4318,7 @@ export default function PremiumLoyaltyTemplate({
                 <div
                     className="px-5 pt-6 pb-8 text-white"
                     style={{
-                        background: `linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)`
+                        background: `linear-gradient(135deg, ${config.primary_color} 0%, ${adjustColor(config.primary_color, -20)} 100%)`
                     }}
                 >
                     <h1 className="text-xl font-bold mb-2">Product Catalog</h1>

@@ -167,9 +167,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             location_lat, 
             location_lng,
             shop_id,
+            consumer_id,
             points_amount,
             scanned_at,
-            organizations ( org_name )
+            organizations ( org_name ),
+            users:consumer_id ( full_name )
           )
         `, { count: 'exact' })
         .eq('company_id', userProfile.organizations.id)
@@ -261,9 +263,13 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
              gameCardImage = prod?.product_variants?.[0]?.image_url;
         }
 
+        // Consumer name priority: 1) User's full_name from scan, 2) qr_codes consumer_name, 3) Anonymous
+        const consumerNameFromScan = lastScan?.users?.full_name;
+        const consumerName = consumerNameFromScan || qr.consumer_name || 'Anonymous';
+
         return {
           id: qr.id,
-          consumer_name: qr.consumer_name || 'Anonymous',
+          consumer_name: consumerName,
           consumer_phone: qr.consumer_phone,
           consumer_email: qr.consumer_email,
           activated_at: qr.redeemed_at || qr.updated_at,
