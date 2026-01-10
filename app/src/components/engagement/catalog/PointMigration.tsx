@@ -762,12 +762,24 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                         <TableCell className="text-right font-medium">{result.points}</TableCell>
                         <TableCell>
                           {result.status === 'Success' ? (
-                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              Success
-                            </Badge>
+                            <div className="flex flex-col items-start gap-1.5">
+                              <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200">
+                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                Success
+                              </Badge>
+                              {result.isNewUser === true && (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-slate-100 text-slate-600 border-slate-200">
+                                  New Account
+                                </span>
+                              )}
+                              {result.isNewUser === false && (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">
+                                  Existing{result.userRole ? ` (${result.userRole})` : ''}
+                                </span>
+                              )}
+                            </div>
                           ) : (
-                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
+                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-red-200">
                               <XCircle className="w-3 h-3 mr-1" />
                               Error
                             </Badge>
