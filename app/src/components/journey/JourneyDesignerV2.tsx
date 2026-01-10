@@ -135,20 +135,20 @@ interface JourneyConfig {
     skip_security_code_for_scratch_card?: boolean
     enable_scratch_card_game: boolean
     scratch_card_require_otp: boolean
-    
+
     // Feature Customization
     points_title?: string
     points_description?: string
     points_icon?: string
-    
+
     lucky_draw_title?: string
     lucky_draw_description?: string
     lucky_draw_icon?: string
-    
+
     redemption_title?: string
     redemption_description?: string
     redemption_icon?: string
-    
+
     scratch_card_title?: string
     scratch_card_description?: string
     scratch_card_icon?: string
@@ -201,7 +201,7 @@ export default function JourneyDesignerV2({
         console.log('Journey ID:', journey?.id)
         console.log('Journey require_security_code:', journey?.require_security_code)
     }, [])
-    
+
     const [saving, setSaving] = useState(false)
     const [showPreview, setShowPreview] = useState(true)
     const [uploadingImage, setUploadingImage] = useState(false)
@@ -221,7 +221,7 @@ export default function JourneyDesignerV2({
     // Find initial theme index based on primary color
     useEffect(() => {
         if (config.primary_color) {
-            const themeIndex = COLOR_THEMES.findIndex(theme => 
+            const themeIndex = COLOR_THEMES.findIndex(theme =>
                 theme.primary.toLowerCase() === config.primary_color.toLowerCase()
             )
             if (themeIndex !== -1) {
@@ -261,7 +261,7 @@ export default function JourneyDesignerV2({
                 .select('settings')
                 .eq('id', userProfile.organization_id)
                 .single()
-            
+
             if (data?.settings?.journey_builder_activation) {
                 setActivationTrigger(data.settings.journey_builder_activation)
             }
@@ -289,20 +289,20 @@ export default function JourneyDesignerV2({
         skip_security_code_for_scratch_card: (journey as any)?.skip_security_code_for_scratch_card ?? false,
         enable_scratch_card_game: journey?.enable_scratch_card_game ?? false,
         scratch_card_require_otp: journey?.scratch_card_require_otp ?? false,
-        
+
         // Feature Customization
         points_title: journey?.points_title || 'Collect Points',
         points_description: journey?.points_description || 'Earn rewards with every scan',
         points_icon: journey?.points_icon || 'Coins',
-        
+
         lucky_draw_title: journey?.lucky_draw_title || 'Lucky Draw',
         lucky_draw_description: journey?.lucky_draw_description || 'Try your luck and win prizes!',
         lucky_draw_icon: journey?.lucky_draw_icon || 'Star',
-        
+
         redemption_title: journey?.redemption_title || 'Claim Free Gift',
         redemption_description: journey?.redemption_description || 'Get your free gift at the shop',
         redemption_icon: journey?.redemption_icon || 'Gift',
-        
+
         scratch_card_title: journey?.scratch_card_title || 'Scratch Card Game',
         scratch_card_description: journey?.scratch_card_description || 'Scratch & win surprise rewards',
         scratch_card_icon: journey?.scratch_card_icon || 'Gift',
@@ -334,7 +334,7 @@ export default function JourneyDesignerV2({
                 id: journey.id,
                 require_security_code: journey.require_security_code
             })
-            
+
             setConfig({
                 id: journey.id,
                 name: journey.name || `Journey for ${order.order_no}`,
@@ -355,20 +355,20 @@ export default function JourneyDesignerV2({
                 skip_security_code_for_scratch_card: (journey as any).skip_security_code_for_scratch_card ?? false,
                 enable_scratch_card_game: journey.enable_scratch_card_game ?? false,
                 scratch_card_require_otp: journey.scratch_card_require_otp ?? false,
-                
+
                 // Feature Customization
                 points_title: journey.points_title || 'Collect Points',
                 points_description: journey.points_description || 'Earn rewards with every scan',
                 points_icon: journey.points_icon || 'Coins',
-                
+
                 lucky_draw_title: journey.lucky_draw_title || 'Lucky Draw',
                 lucky_draw_description: journey.lucky_draw_description || 'Try your luck and win prizes!',
                 lucky_draw_icon: journey.lucky_draw_icon || 'Star',
-                
+
                 redemption_title: journey.redemption_title || 'Claim Free Gift',
                 redemption_description: journey.redemption_description || 'Get your free gift at the shop',
                 redemption_icon: journey.redemption_icon || 'Gift',
-                
+
                 scratch_card_title: journey.scratch_card_title || 'Scratch Card Game',
                 scratch_card_description: journey.scratch_card_description || 'Scratch & win surprise rewards',
                 scratch_card_icon: journey.scratch_card_icon || 'Gift',
@@ -390,7 +390,7 @@ export default function JourneyDesignerV2({
                     items: []
                 }
             })
-            
+
             console.log('[JourneyDesigner] Config state updated with require_security_code:', journey.require_security_code ?? false)
         }
     }, [journey])
@@ -435,10 +435,10 @@ export default function JourneyDesignerV2({
                 // Always include 'received_warehouse' because if it's received, it's definitely shipped/ready
                 const validProductStatuses = [...PRODUCT_CONSUMER_READY_STATUSES, 'received_warehouse'] as string[]
                 const validMasterStatuses = [...MASTER_CONSUMER_READY_STATUSES, 'received_warehouse'] as string[]
-                
+
                 // If activation trigger is strictly 'received_warehouse', we might want to exclude 'shipped_distributor'
                 // But for now, the main issue is that 'received_warehouse' was missing from the default list.
-                
+
                 if (activationTrigger === 'received_warehouse') {
                     // If we wanted to be strict:
                     // validProductStatuses = validProductStatuses.filter(s => s !== 'shipped_distributor')
@@ -527,7 +527,7 @@ export default function JourneyDesignerV2({
                 setCheckingShipment(false)
             }
         }
-        
+
         checkShipmentStatus()
     }, [order.id, order.order_no, supabase, activationTrigger])
 
@@ -536,7 +536,7 @@ export default function JourneyDesignerV2({
         async function checkFeatures() {
             if (!order.id) return
             setCheckingFeatures(true)
-            
+
             try {
                 // Check Lucky Draw
                 if (order.has_lucky_draw) {
@@ -546,12 +546,12 @@ export default function JourneyDesignerV2({
                         .eq('order_id', order.id)
                         .limit(1)
                         .maybeSingle()
-                    
+
                     setHasLuckyDrawCampaign(!!ldLink)
                     if (ldLink?.campaign_id) {
                         setLuckyDrawCampaignId(ldLink.campaign_id)
                     }
-                    
+
                     // If no campaign, ensure toggle is off (only for new journeys or if invalid)
                     if (!ldLink && !journey) {
                         setConfig(prev => ({ ...prev, lucky_draw_enabled: false }))
@@ -564,7 +564,7 @@ export default function JourneyDesignerV2({
                         .from('redeem_gifts')
                         .select('*', { count: 'exact', head: true })
                         .eq('order_id', order.id)
-                    
+
                     const hasRedeem = (count || 0) > 0
                     setHasRedemptionConfig(hasRedeem)
 
@@ -639,7 +639,7 @@ export default function JourneyDesignerV2({
                     const MAX_WIDTH = isBanner ? 1080 : 400
                     const MAX_HEIGHT = isBanner ? 608 : 400 // 1080 / (16/9) ≈ 608
                     const QUALITY = isBanner ? 0.80 : 0.7 // Higher quality for banners
-                    
+
                     let width = img.width
                     let height = img.height
 
@@ -692,8 +692,8 @@ export default function JourneyDesignerV2({
 
             // Compress image before upload (banner images use higher quality)
             // For banner images, we skip compression to ensure high quality as requested
-            const compressedFile = options?.isBanner 
-                ? file 
+            const compressedFile = options?.isBanner
+                ? file
                 : await compressImage(file, { isBanner: options?.isBanner })
 
             const fileExt = 'jpg' // Always use jpg after compression
@@ -778,7 +778,7 @@ export default function JourneyDesignerV2({
             // Determine activation status
             let activationStatus = 'ready'
             let finalIsActive = config.is_active
-            
+
             if (!productsShipped) {
                 // Products haven't shipped yet
                 if (config.is_active) {
@@ -822,7 +822,7 @@ export default function JourneyDesignerV2({
                 created_by: userProfile.id,
                 activation_status: activationStatus
             }
-            
+
             // Add theme fields if they exist in the schema
             // These will be ignored if columns don't exist yet (migration not run)
             if (config.welcome_title !== undefined) journeyData.welcome_title = config.welcome_title
@@ -839,15 +839,15 @@ export default function JourneyDesignerV2({
             if (config.points_title !== undefined) journeyData.points_title = config.points_title
             if (config.points_description !== undefined) journeyData.points_description = config.points_description
             if (config.points_icon !== undefined) journeyData.points_icon = config.points_icon
-            
+
             if (config.lucky_draw_title !== undefined) journeyData.lucky_draw_title = config.lucky_draw_title
             if (config.lucky_draw_description !== undefined) journeyData.lucky_draw_description = config.lucky_draw_description
             if (config.lucky_draw_icon !== undefined) journeyData.lucky_draw_icon = config.lucky_draw_icon
-            
+
             if (config.redemption_title !== undefined) journeyData.redemption_title = config.redemption_title
             if (config.redemption_description !== undefined) journeyData.redemption_description = config.redemption_description
             if (config.redemption_icon !== undefined) journeyData.redemption_icon = config.redemption_icon
-            
+
             if (config.scratch_card_title !== undefined) journeyData.scratch_card_title = config.scratch_card_title
             if (config.scratch_card_description !== undefined) journeyData.scratch_card_description = config.scratch_card_description
             if (config.scratch_card_icon !== undefined) journeyData.scratch_card_icon = config.scratch_card_icon
@@ -863,7 +863,7 @@ export default function JourneyDesignerV2({
             if (config.id) {
                 // Update existing journey
                 console.log('[JourneyDesigner] Saving journey with require_security_code:', journeyData.require_security_code)
-                
+
                 const { error } = await supabase
                     .from('journey_configurations')
                     .update(journeyData)
@@ -873,7 +873,7 @@ export default function JourneyDesignerV2({
                     console.error('Supabase update error:', error)
                     throw new Error(error.message || 'Failed to update journey')
                 }
-                
+
                 console.log('[JourneyDesigner] Journey saved successfully')
             } else {
                 // Create new journey
@@ -908,7 +908,7 @@ export default function JourneyDesignerV2({
             if (luckyDrawCampaignId) {
                 await supabase
                     .from('lucky_draw_campaigns')
-                    .update({ 
+                    .update({
                         status: config.lucky_draw_enabled ? 'active' : 'closed',
                         updated_at: new Date().toISOString()
                     })
@@ -935,12 +935,12 @@ export default function JourneyDesignerV2({
                     variant: "default",
                 })
             }
-            
+
             onSuccess()
         } catch (error: any) {
             console.error('[Journey] Error saving journey:', error)
             const errorMessage = error?.message || error?.toString() || 'Unknown error occurred'
-            
+
             toast({
                 title: "Failed to save journey",
                 description: errorMessage,
@@ -1043,7 +1043,7 @@ export default function JourneyDesignerV2({
 
                                     {/* Color Preview */}
                                     <div className="flex items-center justify-center gap-3 mb-4">
-                                        <div 
+                                        <div
                                             className="w-20 h-20 rounded-2xl shadow-lg border-4 border-white"
                                             style={{ backgroundColor: COLOR_THEMES[selectedColorThemeIndex].primary }}
                                         />
@@ -1074,11 +1074,10 @@ export default function JourneyDesignerV2({
                                                             button_color: newTheme.button
                                                         })
                                                     }}
-                                                    className={`w-2 h-2 rounded-full transition-all ${
-                                                        index === selectedColorThemeIndex 
-                                                            ? 'w-6 bg-gray-800' 
+                                                    className={`w-2 h-2 rounded-full transition-all ${index === selectedColorThemeIndex
+                                                            ? 'w-6 bg-gray-800'
                                                             : 'bg-gray-300 hover:bg-gray-400'
-                                                    }`}
+                                                        }`}
                                                 />
                                             ))}
                                         </div>
@@ -1160,7 +1159,7 @@ export default function JourneyDesignerV2({
                                         }}
                                     />
                                 </div>
-                                
+
                                 {!productsShipped && !checkingShipment && (
                                     <Alert className="bg-blue-50 border-blue-200">
                                         <Info className="h-4 w-4 text-blue-600" />
@@ -1171,7 +1170,7 @@ export default function JourneyDesignerV2({
                                         </AlertDescription>
                                     </Alert>
                                 )}
-                                
+
                                 {productsShipped && config.is_active && (
                                     <Alert className="bg-amber-50 border-amber-200">
                                         <Info className="h-4 w-4 text-amber-600" />
@@ -1316,8 +1315,8 @@ export default function JourneyDesignerV2({
                                                     {!order.has_lucky_draw ? "Feature Not Available" : "No Lucky Draw Campaign Found"}
                                                 </p>
                                                 <p className="mt-1">
-                                                    {!order.has_lucky_draw 
-                                                        ? "This order was created without Lucky Draw enabled." 
+                                                    {!order.has_lucky_draw
+                                                        ? "This order was created without Lucky Draw enabled."
                                                         : <>Please <a href={`/dashboard?view=lucky-draw&order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">create a lucky draw campaign</a> for this order first.</>}
                                                 </p>
                                             </div>
@@ -1402,8 +1401,8 @@ export default function JourneyDesignerV2({
                                                     {!order.has_redeem ? "Feature Not Available" : "No Redemption Configuration Found"}
                                                 </p>
                                                 <p className="mt-1">
-                                                    {!order.has_redeem 
-                                                        ? "This order was created without Redemption enabled." 
+                                                    {!order.has_redeem
+                                                        ? "This order was created without Redemption enabled."
                                                         : <>Please <a href={`/dashboard?view=redeem-gift-management&order_id=${order.id}`} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-800">configure redemption settings</a> for this order first.</>}
                                                 </p>
                                             </div>
@@ -1594,161 +1593,162 @@ export default function JourneyDesignerV2({
                                         {config.banner_config.items.filter(item => (item.page || 'home') === activeBannerTab).map((item) => {
                                             const actualIndex = config.banner_config!.items.findIndex(i => i.id === item.id)
                                             return (
-                                            <div key={item.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 relative">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="absolute top-2 right-2 text-red-500 hover:text-red-700"
-                                                    onClick={() => {
-                                                        const newItems = config.banner_config!.items.filter(i => i.id !== item.id)
-                                                        setConfig({
-                                                            ...config,
-                                                            banner_config: {
-                                                                ...config.banner_config!,
-                                                                items: newItems
-                                                            }
-                                                        })
-                                                    }}
-                                                >
-                                                    Remove
-                                                </Button>
-
-                                                <div className="space-y-2">
-                                                    <Label>Image URL</Label>
-                                                    <div className="flex gap-2">
-                                                        <Input
-                                                            value={item.image_url}
-                                                            onChange={(e) => {
-                                                                const newItems = [...config.banner_config!.items]
-                                                                newItems[actualIndex].image_url = e.target.value
-                                                                setConfig({
-                                                                    ...config,
-                                                                    banner_config: {
-                                                                        ...config.banner_config!,
-                                                                        items: newItems
-                                                                    }
-                                                                })
-                                                            }}
-                                                            placeholder="https://example.com/banner.jpg"
-                                                        />
-                                                        <div className="relative">
-                                                            <input
-                                                                type="file"
-                                                                id={`banner-upload-${item.id}`}
-                                                                className="hidden"
-                                                                accept="image/*"
-                                                                onChange={(e) => {
-                                                                    const file = e.target.files?.[0]
-                                                                    if (file) handleImageUpload(file, (url) => {
-                                                                        const newItems = [...config.banner_config!.items]
-                                                                        newItems[actualIndex].image_url = url
-                                                                        setConfig({
-                                                                            ...config,
-                                                                            banner_config: {
-                                                                                ...config.banner_config!,
-                                                                                items: newItems
-                                                                            }
-                                                                        })
-                                                                    }, { isBanner: true }) // Use banner-specific compression
-                                                                }}
-                                                            />
-                                                            <Button
-                                                                variant="outline"
-                                                                onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
-                                                            >
-                                                                Upload
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                    {item.image_url && (
-                                                        <div className="space-y-2">
-                                                            <p className="text-xs text-gray-500">Preview (actual mobile size):</p>
-                                                            <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                                                                <Image
-                                                                    src={getStorageUrl(item.image_url) || item.image_url}
-                                                                    alt="Banner preview"
-                                                                    fill
-                                                                    className="object-cover"
-                                                                />
-                                                            </div>
-                                                            <p className="text-[10px] text-gray-400">16:9 aspect ratio • Optimized for mobile</p>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2">
-                                                        <Label>Link Destination</Label>
-                                                        <Select
-                                                            value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
-                                                            onValueChange={(value: string) => {
-                                                                const newItems = [...config.banner_config!.items]
-                                                                if (value === 'external') {
-                                                                    newItems[actualIndex].link_to = ''
-                                                                } else {
-                                                                    newItems[actualIndex].link_to = value
+                                                <div key={item.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 relative">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="absolute top-2 right-2 text-red-500 hover:text-red-700"
+                                                        onClick={() => {
+                                                            const newItems = config.banner_config!.items.filter(i => i.id !== item.id)
+                                                            setConfig({
+                                                                ...config,
+                                                                banner_config: {
+                                                                    ...config.banner_config!,
+                                                                    items: newItems
                                                                 }
-                                                                setConfig({
-                                                                    ...config,
-                                                                    banner_config: {
-                                                                        ...config.banner_config!,
-                                                                        items: newItems
-                                                                    }
-                                                                })
-                                                            }}
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="rewards">Rewards Page</SelectItem>
-                                                                <SelectItem value="products">Product Page</SelectItem>
-                                                                <SelectItem value="contact-us">Contact Us</SelectItem>
-                                                                <SelectItem value="no-link">No Link</SelectItem>
-                                                                <SelectItem value="external">Link</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                        {(!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to)) && (
-                                                            <div className="mt-2">
-                                                                <Input
-                                                                    value={item.link_to}
+                                                            })
+                                                        }}
+                                                    >
+                                                        Remove
+                                                    </Button>
+
+                                                    <div className="space-y-2">
+                                                        <Label>Image URL</Label>
+                                                        <div className="flex gap-2">
+                                                            <Input
+                                                                value={item.image_url}
+                                                                onChange={(e) => {
+                                                                    const newItems = [...config.banner_config!.items]
+                                                                    newItems[actualIndex].image_url = e.target.value
+                                                                    setConfig({
+                                                                        ...config,
+                                                                        banner_config: {
+                                                                            ...config.banner_config!,
+                                                                            items: newItems
+                                                                        }
+                                                                    })
+                                                                }}
+                                                                placeholder="https://example.com/banner.jpg"
+                                                            />
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="file"
+                                                                    id={`banner-upload-${item.id}`}
+                                                                    className="hidden"
+                                                                    accept="image/*"
                                                                     onChange={(e) => {
-                                                                        const newItems = [...config.banner_config!.items]
-                                                                        newItems[actualIndex].link_to = e.target.value
-                                                                        setConfig({
-                                                                            ...config,
-                                                                            banner_config: {
-                                                                                ...config.banner_config!,
-                                                                                items: newItems
-                                                                            }
-                                                                        })
+                                                                        const file = e.target.files?.[0]
+                                                                        if (file) handleImageUpload(file, (url) => {
+                                                                            const newItems = [...config.banner_config!.items]
+                                                                            newItems[actualIndex].image_url = url
+                                                                            setConfig({
+                                                                                ...config,
+                                                                                banner_config: {
+                                                                                    ...config.banner_config!,
+                                                                                    items: newItems
+                                                                                }
+                                                                            })
+                                                                        }, { isBanner: true }) // Use banner-specific compression
                                                                     }}
-                                                                    placeholder="https://example.com"
                                                                 />
+                                                                <Button
+                                                                    variant="outline"
+                                                                    onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
+                                                                >
+                                                                    Upload
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                        {item.image_url && (
+                                                            <div className="space-y-2">
+                                                                <p className="text-xs text-gray-500">Preview (actual mobile size):</p>
+                                                                <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                                                                    <Image
+                                                                        src={getStorageUrl(item.image_url) || item.image_url}
+                                                                        alt="Banner preview"
+                                                                        fill
+                                                                        className="object-cover"
+                                                                    />
+                                                                </div>
+                                                                <p className="text-[10px] text-gray-400">16:9 aspect ratio • Optimized for mobile</p>
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <div className="space-y-2">
-                                                        <Label>Expiration Date</Label>
-                                                        <Input
-                                                            type="date"
-                                                            value={item.expires_at}
-                                                            onChange={(e) => {
-                                                                const newItems = [...config.banner_config!.items]
-                                                                newItems[actualIndex].expires_at = e.target.value
-                                                                setConfig({
-                                                                    ...config,
-                                                                    banner_config: {
-                                                                        ...config.banner_config!,
-                                                                        items: newItems
+
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <Label>Link Destination</Label>
+                                                            <Select
+                                                                value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
+                                                                onValueChange={(value: string) => {
+                                                                    const newItems = [...config.banner_config!.items]
+                                                                    if (value === 'external') {
+                                                                        newItems[actualIndex].link_to = ''
+                                                                    } else {
+                                                                        newItems[actualIndex].link_to = value
                                                                     }
-                                                                })
-                                                            }}
-                                                        />
+                                                                    setConfig({
+                                                                        ...config,
+                                                                        banner_config: {
+                                                                            ...config.banner_config!,
+                                                                            items: newItems
+                                                                        }
+                                                                    })
+                                                                }}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="rewards">Rewards Page</SelectItem>
+                                                                    <SelectItem value="products">Product Page</SelectItem>
+                                                                    <SelectItem value="contact-us">Contact Us</SelectItem>
+                                                                    <SelectItem value="no-link">No Link</SelectItem>
+                                                                    <SelectItem value="external">Link</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                            {(!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to)) && (
+                                                                <div className="mt-2">
+                                                                    <Input
+                                                                        value={item.link_to}
+                                                                        onChange={(e) => {
+                                                                            const newItems = [...config.banner_config!.items]
+                                                                            newItems[actualIndex].link_to = e.target.value
+                                                                            setConfig({
+                                                                                ...config,
+                                                                                banner_config: {
+                                                                                    ...config.banner_config!,
+                                                                                    items: newItems
+                                                                                }
+                                                                            })
+                                                                        }}
+                                                                        placeholder="https://example.com"
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label>Expiration Date</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.expires_at}
+                                                                onChange={(e) => {
+                                                                    const newItems = [...config.banner_config!.items]
+                                                                    newItems[actualIndex].expires_at = e.target.value
+                                                                    setConfig({
+                                                                        ...config,
+                                                                        banner_config: {
+                                                                            ...config.banner_config!,
+                                                                            items: newItems
+                                                                        }
+                                                                    })
+                                                                }}
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )})}
+                                            )
+                                        })}
                                     </div>
                                 </div>
                             )}

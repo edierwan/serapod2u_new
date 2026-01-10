@@ -595,11 +595,10 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                   Review the results below. Success records have been processed.
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                   <Badge
                     variant="outline"
-                    className={`bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors ${filterStatus === 'Success' ? 'ring-2 ring-green-500' : ''}`}
+                    className={`bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors ${filterStatus === 'Success' ? 'ring-2 ring-green-500 ring-offset-1' : ''}`}
                     onClick={() => {
                       setFilterStatus('Success')
                       setCurrentPage(1)
@@ -609,37 +608,33 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                     {successCount} Success
                   </Badge>
 
-                  {newUsersCount > 0 && (
-                    <Badge
-                       variant="outline"
-                       className={`bg-gray-100 text-gray-700 border-gray-200 cursor-pointer hover:bg-gray-200 transition-colors ${filterStatus === 'New' ? 'ring-2 ring-gray-400' : ''}`}
-                       onClick={() => {
-                         setFilterStatus('New')
-                         setCurrentPage(1)
-                       }}
-                     >
-                       <span className="w-2 h-2 rounded-full bg-gray-500 mr-1.5"></span>
-                       {newUsersCount} New
-                     </Badge>
-                  )}
+                  <Badge
+                    variant="outline"
+                    className={`bg-slate-100 text-slate-700 border-slate-300 cursor-pointer hover:bg-slate-200 transition-colors ${filterStatus === 'New' ? 'ring-2 ring-slate-500 ring-offset-1' : ''}`}
+                    onClick={() => {
+                      setFilterStatus('New')
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-slate-500 mr-1.5"></span>
+                    {newUsersCount} New
+                  </Badge>
 
-                  {existingUsersCount > 0 && (
-                     <Badge
-                       variant="outline"
-                       className={`bg-amber-50 text-amber-700 border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors ${filterStatus === 'Existing' ? 'ring-2 ring-amber-500' : ''}`}
-                       onClick={() => {
-                         setFilterStatus('Existing')
-                         setCurrentPage(1)
-                       }}
-                     >
-                       <span className="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>
-                       {existingUsersCount} Exist
-                     </Badge>
-                  )}
+                  <Badge
+                    variant="outline"
+                    className={`bg-amber-50 text-amber-700 border-amber-300 cursor-pointer hover:bg-amber-100 transition-colors ${filterStatus === 'Existing' ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
+                    onClick={() => {
+                      setFilterStatus('Existing')
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>
+                    {existingUsersCount} Exist
+                  </Badge>
                   
                   <Badge
                     variant="outline"
-                    className={`bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors ${filterStatus === 'Error' ? 'ring-2 ring-red-500' : ''}`}
+                    className={`bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors ${filterStatus === 'Error' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
                     onClick={() => {
                       setFilterStatus('Error')
                       setCurrentPage(1)
@@ -649,7 +644,6 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                     {errorCount} Errors
                   </Badge>
                 </div>
-              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">

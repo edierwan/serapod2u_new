@@ -2785,8 +2785,8 @@ export default function PremiumLoyaltyTemplate({
                             <div className="text-right">
                                 <p className="text-white/70 text-xs">Next Reward</p>
                                 <p className="text-sm font-medium">
-                                    {nextRewardInfo.pointsAway > 0 
-                                        ? `${nextRewardInfo.pointsAway.toLocaleString()} pts away` 
+                                    {nextRewardInfo.pointsAway > 0
+                                        ? `${nextRewardInfo.pointsAway.toLocaleString()} pts away`
                                         : 'Ready to claim!'}
                                 </p>
                                 {nextRewardInfo.rewardName && (
@@ -2803,8 +2803,8 @@ export default function PremiumLoyaltyTemplate({
                                 <div
                                     className="h-full bg-yellow-400 rounded-full transition-all ease-out"
                                     style={{
-                                        width: showPointsAnimation 
-                                            ? `${Math.min((userPoints / (nextRewardInfo.nextRewardPoints || 50000)) * 100, 100)}%` 
+                                        width: showPointsAnimation
+                                            ? `${Math.min((userPoints / (nextRewardInfo.nextRewardPoints || 50000)) * 100, 100)}%`
                                             : '0%',
                                         transitionDuration: '2000ms'
                                     }}

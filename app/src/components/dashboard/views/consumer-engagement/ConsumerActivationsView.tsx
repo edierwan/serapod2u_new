@@ -42,7 +42,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [products, setProducts] = useState<any[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string>('all')
   const [selectedActivityType, setSelectedActivityType] = useState<string>('all')
-  
+
   // Filters
   const [filterProduct, setFilterProduct] = useState('all')
   const [filterMMYY, setFilterMMYY] = useState('')
@@ -67,7 +67,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [updatingFeedback, setUpdatingFeedback] = useState(false)
   const [feedbackToDelete, setFeedbackToDelete] = useState<any>(null)
   const [deletingFeedback, setDeletingFeedback] = useState(false)
-  
+
   // Check if user is super admin (role_level = 1)
   const isSuperAdmin = userProfile.roles?.role_level === 1
 
@@ -88,14 +88,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       loadProducts()
       loadStats()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile])
 
   useEffect(() => {
     if (userProfile?.organizations?.id) {
       loadActivations()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrderId, selectedActivityType, filterProduct, filterMMYY, filterConsumer, filterShop, sortColumn, sortDirection, currentPage, userProfile])
 
   const loadOrders = async () => {
@@ -107,7 +107,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .select('id, order_no, created_at')
         .eq('company_id', userProfile.organizations.id)
         .order('created_at', { ascending: false })
-      
+
       if (error) throw error
       setOrders(data || [])
     } catch (error: any) {
@@ -124,7 +124,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .select('id, product_name, product_variants(image_url)')
         .eq('manufacturer_id', userProfile.organizations.id)
         .order('product_name', { ascending: true })
-      
+
       if (error) throw error
       setProducts(data || [])
     } catch (error: any) {
@@ -223,18 +223,18 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       const { data, error, count } = await query
 
       if (error) throw error
-      
+
       setTotalCount(count || 0)
 
       let transformedData = data?.map((qr: any) => {
         // Get location and shop from the most recent scan if available
-        const scans = qr.consumer_qr_scans?.sort((a: any, b: any) => 
+        const scans = qr.consumer_qr_scans?.sort((a: any, b: any) =>
           new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime()
         ) || []
-        
+
         const lastScan = scans[0]
-        
-        const location = lastScan?.location_lat && lastScan?.location_lng 
+
+        const location = lastScan?.location_lat && lastScan?.location_lng
           ? `${lastScan.location_lat.toFixed(4)}, ${lastScan.location_lng.toFixed(4)}`
           : null
 
@@ -243,7 +243,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         // Points logic: try qr_codes first, then scan record
         let points = 0
         if (qr.is_points_collected) {
-            points = qr.points_value || lastScan?.points_amount || 0
+          points = qr.points_value || lastScan?.points_amount || 0
         }
 
         // Gift logic: try redeem_gifts (free gift) first, then redeem_items (points catalog)
@@ -255,12 +255,12 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         const gameCardWon = play?.is_win;
         const reward = play?.scratch_card_rewards;
         const gameCardName = reward?.name;
-        
+
         // Try to get image from loaded products since we can't join directly due to missing FK
         let gameCardImage = null;
         if (reward?.product_id && products.length > 0) {
-             const prod = products.find((p: any) => p.id === reward.product_id);
-             gameCardImage = prod?.product_variants?.[0]?.image_url;
+          const prod = products.find((p: any) => p.id === reward.product_id);
+          gameCardImage = prod?.product_variants?.[0]?.image_url;
         }
 
         // Consumer name priority: 1) User's full_name from scan, 2) qr_codes consumer_name, 3) Anonymous
@@ -292,7 +292,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
 
       // Client-side filtering for complex fields (Shop Name, MMYY)
       if (filterShop) {
-        transformedData = transformedData.filter(item => 
+        transformedData = transformedData.filter(item =>
           item.shop_name.toLowerCase().includes(filterShop.toLowerCase())
         )
       }
@@ -306,7 +306,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           return `${month}${year}` === filterMMYY
         })
       }
-      
+
       setActivations(transformedData)
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' })
@@ -335,7 +335,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           .select('*', { count: 'exact', head: true })
           .eq('company_id', userProfile.organizations.id)
           .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
-        
+
         if (selectedOrderId && selectedOrderId !== 'all') {
           q = q.eq('order_id', selectedOrderId)
         }
@@ -351,7 +351,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .select('consumer_phone')
         .eq('company_id', userProfile.organizations.id)
         .not('consumer_phone', 'is', null)
-      
+
       if (selectedOrderId && selectedOrderId !== 'all') {
         uniqueQuery = uniqueQuery.eq('order_id', selectedOrderId)
       }
@@ -390,11 +390,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         let points = qr.points_value || 0
         // Fallback to scans if points_value is 0/null
         if (!points && qr.consumer_qr_scans && qr.consumer_qr_scans.length > 0) {
-           points = qr.consumer_qr_scans.reduce((s: number, scan: any) => s + (scan.points_amount || 0), 0)
+          points = qr.consumer_qr_scans.reduce((s: number, scan: any) => s + (scan.points_amount || 0), 0)
         }
         return sum + points
       }, 0) || 0
-      
+
       const totalCost = totalPoints * pointValueRM
 
       // Today's scans
@@ -424,7 +424,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         .eq('org_id', organizationId)
         .order('created_at', { ascending: false })
         .limit(100)
-      
+
       if (error) throw error
       setFeedback(data || [])
     } catch (error: any) {
@@ -444,20 +444,20 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       })
       return
     }
-    
+
     setDeletingFeedback(true)
     try {
       const { error } = await supabase
         .from('consumer_feedback')
         .delete()
         .eq('id', feedbackId)
-      
+
       if (error) throw error
-      
+
       // Remove from local state
       setFeedback(prev => prev.filter(f => f.id !== feedbackId))
       setFeedbackToDelete(null)
-      
+
       toast({
         title: 'Feedback Deleted',
         description: 'The feedback has been successfully deleted.',
@@ -489,7 +489,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <h1 className="text-3xl font-bold text-gray-900">Consumer Activations</h1>
             <p className="text-gray-600 mt-1">Track consumer QR code scans and engagement</p>
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <div className="w-full sm:w-48">
               <Select value={selectedActivityType} onValueChange={setSelectedActivityType}>
@@ -542,7 +542,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -554,7 +554,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -567,7 +567,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -594,208 +594,208 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         <TabsContent value="activations">
           {/* Recent Activations */}
           <Card>
-        <CardHeader>
-          <CardTitle>Recent Activations</CardTitle>
-          {/* Filters Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-            <Select value={filterProduct} onValueChange={setFilterProduct}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter Product" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Products</SelectItem>
-                {products.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.product_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Input 
-              placeholder="MMYY (e.g. 1125)" 
-              value={filterMMYY} 
-              onChange={(e) => setFilterMMYY(e.target.value)} 
-            />
-            
-            <Input 
-              placeholder="Consumer Name/Phone" 
-              value={filterConsumer} 
-              onChange={(e) => setFilterConsumer(e.target.value)} 
-            />
-            
-            <Input 
-              placeholder="Shop Name" 
-              value={filterShop} 
-              onChange={(e) => setFilterShop(e.target.value)} 
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th 
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('product_id')}
-                  >
-                    <div className="flex items-center gap-1">Product <ArrowUpDown className="w-3 h-3" /></div>
-                  </th>
-                  <th 
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('sequence_number')}
-                  >
-                    <div className="flex items-center gap-1">Seq <ArrowUpDown className="w-3 h-3" /></div>
-                  </th>
-                  <th 
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('updated_at')}
-                  >
-                    <div className="flex items-center gap-1">Date & Time <ArrowUpDown className="w-3 h-3" /></div>
-                  </th>
-                  <th 
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('consumer_name')}
-                  >
-                    <div className="flex items-center gap-1">Consumer <ArrowUpDown className="w-3 h-3" /></div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Shop</th>
-                  <th 
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('points_value')}
-                  >
-                    <div className="flex items-center gap-1">Points <ArrowUpDown className="w-3 h-3" /></div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Redeem</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GameCard</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">Loading...</td>
-                  </tr>
-                ) : activations.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No activations found</td>
-                  </tr>
-                ) : (
-                  activations.map((activation) => (
-                    <tr key={activation.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {activation.variant_image && (
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={activation.variant_image} alt={activation.variant_name} />
-                              <AvatarFallback>{activation.variant_name?.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                          )}
-                          <div>
-                            <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
-                            {activation.variant_name && (
-                              <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        {activation.sequence_number || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{new Date(activation.activated_at).toLocaleDateString()}</span>
-                          <span className="text-[10px] text-gray-500">{new Date(activation.activated_at).toLocaleTimeString()}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="text-xs font-medium text-gray-900">
-                            {activation.consumer_name || 'Anonymous'}
-                          </p>
-                          <p className="text-[10px] text-gray-500">{activation.consumer_phone}</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        {activation.shop_name}
-                      </td>
-                      <td className="px-4 py-3">
-                        {activation.points_awarded > 0 ? (
-                          <span className="text-[10px] font-medium text-green-600">
-                            +{activation.points_awarded}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-500">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {activation.gift_redeemed ? (
-                          <div className="flex items-center gap-2">
-                            {activation.gift_image && (
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={activation.gift_image} alt={activation.gift_name} />
-                                <AvatarFallback>R</AvatarFallback>
-                              </Avatar>
-                            )}
-                            <span className="text-xs text-gray-700">
-                              {activation.gift_name || 'Redeemed'}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-500">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        {activation.game_card_won ? (
-                          <div className="flex items-center gap-2">
-                            {activation.game_card_image ? (
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={activation.game_card_image} alt={activation.game_card_name} />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-                            ) : (
-                              <Trophy className="h-4 w-4 text-yellow-500" />
-                            )}
-                            <span className="text-xs text-gray-700">
-                              {activation.game_card_name || 'Won'}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-500">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+            <CardHeader>
+              <CardTitle>Recent Activations</CardTitle>
+              {/* Filters Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
+                <Select value={filterProduct} onValueChange={setFilterProduct}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter Product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Products</SelectItem>
+                    {products.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.product_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between mt-4">
-            <div className="text-sm text-gray-500">
-              Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
-            </div>
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-medium">Page {currentPage} of {totalPages || 1}</span>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages || totalPages === 0}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                <Input
+                  placeholder="MMYY (e.g. 1125)"
+                  value={filterMMYY}
+                  onChange={(e) => setFilterMMYY(e.target.value)}
+                />
+
+                <Input
+                  placeholder="Consumer Name/Phone"
+                  value={filterConsumer}
+                  onChange={(e) => setFilterConsumer(e.target.value)}
+                />
+
+                <Input
+                  placeholder="Shop Name"
+                  value={filterShop}
+                  onChange={(e) => setFilterShop(e.target.value)}
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('product_id')}
+                      >
+                        <div className="flex items-center gap-1">Product <ArrowUpDown className="w-3 h-3" /></div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('sequence_number')}
+                      >
+                        <div className="flex items-center gap-1">Seq <ArrowUpDown className="w-3 h-3" /></div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('updated_at')}
+                      >
+                        <div className="flex items-center gap-1">Date & Time <ArrowUpDown className="w-3 h-3" /></div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('consumer_name')}
+                      >
+                        <div className="flex items-center gap-1">Consumer <ArrowUpDown className="w-3 h-3" /></div>
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Shop</th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSort('points_value')}
+                      >
+                        <div className="flex items-center gap-1">Points <ArrowUpDown className="w-3 h-3" /></div>
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Redeem</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GameCard</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">Loading...</td>
+                      </tr>
+                    ) : activations.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No activations found</td>
+                      </tr>
+                    ) : (
+                      activations.map((activation) => (
+                        <tr key={activation.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {activation.variant_image && (
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={activation.variant_image} alt={activation.variant_name} />
+                                  <AvatarFallback>{activation.variant_name?.charAt(0)}</AvatarFallback>
+                                </Avatar>
+                              )}
+                              <div>
+                                <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
+                                {activation.variant_name && (
+                                  <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {activation.sequence_number || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{new Date(activation.activated_at).toLocaleDateString()}</span>
+                              <span className="text-[10px] text-gray-500">{new Date(activation.activated_at).toLocaleTimeString()}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="text-xs font-medium text-gray-900">
+                                {activation.consumer_name || 'Anonymous'}
+                              </p>
+                              <p className="text-[10px] text-gray-500">{activation.consumer_phone}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {activation.shop_name}
+                          </td>
+                          <td className="px-4 py-3">
+                            {activation.points_awarded > 0 ? (
+                              <span className="text-[10px] font-medium text-green-600">
+                                +{activation.points_awarded}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {activation.gift_redeemed ? (
+                              <div className="flex items-center gap-2">
+                                {activation.gift_image && (
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={activation.gift_image} alt={activation.gift_name} />
+                                    <AvatarFallback>R</AvatarFallback>
+                                  </Avatar>
+                                )}
+                                <span className="text-xs text-gray-700">
+                                  {activation.gift_name || 'Redeemed'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {activation.game_card_won ? (
+                              <div className="flex items-center gap-2">
+                                {activation.game_card_image ? (
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={activation.game_card_image} alt={activation.game_card_name} />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                ) : (
+                                  <Trophy className="h-4 w-4 text-yellow-500" />
+                                )}
+                                <span className="text-xs text-gray-700">
+                                  {activation.game_card_name || 'Won'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-gray-500">
+                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium">Page {currentPage} of {totalPages || 1}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages || totalPages === 0}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="feedback">
@@ -819,18 +819,17 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                         <div>
                           <h4 className="font-semibold text-gray-900">{item.title}</h4>
                           <p className="text-sm text-gray-600">
-                            From: {item.consumer_name || 'Anonymous'} 
+                            From: {item.consumer_name || 'Anonymous'}
                             {item.consumer_phone && ` • ${item.consumer_phone}`}
                             {item.consumer_email && ` • ${item.consumer_email}`}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            item.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                            item.status === 'reviewed' ? 'bg-yellow-100 text-yellow-800' :
-                            item.status === 'resolved' ? 'bg-green-100 text-green-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                              item.status === 'reviewed' ? 'bg-yellow-100 text-yellow-800' :
+                                item.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                                  'bg-gray-100 text-gray-800'
+                            }`}>
                             {item.status || 'new'}
                           </span>
                           <span className="text-xs text-gray-500">
