@@ -48,7 +48,7 @@ interface ProgressState {
 type PasswordMode = 'default' | 'file'
 type SortField = 'rowNumber' | 'joinedDate' | 'name' | 'phone' | 'email' | 'location' | 'points' | 'status'
 
-const PAGE_SIZE_OPTIONS = [20, 50, 100] as const
+const PAGE_SIZE_OPTIONS = [20, 50, 100, -1] as const // -1 represents "All"
 
 // Connection timeout in ms (30 seconds without any activity)
 const CONNECTION_TIMEOUT = 30000
@@ -396,9 +396,11 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     })
   }
 
-  const totalPages = Math.ceil(filteredResults.length / pageSize)
-  const startIndex = (currentPage - 1) * pageSize
-  const paginatedResults = filteredResults.slice(startIndex, startIndex + pageSize)
+  // Handle "All" option for page size
+  const effectivePageSize = pageSize === -1 ? filteredResults.length : pageSize
+  const totalPages = pageSize === -1 ? 1 : Math.ceil(filteredResults.length / pageSize)
+  const startIndex = (currentPage - 1) * effectivePageSize
+  const paginatedResults = pageSize === -1 ? filteredResults : filteredResults.slice(startIndex, startIndex + pageSize)
 
   const successCount = results.filter(r => r.status === 'Success').length
   const errorCount = results.filter(r => r.status === 'Error').length
@@ -712,7 +714,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
 
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-gray-600">
-                    Showing {startIndex + 1} to {Math.min(startIndex + pageSize, filteredResults.length)} of {filteredResults.length} records
+                    Showing {startIndex + 1} to {Math.min(startIndex + effectivePageSize, filteredResults.length)} of {filteredResults.length} records
                   </span>
 
                   <div className="flex items-center gap-1">

@@ -311,6 +311,8 @@ async function processRowOptimized(
             phone: normalizedPhone,
             full_name: row.name,
             location: row.location,
+            role_code: "GUEST",
+            organization_id: null,
             last_migration_point_value: 0,
         };
 
@@ -336,6 +338,10 @@ async function processRowOptimized(
     if (row.email) updates.email = row.email.trim();
     if (normalizedPhone) updates.phone = normalizedPhone;
     if (row.joinedDate) updates.created_at = parseDate(row.joinedDate);
+    
+    // Ensure role_code and organization_id are set for independent consumers
+    if (!user.role_code) updates.role_code = "GUEST";
+    if (user.organization_id === undefined) updates.organization_id = null;
 
     if (delta !== 0) {
         updates.last_migration_point_value = newMigrationValue;
