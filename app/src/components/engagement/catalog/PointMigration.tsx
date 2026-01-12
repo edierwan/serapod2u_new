@@ -110,7 +110,12 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
       })
 
       if (error) {
-        console.error('Failed to save migration history:', error)
+        console.error('Failed to save migration history:', {
+           message: error.message,
+           details: error.details,
+           hint: error.hint,
+           code: error.code
+        })
       }
     } catch (err) {
       console.error('Error saving migration history:', err)

@@ -82,12 +82,12 @@ export default function JourneyOrderSelectorV2({
                         .from('qr_batches')
                         .select('id, order_id')
                         .in('order_id', orderIds)
-                    
+
                     if (batchError) throw batchError;
 
                     const batchToOrderId = new Map<string, string>();
                     const batchIds: string[] = [];
-                    
+
                     batches?.forEach(b => {
                         batchToOrderId.set(b.id, b.order_id);
                         batchIds.push(b.id);
@@ -101,16 +101,16 @@ export default function JourneyOrderSelectorV2({
                             .select('batch_id')
                             .in('batch_id', batchIds)
                             .in('status', ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed'])
-                        
+
                         if (masterError) throw masterError;
-                        
+
                         // 3. Map back to orders
                         const validOrderSet = new Set<string>();
                         validMasters?.forEach(m => {
                             const orderId = batchToOrderId.get(m.batch_id);
                             if (orderId) validOrderSet.add(orderId);
                         });
-                        
+
                         ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
                         console.log(`[JourneyOrderSelector] Filtered orders: ${orders.length} -> ${ordersWithValidStatus.length} valid status`)
                     } else {
