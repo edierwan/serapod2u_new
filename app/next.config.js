@@ -41,6 +41,10 @@ const nextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'jqihlckqrhdxszgwuymu.supabase.co',
+      },
+      {
+        protocol: 'https',
         hostname: 'serapod2u.com',
       },
       {
