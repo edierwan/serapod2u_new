@@ -11,6 +11,8 @@ import { Search, Package, ArrowRight, Gift, Star, Coins, CheckCircle2, AlertCirc
 interface Order {
     id: string
     order_no: string
+    display_doc_no?: string
+    legacy_order_no?: string  // Original order_no (e.g., ORD-HM-0126-19)
     order_type: string
     status: string
     has_redeem: boolean
@@ -54,16 +56,73 @@ export default function JourneyOrderSelectorV2({
 
             // Get orders for this organization - use buyer_org_id or seller_org_id
             // Filter to only show HM (H2M) orders - DH orders have QR codes that are part of HM orders
+            // Only show approved/closed orders (ready for consumer engagement - products are manufactured)
             const { data: orders, error: ordersError } = await supabase
                 .from('orders')
-                .select('id, order_no, order_type, status, has_redeem, has_lucky_draw, company_id, created_at')
+                .select('id, order_no, display_doc_no, order_type, status, has_redeem, has_lucky_draw, company_id, created_at')
                 .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
                 .eq('order_type', 'H2M') // Only HM orders - QR codes for DH are already part of HM orders
+                .in('status', ['approved', 'closed']) // Only orders that have been approved (products manufactured)
                 .order('created_at', { ascending: false })
 
             if (ordersError) {
                 console.error('Error fetching orders:', ordersError)
                 throw ordersError
+            }
+
+            // Filter: Only show orders with valid master QR status (received_warehouse or later)
+            // Note: qr_master_codes links to qr_batches (via batch_id), which links to orders (via order_id)
+            const orderIds = orders?.map(o => o.id) || []
+            let ordersWithValidStatus = orders || []
+
+            if (orderIds.length > 0) {
+                try {
+                    // 1. Get batches for these orders
+                    const { data: batches, error: batchError } = await supabase
+                        .from('qr_batches')
+                        .select('id, order_id')
+                        .in('order_id', orderIds)
+
+                    if (batchError) throw batchError;
+
+                    const batchToOrderId = new Map<string, string>();
+                    const batchIds: string[] = [];
+
+                    batches?.forEach(b => {
+                        batchToOrderId.set(b.id, b.order_id);
+                        batchIds.push(b.id);
+                    });
+
+                    if (batchIds.length > 0) {
+                        // 2. Check master codes which have valid status
+                        // "received_warehouse" means it has arrived at warehouse and is ready for journey creation
+                        const { data: validMasters, error: masterError } = await supabase
+                            .from('qr_master_codes')
+                            .select('batch_id')
+                            .in('batch_id', batchIds)
+                            .in('status', ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed'])
+
+                        if (masterError) throw masterError;
+
+                        // 3. Map back to orders
+                        const validOrderSet = new Set<string>();
+                        validMasters?.forEach(m => {
+                            const orderId = batchToOrderId.get(m.batch_id);
+                            if (orderId) validOrderSet.add(orderId);
+                        });
+
+                        ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
+                        console.log(`[JourneyOrderSelector] Filtered orders: ${orders.length} -> ${ordersWithValidStatus.length} valid status`)
+                    } else {
+                        ordersWithValidStatus = []
+                    }
+                } catch (filterError) {
+                    console.error('[JourneyOrderSelector] Error filtering by status:', filterError)
+                    // Fallback: show all orders if check fails, or show none? 
+                    // Showing none is safer to prevent creating journies on invalid orders, but if check fails due to network, maybe show warning.
+                    // For now, let's allow empty to indicate issue.
+                    ordersWithValidStatus = []
+                }
             }
 
             // Get existing journey links to filter out
@@ -78,7 +137,7 @@ export default function JourneyOrderSelectorV2({
 
             // Get order items count for each order
             const ordersWithItems = await Promise.all(
-                (orders || []).map(async (order) => {
+                ordersWithValidStatus.map(async (order) => {
                     const { count } = await supabase
                         .from('order_items')
                         .select('*', { count: 'exact', head: true })
@@ -86,6 +145,9 @@ export default function JourneyOrderSelectorV2({
 
                     return {
                         ...order,
+                        // Use display_doc_no when available, keep legacy_order_no for reference
+                        legacy_order_no: order.order_no,  // Keep original order_no as legacy
+                        order_no: order.display_doc_no || order.order_no,
                         order_items: Array(count || 0).fill({}) // Create array with count
                     }
                 })
@@ -240,6 +302,9 @@ export default function JourneyOrderSelectorV2({
                                     <div className="flex items-start justify-between">
                                         <div className="flex-1">
                                             <CardTitle className="text-lg">{order.order_no}</CardTitle>
+                                            {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                                                <p className="text-[10px] text-gray-400 mt-0.5">Legacy: {order.legacy_order_no}</p>
+                                            )}
                                             <CardDescription className="mt-1">
                                                 {getOrderTypeLabel(order.order_type)}
                                             </CardDescription>
@@ -318,6 +383,9 @@ export default function JourneyOrderSelectorV2({
                                                 <h3 className="font-medium text-gray-900">{order.order_no}</h3>
                                                 {getStatusBadge(order.status)}
                                             </div>
+                                            {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                                                <p className="text-[10px] text-gray-400">Legacy: {order.legacy_order_no}</p>
+                                            )}
                                             <p className="text-sm text-gray-500">{getOrderTypeLabel(order.order_type)}</p>
                                         </div>
 

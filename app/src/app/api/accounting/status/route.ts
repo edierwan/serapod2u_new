@@ -8,10 +8,10 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient() as any
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -51,9 +51,9 @@ export async function GET(request: NextRequest) {
         .select('id', { count: 'exact', head: true })
         .eq('company_id', companyId || '00000000-0000-0000-0000-000000000000')
         .limit(1)
-      
+
       tablesExist = !tableError || !tableError.message?.includes('does not exist')
-      
+
       checklist.push({
         item: 'Database Tables',
         status: tablesExist ? 'ok' : 'error',
@@ -79,8 +79,8 @@ export async function GET(request: NextRequest) {
       checklist.push({
         item: 'Chart of Accounts',
         status: hasAccounts ? 'ok' : 'warning',
-        message: hasAccounts 
-          ? `${accountCount} accounts configured` 
+        message: hasAccounts
+          ? `${accountCount} accounts configured`
           : 'No accounts configured - use "Seed Default Accounts" to set up'
       })
     }
@@ -92,21 +92,38 @@ export async function GET(request: NextRequest) {
     checklist.push({
       item: 'User Permissions',
       status: canManage ? 'ok' : 'warning',
-      message: canManage 
-        ? 'You have admin permissions to manage accounting' 
+      message: canManage
+        ? 'You have admin permissions to manage accounting'
         : 'Read-only access - admin permissions required to manage'
     })
+
+    // 5. Get gl_settings to check posting_mode
+    let postingMode = 'MANUAL'
+    let hasSettings = false
+    if (companyId) {
+      const { data: settings } = await supabase
+        .from('gl_settings')
+        .select('posting_mode')
+        .eq('company_id', companyId)
+        .single()
+
+      if (settings) {
+        hasSettings = true
+        postingMode = settings.posting_mode || 'MANUAL'
+      }
+    }
 
     return NextResponse.json({
       enabled: isEnabled,
       company_id: companyId,
       checklist,
-      phase: 'Phase 1 - Foundation',
+      phase: 'Phase 2 - Manual Posting',
+      posting_mode: postingMode,
       features: {
         chart_of_accounts: true,
-        journals_view: false, // Scaffolded but not active
-        posting: false,
-        reports: false
+        journals_view: true, // Now active in Phase 2
+        posting: true,       // Now active in Phase 2
+        reports: false       // Coming in Phase 3
       }
     })
 

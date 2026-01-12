@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
         orders (
           id,
           order_no,
+          display_doc_no,
           buyer_org_id,
           seller_org_id,
           status,
@@ -107,29 +108,29 @@ export async function GET(request: NextRequest) {
           .eq('batch_id', batch.id)
           .eq('is_buffer', true)
           .limit(100000) // Fix: Handle large batches with 10k+ codes
-        
+
         const usedBufferCodes = (allBufferCodes || []).filter(qr => qr.status === 'buffer_used').length
-        
+
         // Calculate total buffer codes from batch metadata
         const actualTotalBuffers = totalBufferCodes // Use calculated buffer from total - planned
-        
+
         // Available buffers = expected - total_linked for all cases
         // This accounts for codes that are not yet packed but reserved
         const totalExpectedUnits = (masterCodesData || []).reduce((sum, mc) => sum + Number(mc.expected_unit_count || 0), 0)
         const totalLinkedUnits = Array.from(masterLinkedCounts.values()).reduce((sum, count) => sum + count, 0)
         const calculatedAvailableBuffers = Math.max(totalExpectedUnits - totalLinkedUnits, 0)
-        
+
         const availableBufferCodes = calculatedAvailableBuffers
 
         const packedMasters = (masterCodesData || []).filter((mc) => {
           const expected = Number(mc.expected_unit_count || 0)
           if (!expected) return false
-          
+
           // Prioritize actual_unit_count (reliable, set by mark-case-perfect API)
           // Fall back to counting linked QR codes only if actual_unit_count is not set
           const actualCount = Number(mc.actual_unit_count || 0)
           const linkedCount = actualCount > 0 ? actualCount : (masterLinkedCounts.get(mc.id) || 0)
-          
+
           return linkedCount >= expected
         }).length
 
@@ -176,12 +177,12 @@ export async function GET(request: NextRequest) {
         // Get detailed case-by-case status
         const caseDetails = (masterCodesData || []).map((mc) => {
           const expected = Number(mc.expected_unit_count || 0)
-          
+
           // Prioritize actual_unit_count (reliable, set by mark-case-perfect API and Mode C worker)
           // Fall back to counting linked QR codes only if actual_unit_count is not set
           const actualCount = Number(mc.actual_unit_count || 0)
           const linkedCount = actualCount > 0 ? actualCount : (masterLinkedCounts.get(mc.id) || 0)
-          
+
           // A case is packed if:
           // 1. It has reached the expected count, OR
           // 2. The master status is 'packed' (set by Mode C worker or mark-case-perfect)
@@ -208,6 +209,7 @@ export async function GET(request: NextRequest) {
           batch_status: batch.status,
           order_id: batch.order_id,
           order_no: orderData?.order_no || '',
+          display_doc_no: orderData?.display_doc_no || '',
           buyer_org_name: orgData?.org_name || 'Unknown',
           total_master_codes: totalMasters || 0,
           packed_master_codes: packedMasters || 0,

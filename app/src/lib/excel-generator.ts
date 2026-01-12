@@ -47,6 +47,7 @@ function extractFlavorOnly(variantName: string): string {
 
 export interface QRExcelData {
   orderNo: string
+  displayDocNo?: string  // New format doc number (e.g., ORD26000033)
   orderDate: string
   companyName: string
   manufacturerName: string
@@ -90,13 +91,13 @@ export async function generateQRExcel(data: QRExcelData): Promise<string> {
 
     // Use non-streaming workbook for better compatibility
     const workbook = new ExcelJS.Workbook()
-    
+
     // Build all sheets in order - these functions work with both stream and non-stream
     buildSummarySheet(workbook as any, data)
     buildMasterSheet(workbook as any, data)
     buildIndividualSheet(workbook as any, data, data.individualCodes)
     buildProductBreakdownSheet(workbook as any, data, productGroups)
-    
+
     await workbook.xlsx.writeFile(excelFilePath)
 
     const stats = await import('fs/promises').then(fs => fs.stat(excelFilePath))
@@ -111,7 +112,7 @@ export async function generateQRExcel(data: QRExcelData): Promise<string> {
       stack: error instanceof Error ? error.stack : undefined
     })
     // Cleanup on error
-    await unlink(excelFilePath).catch(() => {})
+    await unlink(excelFilePath).catch(() => { })
     throw error
   }
 }
@@ -130,7 +131,7 @@ function calculateAggregates(data: QRExcelData): {
 
   data.individualCodes.forEach((code) => {
     const key = `${code.product_code}-${code.variant_code || 'default'}`
-    
+
     if (!productGroups.has(key)) {
       productGroups.set(key, {
         firstCode: code,
@@ -184,7 +185,7 @@ export async function streamFileAsResponse(
   })
 
   stream.on('error', () => {
-    unlink(filePath).catch(() => {})
+    unlink(filePath).catch(() => { })
   })
 
   return response
@@ -205,7 +206,7 @@ function buildSummarySheet(
     ['Generated:', new Date().toLocaleString()],
     ['', ''],
     ['Order Information', ''],
-    ['Order Number:', data.orderNo],
+    ['Order Number:', data.displayDocNo || data.orderNo],
     ['Order Date:', data.orderDate],
     ['Company:', data.companyName],
     ['Manufacturer:', data.manufacturerName],
@@ -284,7 +285,7 @@ function buildMasterSheet(
   // So total copies = 1 (original) + duplicates
   const duplicateCount = data.extraQrMaster ?? 0  // Default to 0 duplicates
   const copiesPerMaster = 1 + duplicateCount        // Always print at least 1, plus duplicates
-  
+
   data.masterCodes.forEach((master) => {
     // Determine variant label for this case
     const variantsSet = caseVariants.get(master.case_number)
@@ -335,7 +336,7 @@ function buildIndividualSheet(
   const sheetName = 'Individual QR Codes'
 
   const sheet = workbook.addWorksheet(sheetName)
-  
+
   // Column order:
   // 1. # (A)
   // 2. Product Name (B)
@@ -364,7 +365,7 @@ function buildIndividualSheet(
   // Extract unique variants and assign fixed BUFFER index
   const variantKeys: string[] = []
   const seenVariants = new Set<string>()
-  
+
   for (const code of codesSlice) {
     const variantKey = `${code.product_code}|${code.variant_code}`
     if (!seenVariants.has(variantKey)) {
@@ -372,25 +373,25 @@ function buildIndividualSheet(
       variantKeys.push(variantKey)
     }
   }
-  
+
   // Assign BUFFER index: Variant 1 → BUFFER-1, Variant 2 → BUFFER-2, etc.
   const bufferIndexByVariant = new Map<string, number>()
   variantKeys.forEach((variantKey, index) => {
     bufferIndexByVariant.set(variantKey, index + 1)
   })
-  
+
   // Track buffer sequence per variant (for Buffer Group only)
   const variantBufferSeq = new Map<string, number>()
-  
+
   for (let i = 0; i < codesSlice.length; i++) {
     const code = codesSlice[i]
-    
+
     // Use global case number from QR generator
     // - Production codes: Use code.case_number (already calculated globally during generation)
     // - Buffer codes: Use fixed BUFFER-N per variant
     let caseNumber: number | string | null = null
     let bufferGroup = ''
-    
+
     if (!code.is_buffer) {
       // Production code - use the global case number assigned during QR generation
       caseNumber = code.case_number
@@ -398,12 +399,12 @@ function buildIndividualSheet(
       // Buffer code - use fixed BUFFER index for this variant
       const variantKey = `${code.product_code}|${code.variant_code}`
       const bufferIndex = bufferIndexByVariant.get(variantKey) || 1
-      
+
       // Case Number shows fixed buffer index per variant (BUFFER-1, BUFFER-2, ...)
       // All buffer codes for Variant 1 → BUFFER-1
       // All buffer codes for Variant 2 → BUFFER-2, etc.
       caseNumber = `BUFFER-${bufferIndex}`
-      
+
       // Buffer Group: B{variant_code}-{0001 format} - remains unique per buffer QR
       const currentBufferSeq = (variantBufferSeq.get(variantKey) || 0) + 1
       variantBufferSeq.set(variantKey, currentBufferSeq)
@@ -456,8 +457,8 @@ function buildProductBreakdownSheet(
     // Filter production codes only (exclude buffer codes) for this variant
     const allCodesForGroup = data.individualCodes.filter(
       c => c.product_code === group.firstCode.product_code &&
-           c.variant_code === group.firstCode.variant_code &&
-           !c.is_buffer    // production only - exclude buffer codes
+        c.variant_code === group.firstCode.variant_code &&
+        !c.is_buffer    // production only - exclude buffer codes
     )
 
     // Sort by case_number (numeric) to get first and last production cases
@@ -503,8 +504,8 @@ async function buildPackingSheet(
     const productCounts = caseProductCounts.get(String(master.case_number))
     const productList = productCounts
       ? Array.from(productCounts.entries())
-          .map(([name, count]) => `${name} (${count})`)
-          .join('; ')
+        .map(([name, count]) => `${name} (${count})`)
+        .join('; ')
       : ''
 
     const row = sheet.addRow({

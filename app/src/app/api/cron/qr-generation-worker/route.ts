@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     if (batch.status === 'queued') {
       const { data: updated, error: updateError } = await supabase
         .from('qr_batches')
-        .update({ 
+        .update({
           status: 'processing',
           processing_started_at: new Date().toISOString()
         })
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
     // PHASE 1: Excel Generation
     if (!batch.excel_generated) {
       console.log('Phase 1: Generating Excel...')
-      
+
       const extraQrMasterRaw = (order as any).extra_qr_master
       let extraQrMaster = Number.isFinite(Number(extraQrMasterRaw))
         ? Number(extraQrMasterRaw)
@@ -125,6 +125,7 @@ export async function GET(request: NextRequest) {
 
       const excelFilePath = await generateQRExcel({
         orderNo: order.order_no,
+        displayDocNo: order.display_doc_no || undefined,
         orderDate: new Date(order.created_at || new Date().toISOString()).toLocaleDateString(),
         companyName: order.buyer_org.org_name,
         manufacturerName: order.seller_org.org_name,
@@ -169,9 +170,9 @@ export async function GET(request: NextRequest) {
           excel_generated_at: new Date().toISOString()
         })
         .eq('id', batch.id)
-      
+
       console.log('✅ Phase 1 Complete: Excel generated and uploaded')
-      
+
       // Check time - if we spent too long, exit and let next run continue
       if ((Date.now() - startTime) > 45000) { // 45 seconds safety buffer
         return NextResponse.json({ message: 'Phase 1 complete, yielding to next run' })
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
     // PHASE 2: Master Codes Insertion
     if (!batch.master_inserted) {
       console.log('Phase 2: Inserting Master Codes...')
-      
+
       const companyId = order.company_id || order.seller_org_id
       const masterCodesData = qrBatch.masterCodes.map(master => ({
         batch_id: batch.id,
@@ -225,7 +226,7 @@ export async function GET(request: NextRequest) {
         .from('qr_master_codes')
         .select('id, case_number')
         .eq('batch_id', batch.id)
-      
+
       const caseToMasterIdMap = new Map<number, string>()
       if (masterCodes) {
         masterCodes.forEach((m: any) => caseToMasterIdMap.set(m.case_number, m.id))
@@ -234,19 +235,19 @@ export async function GET(request: NextRequest) {
       const allCodes = qrBatch.individualCodes
       let currentInsertedCount = batch.qr_inserted_count || 0
       const CHUNK_SIZE = 2000 // Process 2k codes per loop iteration
-      
+
       // Loop until we finish or run out of time
       // This allows us to process as many codes as possible within the Vercel timeout (60s)
       while (currentInsertedCount < allCodes.length) {
         // Check if we're running out of time (leave 10s buffer)
         if ((Date.now() - startTime) > 50000) {
-           console.log('⏳ Time limit reached, yielding to next run...')
-           break
+          console.log('⏳ Time limit reached, yielding to next run...')
+          break
         }
 
         const endIndex = Math.min(currentInsertedCount + CHUNK_SIZE, allCodes.length)
         const codesToInsert = allCodes.slice(currentInsertedCount, endIndex)
-        
+
         // Add master_code_id
         const codesWithMasterIds = codesToInsert.map(code => ({
           ...code,
@@ -254,7 +255,7 @@ export async function GET(request: NextRequest) {
         }))
 
         const companyId = order.company_id || order.seller_org_id
-        
+
         // Insert this chunk
         const insertedCount = await insertQRCodesInBatches(
           supabase,
@@ -268,13 +269,13 @@ export async function GET(request: NextRequest) {
         )
 
         currentInsertedCount += insertedCount
-        
+
         // Update progress in DB after each chunk so we don't lose work
         await supabase
           .from('qr_batches')
           .update({ qr_inserted_count: currentInsertedCount })
           .eq('id', batch.id)
-        
+
         console.log(`✅ Phase 3 Progress: Inserted ${insertedCount} codes. Total: ${currentInsertedCount}/${batch.total_unique_codes}`)
       }
 
@@ -282,12 +283,12 @@ export async function GET(request: NextRequest) {
         // All done!
         await supabase
           .from('qr_batches')
-          .update({ 
+          .update({
             status: 'generated',
             processing_finished_at: new Date().toISOString()
           })
           .eq('id', batch.id)
-        
+
         console.log('🎉 Batch processing COMPLETED!')
         return NextResponse.json({ success: true, message: 'Batch processing COMPLETED!', hasMore: false })
       } else {
@@ -298,25 +299,25 @@ export async function GET(request: NextRequest) {
       // Just in case we missed the completion update
       await supabase
         .from('qr_batches')
-        .update({ 
+        .update({
           status: 'generated',
           processing_finished_at: new Date().toISOString()
         })
         .eq('id', batch.id)
-      
+
       return NextResponse.json({ success: true, message: 'Batch processing COMPLETED!', hasMore: false })
     }
 
   } catch (error: any) {
     console.error('❌ Worker Error:', error)
-    
+
     // Try to log error to batch
     // We need batch ID, but it might be undefined if error happened before fetching
     // But we have 'batch' variable in scope if fetch succeeded
     // Actually 'batch' is const inside try block, so not available in catch if defined there.
     // But I defined it inside try.
     // I'll just log to console for now, as I can't easily access batch.id here without moving declaration up.
-    
+
     return NextResponse.json(
       { error: 'Worker failed', details: error.message },
       { status: 500 }
@@ -336,11 +337,11 @@ async function insertQRCodesInBatches(
 ): Promise<number> {
   let totalInserted = 0
   const totalBatches = Math.ceil(codes.length / batchSize)
-  
+
   // Process in chunks to control concurrency
   const CONCURRENCY_LIMIT = 2
   const chunks = []
-  
+
   for (let i = 0; i < codes.length; i += batchSize) {
     chunks.push(codes.slice(i, i + batchSize))
   }
@@ -368,16 +369,16 @@ async function insertQRCodesInBatches(
 
       const { error } = await supabase
         .from('qr_codes')
-        .upsert(inserts, { 
+        .upsert(inserts, {
           onConflict: 'batch_id, sequence_number',
-          ignoreDuplicates: true 
+          ignoreDuplicates: true
         })
 
       if (error) {
         console.error(`❌ Error inserting batch:`, error)
         throw error
       }
-      
+
       return inserts.length
     })
 

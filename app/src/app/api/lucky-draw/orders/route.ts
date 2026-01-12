@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         order_no,
+        display_doc_no,
         order_type,
         status,
         has_lucky_draw,
@@ -55,7 +56,8 @@ export async function GET(request: NextRequest) {
     // Transform the response to flatten the organization names
     const transformedOrders = (orders || []).map(order => ({
       id: order.id,
-      order_no: order.order_no,
+      order_no: order.display_doc_no || order.order_no,  // Use display_doc_no when available
+      legacy_order_no: order.order_no,  // Keep original order_no as legacy
       order_type: order.order_type,
       status: order.status,
       has_lucky_draw: order.has_lucky_draw,

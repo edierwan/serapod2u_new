@@ -127,6 +127,11 @@ type RewardFormState = {
   imageUrl: string
   additionalImages: string[]
   isActive: boolean
+  // Point category specific fields
+  pointRewardAmount: string
+  rewardMessage: string
+  collectionMode: 'once' | 'daily' | 'always'
+  perUserLimit: boolean
 }
 
 interface ImageItem {
@@ -179,7 +184,12 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     validUntil: "",
     imageUrl: "",
     additionalImages: [],
-    isActive: true
+    isActive: true,
+    // Point category specific fields
+    pointRewardAmount: "100",
+    rewardMessage: "",
+    collectionMode: 'once',
+    perUserLimit: true
   })
   const [category, setCategory] = useState<RewardCategory>("other")
   const [requiresVerification, setRequiresVerification] = useState(false)
@@ -237,6 +247,9 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
           return
         }
 
+        // Check if this is a Point category reward
+        const rewardCategory = (data as any).category || deriveCategory(data)
+
         setForm({
           itemName: data.item_name,
           itemCode: data.item_code,
@@ -250,9 +263,14 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
           validUntil: data.valid_until ? formatDateForInput(data.valid_until) : "",
           imageUrl: data.item_image_url ?? "",
           additionalImages: (data as any).additional_images ?? [],
-          isActive: data.is_active ?? true
+          isActive: data.is_active ?? true,
+          // Point category specific fields
+          pointRewardAmount: (data as any).point_reward_amount ? (data as any).point_reward_amount.toString() : "100",
+          rewardMessage: (data as any).reward_message ?? "",
+          collectionMode: (data as any).collection_mode ?? 'once',
+          perUserLimit: (data as any).per_user_limit ?? true
         })
-        setCategory(deriveCategory(data))
+        setCategory(rewardCategory)
         setRequiresVerification(Boolean(data.max_redemptions_per_consumer && data.max_redemptions_per_consumer <= 1))
         setCodeManuallyEdited(true)
         
@@ -464,6 +482,8 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    const isPointCategory = category === "point"
+
     if (!form.itemName.trim()) {
       toast({ title: "Reward name required", description: "Please provide a descriptive reward name.", variant: "destructive" })
       return
@@ -474,12 +494,22 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       return
     }
 
-    if (!Number.isFinite(parsedPoints) || parsedPoints <= 0) {
-      toast({ title: "Invalid points", description: "Points required must be a positive number.", variant: "destructive" })
-      return
+    // For Point category, validate point reward amount instead of points required
+    if (isPointCategory) {
+      const parsedPointReward = Number(form.pointRewardAmount)
+      if (!Number.isFinite(parsedPointReward) || parsedPointReward <= 0) {
+        toast({ title: "Invalid point rewards", description: "Point rewards must be a positive number.", variant: "destructive" })
+        return
+      }
+    } else {
+      if (!Number.isFinite(parsedPoints) || parsedPoints <= 0) {
+        toast({ title: "Invalid points", description: "Points required must be a positive number.", variant: "destructive" })
+        return
+      }
     }
 
-    if (parsedStock != null && (!Number.isFinite(parsedStock) || parsedStock < 0)) {
+    // Skip stock validation for Point category
+    if (!isPointCategory && parsedStock != null && (!Number.isFinite(parsedStock) || parsedStock < 0)) {
       toast({ title: "Invalid stock", description: "Stock quantity must be zero or greater.", variant: "destructive" })
       return
     }
@@ -539,22 +569,35 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     setUploadingImage(false)
 
     const normalizedCode = form.itemCode.trim().toUpperCase()
+    
+    // For Point category, use pointRewardAmount instead of points, and set points_required to 0
+    const parsedPointRewardAmount = isPointCategory && form.pointRewardAmount.trim() !== "" 
+      ? Number(form.pointRewardAmount) 
+      : null
+    
     const payload = {
       item_name: form.itemName.trim(),
       item_code: normalizedCode,
       item_description: form.description.trim() ? form.description.trim() : null,
       item_image_url: defaultImageUrl,
       additional_images: finalImages, // Store all images here
-      points_required: parsedPoints,
-      point_offer: parsedPointOffer,
-      stock_quantity: parsedStock,
+      // For Point category, set points_required to 0 (user doesn't need to spend points)
+      points_required: isPointCategory ? 0 : parsedPoints,
+      point_offer: isPointCategory ? null : parsedPointOffer,
+      stock_quantity: isPointCategory ? null : parsedStock,
       max_redemptions_per_consumer: requiresVerification
         ? parsedMaxPerConsumer ?? 1
         : parsedMaxPerConsumer,
       is_active: form.isActive,
       valid_from: form.validFrom ? new Date(form.validFrom).toISOString() : null,
       valid_until: form.validUntil ? new Date(form.validUntil).toISOString() : null,
-      terms_and_conditions: form.terms.trim() ? form.terms.trim() : null
+      terms_and_conditions: form.terms.trim() ? form.terms.trim() : null,
+      // Point category specific fields
+      category: category,
+      point_reward_amount: parsedPointRewardAmount,
+      reward_message: isPointCategory && form.rewardMessage.trim() ? form.rewardMessage.trim() : null,
+      collection_mode: isPointCategory ? form.collectionMode : 'always',
+      per_user_limit: isPointCategory ? form.perUserLimit : false
     }
 
     try {
@@ -729,48 +772,148 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="points">Points required</Label>
-                    <Input
-                      id="points"
-                      type="number"
-                      min={1}
-                      value={form.points}
-                      onChange={(event) => updateForm("points", event.target.value)}
-                    />
-                    {pointValueRM > 0 && form.points && (
+                  {/* Point Category - Show Point Rewards field instead of Points Required */}
+                  {category === "point" ? (
+                    <div>
+                      <Label htmlFor="pointRewardAmount">Point Rewards</Label>
+                      <Input
+                        id="pointRewardAmount"
+                        type="number"
+                        min={1}
+                        placeholder="Points to give to user"
+                        value={form.pointRewardAmount}
+                        onChange={(event) => updateForm("pointRewardAmount", event.target.value)}
+                      />
+                      {pointValueRM > 0 && form.pointRewardAmount && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Estimated Cost: RM {(parseInt(form.pointRewardAmount) * pointValueRM).toFixed(2)}
+                        </p>
+                      )}
+                      {!pointValueRM && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Amount of bonus points to award to the user
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <Label htmlFor="points">Points required</Label>
+                      <Input
+                        id="points"
+                        type="number"
+                        min={1}
+                        value={form.points}
+                        onChange={(event) => updateForm("points", event.target.value)}
+                      />
+                      {pointValueRM > 0 && form.points && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Estimated Cost: RM {(parseInt(form.points) * pointValueRM).toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Point Category - Hide Point Offer, show Message instead */}
+                  {category === "point" ? (
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="rewardMessage">Message</Label>
+                      <Input
+                        id="rewardMessage"
+                        placeholder="Enter message to display to user..."
+                        value={form.rewardMessage}
+                        onChange={(event) => updateForm("rewardMessage", event.target.value)}
+                      />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Estimated Cost: RM {(parseInt(form.points) * pointValueRM).toFixed(2)}
+                        Custom message shown to users when they collect this reward
                       </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="pointOffer">Point Offer (Optional)</Label>
-                    <Input
-                      id="pointOffer"
-                      type="number"
-                      min={1}
-                      placeholder="Discounted points"
-                      value={form.pointOffer}
-                      onChange={(event) => updateForm("pointOffer", event.target.value)}
-                    />
-                    {pointValueRM > 0 && form.pointOffer && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Estimated Cost: RM {(parseInt(form.pointOffer) * pointValueRM).toFixed(2)}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="stock">Stock quantity</Label>
-                    <Input
-                      id="stock"
-                      type="number"
-                      min={0}
-                      placeholder="Unlimited"
-                      value={form.stock}
-                      onChange={(event) => updateForm("stock", event.target.value)}
-                    />
-                  </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label htmlFor="pointOffer">Point Offer (Optional)</Label>
+                      <Input
+                        id="pointOffer"
+                        type="number"
+                        min={1}
+                        placeholder="Discounted points"
+                        value={form.pointOffer}
+                        onChange={(event) => updateForm("pointOffer", event.target.value)}
+                      />
+                      {pointValueRM > 0 && form.pointOffer && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Estimated Cost: RM {(parseInt(form.pointOffer) * pointValueRM).toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Point Category - Hide Stock, show Collection Options instead */}
+                  {category === "point" ? (
+                    <div className="sm:col-span-2 space-y-4 p-4 border rounded-lg bg-muted/30">
+                      <Label className="text-sm font-semibold">Collection Options</Label>
+                      <div className="space-y-3">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="perUserLimit"
+                            checked={form.perUserLimit}
+                            onChange={(e) => updateForm("perUserLimit", e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="perUserLimit" className="text-sm font-normal cursor-pointer">
+                            Option 1 - Per user only (based on user ID)
+                          </Label>
+                        </div>
+                        <p className="text-xs text-muted-foreground ml-7">
+                          If enabled, each user can only collect this reward based on the collection mode below
+                        </p>
+                        
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="dailyCollection"
+                            checked={form.collectionMode === 'daily'}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                updateForm("collectionMode", "daily")
+                              } else {
+                                updateForm("collectionMode", form.perUserLimit ? "once" : "always")
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="dailyCollection" className="text-sm font-normal cursor-pointer">
+                            Option 2 - Everyday (daily collection)
+                          </Label>
+                        </div>
+                        <p className="text-xs text-muted-foreground ml-7">
+                          If enabled, users can collect once per day. Otherwise, collection is one-time only.
+                        </p>
+                        
+                        <div className="mt-3 p-3 bg-blue-50 rounded-md">
+                          <p className="text-xs text-blue-700 font-medium">How it works:</p>
+                          <ul className="text-xs text-blue-600 mt-1 space-y-1">
+                            <li>• Option 1 only: User can collect this reward once ever</li>
+                            <li>• Option 1 + Option 2: User can collect once per day, every day</li>
+                            <li>• Option 2 only: User can collect once per day (no tracking by user ID)</li>
+                            <li>• Neither: No restrictions on collection</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label htmlFor="stock">Stock quantity</Label>
+                      <Input
+                        id="stock"
+                        type="number"
+                        min={0}
+                        placeholder="Unlimited"
+                        value={form.stock}
+                        onChange={(event) => updateForm("stock", event.target.value)}
+                      />
+                    </div>
+                  )}
+                  
                   <div>
                     <Label htmlFor="validFrom">Valid from</Label>
                     <Input
@@ -957,7 +1100,12 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-blue-600">
                       <Sparkles className="h-4 w-4" />
-                      {(previewReward as any).point_offer ? (
+                      {category === "point" ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl font-bold text-green-600">+{formatNumber(parseInt(form.pointRewardAmount) || 0)}</span>
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">bonus points</span>
+                        </div>
+                      ) : (previewReward as any).point_offer ? (
                         <div className="flex items-center gap-2">
                           <span className="text-2xl font-bold text-green-600">{formatNumber((previewReward as any).point_offer)}</span>
                           <span className="text-lg text-muted-foreground line-through decoration-2">{formatNumber(previewReward.points_required)}</span>
@@ -965,7 +1113,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                       ) : (
                         <span className="text-2xl font-semibold">{formatNumber(previewReward.points_required)}</span>
                       )}
-                      <span className="text-xs uppercase tracking-wide text-muted-foreground">points</span>
+                      {category !== "point" && <span className="text-xs uppercase tracking-wide text-muted-foreground">points</span>}
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
                       <div>Start: {previewReward.valid_from ? formatDateLabel(previewReward.valid_from) : "Immediate"}</div>
@@ -973,7 +1121,11 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Stock: {previewReward.stock_quantity != null ? `${previewReward.stock_quantity} units` : "Unlimited"}</span>
+                    {category === "point" ? (
+                      <span>{form.rewardMessage || "Collect your bonus points!"}</span>
+                    ) : (
+                      <span>Stock: {previewReward.stock_quantity != null ? `${previewReward.stock_quantity} units` : "Unlimited"}</span>
+                    )}
                     <span>
                       {requiresVerification ? (
                         <span className="flex items-center gap-1 text-amber-600">
@@ -990,12 +1142,21 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
               </div>
               <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 text-xs text-muted-foreground">
                 <div className="flex items-center gap-2 font-medium text-foreground">
-                  <CalendarClock className="h-4 w-4" /> Redemption guardrails
+                  <CalendarClock className="h-4 w-4" /> {category === "point" ? "Collection rules" : "Redemption guardrails"}
                 </div>
                 <ul className="mt-2 space-y-1">
                   <li>• Reward is {previewReward.is_active ? "active" : "inactive"} for shops.</li>
-                  <li>• {requiresVerification ? "Manual verification required" : "Redeemable instantly by qualifying shops"}.</li>
-                  <li>• {previewReward.max_redemptions_per_consumer ? `Limited to ${previewReward.max_redemptions_per_consumer} per consumer.` : "No per-consumer limit set."}</li>
+                  {category === "point" ? (
+                    <>
+                      <li>• {form.perUserLimit ? "Collection tracked per user ID" : "No per-user tracking"}.</li>
+                      <li>• {form.collectionMode === 'daily' ? "Can collect once per day" : form.collectionMode === 'once' ? "One-time collection only" : "No collection restrictions"}.</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>• {requiresVerification ? "Manual verification required" : "Redeemable instantly by qualifying shops"}.</li>
+                      <li>• {previewReward.max_redemptions_per_consumer ? `Limited to ${previewReward.max_redemptions_per_consumer} per consumer.` : "No per-consumer limit set."}</li>
+                    </>
+                  )}
                 </ul>
               </div>
             </CardContent>

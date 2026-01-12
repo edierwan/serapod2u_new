@@ -24,6 +24,7 @@ import OrderDocumentsDialogEnhanced from './OrderDocumentsDialogEnhanced'
 interface OrderDetails {
   id: string
   order_no: string
+  display_doc_no: string | null
   order_type: 'H2M' | 'D2H' | 'S2D'
   status: 'draft' | 'submitted' | 'approved' | 'closed'
   buyer_org_name: string
@@ -159,6 +160,7 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
         .select(`
           id,
           order_no,
+          display_doc_no,
           order_type,
           status,
           created_at,
@@ -351,6 +353,7 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       setOrderDetails({
         id: order.id,
         order_no: order.order_no,
+        display_doc_no: order.display_doc_no || null,
         order_type: order.order_type,
         status: order.status,
         buyer_org_name: buyerOrg?.org_name || 'Unknown',
@@ -669,7 +672,10 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
             Back
           </Button>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">{orderDetails.order_no}</h2>
+            <h2 className="text-2xl font-bold text-gray-900">{orderDetails.display_doc_no || orderDetails.order_no}</h2>
+            {orderDetails.display_doc_no && orderDetails.display_doc_no !== orderDetails.order_no && (
+              <p className="text-xs text-gray-400">Legacy: {orderDetails.order_no}</p>
+            )}
             <p className="text-sm text-gray-500">{getOrderTypeLabel(orderDetails.order_type)}</p>
           </div>
         </div>
@@ -817,6 +823,7 @@ export default function TrackOrderView({ userProfile, onViewChange }: TrackOrder
       <OrderDocumentsDialogEnhanced
         orderId={orderDetails.id}
         orderNo={orderDetails.order_no}
+        displayOrderNo={orderDetails.display_doc_no}
         userProfile={userProfile}
         initialTab={initialDocumentTab ?? undefined}
         open={showDocumentsDialog}

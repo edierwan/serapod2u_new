@@ -2,28 +2,28 @@
 // CORE TYPES
 // ============================================
 
-export type OrderStatus = 
-  | 'draft' 
-  | 'submitted' 
-  | 'approved' 
+export type OrderStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
   | 'closed'
   | 'cancelled';
 
-export type OrderType = 
-  | 'H2M' 
-  | 'D2H' 
+export type OrderType =
+  | 'H2M'
+  | 'D2H'
   | 'S2D';
 
-export type DocumentType = 
-  | 'PO' 
-  | 'INVOICE' 
-  | 'PAYMENT' 
+export type DocumentType =
+  | 'PO'
+  | 'INVOICE'
+  | 'PAYMENT'
   | 'RECEIPT'
   | 'PAYMENT_REQUEST';
 
-export type DocumentStatus = 
-  | 'pending' 
-  | 'acknowledged' 
+export type DocumentStatus =
+  | 'pending'
+  | 'acknowledged'
   | 'completed';
 
 // ============================================
@@ -33,6 +33,7 @@ export type DocumentStatus =
 export interface Order {
   id: string;
   order_no: string;
+  display_doc_no?: string | null;  // New format: ORD25000001
   order_type: OrderType;
   company_id: string;
   buyer_org_id: string;
@@ -52,7 +53,7 @@ export interface Order {
   approved_at?: string;
   created_at: string;
   updated_at: string;
-  
+
   // Joined data
   buyer_org?: Organization;
   seller_org?: Organization;
@@ -73,7 +74,7 @@ export interface OrderItem {
   company_id?: string;
   created_at?: string;
   updated_at?: string;
-  
+
   // Joined data
   product?: Product;
   variant?: ProductVariant;
@@ -86,6 +87,7 @@ export interface Document {
   order_id: string;
   doc_type: DocumentType;
   doc_no: string;
+  display_doc_no?: string | null;  // New format: PO25000001, SI25000001
   status: DocumentStatus;
   issued_by_org_id: string;
   issued_to_org_id: string;
@@ -96,7 +98,7 @@ export interface Document {
   acknowledged_at?: string;
   created_at: string;
   updated_at: string;
-  
+
   // Joined data
   issued_by_org?: Organization;
   issued_to_org?: Organization;

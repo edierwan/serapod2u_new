@@ -16,10 +16,10 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createClient() as any
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -99,10 +99,10 @@ export async function PUT(request: NextRequest) {
     }
 
     const supabase = await createClient() as any
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -137,7 +137,7 @@ export async function PUT(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    
+
     // Whitelist allowed fields
     const allowedFields = [
       'cash_account_id',
@@ -146,7 +146,8 @@ export async function PUT(request: NextRequest) {
       'supplier_deposit_account_id',
       'sales_revenue_account_id',
       'cogs_account_id',
-      'inventory_account_id'
+      'inventory_account_id',
+      'posting_mode'  // NEW: Allow posting mode to be updated
     ]
 
     const updateData: Record<string, any> = {
@@ -155,14 +156,22 @@ export async function PUT(request: NextRequest) {
 
     for (const field of allowedFields) {
       if (field in body) {
-        // Allow null values to clear the mapping
-        updateData[field] = body[field] || null
+        // Special handling for posting_mode
+        if (field === 'posting_mode') {
+          const validModes = ['MANUAL', 'AUTO']
+          if (validModes.includes(body[field])) {
+            updateData[field] = body[field]
+          }
+        } else {
+          // Allow null values to clear the mapping
+          updateData[field] = body[field] || null
+        }
       }
     }
 
     // Validate account IDs exist and belong to company (if provided)
     const accountIds = Object.values(updateData).filter(v => v && typeof v === 'string' && v !== user.id)
-    
+
     if (accountIds.length > 0) {
       const { data: validAccounts, error: validationError } = await supabase
         .from('gl_accounts')

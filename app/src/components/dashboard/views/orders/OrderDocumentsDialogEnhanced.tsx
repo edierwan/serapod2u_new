@@ -10,11 +10,12 @@ import DocumentWorkflowProgress from '@/components/documents/DocumentWorkflowPro
 import AcknowledgeButton from '@/components/documents/AcknowledgeButton'
 import PaymentProofUpload from '@/components/documents/PaymentProofUpload'
 import ManufacturerDocumentUpload from '@/components/documents/ManufacturerDocumentUpload'
-import { type Document } from '@/lib/document-permissions'
+import { type Document, getDisplayDocNo } from '@/lib/document-permissions'
 
 interface OrderDocumentsDialogEnhancedProps {
   orderId: string
   orderNo: string
+  displayOrderNo?: string | null
   userProfile: {
     id: string
     organization_id: string
@@ -35,6 +36,7 @@ interface OrderDocumentsDialogEnhancedProps {
 export default function OrderDocumentsDialogEnhanced({
   orderId,
   orderNo,
+  displayOrderNo,
   userProfile,
   initialTab,
   open,
@@ -108,6 +110,45 @@ export default function OrderDocumentsDialogEnhanced({
 
   // For backwards compatibility, map to old variable name
   const is50_50Split = useSplitPayment
+
+  // Helper function to get pending remarks based on document type and who is responsible
+  const getPendingRemarks = (doc: Document | null | undefined, docType: string): string | null => {
+    if (!doc || doc.status !== 'pending') return null
+
+    const responsibleOrg = doc.issued_to_org?.org_name || 'assigned party'
+    const docNo = doc.display_doc_no || doc.doc_no
+
+    switch (docType) {
+      case 'PO':
+        // PO is issued to manufacturer, they need to upload PI and acknowledge
+        return `Awaiting ${responsibleOrg} to upload Proforma Invoice (PI) and acknowledge ${docNo}`
+      case 'SO':
+        // SO is issued to buyer
+        return `Awaiting ${responsibleOrg} to acknowledge ${docNo}`
+      case 'DO':
+        // DO is issued to buyer/warehouse
+        return `Awaiting ${responsibleOrg} to acknowledge delivery of ${docNo}`
+      case 'INVOICE':
+      case 'depositInvoice':
+        // Invoice is issued to buyer, they need to upload payment proof
+        return `Awaiting ${responsibleOrg} to upload payment proof and acknowledge ${docNo}`
+      case 'PAYMENT':
+      case 'depositPayment':
+        // Payment voucher is issued to seller (manufacturer), they confirm payment received
+        return `Awaiting ${responsibleOrg} to confirm payment received for ${docNo}`
+      case 'balanceRequest':
+        // Balance request needs HQ Finance approval
+        return `Awaiting Finance HQ (Serapod) to approve balance payment request ${docNo}`
+      case 'balancePayment':
+        // Balance payment needs seller acknowledgment
+        return `Awaiting ${responsibleOrg} to confirm balance payment received for ${docNo}`
+      case 'RECEIPT':
+        // Receipt is issued to buyer
+        return `Awaiting ${responsibleOrg} to acknowledge receipt ${docNo}`
+      default:
+        return `Awaiting ${responsibleOrg} to process ${docNo}`
+    }
+  }
 
   const isDocumentTab = (value: string): value is DocumentTab =>
     value === 'po' || value === 'so' || value === 'do' || value === 'invoice' || value === 'payment' || value === 'receipt' ||
@@ -501,10 +542,12 @@ export default function OrderDocumentsDialogEnhanced({
         throw new Error('Generated PDF is empty')
       }
 
+      // Use effectiveDisplayOrderNo which is computed from orderData
+      const downloadDisplayNo = displayOrderNo || orderData?.display_doc_no || orderNo
       const blobUrl = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = blobUrl
-      a.download = `${orderNo}-${docType}.pdf`
+      a.download = `${downloadDisplayNo}-${docType}.pdf`
       document.body.appendChild(a)
       a.click()
 
@@ -629,7 +672,8 @@ export default function OrderDocumentsDialogEnhanced({
       console.log('🔍 Downloaded blob size:', fileData.size, 'type:', fileData.type)
 
       // Extract filename from URL or create a default one
-      const fileName = paymentProofUrl.split('/').pop() || `payment-proof-${orderNo}.pdf`
+      const downloadDisplayNo = displayOrderNo || orderData?.display_doc_no || orderNo
+      const fileName = paymentProofUrl.split('/').pop() || `payment-proof-${downloadDisplayNo}.pdf`
 
       // Create download link
       const blobUrl = window.URL.createObjectURL(fileData)
@@ -689,7 +733,8 @@ export default function OrderDocumentsDialogEnhanced({
         throw new Error('No file data received')
       }
 
-      const fileName = balancePaymentProofUrl.split('/').pop() || `balance-payment-proof-${orderNo}.pdf`
+      const downloadDisplayNo = displayOrderNo || orderData?.display_doc_no || orderNo
+      const fileName = balancePaymentProofUrl.split('/').pop() || `balance-payment-proof-${downloadDisplayNo}.pdf`
 
       const blobUrl = window.URL.createObjectURL(fileData)
       const a = document.createElement('a')
@@ -746,7 +791,8 @@ export default function OrderDocumentsDialogEnhanced({
       const downloadUrl = window.URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = downloadUrl
-      anchor.download = `${orderNo}-complete-package.pdf`
+      const downloadDisplayNo = displayOrderNo || orderData?.display_doc_no || orderNo
+      anchor.download = `${downloadDisplayNo}-complete-package.pdf`
       document.body.appendChild(anchor)
       anchor.click()
 
@@ -802,6 +848,9 @@ export default function OrderDocumentsDialogEnhanced({
     )
   }
 
+  // Use displayOrderNo prop, fallback to loaded orderData, finally legacy orderNo
+  const effectiveDisplayOrderNo = displayOrderNo || orderData?.display_doc_no || orderNo
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
       <div className="min-h-screen px-4 py-8">
@@ -810,7 +859,10 @@ export default function OrderDocumentsDialogEnhanced({
           <div className="flex items-center justify-between p-6 border-b">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Order Documents</h2>
-              <p className="text-gray-600 mt-1">Order No: {orderNo}</p>
+              <p className="text-gray-600 mt-1">Order No: {effectiveDisplayOrderNo}</p>
+              {effectiveDisplayOrderNo && effectiveDisplayOrderNo !== orderNo && (
+                <p className="text-gray-400 text-sm">Legacy: {orderNo}</p>
+              )}
             </div>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="w-5 h-5" />
@@ -892,7 +944,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-blue-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.so.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.so)}</span>
                         </div>
                         <div>
                           <span className="text-blue-700">Status:</span>{' '}
@@ -947,7 +999,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-indigo-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.do.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.do)}</span>
                         </div>
                         <div>
                           <span className="text-indigo-700">Status:</span>{' '}
@@ -1011,7 +1063,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-blue-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.po.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.po)}</span>
                         </div>
                         <div>
                           <span className="text-blue-700">Status:</span>{' '}
@@ -1031,6 +1083,15 @@ export default function OrderDocumentsDialogEnhanced({
                           </div>
                         )}
                       </div>
+                      {/* Pending Remarks */}
+                      {documents.po.status === 'pending' && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                          <p className="text-sm text-amber-800">
+                            <span className="font-medium">Remarks:</span>{' '}
+                            {getPendingRemarks(documents.po, 'PO')}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex gap-3">
@@ -1095,7 +1156,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-green-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.invoice.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.invoice)}</span>
                         </div>
                         <div>
                           <span className="text-green-700">Status:</span>{' '}
@@ -1229,7 +1290,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-purple-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.payment.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.payment)}</span>
                         </div>
                         <div>
                           <span className="text-purple-700">Status:</span>{' '}
@@ -1310,7 +1371,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-green-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.depositInvoice.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.depositInvoice)}</span>
                         </div>
                         <div>
                           <span className="text-green-700">Status:</span>{' '}
@@ -1330,6 +1391,15 @@ export default function OrderDocumentsDialogEnhanced({
                           </div>
                         )}
                       </div>
+                      {/* Pending Remarks */}
+                      {documents.depositInvoice.status === 'pending' && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                          <p className="text-sm text-amber-800">
+                            <span className="font-medium">Remarks:</span>{' '}
+                            {getPendingRemarks(documents.depositInvoice, 'depositInvoice')}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex gap-3">
@@ -1462,7 +1532,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-purple-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.depositPayment.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.depositPayment)}</span>
                         </div>
                         <div>
                           <span className="text-purple-700">Status:</span>{' '}
@@ -1482,6 +1552,15 @@ export default function OrderDocumentsDialogEnhanced({
                           </div>
                         )}
                       </div>
+                      {/* Pending Remarks */}
+                      {documents.depositPayment.status === 'pending' && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                          <p className="text-sm text-amber-800">
+                            <span className="font-medium">Remarks:</span>{' '}
+                            {getPendingRemarks(documents.depositPayment, 'depositPayment')}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {paymentProofUrl && (
@@ -1593,7 +1672,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-teal-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.balancePaymentRequest.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.balancePaymentRequest)}</span>
                         </div>
                         <div>
                           <span className="text-teal-700">Status:</span>{' '}
@@ -1613,6 +1692,15 @@ export default function OrderDocumentsDialogEnhanced({
                           </div>
                         )}
                       </div>
+                      {/* Pending Remarks */}
+                      {documents.balancePaymentRequest.status === 'pending' && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                          <p className="text-sm text-amber-800">
+                            <span className="font-medium">Remarks:</span>{' '}
+                            {getPendingRemarks(documents.balancePaymentRequest, 'balanceRequest')}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1709,7 +1797,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <span className="text-indigo-700">Document No:</span>{' '}
-                          <span className="font-medium">{documents.balancePayment.doc_no}</span>
+                          <span className="font-medium">{getDisplayDocNo(documents.balancePayment)}</span>
                         </div>
                         <div>
                           <span className="text-indigo-700">Status:</span>{' '}
@@ -1729,6 +1817,15 @@ export default function OrderDocumentsDialogEnhanced({
                           </div>
                         )}
                       </div>
+                      {/* Pending Remarks */}
+                      {documents.balancePayment.status === 'pending' && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                          <p className="text-sm text-amber-800">
+                            <span className="font-medium">Remarks:</span>{' '}
+                            {getPendingRemarks(documents.balancePayment, 'balancePayment')}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {balancePaymentProofUrl ? (
@@ -1825,7 +1922,7 @@ export default function OrderDocumentsDialogEnhanced({
                           <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
                               <span className={documents.finalReceipt ? 'text-emerald-700' : 'text-amber-700'}>Document No:</span>{' '}
-                              <span className="font-medium">{documents.depositReceipt.doc_no}</span>
+                              <span className="font-medium">{getDisplayDocNo(documents.depositReceipt)}</span>
                             </div>
                             <div>
                               <span className={documents.finalReceipt ? 'text-emerald-700' : 'text-amber-700'}>Status:</span>{' '}
@@ -1878,7 +1975,7 @@ export default function OrderDocumentsDialogEnhanced({
                           <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
                               <span className="text-emerald-700">Document No:</span>{' '}
-                              <span className="font-medium">{documents.finalReceipt.doc_no}</span>
+                              <span className="font-medium">{getDisplayDocNo(documents.finalReceipt)}</span>
                             </div>
                             <div>
                               <span className="text-emerald-700">Status:</span>{' '}

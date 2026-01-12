@@ -1,9 +1,9 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { 
+import {
   compressSignatureForPdf,
   formatFileSize,
-  type CompressionResult 
+  type CompressionResult
 } from './pdf-optimizer'
 
 interface PaymentTerms {
@@ -40,6 +40,7 @@ interface PartyOrganization {
 interface RelatedDocumentSummary {
   id?: string
   doc_no?: string
+  display_doc_no?: string  // New format
   status?: string
   created_at?: string
   total_amount?: number | null
@@ -82,6 +83,7 @@ interface OrderData {
 
 interface DocumentData {
   doc_no: string
+  display_doc_no?: string  // New format: PO26000001
   doc_type: string
   status: string
   created_at: string
@@ -134,7 +136,7 @@ export class PDFGenerator {
   private pageWidth: number = 210 // A4 width in mm
   private margin: number = 15
   private signatureTintCache = new Map<string, string>()
-  
+
   // Compression tracking
   private compressionStats: PDFCompressionStats = {
     logoOriginalSize: 0,
@@ -143,7 +145,7 @@ export class PDFGenerator {
     signatureCompressedSize: 0,
     totalSavings: 0
   }
-  
+
   // Cached compressed logo to avoid re-compression
   private compressedLogoCache: string | null = null
 
@@ -153,7 +155,7 @@ export class PDFGenerator {
     })
     this.signatures = signatures
   }
-  
+
   // Get compression statistics after PDF generation
   public getCompressionStats(): PDFCompressionStats {
     return { ...this.compressionStats }
@@ -705,23 +707,23 @@ export class PDFGenerator {
     const { PNG } = await import('pngjs')
     const originalBuffer = Buffer.from(base64, 'base64')
     const originalSize = originalBuffer.length
-    
+
     const png = PNG.sync.read(originalBuffer)
     this.applyBlueTintToPixelArray(png.data)
-    
+
     // Write with maximum compression
     const tintedBuffer = PNG.sync.write(png, {
       filterType: 4,      // Paeth filter for best compression
       deflateLevel: 9,    // Maximum compression level
       deflateStrategy: 1  // Filtered strategy
     })
-    
+
     // Track signature compression stats
     const compressedSize = tintedBuffer.length
     this.compressionStats.signatureOriginalSize += originalSize
     this.compressionStats.signatureCompressedSize += compressedSize
     this.compressionStats.totalSavings += Math.max(0, originalSize - compressedSize)
-    
+
     return `data:image/png;base64,${tintedBuffer.toString('base64')}`
   }
 
@@ -761,7 +763,7 @@ export class PDFGenerator {
       if (typeof window === 'undefined') {
         const fs = await import('fs/promises')
         const path = await import('path')
-        
+
         // Try optimized logo first (8-bit, smaller file), fallback to original
         const optimizedLogoPath = path.join(process.cwd(), 'public', 'images', 'seralogo-optimized.png')
         const originalLogoPath = path.join(process.cwd(), 'public', 'images', 'seralogo.png')
@@ -770,7 +772,7 @@ export class PDFGenerator {
           // Prefer optimized version (8-bit, ~29KB vs 110KB)
           let imageBuffer: Buffer
           let logoPath: string
-          
+
           try {
             imageBuffer = await fs.readFile(optimizedLogoPath)
             logoPath = optimizedLogoPath
@@ -779,17 +781,17 @@ export class PDFGenerator {
             imageBuffer = await fs.readFile(originalLogoPath)
             logoPath = originalLogoPath
           }
-          
+
           const base64data = `data:image/png;base64,${imageBuffer.toString('base64')}`
-          
+
           // Track logo size
           this.compressionStats.logoOriginalSize = 110078  // Original file size
           this.compressionStats.logoCompressedSize = imageBuffer.length
           this.compressionStats.totalSavings += Math.max(0, 110078 - imageBuffer.length)
-          
+
           // Cache the logo
           this.compressedLogoCache = base64data
-          
+
           this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
           return yPosition + imgHeight + 5
         } catch (fsError) {
@@ -809,7 +811,7 @@ export class PDFGenerator {
       if (!response.ok) {
         response = await fetch('/images/seralogo.png', { cache: 'no-store' })
       }
-      
+
       if (response.ok) {
         const blob = await response.blob()
         const reader = new FileReader()
@@ -818,16 +820,16 @@ export class PDFGenerator {
           reader.onloadend = async () => {
             try {
               const base64data = reader.result as string
-              
+
               // Use optimized logo directly without runtime compression
               // (optimized version is pre-compressed 8-bit PNG)
               this.compressionStats.logoOriginalSize = 110078
               this.compressionStats.logoCompressedSize = blob.size
               this.compressionStats.totalSavings += Math.max(0, 110078 - blob.size)
-              
+
               // Cache the logo
               this.compressedLogoCache = base64data
-              
+
               this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
               resolve(yPosition + imgHeight + 5)
             } catch (error) {
@@ -862,15 +864,15 @@ export class PDFGenerator {
     this.doc.setFont('helvetica', 'bold')
     this.doc.setTextColor(0, 0, 0)
     this.doc.text(title, this.margin, yPosition)
-    
+
     // Underline
     this.doc.setLineWidth(0.5)
     this.doc.line(this.margin, yPosition + 2, this.pageWidth - this.margin, yPosition + 2)
-    
+
     return yPosition + 8
   }
 
-  private addInfoTable(data: Array<{label: string, value: string}>, yPosition: number, columns: number = 2): number {
+  private addInfoTable(data: Array<{ label: string, value: string }>, yPosition: number, columns: number = 2): number {
     const colWidth = (this.pageWidth - 2 * this.margin) / columns
     const rowHeight = 7
     let y = yPosition
@@ -892,7 +894,7 @@ export class PDFGenerator {
       if (col > 0) {
         this.doc.line(x, cellY, x, cellY + rowHeight)
       }
-      
+
       // Horizontal divider
       if (row > 0 && col === 0) {
         this.doc.line(this.margin, cellY, this.pageWidth - this.margin, cellY)
@@ -923,23 +925,23 @@ export class PDFGenerator {
     this.doc.text('PARTIES', this.margin, y)
     y += 7
 
-  // Table header
-  const colWidths = [58, 58, 64]
-  const startX = this.margin
-  const tableWidth = this.pageWidth - 2 * this.margin
-  const cellPaddingX = 2
-  const cellPaddingY = 4
-    
+    // Table header
+    const colWidths = [58, 58, 64]
+    const startX = this.margin
+    const tableWidth = this.pageWidth - 2 * this.margin
+    const cellPaddingX = 2
+    const cellPaddingY = 4
+
     // Header row
     this.doc.setFillColor(220, 220, 220)
     this.doc.rect(startX, y, tableWidth, 7, 'F')
     this.doc.setDrawColor(100, 100, 100)
     this.doc.setLineWidth(0.3)
     this.doc.rect(startX, y, tableWidth, 7)
-    
+
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'bold')
-    
+
     // Column headers
     let colX = startX
     this.doc.text('BUYER (HQ)', colX + cellPaddingX, y + 5)
@@ -949,7 +951,7 @@ export class PDFGenerator {
     colX += colWidths[1]
     this.doc.line(colX, y, colX, y + 7)
     this.doc.text('SHIP TO / DELIVERY LOCATION', colX + cellPaddingX, y + 5)
-    
+
     y += 7
 
     // Prepare column content
@@ -972,28 +974,28 @@ export class PDFGenerator {
 
     // Content row
     this.doc.rect(startX, y, tableWidth, contentHeight)
-    
+
     this.doc.setFont('helvetica', 'normal')
     this.doc.setFontSize(8)
-    
+
     // Buyer column
     colX = startX
     this.renderInfoLines(buyerLines, colX + cellPaddingX, y + cellPaddingY, colWidths[0] - cellPaddingX * 2)
-    
+
     // Vertical line
     colX += colWidths[0]
     this.doc.line(colX, y, colX, y + contentHeight)
-    
+
     // Seller column
     this.renderInfoLines(sellerLines, colX + cellPaddingX, y + cellPaddingY, colWidths[1] - cellPaddingX * 2)
-    
+
     // Vertical line
     colX += colWidths[1]
     this.doc.line(colX, y, colX, y + contentHeight)
-    
+
     // Ship to column
     this.renderInfoLines(shipToLines, colX + cellPaddingX, y + cellPaddingY, colWidths[2] - cellPaddingX * 2)
-    
+
     return y + contentHeight + 10
   }
 
@@ -1011,13 +1013,13 @@ export class PDFGenerator {
     const tableData = orderData.order_items.map((item, index) => {
       // Column 2: Product Name
       const productName = item.product?.product_name || 'Product'
-      
+
       // Column 3: Variant Name
       const variantName = item.variant?.variant_name || ''
 
       const qtyUnits = Number(item.qty || 0).toLocaleString()
       const qtyCases = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
-      
+
       return [
         (index + 1).toString(),
         productName,
@@ -1087,7 +1089,7 @@ export class PDFGenerator {
       '- First scan at shop will trigger reward points.',
       '- Do not mix flavors in the same carton.'
     ]
-    
+
     notes.forEach(note => {
       this.doc.text(note, this.margin, y)
       y += 4
@@ -1119,8 +1121,8 @@ export class PDFGenerator {
 
     // Summary table
     const summaryTableWidth = this.pageWidth - 2 * this.margin
-  const labelColumnWidth = summaryTableWidth * 0.65
-  const valueColumnWidth = summaryTableWidth - labelColumnWidth
+    const labelColumnWidth = summaryTableWidth * 0.65
+    const valueColumnWidth = summaryTableWidth - labelColumnWidth
 
     const summaryData = options?.customRows ?? [
       ['Subtotal', this.formatCurrency(subtotal)],
@@ -1230,12 +1232,12 @@ export class PDFGenerator {
       this.doc.setFontSize(8)
       this.doc.setFont('helvetica', 'bold')
       this.doc.text('Signature Image:', this.margin + 2, y + boxHeight + 5)
-      
+
       // Signature box
       const sigBoxY = y + boxHeight + 8
       const sigBoxHeight = 20
       this.doc.rect(this.margin, sigBoxY, this.pageWidth - 2 * this.margin, sigBoxHeight)
-      
+
       let signatureRendered = false
 
       const renderSignatureImage = async (dataUrl: string | null): Promise<boolean> => {
@@ -1304,9 +1306,9 @@ export class PDFGenerator {
         this.doc.setFont('helvetica', 'bold')
         this.doc.text('HQ Approval', this.margin, y)
         y += 5
-        
+
         this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, boxHeight)
-        
+
         // Name row
         this.doc.line(this.margin, y + 7, this.pageWidth - this.margin, y + 7)
         this.doc.setFontSize(8)
@@ -1315,7 +1317,7 @@ export class PDFGenerator {
         this.doc.setFont('helvetica', 'normal')
         const approverName = orderData?.approver?.full_name || ''
         this.doc.text(approverName, this.margin + col1Width + 2, y + 5)
-        
+
         // Approved At row (Role row removed)
         this.doc.line(this.margin, y + 14, this.pageWidth - this.margin, y + 14)
         this.doc.setFont('helvetica', 'bold')
@@ -1323,7 +1325,7 @@ export class PDFGenerator {
         this.doc.setFont('helvetica', 'normal')
         const approvedAt = orderData?.approved_at ? this.format12HourTime(orderData.approved_at) : ''
         this.doc.text(approvedAt, this.margin + col1Width + 2, y + 12)
-        
+
         // Integrity Hash row (moved up)
         this.doc.line(this.margin, y + 21, this.pageWidth - this.margin, y + 21)
         this.doc.setFont('helvetica', 'bold')
@@ -1332,16 +1334,16 @@ export class PDFGenerator {
         this.doc.setFontSize(7)
         const integrityHash = orderData?.approval_hash || ''
         this.doc.text(integrityHash, this.margin + col1Width + 2, y + 19)
-        
+
         y += boxHeight + 5
-        
+
         // Signature Image
         this.doc.setFontSize(8)
         this.doc.setFont('helvetica', 'bold')
         this.doc.text('Signature Image:', this.margin + 2, y)
         y += 3
         this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, 20)
-        
+
         // Check if signature image exists and load it
         const approverSignatureImage = orderData?.approver_signature_image
         if (approverSignatureImage && orderData?.approved_at) {
@@ -1398,7 +1400,7 @@ export class PDFGenerator {
             this.doc.text('Upload digital signature in My Profile to display here.', this.pageWidth / 2, y + 12, { align: 'center' })
           }
         }
-        
+
         y += 30
       }
 
@@ -1408,9 +1410,9 @@ export class PDFGenerator {
         this.doc.setFont('helvetica', 'bold')
         this.doc.text('Manufacturer Acknowledgement', this.margin, y)
         y += 5
-        
+
         this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, boxHeight)
-        
+
         // Name row
         this.doc.line(this.margin, y + 7, this.pageWidth - this.margin, y + 7)
         this.doc.setFontSize(8)
@@ -1419,7 +1421,7 @@ export class PDFGenerator {
         this.doc.setFont('helvetica', 'normal')
         const mfgAckName = documentData?.acknowledger?.full_name || '—'
         this.doc.text(mfgAckName, this.margin + col1Width + 2, y + 5)
-        
+
         // Acknowledged At row (Role row removed)
         this.doc.line(this.margin, y + 14, this.pageWidth - this.margin, y + 14)
         this.doc.setFont('helvetica', 'bold')
@@ -1427,7 +1429,7 @@ export class PDFGenerator {
         this.doc.setFont('helvetica', 'normal')
         const acknowledgedAt = documentData?.acknowledged_at ? this.format12HourTime(documentData.acknowledged_at) : '—'
         this.doc.text(acknowledgedAt, this.margin + col1Width + 2, y + 12)
-        
+
         // Integrity Hash row (moved up)
         this.doc.line(this.margin, y + 21, this.pageWidth - this.margin, y + 21)
         this.doc.setFont('helvetica', 'bold')
@@ -1436,16 +1438,16 @@ export class PDFGenerator {
         this.doc.setFontSize(7)
         const mfgIntegrityHash = documentData?.acknowledgement_hash || '—'
         this.doc.text(mfgIntegrityHash, this.margin + col1Width + 2, y + 19)
-        
+
         y += boxHeight + 5
-        
+
         // Signature Image
         this.doc.setFontSize(8)
         this.doc.setFont('helvetica', 'bold')
         this.doc.text('Signature Image:', this.margin + 2, y)
         y += 3
         this.doc.rect(this.margin, y, this.pageWidth - 2 * this.margin, 20)
-        
+
         // Check if manufacturer acknowledgement signature exists
         const mfgSignatureImage = documentData?.acknowledger_signature_image
         if (mfgSignatureImage && documentData?.acknowledged_at) {
@@ -1505,7 +1507,7 @@ export class PDFGenerator {
             this.doc.text(message, this.pageWidth / 2, y + 12, { align: 'center' })
           }
         }
-        
+
         y += 25
       }
     }
@@ -1515,7 +1517,7 @@ export class PDFGenerator {
 
   async generateOrderPDF(orderData: OrderData): Promise<Blob> {
     let y = 15
-    
+
     // Company Logo
     y = await this.addCompanyLogo(y)
     y += 5
@@ -1552,7 +1554,7 @@ export class PDFGenerator {
 
   async generatePurchaseOrderPDF(orderData: OrderData, documentData: DocumentData): Promise<Blob> {
     let y = 15
-    
+
     // Company Logo
     y = await this.addCompanyLogo(y)
     y += 5
@@ -1563,7 +1565,7 @@ export class PDFGenerator {
 
     // PO Information Table
     const poInfo = [
-      { label: 'PO Number:', value: documentData.doc_no },
+      { label: 'PO Number:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'PO Date:', value: this.formatDate(documentData.created_at) },
       { label: 'Status:', value: documentData.status.toUpperCase() },
       { label: 'Estimated ETA:', value: documentData.estimated_eta || '30 Oct 2025' },
@@ -1589,7 +1591,7 @@ export class PDFGenerator {
 
   async generateInvoicePDF(orderData: OrderData, documentData: DocumentData): Promise<Blob> {
     let y = 15
-    
+
     // Company Logo
     y = await this.addCompanyLogo(y)
     y += 5
@@ -1600,7 +1602,7 @@ export class PDFGenerator {
 
     // Invoice Information Table
     const invoiceInfo = [
-      { label: 'Invoice Number:', value: documentData.doc_no },
+      { label: 'Invoice Number:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'Invoice Date:', value: this.formatDate(documentData.created_at) },
       { label: 'Status:', value: documentData.status.toUpperCase() },
       { label: 'Payment Terms:', value: documentData.payment_terms || 'Net 30 Days' },
@@ -1682,7 +1684,7 @@ export class PDFGenerator {
         summaryRows.push(['Previously Paid (Deposit)', this.formatCurrency(previousPayment)])
       }
 
-  summaryRows.push(['Discount / Campaign', this.formatCurrency(0)])
+      summaryRows.push(['Discount / Campaign', this.formatCurrency(0)])
       summaryRows.push(['Tax (0%)', this.formatCurrency(0)])
 
       y = this.addSummarySection(orderData, y, {
@@ -1840,15 +1842,15 @@ export class PDFGenerator {
       : 'MYR'
 
     const infoRows = [
-      { label: 'Payment Number:', value: documentData.doc_no },
+      { label: 'Payment Number:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'Payment Date:', value: this.formatDate(documentData.created_at) },
       { label: 'Status:', value: documentData.status?.toUpperCase?.() || documentData.status },
       { label: 'Payment Stage:', value: paymentStageLabel },
       { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
       { label: 'Currency:', value: currency },
       { label: 'Amount Due:', value: this.formatCurrency(normalizedPaymentAmount) },
-      linkedInvoice?.doc_no ? { label: 'Related Invoice:', value: linkedInvoice.doc_no } : null,
-      sourceRequest?.doc_no ? { label: 'Source Request:', value: sourceRequest.doc_no } : null
+      linkedInvoice?.doc_no ? { label: 'Related Invoice:', value: linkedInvoice.display_doc_no || linkedInvoice.doc_no } : null,
+      sourceRequest?.doc_no ? { label: 'Source Request:', value: sourceRequest.display_doc_no || sourceRequest.doc_no } : null
     ].filter((row): row is { label: string; value: string } => Boolean(row?.value))
 
     y = this.addInfoTable(infoRows, y, 2)
@@ -1914,7 +1916,7 @@ export class PDFGenerator {
 
   async generateReceiptPDF(orderData: OrderData, documentData: DocumentData): Promise<Blob> {
     let y = 15
-    
+
     // Company Logo
     y = await this.addCompanyLogo(y)
     y += 5
@@ -1925,19 +1927,19 @@ export class PDFGenerator {
     const isDepositReceipt = paymentPercentage < 100
 
     // Document Title with dynamic payment percentage
-    const receiptTitle = isFinalReceipt 
-      ? 'RECEIPT - FINAL PAYMENT (100%)' 
+    const receiptTitle = isFinalReceipt
+      ? 'RECEIPT - FINAL PAYMENT (100%)'
       : `RECEIPT - DEPOSIT PAYMENT (${paymentPercentage}%)`
     y = this.addDocumentHeader(receiptTitle, y)
     y += 3
 
     // Receipt Information Table with dynamic percentage
-    const paymentStatus = isFinalReceipt 
-      ? '100% PAYMENT COMPLETED' 
+    const paymentStatus = isFinalReceipt
+      ? '100% PAYMENT COMPLETED'
       : `${paymentPercentage}% PAYMENT RECEIVED`
-    
+
     const receiptInfo = [
-      { label: 'Receipt Number:', value: documentData.doc_no },
+      { label: 'Receipt Number:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'Receipt Date:', value: this.formatDate(documentData.created_at) },
       { label: 'Payment Status:', value: paymentStatus },
       { label: 'Payment Method:', value: 'Bank Transfer' }
@@ -1952,10 +1954,10 @@ export class PDFGenerator {
 
     // Summary Section
     y = this.addSummarySection(orderData, y)
-    
+
     // Pre-calculate totals for receipt summary - now using dynamic payment percentage
     const orderTotal = orderData.order_items.reduce((sum, item) => sum + (parseFloat(item.line_total.toString()) || 0), 0)
-    
+
     // Use the payment_percentage from the document (30, 50, 70, etc.) instead of hardcoded 50
     const receiptPortionPercentage = paymentPercentage
 
@@ -2051,7 +2053,7 @@ export class PDFGenerator {
     const requestedAmountDisplay = `${this.formatCurrency(normalizedRequestedAmount)}${currency !== 'MYR' ? ` (${currency})` : ''}`
 
     const infoRows = [
-      { label: 'Request Number:', value: documentData.doc_no },
+      { label: 'Request Number:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'Request Date:', value: this.formatDate(documentData.created_at) },
       { label: 'Status:', value: documentData.status?.toUpperCase?.() || documentData.status },
       {
@@ -2082,8 +2084,7 @@ export class PDFGenerator {
         ? this.formatDate(relatedDocs.deposit_invoice.created_at)
         : 'Date TBD'
       depositLines.push(
-        `Deposit Invoice ${relatedDocs.deposit_invoice.doc_no} (${createdAt}) • ${
-          relatedDocs.deposit_invoice.status?.toUpperCase?.() || relatedDocs.deposit_invoice.status || 'Status unknown'
+        `Deposit Invoice ${relatedDocs.deposit_invoice.display_doc_no || relatedDocs.deposit_invoice.doc_no} (${createdAt}) • ${relatedDocs.deposit_invoice.status?.toUpperCase?.() || relatedDocs.deposit_invoice.status || 'Status unknown'
         }`
       )
     }
@@ -2093,8 +2094,7 @@ export class PDFGenerator {
         ? this.formatDate(relatedDocs.deposit_payment.created_at)
         : 'Date TBD'
       depositLines.push(
-        `Deposit Payment ${relatedDocs.deposit_payment.doc_no} (${createdAt}) • ${
-          relatedDocs.deposit_payment.status?.toUpperCase?.() || relatedDocs.deposit_payment.status || 'Status unknown'
+        `Deposit Payment ${relatedDocs.deposit_payment.display_doc_no || relatedDocs.deposit_payment.doc_no} (${createdAt}) • ${relatedDocs.deposit_payment.status?.toUpperCase?.() || relatedDocs.deposit_payment.status || 'Status unknown'
         }`
       )
     }
@@ -2104,8 +2104,7 @@ export class PDFGenerator {
         ? this.formatDate(relatedDocs.deposit_receipt.created_at)
         : 'Date TBD'
       depositLines.push(
-        `Deposit Receipt ${relatedDocs.deposit_receipt.doc_no} (${createdAt}) • ${
-          relatedDocs.deposit_receipt.status?.toUpperCase?.() || relatedDocs.deposit_receipt.status || 'Status unknown'
+        `Deposit Receipt ${relatedDocs.deposit_receipt.display_doc_no || relatedDocs.deposit_receipt.doc_no} (${createdAt}) • ${relatedDocs.deposit_receipt.status?.toUpperCase?.() || relatedDocs.deposit_receipt.status || 'Status unknown'
         }`
       )
     }
@@ -2140,7 +2139,7 @@ export class PDFGenerator {
 
     if (depositAmount > 0) {
       const depositLabel = relatedDocs.deposit_payment?.doc_no
-        ? `Deposit Paid (${relatedDocs.deposit_payment.doc_no})`
+        ? `Deposit Paid (${relatedDocs.deposit_payment.display_doc_no || relatedDocs.deposit_payment.doc_no})`
         : 'Deposit Paid'
       summaryRows.push([depositLabel, this.formatCurrency(depositAmount)])
     }
@@ -2292,7 +2291,7 @@ export class PDFGenerator {
 
   async generateSalesOrderPDF(orderData: OrderData, documentData: DocumentData): Promise<Blob> {
     let y = 15
-    
+
     // Company Logo
     y = await this.addCompanyLogo(y)
     y += 5
@@ -2303,7 +2302,7 @@ export class PDFGenerator {
 
     // SO Information Table
     const soInfo = [
-      { label: 'SO Number:', value: documentData.doc_no },
+      { label: 'SO Number:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'SO Date:', value: this.formatDate(documentData.created_at) },
       { label: 'Status:', value: documentData.status.toUpperCase() },
       { label: 'Estimated ETA:', value: documentData.estimated_eta || '30 Oct 2025' },
@@ -2329,7 +2328,7 @@ export class PDFGenerator {
 
   async generateDeliveryOrderPDF(orderData: OrderData, documentData: DocumentData): Promise<Blob> {
     let y = 15
-    
+
     // Company Logo
     y = await this.addCompanyLogo(y)
     y += 5
@@ -2340,7 +2339,7 @@ export class PDFGenerator {
 
     // DO Information Table
     const doInfo = [
-      { label: 'DO Number:', value: documentData.doc_no },
+      { label: 'DO Number:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'DO Date:', value: this.formatDate(documentData.created_at) },
       { label: 'Status:', value: documentData.status.toUpperCase() },
       { label: 'Estimated ETA:', value: documentData.estimated_eta || '30 Oct 2025' },
@@ -2389,13 +2388,13 @@ export class PDFGenerator {
     const tableData = orderData.order_items.map((item, index) => {
       // Column 2: Product Name
       const productName = item.product?.product_name || 'Product'
-      
+
       // Column 3: Variant Name
       const variantName = item.variant?.variant_name || ''
 
       const qtyUnits = Number(item.qty || 0).toLocaleString()
       const qtyCases = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
-      
+
       return [
         (index + 1).toString(),
         productName,

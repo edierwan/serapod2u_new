@@ -167,12 +167,13 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
     // 1. Have batches with master codes in 'ready_to_ship' status (not started yet)
     // 2. OR have batches with receiving_status 'queued'/'processing' (in progress/stuck)
     // 3. OR have unique codes still in 'ready_to_ship' status (master done, unique pending)
-    
+
     let query = supabase
       .from('orders')
       .select(`
         id,
         order_no,
+        display_doc_no,
         order_type,
         status,
         created_at,
@@ -194,16 +195,16 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
     console.log('Raw orders fetched:', data?.length)
 
     const ordersToShow = []
-    
+
     for (const order of data || []) {
       const batches = order.qr_batches as any
       if (!batches) continue
-      
+
       const batchList = Array.isArray(batches) ? batches : [batches]
       if (batchList.length === 0) continue
-      
+
       let shouldInclude = false
-      
+
       for (const batch of batchList) {
         // Check 1: Batch is actively being processed (queued or processing)
         // This handles the "stuck" scenario - user can re-select and continue
@@ -212,7 +213,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
           shouldInclude = true
           break
         }
-        
+
         // Check 2: Batch receiving is NOT completed - check for pending work
         if (batch.receiving_status !== 'completed') {
           // Check if there are master codes still ready_to_ship
@@ -221,13 +222,13 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
             .select('*', { count: 'exact', head: true })
             .eq('batch_id', batch.id)
             .eq('status', 'ready_to_ship')
-          
+
           if (pendingMasterCount && pendingMasterCount > 0) {
             console.log(`Order ${order.order_no}: Has ${pendingMasterCount} master codes ready_to_ship - including`)
             shouldInclude = true
             break
           }
-          
+
           // Check if there are unique codes still ready_to_ship (master done, unique pending)
           const { count: pendingUniqueCount } = await supabase
             .from('qr_codes')
@@ -236,7 +237,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
             .eq('status', 'ready_to_ship')
             .eq('is_buffer', false)
             .limit(1) // We just need to know if ANY exist
-          
+
           if (pendingUniqueCount && pendingUniqueCount > 0) {
             console.log(`Order ${order.order_no}: Has unique codes ready_to_ship - including`)
             shouldInclude = true
@@ -244,12 +245,12 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
           }
         }
       }
-      
+
       if (shouldInclude) {
         ordersToShow.push(order)
       }
     }
-    
+
     console.log('Orders ready for warehouse receive:', ordersToShow.length)
     setOrders(ordersToShow)
   }
@@ -260,11 +261,11 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
     if (order) {
       const batches = order.qr_batches as any
       const batchList = Array.isArray(batches) ? batches : [batches]
-      
+
       // Find the best batch to show (one that has ready_to_ship codes or is being received)
       // We prioritize batches that are not fully received yet
       const batch = batchList[0] // Simplified for now, ideally check which one has ready_to_ship codes
-      
+
       if (batch) {
         await fetchBatchProgress(batch.id, order)
       }
@@ -278,7 +279,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       .select('status, receiving_status, receiving_heartbeat, receiving_worker_id, receiving_progress')
       .eq('id', batchId)
       .single()
-      
+
     const batchStatus = batchInfo?.status || 'unknown'
     const receivingStatus = batchInfo?.receiving_status || 'idle'
     const isCompleted = receivingStatus === 'completed'
@@ -303,7 +304,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
     if (isCompleted) {
       // If completed, we assume all are received (or at least processed)
       // But to be accurate, let's count 'received_warehouse'
-       const { count } = await supabase
+      const { count } = await supabase
         .from('qr_master_codes')
         .select('*', { count: 'exact', head: true })
         .eq('batch_id', batchId)
@@ -331,7 +332,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       .eq('batch_id', batchId)
       .eq('status', 'received_warehouse')
       .eq('is_buffer', false) // Only non-buffer codes
-    
+
     const receivedUnique = receivedCount || 0
 
     const warrantyBonus = (order as any).seller_org?.warranty_bonus || 0
@@ -360,16 +361,16 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
     }
 
     setCurrentBatch(batchData)
-    
+
     if (batchData.receiving_status === 'completed') {
-        setProgressStep('completed')
+      setProgressStep('completed')
     } else if (batchData.receiving_status === 'processing' || batchData.receiving_status === 'queued') {
-        setProgressStep('receiving')
-        setProcessing(true)
-        setStartTime(prev => prev || Date.now())
+      setProgressStep('receiving')
+      setProcessing(true)
+      setStartTime(prev => prev || Date.now())
     } else {
-        setProgressStep('idle')
-        setProcessing(false)
+      setProgressStep('idle')
+      setProcessing(false)
     }
   }
 
@@ -389,10 +390,10 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       })
 
       if (!startResponse.ok) {
-         const errorData = await startResponse.json()
-         if (startResponse.status !== 400 && errorData.message !== 'Receiving already in progress') {
-             throw new Error(errorData.error || 'Failed to start receiving')
-         }
+        const errorData = await startResponse.json()
+        if (startResponse.status !== 400 && errorData.message !== 'Receiving already in progress') {
+          throw new Error(errorData.error || 'Failed to start receiving')
+        }
       }
 
       // Poll for completion
@@ -400,11 +401,11 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       let pollCount = 0
       let lastProgress = 0
       let stuckCount = 0
-      
+
       while (isReceiving) {
         // Trigger worker explicitly to ensure it runs
         const workerPromise = fetch('/api/cron/warehouse-receiving-worker').catch(e => console.error('Worker trigger failed:', e))
-        
+
         // Wait for worker or timeout (don't block forever)
         await Promise.race([
           workerPromise,
@@ -412,34 +413,34 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         ])
 
         await new Promise(resolve => setTimeout(resolve, 2000)) // 2s pause between polls
-        
+
         const order = orders.find(o => o.id === selectedOrder)
         await fetchBatchProgress(currentBatch.batch_id, order)
-        
+
         const { data: checkBatch } = await supabase
-            .from('qr_batches')
-            .select('receiving_status, receiving_progress, last_error')
-            .eq('id', currentBatch.batch_id)
-            .single()
-            
+          .from('qr_batches')
+          .select('receiving_status, receiving_progress, last_error')
+          .eq('id', currentBatch.batch_id)
+          .single()
+
         if (checkBatch?.receiving_status === 'completed') {
-            isReceiving = false
+          isReceiving = false
         } else if (checkBatch?.receiving_status === 'failed') {
-            // Don't throw - let the UI show the error and allow retry
-            const errorMsg = checkBatch?.last_error || 'Unknown error'
-            console.error('Batch receiving failed:', errorMsg)
-            toast({
-              title: 'Processing Error',
-              description: `${errorMsg}. You can click Reset to retry.`,
-              variant: 'destructive'
-            })
-            setProcessing(false)
-            setStartTime(null)
-            // Refresh to show failed state with retry option
-            await fetchBatchProgress(currentBatch.batch_id, order)
-            return // Exit without throwing
+          // Don't throw - let the UI show the error and allow retry
+          const errorMsg = checkBatch?.last_error || 'Unknown error'
+          console.error('Batch receiving failed:', errorMsg)
+          toast({
+            title: 'Processing Error',
+            description: `${errorMsg}. You can click Reset to retry.`,
+            variant: 'destructive'
+          })
+          setProcessing(false)
+          setStartTime(null)
+          // Refresh to show failed state with retry option
+          await fetchBatchProgress(currentBatch.batch_id, order)
+          return // Exit without throwing
         }
-        
+
         // Check for stuck progress (no change for 30 polls = ~5 min)
         const currentProgress = checkBatch?.receiving_progress || 0
         if (currentProgress === lastProgress) {
@@ -451,7 +452,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
           stuckCount = 0
           lastProgress = currentProgress
         }
-        
+
         pollCount++
         if (pollCount % 10 === 0) {
           console.log(`🔄 Poll ${pollCount}: progress=${currentProgress}, status=${checkBatch?.receiving_status}`)
@@ -459,7 +460,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       }
 
       setProgressStep('completed')
-      
+
       toast({
         title: 'Receiving Complete! 🎉',
         description: `Batch ${currentBatch.batch_code} has been received in warehouse.`,
@@ -473,10 +474,10 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ order_id: currentBatch.order_id })
         })
-        
+
         const autoJourneyData = await autoJourneyResponse.json()
         console.log('[Warehouse] Auto-journey response:', autoJourneyData)
-        
+
         if (autoJourneyData.success && autoJourneyData.journey) {
           toast({
             title: 'Journey Created! 🚀',
@@ -514,7 +515,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
 
   const handleResetProcess = async () => {
     if (!currentBatch) return
-    
+
     if (!confirm('Are you sure you want to reset this batch? This will allow you to restart the receiving process.')) {
       return
     }
@@ -576,7 +577,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
             <option value="">Select an order...</option>
             {orders.map((order) => (
               <option key={order.id} value={order.id}>
-                {order.order_no} - {order.buyer_org?.org_name} ({new Date(order.created_at).toLocaleDateString()})
+                {order.display_doc_no || order.order_no} - {order.buyer_org?.org_name} ({new Date(order.created_at).toLocaleDateString()})
               </option>
             ))}
           </select>
@@ -611,7 +612,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                   </span>
                 </div>
               </div>
-              
+
               <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
                 <p className="text-xs text-purple-600 font-medium">Unique Codes</p>
                 <p className="text-lg font-bold text-purple-900">
@@ -639,8 +640,8 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
 
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 flex flex-col justify-center items-center">
                 <p className="text-xs text-gray-500 font-medium mb-1">Current Status</p>
-                <Badge 
-                  variant={currentBatch.receiving_status === 'completed' ? 'default' : currentBatch.is_stale ? 'destructive' : 'outline'} 
+                <Badge
+                  variant={currentBatch.receiving_status === 'completed' ? 'default' : currentBatch.is_stale ? 'destructive' : 'outline'}
                   className={`text-sm px-3 py-1 ${currentBatch.is_stale ? 'animate-pulse' : ''}`}
                 >
                   {currentBatch.is_stale ? 'STALE' : (currentBatch.receiving_status || 'idle')}
@@ -694,8 +695,8 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                     </Alert>
                   )}
                   <div className="flex flex-wrap gap-3 justify-center">
-                    <Button 
-                      size="lg" 
+                    <Button
+                      size="lg"
                       className="min-w-[200px] bg-blue-600 hover:bg-blue-700"
                       onClick={handleCompleteProcess}
                       disabled={processing || currentBatch.is_stale || currentBatch.receiving_status === 'failed'}
@@ -717,11 +718,11 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                         </>
                       )}
                     </Button>
-                    
+
                     {/* Reset button - show when stuck, stale, or failed */}
                     {(currentBatch.receiving_status === 'queued' || currentBatch.receiving_status === 'processing' || currentBatch.receiving_status === 'failed' || currentBatch.is_stale) && (
-                      <Button 
-                        size="lg" 
+                      <Button
+                        size="lg"
                         variant="outline"
                         className="min-w-[150px] border-red-300 text-red-600 hover:bg-red-50"
                         onClick={handleResetProcess}

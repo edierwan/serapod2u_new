@@ -38,6 +38,7 @@ interface BatchProgress {
   packing_status?: string
   order_id: string
   order_no: string
+  display_doc_no?: string | null
   buyer_org_name: string
   total_master_codes: number
   packed_master_codes: number
@@ -148,13 +149,14 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
       console.warn('No organization ID found for user, skipping fetch')
       return
     }
-    
+
     // Build query - fetch all orders for this manufacturer
     let query = supabase
       .from('orders')
       .select(`
         id,
         order_no,
+        display_doc_no,
         status,
         created_at,
         seller_org_id,
@@ -177,14 +179,14 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
 
     // For each order, check if it has batches with printed master codes
     const ordersWithPrintedMasters = []
-    
+
     for (const order of data || []) {
       const batches = order.qr_batches as any
       if (!batches) continue
-      
+
       const batchList = Array.isArray(batches) ? batches : [batches]
       if (batchList.length === 0) continue
-      
+
       // Check each batch for printed master codes
       for (const batch of batchList) {
         // Query master codes for this batch with printed status
@@ -193,7 +195,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
           .select('*', { count: 'exact', head: true })
           .eq('batch_id', batch.id)
           .eq('status', 'printed')
-        
+
         // If this batch has printed masters, include the order
         if (printedCount && printedCount > 0) {
           ordersWithPrintedMasters.push(order)
@@ -201,7 +203,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
         }
       }
     }
-    
+
     console.log('Orders with printed master codes:', ordersWithPrintedMasters.length)
     setOrders(ordersWithPrintedMasters)
   }
@@ -216,12 +218,12 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
     if (order) {
       const batches = order.qr_batches as any
       const batchList = Array.isArray(batches) ? batches : [batches]
-      
+
       // Find the best batch to show
-      const batch = batchList.find((b: any) => 
+      const batch = batchList.find((b: any) =>
         ['generated', 'printed', 'packed', 'processing', 'ready_to_ship'].includes(b.status)
       ) || batchList[0]
-      
+
       if (batch) {
         await fetchBatchProgress(batch.id, order)
       }
@@ -235,7 +237,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
       .select('status, packing_status')
       .eq('id', batchId)
       .single()
-      
+
     const batchStatus = batchInfo?.status || 'unknown'
     const packingStatus = batchInfo?.packing_status || 'idle'
     const isCompleted = batchStatus === 'completed' || packingStatus === 'completed'
@@ -277,11 +279,12 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
 
     const batchData: BatchProgress = {
       batch_id: batchId,
-      batch_code: `BATCH-${order.order_no}`,
+      batch_code: `BATCH-${order.display_doc_no || order.order_no}`,
       batch_status: batchStatus,
       packing_status: packingStatus,
       order_id: order.id,
       order_no: order.order_no,
+      display_doc_no: order.display_doc_no,
       buyer_org_name: order.buyer_org?.org_name || 'Unknown',
       total_master_codes: totalMaster || 0,
       packed_master_codes: packedMaster,
@@ -292,17 +295,17 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
     }
 
     setCurrentBatch(batchData)
-    
+
     // Check if already completed
     if (batchData.batch_status === 'completed') {
-        setProgressStep('completed')
+      setProgressStep('completed')
     } else if (batchData.packing_status === 'processing' || batchData.packing_status === 'queued') {
-        setProgressStep('packing')
-        setProcessing(true)
-        setStartTime(prev => prev || Date.now())
+      setProgressStep('packing')
+      setProcessing(true)
+      setStartTime(prev => prev || Date.now())
     } else {
-        setProgressStep('idle')
-        setProcessing(false)
+      setProgressStep('idle')
+      setProcessing(false)
     }
   }
 
@@ -322,37 +325,37 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
       })
 
       if (!startResponse.ok) {
-         const errorData = await startResponse.json()
-         // If already packing, we can continue to poll
-         if (startResponse.status !== 400 && errorData.message !== 'Packing already in progress') {
-             throw new Error(errorData.error || 'Failed to start packing')
-         }
+        const errorData = await startResponse.json()
+        // If already packing, we can continue to poll
+        if (startResponse.status !== 400 && errorData.message !== 'Packing already in progress') {
+          throw new Error(errorData.error || 'Failed to start packing')
+        }
       }
 
       // Poll for completion
       let isPacking = true
       while (isPacking) {
         await new Promise(resolve => setTimeout(resolve, 2000)) // Poll every 2s
-        
+
         const order = orders.find(o => o.id === selectedOrder)
         await fetchBatchProgress(currentBatch.batch_id, order)
-        
+
         const { data: checkBatch } = await supabase
-            .from('qr_batches')
-            .select('packing_status')
-            .eq('id', currentBatch.batch_id)
-            .single()
-            
+          .from('qr_batches')
+          .select('packing_status')
+          .eq('id', currentBatch.batch_id)
+          .single()
+
         if (checkBatch?.packing_status === 'completed') {
-            isPacking = false
+          isPacking = false
         } else if (checkBatch?.packing_status === 'failed') {
-            throw new Error('Packing failed')
+          throw new Error('Packing failed')
         }
       }
 
       // Step 2: Ready to Ship & Notify (Complete Production)
       setProgressStep('shipping')
-      
+
       const response = await fetch('/api/manufacturer/complete-production', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -367,19 +370,19 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
       }
 
       const result = await response.json()
-      
+
       setProgressStep('completed')
-      
+
       // Calculate balance percentage from order payment terms
       const order = orders.find(o => o.id === selectedOrder)
       const balancePct = order?.payment_terms?.balance_pct || 0.5
       const balancePercentage = Math.round(balancePct * 100)
-      
+
       // Show success message with balance payment info
-      const balanceMessage = result.balance_payment_created 
+      const balanceMessage = result.balance_payment_created
         ? ` Balance payment request (${balancePercentage}%) has been sent to admin for approval.`
         : ''
-      
+
       toast({
         title: 'Production Complete! 🎉',
         description: `Batch ${currentBatch.batch_code} is now ready for warehouse shipment. ${result.packed_master_codes} of ${result.total_master_codes} cases packed.${balanceMessage}`,
@@ -428,7 +431,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
             <option value="">Select an order...</option>
             {orders.map((order) => (
               <option key={order.id} value={order.id}>
-                {order.order_no} - {order.buyer_org?.org_name} ({new Date(order.created_at).toLocaleDateString()})
+                {order.display_doc_no || order.order_no} - {order.buyer_org?.org_name} ({new Date(order.created_at).toLocaleDateString()})
               </option>
             ))}
           </select>
@@ -476,12 +479,12 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
                 </div>
               </div>
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 flex flex-col justify-center items-center">
-                 <p className="text-xs text-gray-600 font-medium mb-2">Current Status</p>
-                 {progressStep === 'completed' || currentBatch.batch_status === 'completed' ? (
-                     <Badge className="bg-green-600 text-sm py-1 px-3">Completed</Badge>
-                 ) : (
-                     <Badge variant="outline" className="text-sm py-1 px-3">{currentBatch.batch_status || 'Pending'}</Badge>
-                 )}
+                <p className="text-xs text-gray-600 font-medium mb-2">Current Status</p>
+                {progressStep === 'completed' || currentBatch.batch_status === 'completed' ? (
+                  <Badge className="bg-green-600 text-sm py-1 px-3">Completed</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-sm py-1 px-3">{currentBatch.batch_status || 'Pending'}</Badge>
+                )}
               </div>
             </div>
 
@@ -490,7 +493,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
               {processing ? (
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg">Processing...</h3>
-                  
+
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>1. Packing Codes (Printed → Ready to Ship)</span>
@@ -511,24 +514,24 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
               ) : (
                 <div className="flex flex-col items-center gap-4">
                   {currentBatch.batch_status !== 'completed' && progressStep !== 'completed' ? (
-                    <Button 
-                        className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md text-sm py-2 px-4"
-                        onClick={handleCompleteProcess}
+                    <Button
+                      className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md text-sm py-2 px-4"
+                      onClick={handleCompleteProcess}
                     >
-                        <Play className="mr-2 h-4 w-4" />
-                        Completed Manufacture Process
+                      <Play className="mr-2 h-4 w-4" />
+                      Completed Manufacture Process
                     </Button>
                   ) : (
                     <div className="flex flex-col items-center gap-4 w-full">
                       <Alert className="bg-green-50 border-green-200 w-full">
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                          <AlertDescription className="text-green-800">
-                              This order has been fully processed and is ready for shipment.
-                          </AlertDescription>
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-800">
+                          This order has been fully processed and is ready for shipment.
+                        </AlertDescription>
                       </Alert>
-                      
-                      <Button 
-                        variant="outline" 
+
+                      <Button
+                        variant="outline"
                         className="w-full md:w-auto border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
                         onClick={() => setShowDocumentsDialog(true)}
                       >
@@ -537,7 +540,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
                       </Button>
                     </div>
                   )}
-                  
+
                   <p className="text-sm text-gray-500 max-w-md text-center">
                     This will automatically pack all codes, mark the batch as ready to ship, and notify Serapod for payment.
                   </p>
@@ -554,6 +557,7 @@ export default function ManufacturerScanView2({ userProfile }: ManufacturerScanV
           onClose={() => setShowDocumentsDialog(false)}
           orderId={currentBatch.order_id}
           orderNo={currentBatch.order_no}
+          displayOrderNo={currentBatch.display_doc_no}
           userProfile={userProfile}
           initialTab="balanceRequest"
         />

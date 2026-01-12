@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import MovementTypeBadge from './MovementTypeBadge'
 import ProductThumbnail from './ProductThumbnail'
-import { 
+import {
   BarChart3,
   Search,
   Filter,
@@ -91,7 +91,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   const [products, setProducts] = useState<any[]>([])
   const [variants, setVariants] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
-  
+
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 20
 
@@ -158,12 +158,12 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         `)
 
       if (error) throw error
-      
+
       // Extract unique product names from movement records
       const productNames = new Set<string>()
       data?.forEach((item: any) => {
-        const variant = Array.isArray(item.product_variants) 
-          ? item.product_variants[0] 
+        const variant = Array.isArray(item.product_variants)
+          ? item.product_variants[0]
           : item.product_variants
         const product = variant?.products
           ? Array.isArray(variant.products)
@@ -174,7 +174,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           productNames.add(product.product_name)
         }
       })
-      
+
       const uniqueProducts = Array.from(productNames).sort()
       setProducts(uniqueProducts.map(name => ({ product_name: name })))
     } catch (error) {
@@ -198,19 +198,19 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         `)
 
       if (error) throw error
-      
+
       // Extract unique variants from movement records
       const variantMap = new Map()
       data?.forEach((item: any) => {
-        const variant = Array.isArray(item.product_variants) 
-          ? item.product_variants[0] 
+        const variant = Array.isArray(item.product_variants)
+          ? item.product_variants[0]
           : item.product_variants
         if (variant?.variant_code) {
           variantMap.set(variant.variant_code, variant)
         }
       })
-      
-      const uniqueVariants = Array.from(variantMap.values()).sort((a, b) => 
+
+      const uniqueVariants = Array.from(variantMap.values()).sort((a, b) =>
         a.variant_code.localeCompare(b.variant_code)
       )
       setVariants(uniqueVariants)
@@ -241,8 +241,8 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       return variants
     }
     return variants.filter(variant => {
-      const product = Array.isArray(variant.products) 
-        ? variant.products[0] 
+      const product = Array.isArray(variant.products)
+        ? variant.products[0]
         : variant.products
       return product?.product_name === productFilter
     })
@@ -261,7 +261,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
   const loadMovements = async () => {
     try {
       setLoading(true)
-      
+
       // Pre-fetch variants matching the search query if present
       let matchingVariantIds: string[] = []
       if (searchQuery) {
@@ -269,7 +269,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           .from('product_variants')
           .select('id, variant_code, variant_name, products!inner(product_name)')
           .or(`variant_code.ilike.%${searchQuery}%,variant_name.ilike.%${searchQuery}%,products.product_name.ilike.%${searchQuery}%`)
-        
+
         if (variants) {
           matchingVariantIds = variants.map(v => v.id)
         }
@@ -287,21 +287,21 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       // Apply filters
       if (searchQuery) {
         const textSearchConditions = [
-            'reference_no',
-            'notes',
-            'movement_type',
-            'variant_code',
-            'variant_name',
-            'product_name',
-            'organization_name',
-            'manufacturer_name',
-            'created_by_email'
+          'reference_no',
+          'notes',
+          'movement_type',
+          'variant_code',
+          'variant_name',
+          'product_name',
+          'organization_name',
+          'manufacturer_name',
+          'created_by_email'
         ].map((column) => `${column}.ilike.%${searchQuery}%`)
 
         if (matchingVariantIds.length > 0) {
-             textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
+          textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
         }
-        
+
         query = query.or(textSearchConditions.join(','))
       }
 
@@ -363,15 +363,15 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         // Re-apply filters
         if (searchQuery) {
           const textSearchConditions = [
-            'reference_no', 
-            'notes', 
-            'movement_type', 
-            'reason', 
+            'reference_no',
+            'notes',
+            'movement_type',
+            'reason',
             'warehouse_location'
           ].map((column) => `${column}.ilike.%${searchQuery}%`)
 
           if (matchingVariantIds.length > 0) {
-             textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
+            textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
           }
 
           query = query.or(textSearchConditions.join(','))
@@ -401,7 +401,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
         console.error('Query error details:', error)
         throw error
       }
-      
+
       if (!data || data.length === 0) {
         setMovements([])
         return
@@ -455,7 +455,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           .from('organizations')
           .select('id, org_name, org_code')
           .in('id', orgIds)
-        
+
         orgs?.forEach((o: any) => {
           orgsMap.set(o.id, o)
         })
@@ -468,7 +468,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           .from('users')
           .select('id, email')
           .in('id', userIds)
-        
+
         users?.forEach((u: any) => {
           usersMap.set(u.id, u)
         })
@@ -478,14 +478,14 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       if (orderIds.length > 0) {
         const { data: orders } = await supabase
           .from('orders')
-          .select('id, order_no')
+          .select('id, order_no, display_doc_no')
           .in('id', orderIds)
 
         orders?.forEach((order: any) => {
           ordersMap.set(order.id, order)
         })
       }
-      
+
       // Transform the data with fetched relations
       const transformedData: StockMovement[] = (data || []).map((item: any) => {
         const variant = variantsMap.get(item.variant_id)
@@ -559,11 +559,11 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           // Logic to determine which organization to display as "Location"
           // If quantity is negative (outgoing), show FROM org
           // If quantity is positive (incoming), show TO org
-          
+
           if (quantityChange < 0) {
-             if (fromOrg) return fromOrg
+            if (fromOrg) return fromOrg
           } else {
-             if (toOrg) return toOrg
+            if (toOrg) return toOrg
           }
 
           if (viewOrgName || viewOrgCode) {
@@ -576,7 +576,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           if (toOrg) {
             return toOrg
           }
-          
+
           if (fromOrg) {
             return fromOrg
           }
@@ -616,7 +616,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           if (movementType === 'warranty_bonus') {
             return 0
           }
-          
+
           if (variantBaseCost !== null) return variantBaseCost
           const directCost = typeof item.unit_cost === 'number' && !Number.isNaN(item.unit_cost)
             ? Number(item.unit_cost)
@@ -654,32 +654,32 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           ...item,
           unit_cost: resolvedUnitCost,
           total_cost: resolvedTotalCost,
-          reference_no: isShipment && order?.order_no ? order.order_no : item.reference_no,
-          distributor_order_no: order?.order_no || null,
+          reference_no: isShipment && order ? (order.display_doc_no || order.order_no) : item.reference_no,
+          distributor_order_no: order ? (order.display_doc_no || order.order_no) : null,
           product_variants: productVariants,
           organizations,
           manufacturers,
           users
         }
       })
-      
+
       // Apply client-side filtering for product and variant (needed when using stock_movements fallback table)
       let filteredData = transformedData
-      
+
       if (productFilter !== 'all') {
         filteredData = filteredData.filter(item => {
           const productName = item.product_variants?.products?.product_name
           return productName === productFilter
         })
       }
-      
+
       if (variantFilter !== 'all') {
         filteredData = filteredData.filter(item => {
           const variantCode = item.product_variants?.variant_code
           return variantCode === variantFilter
         })
       }
-      
+
       if (quantityRangeFilter !== 'all') {
         filteredData = filteredData.filter(item => {
           const absQty = Math.abs(item.quantity_change)
@@ -697,7 +697,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           }
         })
       }
-      
+
       setMovements(filteredData)
     } catch (error: any) {
       console.error('Failed to load movements:', error)
@@ -776,7 +776,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
       // Handle string comparison
       if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return sortDirection === 'asc' 
+        return sortDirection === 'asc'
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue)
       }
@@ -796,7 +796,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
     if (sortColumn !== column) {
       return <ArrowUpDown className="w-4 h-4 ml-1 opacity-40" />
     }
-    return sortDirection === 'asc' 
+    return sortDirection === 'asc'
       ? <ArrowUp className="w-4 h-4 ml-1" />
       : <ArrowDown className="w-4 h-4 ml-1" />
   }
@@ -806,18 +806,18 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       // If quantity is negative, it's outgoing (from Warehouse). We want to show destination.
       // But movement.organizations now reflects the "Location" column, which is the Source (Warehouse) for negative qty.
       // So we can't use movement.organizations.org_name here if we want to show destination.
-      
+
       // However, the original logic was:
       // const destination = movement.organizations?.org_name
       // return `Order Fulfillment to ${destination}`
-      
+
       // Since we changed movement.organizations to be the Source for negative qty, 
       // we need another way to get the destination name if we want to display "to Destination".
       // But we don't have the destination org name easily available in the transformed object unless we add it.
-      
+
       // For now, let's just say "Order Fulfillment". 
       // Or if we really want, we can try to use the distributor_order_no or similar context.
-      
+
       return 'Order Fulfillment'
     }
 
@@ -1021,8 +1021,8 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
 
               <div>
                 <label className="text-xs font-medium text-gray-700 mb-1.5 block">Variant</label>
-                <Select 
-                  value={variantFilter} 
+                <Select
+                  value={variantFilter}
                   onValueChange={setVariantFilter}
                   disabled={productFilter === 'all'}
                 >
@@ -1157,7 +1157,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none"
                     onClick={() => handleSort('created_at')}
                   >
@@ -1166,7 +1166,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('created_at')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none"
                     onClick={() => handleSort('movement_type')}
                   >
@@ -1175,7 +1175,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('movement_type')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none"
                     onClick={() => handleSort('product_name')}
                   >
@@ -1184,7 +1184,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('product_name')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none"
                     onClick={() => handleSort('location')}
                   >
@@ -1193,7 +1193,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('location')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none text-right"
                     onClick={() => handleSort('quantity_change')}
                   >
@@ -1202,7 +1202,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('quantity_change')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none text-right"
                     onClick={() => handleSort('quantity_before')}
                   >
@@ -1211,7 +1211,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('quantity_before')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none text-right"
                     onClick={() => handleSort('quantity_after')}
                   >
@@ -1220,7 +1220,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('quantity_after')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none text-right"
                     onClick={() => handleSort('unit_cost')}
                   >
@@ -1229,7 +1229,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('unit_cost')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none"
                     onClick={() => handleSort('reference_no')}
                   >
@@ -1238,7 +1238,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       {renderSortIcon('reference_no')}
                     </div>
                   </TableHead>
-                  <TableHead 
+                  <TableHead
                     className="cursor-pointer hover:bg-gray-100 select-none"
                     onClick={() => handleSort('reason')}
                   >
@@ -1308,13 +1308,12 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                         )}
                       </TableCell>
                       <TableCell
-                        className={`text-xs text-right font-semibold ${
-                          movement.quantity_change > 0
+                        className={`text-xs text-right font-semibold ${movement.quantity_change > 0
                             ? 'text-green-600'
                             : movement.quantity_change < 0
                               ? 'text-red-600'
                               : 'text-gray-600'
-                        }`}
+                          }`}
                       >
                         {formatSignedNumber(movement.quantity_change)}
                       </TableCell>
@@ -1384,16 +1383,16 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
               Page {currentPage}
             </p>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
               >
                 Previous
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(currentPage + 1)}
                 disabled={movements.length < itemsPerPage}

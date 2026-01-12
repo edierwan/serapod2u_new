@@ -95,6 +95,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         .select(`
           id,
           order_no,
+          display_doc_no,
           order_type,
           status,
           qr_buffer_percent,
@@ -133,6 +134,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
           *,
           orders!inner (
             order_no,
+            display_doc_no,
             status,
             order_type,
             seller_org_id
@@ -554,6 +556,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     let result = batches.filter(batch => {
       const matchesSearch = !searchTerm ||
         batch.orders?.order_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        batch.orders?.display_doc_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         batch.id.toLowerCase().includes(searchTerm.toLowerCase())
 
       const matchesStatus = statusFilter === 'all' || batch.status === statusFilter
@@ -569,8 +572,8 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
         switch (sortConfig.key) {
           case 'order_no':
-            aValue = a.orders?.order_no || ''
-            bValue = b.orders?.order_no || ''
+            aValue = a.orders?.display_doc_no || a.orders?.order_no || ''
+            bValue = b.orders?.display_doc_no || b.orders?.order_no || ''
             break
           case 'progress':
             // Calculate progress
@@ -739,11 +742,12 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                         const totalQuantity = order.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
                         const bufferQty = Math.floor(totalQuantity * (order.qr_buffer_percent || 10) / 100)
                         const qrCodes = totalQuantity + bufferQty
+                        const displayOrderNo = order.display_doc_no || order.order_no
 
                         return (
                           <SelectItem key={order.id} value={order.id}>
                             <div className="flex flex-col">
-                              <span className="font-medium">{order.order_no}</span>
+                              <span className="font-medium">{displayOrderNo}</span>
                               <span className="text-xs text-gray-500">
                                 {totalItems} items • {totalQuantity.toLocaleString()} units • {qrCodes.toLocaleString()} QR codes
                               </span>
@@ -784,6 +788,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               // Fixed calculation: base units + buffer (not multiplied)
               const bufferQty = Math.floor(totalQuantity * bufferPercent / 100)
               const qrCodes = totalQuantity + bufferQty
+              const displayOrderNo = selectedOrder.display_doc_no || selectedOrder.order_no
 
               return (
                 <div className="bg-white p-4 rounded-lg border border-blue-200">
@@ -791,7 +796,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm">
                     <div>
                       <p className="text-gray-600 text-xs sm:text-sm">Order Number</p>
-                      <p className="font-medium text-gray-900 truncate">{selectedOrder.order_no}</p>
+                      <p className="font-medium text-gray-900 truncate">{displayOrderNo}</p>
                     </div>
                     <div>
                       <p className="text-gray-600 text-xs sm:text-sm">Total Items</p>
@@ -968,7 +973,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                               }
                             }}
                           >
-                            {batch.orders?.order_no || 'N/A'}
+                            {batch.orders?.display_doc_no || batch.orders?.order_no || 'N/A'}
                           </button>
                         </td>
                         <td className="px-4 py-3">

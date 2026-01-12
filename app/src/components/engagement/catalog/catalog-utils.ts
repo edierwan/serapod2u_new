@@ -9,6 +9,7 @@ export type RewardCategory =
   | "voucher"
   | "cashback"
   | "mystery_box"
+  | "point"
   | "other"
 
 export type RewardStatus = "available" | "scheduled" | "expired" | "soldOut" | "paused"
@@ -30,6 +31,7 @@ export const CATEGORY_LABELS: Record<RewardCategory, string> = {
   voucher: "Vouchers",
   cashback: "Cashback",
   mystery_box: "Mystery Box",
+  point: "Point",
   other: "Other"
 }
 
@@ -41,6 +43,7 @@ export function deriveCategory(item: RedeemItemRow): RewardCategory {
   if (candidate.includes("cash")) return "cashback"
   if (candidate.includes("mystery")) return "mystery_box"
   if (candidate.includes("merch") || candidate.includes("shirt") || candidate.includes("cap")) return "merch"
+  if (candidate.includes("point-reward") || candidate.includes("bonus point")) return "point"
   return "other"
 }
 

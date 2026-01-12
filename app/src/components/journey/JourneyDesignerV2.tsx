@@ -1075,8 +1075,8 @@ export default function JourneyDesignerV2({
                                                         })
                                                     }}
                                                     className={`w-2 h-2 rounded-full transition-all ${index === selectedColorThemeIndex
-                                                            ? 'w-6 bg-gray-800'
-                                                            : 'bg-gray-300 hover:bg-gray-400'
+                                                        ? 'w-6 bg-gray-800'
+                                                        : 'bg-gray-300 hover:bg-gray-400'
                                                         }`}
                                                 />
                                             ))}
@@ -1505,14 +1505,31 @@ export default function JourneyDesignerV2({
                                 Announcement Banner
                             </CardTitle>
                             <CardDescription>
-                                Display promotional banners on the home screen
+                                Display promotional banners on the home screen. If disabled, the master banner configuration will be used.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {/* Info about master banner fallback */}
+                            {!config.banner_config?.enabled && (
+                                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-sm text-blue-800">
+                                        <strong>Using Master Banner:</strong> Since no banner is configured for this journey,
+                                        the master announcement banner will be displayed to consumers (if configured).{' '}
+                                        <a
+                                            href="/engagement/announcement-banner"
+                                            className="text-blue-600 underline hover:text-blue-800"
+                                            target="_blank"
+                                        >
+                                            Configure master banner →
+                                        </a>
+                                    </p>
+                                </div>
+                            )}
+
                             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
                                 <div className="space-y-0.5">
-                                    <Label>Enable Announcement Banner</Label>
-                                    <p className="text-sm text-gray-600">Show dynamic banners to consumers</p>
+                                    <Label>Enable Journey-Specific Banner</Label>
+                                    <p className="text-sm text-gray-600">Override master banner with custom banners for this journey</p>
                                 </div>
                                 <Switch
                                     checked={config.banner_config?.enabled || false}

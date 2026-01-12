@@ -171,7 +171,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             points_amount,
             scanned_at,
             organizations ( org_name ),
-            users:consumer_id ( full_name )
+            users!consumer_qr_scans_consumer_id_fkey ( full_name, phone, email )
           )
         `, { count: 'exact' })
         .eq('company_id', userProfile.organizations.id)
@@ -263,9 +263,31 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           gameCardImage = prod?.product_variants?.[0]?.image_url;
         }
 
-        // Consumer name priority: 1) User's full_name from scan, 2) qr_codes consumer_name, 3) Anonymous
-        const consumerNameFromScan = lastScan?.users?.full_name;
-        const consumerName = consumerNameFromScan || qr.consumer_name || 'Anonymous';
+        // Consumer name priority: 
+        // 1) User's full_name from scan (registered user who collected points)
+        // 2) qr_codes consumer_name (from gift claim / lucky draw / points collection by independent user)
+        // 3) User's phone/email if available (fallback identifier)
+        // 4) Check if shop collected (shop_id present but no consumer info)
+        // 5) Legacy data (no tracking info available)
+        const scanUser = lastScan?.users;
+        const consumerNameFromScan = scanUser?.full_name;
+        const fallbackIdentifier = scanUser?.phone || scanUser?.email || qr.consumer_phone || qr.consumer_email;
+
+        let consumerName = 'Anonymous';
+        if (consumerNameFromScan) {
+          consumerName = consumerNameFromScan;
+        } else if (qr.consumer_name) {
+          consumerName = qr.consumer_name;
+        } else if (fallbackIdentifier) {
+          consumerName = `User: ${fallbackIdentifier}`;
+        } else if (lastScan?.shop_id) {
+          // Points collected by shop but consumer unknown
+          consumerName = 'Shop Collected';
+        } else if (lastScan?.consumer_id) {
+          // Has consumer_id but couldn't join to users (shouldn't happen normally)
+          consumerName = 'Registered User';
+        }
+        // Else stays 'Anonymous' for legacy data without tracking
 
         return {
           id: qr.id,
@@ -826,9 +848,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                              item.status === 'reviewed' ? 'bg-yellow-100 text-yellow-800' :
-                                item.status === 'resolved' ? 'bg-green-100 text-green-800' :
-                                  'bg-gray-100 text-gray-800'
+                            item.status === 'reviewed' ? 'bg-yellow-100 text-yellow-800' :
+                              item.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                                'bg-gray-100 text-gray-800'
                             }`}>
                             {item.status || 'new'}
                           </span>

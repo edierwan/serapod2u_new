@@ -61,102 +61,63 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
     try {
       setLoading(true)
 
-      // Fetch order data
+      // Fetch order data with all related data in a single query
       const { data: order, error } = await supabase
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          buyer_org:organizations!orders_buyer_org_id_fkey(*),
+          seller_org:organizations!orders_seller_org_id_fkey(*),
+          created_by_user:users!orders_created_by_fkey(full_name, email, signature_url),
+          approved_by_user:users!orders_approved_by_fkey(full_name, email, signature_url)
+        `)
         .eq('id', orderId)
         .single()
 
       if (error) throw error
       if (!order) throw new Error('Order not found')
 
-      // Load buyer org
-      const { data: buyerOrg } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', order.buyer_org_id)
-        .single()
+      // Load order items with product and variant in parallel
+      const [itemsResult, poDocResult, paymentDocsResult] = await Promise.all([
+        supabase
+          .from('order_items')
+          .select(`
+            *,
+            product:products(product_name, product_code),
+            variant:product_variants(variant_name)
+          `)
+          .eq('order_id', orderId),
 
-      // Load seller org
-      const { data: sellerOrg } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', order.seller_org_id)
-        .single()
+        // Load PO document to check acknowledgement status
+        supabase
+          .from('documents')
+          .select('status')
+          .eq('order_id', orderId)
+          .eq('doc_type', 'PO')
+          .maybeSingle(),
 
-      // Load created by user
-      const { data: createdByUser } = await supabase
-        .from('users')
-        .select('full_name, email, signature_url')
-        .eq('id', order.created_by)
-        .single()
+        // Load acknowledged PAYMENT documents to calculate paid amount
+        supabase
+          .from('documents')
+          .select('payment_percentage, payload')
+          .eq('order_id', orderId)
+          .eq('doc_type', 'PAYMENT')
+          .eq('status', 'acknowledged')
+      ])
 
-      // Load approved by user if order is approved
-      let approvedByUser = null
-      if (order.approved_by) {
-        const { data } = await supabase
-          .from('users')
-          .select('full_name, email, signature_url')
-          .eq('id', order.approved_by)
-          .single()
-        approvedByUser = data
-      }
-
-      // Load order items
-      const { data: orderItems } = await supabase
-        .from('order_items')
-        .select('*')
-        .eq('order_id', orderId)
-
-      // Load product details for each item
-      const itemsWithDetails = await Promise.all(
-        (orderItems || []).map(async (item: any) => {
-          const { data: product } = await supabase
-            .from('products')
-            .select('product_name, product_code')
-            .eq('id', item.product_id)
-            .single()
-
-          const { data: variant } = await supabase
-            .from('product_variants')
-            .select('variant_name')
-            .eq('id', item.variant_id)
-            .single()
-
-          return {
-            ...item,
-            product,
-            variant
-          }
-        })
-      )
-
-      // Load PO document to check acknowledgement status
-      const { data: poDoc } = await supabase
-        .from('documents')
-        .select('status')
-        .eq('order_id', orderId)
-        .eq('doc_type', 'PO')
-        .maybeSingle()
-
-      // Load acknowledged PAYMENT documents to calculate paid amount
-      const { data: paymentDocs } = await supabase
-        .from('documents')
-        .select('payment_percentage, payload')
-        .eq('order_id', orderId)
-        .eq('doc_type', 'PAYMENT')
-        .eq('status', 'acknowledged')
+      const itemsWithDetails = itemsResult.data || []
+      const poDoc = poDocResult.data
+      const paymentDocs = paymentDocsResult.data
 
       // Calculate order total and paid amount
       const orderTotal = itemsWithDetails.reduce((sum, item) => sum + (item.line_total || 0), 0)
       let paidAmount = 0
-      
+
       if (paymentDocs && paymentDocs.length > 0) {
         paymentDocs.forEach((payment: any) => {
-          const paymentPct = payment.payment_percentage || 
-            (payment.payload as any)?.payment_percentage || 
-            (payment.payload as any)?.requested_percent || 
+          const paymentPct = payment.payment_percentage ||
+            (payment.payload as any)?.payment_percentage ||
+            (payment.payload as any)?.requested_percent ||
             30 // default deposit percentage
           paidAmount += (orderTotal * paymentPct / 100)
         })
@@ -184,10 +145,6 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
       // Combine all data
       const completeOrderData = {
         ...order,
-        buyer_org: buyerOrg,
-        seller_org: sellerOrg,
-        created_by_user: createdByUser,
-        approved_by_user: approvedByUser,
         order_items: itemsWithDetails,
         paid_amount: paidAmount,
         order_total: orderTotal,
@@ -482,8 +439,14 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
             <div className="text-xs space-y-2">
               <div className="flex justify-between gap-4">
                 <span className="text-gray-500">PO#:</span>
-                <span className="font-medium text-gray-900">{orderData.order_no}</span>
+                <span className="font-medium text-gray-900">{orderData.display_doc_no || orderData.order_no}</span>
               </div>
+              {orderData.display_doc_no && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-500">Legacy#:</span>
+                  <span className="font-medium text-gray-400 text-[10px]">{orderData.order_no}</span>
+                </div>
+              )}
               <div className="flex justify-between gap-4">
                 <span className="text-gray-500">Date:</span>
                 <span className="font-medium text-gray-900">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
@@ -643,6 +606,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         <OrderDocumentsDialogEnhanced
           orderId={orderData.id}
           orderNo={orderData.order_no}
+          displayOrderNo={orderData.display_doc_no}
           userProfile={userProfile}
           open={documentsDialogOpen}
           onClose={() => setDocumentsDialogOpen(false)}

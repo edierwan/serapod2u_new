@@ -53,6 +53,7 @@ interface AccountingStatus {
   company_id: string | null
   checklist: StatusChecklist[]
   phase: string
+  posting_mode?: 'MANUAL' | 'AUTO'
   features: {
     chart_of_accounts: boolean
     journals_view: boolean
@@ -66,7 +67,7 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
   const [status, setStatus] = useState<AccountingStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
-  
+
   // DEV reset state
   const [resetAvailable, setResetAvailable] = useState(false)
   const [resetModalOpen, setResetModalOpen] = useState(false)
@@ -124,11 +125,11 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
       const response = await fetch('/api/accounting/accounts/seed', {
         method: 'POST'
       })
-      
+
       const data = await response.json()
-      
+
       if (response.ok) {
-        const settingsMsg = data.settingsConfigured > 0 
+        const settingsMsg = data.settingsConfigured > 0
           ? ` Auto-configured ${data.settingsConfigured} default posting accounts.`
           : ''
         toast({
@@ -181,9 +182,9 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmationToken: 'RESET' })
       })
-      
+
       const data = await response.json()
-      
+
       if (response.ok) {
         toast({
           title: 'Reset Complete',
@@ -272,7 +273,7 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
               <h4 className="font-medium text-gray-900 mb-3">Readiness Checklist</h4>
               <div className="space-y-2">
                 {status.checklist.map((item, index) => (
-                  <div 
+                  <div
                     key={index}
                     className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
                   >
@@ -313,8 +314,8 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
 
         {/* Configuration Tab - Contains Chart of Accounts, Default Accounts, Currency, Fiscal Year, Status */}
         <TabsContent value="configuration" className="mt-6">
-          <ConfigurationTab 
-            userProfile={userProfile} 
+          <ConfigurationTab
+            userProfile={userProfile}
             status={status}
             loadStatus={loadStatus}
             canManage={canManage}
@@ -339,14 +340,14 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
               This action will permanently delete all accounting data for your company:
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
               <li>All GL accounts (Chart of Accounts)</li>
               <li>Default posting account settings</li>
               <li>Any journal entries and postings</li>
             </ul>
-            
+
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5" />
@@ -371,8 +372,8 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
           </div>
 
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setResetModalOpen(false)
                 setResetConfirmation('')
@@ -380,7 +381,7 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
             >
               Cancel
             </Button>
-            <Button 
+            <Button
               variant="destructive"
               onClick={handleReset}
               disabled={resetting || resetConfirmation !== 'RESET'}
