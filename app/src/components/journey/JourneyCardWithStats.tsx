@@ -36,6 +36,7 @@ interface JourneyConfig {
     activation_mode?: string | null
     order_info?: {
         order_no: string
+        legacy_order_no?: string  // Original order_no (e.g., ORD-HM-0126-19)
         order_type: string
         order_id: string
     }
@@ -189,11 +190,21 @@ export default function JourneyCardWithStats({
             <CardHeader>
                 <div className="flex items-start justify-between">
                     <div className="flex-1">
-                        <CardTitle className="text-lg">{journey.name}</CardTitle>
+                        {/* Use display order_no (new format) in title when available */}
+                        <CardTitle className="text-lg">
+                            {journey.order_info?.order_no 
+                                ? `Journey for ${journey.order_info.order_no}`
+                                : journey.name}
+                        </CardTitle>
                         {journey.order_info && (
-                            <CardDescription className="mt-1">
-                                Order: {journey.order_info.order_no}
-                            </CardDescription>
+                            <div className="mt-1">
+                                <CardDescription>
+                                    Order: {journey.order_info.order_no}
+                                </CardDescription>
+                                {journey.order_info.legacy_order_no && journey.order_info.legacy_order_no !== journey.order_info.order_no && (
+                                    <p className="text-[10px] text-gray-400 mt-0.5">Legacy: {journey.order_info.legacy_order_no}</p>
+                                )}
+                            </div>
                         )}
                     </div>
                     <div className="flex gap-1 flex-wrap">

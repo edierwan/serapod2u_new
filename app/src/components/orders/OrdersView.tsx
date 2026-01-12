@@ -82,11 +82,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
   const supabase = createClient()
   const { toast } = useToast()
-  
+
   // Permission check for creating orders
   const { hasPermission, loading: permissionsLoading } = usePermissions(userProfile.roles.role_level, userProfile.role_code)
   const canCreateOrders = hasPermission('create_orders')
-  
+
   // Debug: Log permission state
   console.log('[OrdersView] Permission check:', {
     roleLevel: userProfile.roles.role_level,
@@ -106,8 +106,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
   // Filter orders based on all criteria
   const filteredOrders = orders.filter(order => {
-    // Search filter
+    // Search filter - search both legacy and display doc numbers
     const matchesSearch = order.order_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.display_doc_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.notes?.toLowerCase().includes(searchQuery.toLowerCase())
 
     // Status filter
@@ -332,7 +333,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     }
   }
 
-  const handleApproveOrder = async (orderId: string, orderNo: string) => {
+  const handleApproveOrder = async (orderId: string, orderNo: string, displayDocNo?: string | null) => {
+    // Use new display_doc_no format if available, fallback to legacy
+    const displayOrderNo = displayDocNo || orderNo
+
     try {
       // 1. Check if current user has uploaded their digital signature
       const { data: currentUserData, error: userError } = await supabase
@@ -371,7 +375,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       }
 
       // 3. Show confirmation dialog
-      if (!confirm(`Approve order ${orderNo}?\n\nThis will:\n• Change status to "Approved"\n• Reserve Inventory (Allocate)\n• Generate Purchase Order document\n\nThis action cannot be undone.`)) {
+      if (!confirm(`Approve order ${displayOrderNo}?\n\nThis will:\n• Change status to "Approved"\n• Reserve Inventory (Allocate)\n• Generate Purchase Order document\n\nThis action cannot be undone.`)) {
         return
       }
 
@@ -381,13 +385,28 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       const { data, error } = await supabase
         .rpc('orders_approve', { p_order_id: orderId })
 
-      if (error) throw error
+      console.log('Approve result:', { data, error })
+
+      if (error) {
+        console.error('RPC error details:', JSON.stringify(error, null, 2))
+        throw error
+      }
 
       // Inventory deduction is now handled by the orders_approve RPC for both D2H and S2D
 
+      // Fetch the updated order to get the newly generated display_doc_no
+      const { data: updatedOrder } = await supabase
+        .from('orders')
+        .select('display_doc_no')
+        .eq('id', orderId)
+        .single()
+
+      // Use the newly generated display_doc_no for the toast
+      const newDisplayNo = updatedOrder?.display_doc_no || displayOrderNo
+
       toast({
         title: 'Order Approved',
-        description: `Order ${orderNo} has been approved successfully. PO document has been generated.`,
+        description: `Order ${newDisplayNo} has been approved successfully. PO document has been generated.`,
       })
 
       // Reload orders
@@ -395,6 +414,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       await loadSummary()
     } catch (error: any) {
       console.error('Error approving order:', error)
+      console.error('Error details:', JSON.stringify(error, null, 2))
 
       let title = 'Approval Failed'
       let description = 'An unexpected error occurred. Please try again.'
@@ -775,9 +795,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         query = query.eq('status', statusFilter)
       }
 
-      // Apply search filter
+      // Apply search filter - search both legacy and display doc numbers
       if (searchQuery) {
-        query = query.or(`order_no.ilike.%${searchQuery}%,notes.ilike.%${searchQuery}%`)
+        query = query.or(`order_no.ilike.%${searchQuery}%,display_doc_no.ilike.%${searchQuery}%,notes.ilike.%${searchQuery}%`)
       }
 
       const { data: ordersData, error: ordersError } = await query
@@ -836,19 +856,19 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           const ordersWithItems = ordersData.map(order => {
             const items = itemsData.filter(item => item.order_id === order.id)
             const poDoc = poData?.find(d => d.order_id === order.id)
-            
+
             // Calculate paid amount from acknowledged payment documents
             const orderPayments = paymentData?.filter(p => p.order_id === order.id) || []
             const orderReceipts = receiptData?.filter(r => r.order_id === order.id) || []
             const orderTotal = items.reduce((sum, item) => sum + (item.line_total || 0), 0)
-            
+
             // Sum up paid amounts from payment percentages (for H2M orders)
             let paidAmount = 0
             orderPayments.forEach(payment => {
               // Get payment percentage from document or payload
-              const paymentPct = payment.payment_percentage || 
-                (payment.payload as any)?.payment_percentage || 
-                (payment.payload as any)?.requested_percent || 
+              const paymentPct = payment.payment_percentage ||
+                (payment.payload as any)?.payment_percentage ||
+                (payment.payload as any)?.requested_percent ||
                 30 // default deposit percentage
               paidAmount += (orderTotal * paymentPct / 100)
             })
@@ -918,7 +938,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         submitted_orders: data?.filter(o => o.status === 'submitted').length || 0,
         approved_orders: data?.filter(o => o.status === 'approved').length || 0,
         closed_orders: data?.filter(o => o.status === 'closed').length || 0,
+        // Only count total amount for approved and closed orders (exclude draft and submitted)
         total_amount: data?.reduce((sum: number, order: any) => {
+          // Skip draft and submitted orders - only count approved and closed
+          if (order.status === 'draft' || order.status === 'submitted') {
+            return sum
+          }
           const orderTotal = order.order_items?.reduce((itemSum: number, item: any) =>
             itemSum + (item.line_total || 0), 0) || 0
           return sum + orderTotal
@@ -995,7 +1020,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     if (order.order_type === 'D2H') {
       const sellerIsHQ = order.seller_org?.org_type_code === 'HQ'
       const buyerIsHQ = order.buyer_org?.org_type_code === 'HQ'
-      
+
       // If data is correct (seller is distributor), return seller name
       if (!sellerIsHQ && order.seller_org?.org_name) {
         return order.seller_org.org_name
@@ -1007,12 +1032,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       // Fallback
       return order.seller_org?.org_name || order.buyer_org?.org_name || 'N/A'
     }
-    
+
     // For H2M (HQ → Manufacturer), show the manufacturer name (seller)
     if (order.order_type === 'H2M') {
       return order.seller_org?.org_name || 'N/A'
     }
-    
+
     // For S2D (Shop → Distributor), show the shop name (buyer) or distributor (seller) based on perspective
     if (order.order_type === 'S2D') {
       // If current user is the seller (distributor), show buyer (shop) name
@@ -1022,7 +1047,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       // If current user is the buyer (shop), show seller (distributor) name
       return order.seller_org?.org_name || 'N/A'
     }
-    
+
     // Default: show seller name
     return order.seller_org?.org_name || 'N/A'
   }
@@ -1329,8 +1354,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             <button
                               className="text-xs font-medium text-gray-900 hover:underline"
                               onClick={() => handleViewOrderDetails(order.id)}
+                              title={order.display_doc_no ? `Legacy: ${order.order_no}` : undefined}
                             >
-                              {order.order_no}
+                              {order.display_doc_no || order.order_no}
                             </button>
                           </td>
 
@@ -1427,7 +1453,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                                   variant="default"
                                   size="sm"
                                   className="h-7 gap-1 text-xs px-2 bg-green-600 hover:bg-green-700 text-white"
-                                  onClick={() => handleApproveOrder(order.id, order.order_no)}
+                                  onClick={() => handleApproveOrder(order.id, order.order_no, order.display_doc_no)}
                                   title="Approve Order"
                                 >
                                   <CheckCircle className="w-3 h-3" />
@@ -1540,8 +1566,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <div
                           className="font-bold text-blue-600 text-lg mb-1 cursor-pointer hover:underline"
                           onClick={() => handleViewOrderDetails(order.id)}
+                          title={order.display_doc_no ? `Legacy: ${order.order_no}` : undefined}
                         >
-                          {order.order_no}
+                          {order.display_doc_no || order.order_no}
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge
@@ -1713,7 +1740,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           variant="default"
                           size="sm"
                           className="flex-1 gap-1 text-xs h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() => handleApproveOrder(order.id, order.order_no)}
+                          onClick={() => handleApproveOrder(order.id, order.order_no, order.display_doc_no)}
                           title="Approve Order"
                         >
                           <CheckCircle className="w-3 h-3" />

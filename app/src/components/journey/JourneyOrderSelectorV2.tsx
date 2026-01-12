@@ -11,6 +11,8 @@ import { Search, Package, ArrowRight, Gift, Star, Coins, CheckCircle2, AlertCirc
 interface Order {
     id: string
     order_no: string
+    display_doc_no?: string
+    legacy_order_no?: string  // Original order_no (e.g., ORD-HM-0126-19)
     order_type: string
     status: string
     has_redeem: boolean
@@ -54,11 +56,13 @@ export default function JourneyOrderSelectorV2({
 
             // Get orders for this organization - use buyer_org_id or seller_org_id
             // Filter to only show HM (H2M) orders - DH orders have QR codes that are part of HM orders
+            // Only show approved/closed orders (ready for consumer engagement - products are manufactured)
             const { data: orders, error: ordersError } = await supabase
                 .from('orders')
-                .select('id, order_no, order_type, status, has_redeem, has_lucky_draw, company_id, created_at')
+                .select('id, order_no, display_doc_no, order_type, status, has_redeem, has_lucky_draw, company_id, created_at')
                 .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
                 .eq('order_type', 'H2M') // Only HM orders - QR codes for DH are already part of HM orders
+                .in('status', ['approved', 'closed']) // Only orders that have been approved (products manufactured)
                 .order('created_at', { ascending: false })
 
             if (ordersError) {
@@ -86,6 +90,9 @@ export default function JourneyOrderSelectorV2({
 
                     return {
                         ...order,
+                        // Use display_doc_no when available, keep legacy_order_no for reference
+                        legacy_order_no: order.order_no,  // Keep original order_no as legacy
+                        order_no: order.display_doc_no || order.order_no,
                         order_items: Array(count || 0).fill({}) // Create array with count
                     }
                 })
@@ -240,6 +247,9 @@ export default function JourneyOrderSelectorV2({
                                     <div className="flex items-start justify-between">
                                         <div className="flex-1">
                                             <CardTitle className="text-lg">{order.order_no}</CardTitle>
+                                            {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                                                <p className="text-[10px] text-gray-400 mt-0.5">Legacy: {order.legacy_order_no}</p>
+                                            )}
                                             <CardDescription className="mt-1">
                                                 {getOrderTypeLabel(order.order_type)}
                                             </CardDescription>
@@ -318,6 +328,9 @@ export default function JourneyOrderSelectorV2({
                                                 <h3 className="font-medium text-gray-900">{order.order_no}</h3>
                                                 {getStatusBadge(order.status)}
                                             </div>
+                                            {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                                                <p className="text-[10px] text-gray-400">Legacy: {order.legacy_order_no}</p>
+                                            )}
                                             <p className="text-sm text-gray-500">{getOrderTypeLabel(order.order_type)}</p>
                                         </div>
 

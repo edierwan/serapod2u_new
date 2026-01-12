@@ -40,6 +40,7 @@ interface JourneyConfig {
     activation_mode?: string | null
     order_info?: {
         order_no: string
+        legacy_order_no?: string  // Original order_no (e.g., ORD-HM-0126-19)
         order_type: string
         order_id: string
     }
@@ -80,12 +81,12 @@ export default function JourneyListRow({
 
     const fetchStats = async () => {
         if (!journey.order_info?.order_id) return
-        
+
         try {
             setLoadingStats(true)
             const response = await fetch(`/api/journey/qr-stats?order_id=${journey.order_info.order_id}`)
             const data = await response.json()
-            
+
             if (data.success) {
                 setStats(data.data)
             }
@@ -103,7 +104,7 @@ export default function JourneyListRow({
         try {
             setDownloadingExcel(true)
             const response = await fetch(`/api/journey/download-qr-excel?order_id=${journey.order_info.order_id}`)
-            
+
             if (!response.ok) {
                 throw new Error('Failed to download Excel')
             }
@@ -142,7 +143,12 @@ export default function JourneyListRow({
             {/* Journey Info */}
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-gray-900 truncate">{journey.name}</h3>
+                    {/* Use display order_no (new format) in title when available */}
+                    <h3 className="font-medium text-gray-900 truncate">
+                        {journey.order_info?.order_no 
+                            ? `Journey for ${journey.order_info.order_no}`
+                            : journey.name}
+                    </h3>
                     {/* Status Badge */}
                     {journey.activation_mode === 'auto' && journey.activation_status === 'pending_ship' ? (
                         <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
@@ -161,7 +167,12 @@ export default function JourneyListRow({
                     )}
                 </div>
                 {journey.order_info && (
-                    <p className="text-sm text-gray-500 truncate">Order: {journey.order_info.order_no}</p>
+                    <div>
+                        <p className="text-sm text-gray-500 truncate">Order: {journey.order_info.order_no}</p>
+                        {journey.order_info.legacy_order_no && journey.order_info.legacy_order_no !== journey.order_info.order_no && (
+                            <p className="text-[10px] text-gray-400 truncate">Legacy: {journey.order_info.legacy_order_no}</p>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -230,7 +241,7 @@ export default function JourneyListRow({
                         )}
                     </Button>
                 )}
-                
+
                 <Button
                     variant="outline"
                     size="sm"

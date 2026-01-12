@@ -146,13 +146,19 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
             if (orderIds.length > 0) {
                 const { data: orders, error: ordersError } = await supabase
                     .from('orders')
-                    .select('id, order_no, order_type')
+                    .select('id, order_no, display_doc_no, order_type')
                     .in('id', orderIds)
 
                 if (ordersError) {
                     console.error('Error fetching orders:', ordersError)
                 } else {
-                    ordersMap = new Map((orders || []).map(o => [o.id, o]))
+                    // Keep both display_doc_no and original order_no (legacy)
+                    ordersMap = new Map((orders || []).map(o => [o.id, {
+                        ...o,
+                        display_doc_no: o.display_doc_no,
+                        legacy_order_no: o.order_no,  // Keep original order_no as legacy
+                        order_no: o.display_doc_no || o.order_no  // Prefer display_doc_no for main display
+                    }]))
                 }
             }
 
@@ -208,7 +214,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                 console.error('Error fetching fresh journey data:', journeyError)
                 throw journeyError
             }
-            
+
             console.log('[JourneyBuilder] Fresh journey data fetched:', {
                 id: freshJourney.id,
                 require_security_code: freshJourney.require_security_code
@@ -225,12 +231,16 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                 // Fetch full order details
                 const { data: order } = await supabase
                     .from('orders')
-                    .select('id, order_no, order_type, status, has_redeem, has_lucky_draw, company_id')
+                    .select('id, order_no, display_doc_no, order_type, status, has_redeem, has_lucky_draw, company_id')
                     .eq('id', link.order_id)
                     .single()
 
                 if (order) {
-                    setSelectedOrder(order as Order)
+                    // Use display_doc_no when available
+                    setSelectedOrder({
+                        ...order,
+                        order_no: order.display_doc_no || order.order_no
+                    } as Order)
                 }
             }
 
