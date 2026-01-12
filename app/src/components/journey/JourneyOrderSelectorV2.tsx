@@ -70,6 +70,21 @@ export default function JourneyOrderSelectorV2({
                 throw ordersError
             }
 
+            // Filter: Only show orders with valid master QR status (received_warehouse or later)
+            const orderIds = orders?.map(o => o.id) || []
+            let ordersWithValidStatus = orders || []
+
+            if (orderIds.length > 0) {
+                 const { data: validMasters } = await supabase
+                    .from('qr_master_codes')
+                    .select('order_id')
+                    .in('order_id', orderIds)
+                    .in('status', ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed'])
+                
+                const validOrderSet = new Set(validMasters?.map(m => m.order_id))
+                ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
+            }
+
             // Get existing journey links to filter out
             const { data: existingLinks, error: linksError } = await supabase
                 .from('journey_order_links')
@@ -82,7 +97,7 @@ export default function JourneyOrderSelectorV2({
 
             // Get order items count for each order
             const ordersWithItems = await Promise.all(
-                (orders || []).map(async (order) => {
+                ordersWithValidStatus.map(async (order) => {
                     const { count } = await supabase
                         .from('order_items')
                         .select('*', { count: 'exact', head: true })

@@ -1437,7 +1437,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                                   <Edit className="w-3 h-3" />
                                 </Button>
                               )}
-                              {canCopyOrder(order) && (
+                              {canCopyOrder(order) && (userProfile.roles.role_level === 1 || userProfile.roles.role_level === 10) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1468,7 +1468,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              {canCancelOrder(order) && userProfile.roles.role_level !== 40 && !['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
+                              {canCancelOrder(order) && (userProfile.roles.role_level === 1 || userProfile.roles.role_level === 10) && (
                                 <Button
                                   variant="ghost"
                                   size="sm"

@@ -173,6 +173,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       .select(`
         id,
         order_no,
+        display_doc_no,
         order_type,
         status,
         created_at,
@@ -576,7 +577,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
             <option value="">Select an order...</option>
             {orders.map((order) => (
               <option key={order.id} value={order.id}>
-                {order.order_no} - {order.buyer_org?.org_name} ({new Date(order.created_at).toLocaleDateString()})
+                {order.display_doc_no || order.order_no} - {order.buyer_org?.org_name} ({new Date(order.created_at).toLocaleDateString()})
               </option>
             ))}
           </select>
