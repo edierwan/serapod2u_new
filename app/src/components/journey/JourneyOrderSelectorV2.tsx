@@ -71,18 +71,58 @@ export default function JourneyOrderSelectorV2({
             }
 
             // Filter: Only show orders with valid master QR status (received_warehouse or later)
+            // Note: qr_master_codes links to qr_batches (via batch_id), which links to orders (via order_id)
             const orderIds = orders?.map(o => o.id) || []
             let ordersWithValidStatus = orders || []
 
             if (orderIds.length > 0) {
-                 const { data: validMasters } = await supabase
-                    .from('qr_master_codes')
-                    .select('order_id')
-                    .in('order_id', orderIds)
-                    .in('status', ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed'])
-                
-                const validOrderSet = new Set(validMasters?.map(m => m.order_id))
-                ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
+                try {
+                    // 1. Get batches for these orders
+                    const { data: batches, error: batchError } = await supabase
+                        .from('qr_batches')
+                        .select('id, order_id')
+                        .in('order_id', orderIds)
+                    
+                    if (batchError) throw batchError;
+
+                    const batchToOrderId = new Map<string, string>();
+                    const batchIds: string[] = [];
+                    
+                    batches?.forEach(b => {
+                        batchToOrderId.set(b.id, b.order_id);
+                        batchIds.push(b.id);
+                    });
+
+                    if (batchIds.length > 0) {
+                        // 2. Check master codes which have valid status
+                        // "received_warehouse" means it has arrived at warehouse and is ready for journey creation
+                        const { data: validMasters, error: masterError } = await supabase
+                            .from('qr_master_codes')
+                            .select('batch_id')
+                            .in('batch_id', batchIds)
+                            .in('status', ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed'])
+                        
+                        if (masterError) throw masterError;
+                        
+                        // 3. Map back to orders
+                        const validOrderSet = new Set<string>();
+                        validMasters?.forEach(m => {
+                            const orderId = batchToOrderId.get(m.batch_id);
+                            if (orderId) validOrderSet.add(orderId);
+                        });
+                        
+                        ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
+                        console.log(`[JourneyOrderSelector] Filtered orders: ${orders.length} -> ${ordersWithValidStatus.length} valid status`)
+                    } else {
+                        ordersWithValidStatus = []
+                    }
+                } catch (filterError) {
+                    console.error('[JourneyOrderSelector] Error filtering by status:', filterError)
+                    // Fallback: show all orders if check fails, or show none? 
+                    // Showing none is safer to prevent creating journies on invalid orders, but if check fails due to network, maybe show warning.
+                    // For now, let's allow empty to indicate issue.
+                    ordersWithValidStatus = []
+                }
             }
 
             // Get existing journey links to filter out
