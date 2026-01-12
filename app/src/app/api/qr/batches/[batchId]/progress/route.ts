@@ -55,7 +55,7 @@ export async function GET(
     // ====================================================================
     // GET BATCH AND ORDER METADATA
     // ====================================================================
-    
+
     const { data: batch, error: batchError } = await supabase
       .from('qr_batches')
       .select(`
@@ -69,6 +69,7 @@ export async function GET(
         orders (
           id,
           order_no,
+          display_doc_no,
           status,
           organizations!orders_buyer_org_id_fkey (
             org_name
@@ -90,7 +91,7 @@ export async function GET(
     // MASTER CASES AGGREGATION - PURE DB COUNTS
     // Uses idx_qr_master_codes_batch_status index for fast counting
     // ====================================================================
-    
+
     // Total master cases in this batch
     // Index used: idx_qr_master_codes_batch_status (batch_id column)
     const { count: totalMasterCases, error: totalMasterError } = await supabase
@@ -154,20 +155,20 @@ export async function GET(
 
     // Build map of master_code_id -> count of linked codes
     const masterLinkedCounts = new Map<string, number>()
-    ;(linkedQRCodes || []).forEach((qr) => {
-      const masterId = qr.master_code_id as string
-      masterLinkedCounts.set(masterId, (masterLinkedCounts.get(masterId) || 0) + 1)
-    })
+      ; (linkedQRCodes || []).forEach((qr) => {
+        const masterId = qr.master_code_id as string
+        masterLinkedCounts.set(masterId, (masterLinkedCounts.get(masterId) || 0) + 1)
+      })
 
     // Calculate case-by-case details
     const caseDetails = (masterCodesData || []).map((mc) => {
       const expected = Number(mc.expected_unit_count || 0)
-      
+
       // Prioritize actual_unit_count (set by mark-case-perfect and Mode C worker)
       // Fall back to counting linked QR codes if actual_unit_count not set
       const actualCount = Number(mc.actual_unit_count || 0)
       const linkedCount = actualCount > 0 ? actualCount : (masterLinkedCounts.get(mc.id) || 0)
-      
+
       // A case is packed if it has reached expected count OR status is 'packed'
       const isPacked = (expected > 0 && linkedCount >= expected) || mc.status === 'packed'
 
@@ -185,7 +186,7 @@ export async function GET(
     const packedCases = caseDetails.filter(c => c.is_packed).map(c => c.case_number)
     const partialCases = caseDetails.filter(c => !c.is_packed && c.actual_units > 0).map(c => c.case_number)
     const emptyCases = caseDetails.filter(c => c.actual_units === 0).map(c => c.case_number)
-    
+
     // Calculate packed cases count from DB-driven master case status
     // (This uses the count from the earlier query, not derived from case details)
     const packedCasesCount = packedMasterCases ?? 0
@@ -194,7 +195,7 @@ export async function GET(
     // UNIQUE CODES AGGREGATION (non-buffer) - PURE DB COUNTS
     // Uses idx_qr_codes_batch_status_buffer index for fast counting
     // ====================================================================
-    
+
     // Calculate planned vs total (accounting for buffer)
     const totalUniqueWithBuffer = batch.total_unique_codes || 0
     const bufferPercent = Number(batch.buffer_percent ?? 0)
@@ -243,7 +244,7 @@ export async function GET(
     // BUFFER CODES AGGREGATION - PURE DB COUNTS
     // Uses idx_qr_codes_batch_status_buffer index for fast counting
     // ====================================================================
-    
+
     // Total buffer codes (is_buffer = true)
     // Index used: idx_qr_codes_batch_status_buffer (batch_id, status, is_buffer)
     const { count: totalBufferCodes, error: totalBufferError } = await supabase
@@ -293,7 +294,7 @@ export async function GET(
     // WAREHOUSE STATUS - PURE DB COUNTS
     // Uses idx_qr_master_codes_batch_status index for fast counting
     // ====================================================================
-    
+
     // Count cases that have been received at warehouse or beyond
     // Index used: idx_qr_master_codes_batch_status (batch_id, status)
     const { count: warehouseReceivedCases, error: warehouseError } = await supabase
@@ -309,7 +310,7 @@ export async function GET(
     // ====================================================================
     // CALCULATE PROGRESS PERCENTAGES
     // ====================================================================
-    
+
     const masterProgress = totalMasterCases ? (packedCasesCount / totalMasterCases * 100) : 0
     const uniqueProgress = plannedUniqueCodes ? (packedUniquesForProgress / plannedUniqueCodes * 100) : 0
     const overallProgress = (masterProgress + uniqueProgress) / 2
@@ -317,7 +318,7 @@ export async function GET(
     // ====================================================================
     // LATEST ACTIVITY - PURE DB QUERY
     // ====================================================================
-    
+
     const { data: latestScans } = await supabase
       .from('qr_codes')
       .select('last_scanned_at, last_scanned_by')
@@ -329,7 +330,7 @@ export async function GET(
     // ====================================================================
     // BUILD RESPONSE - ALL DATA FROM DB QUERIES
     // ====================================================================
-    
+
     const orderData = Array.isArray(batch.orders) ? batch.orders[0] : batch.orders
     const orgData = orderData ? (Array.isArray(orderData.organizations) ? orderData.organizations[0] : orderData.organizations) : null
     const batchCode = orderData?.order_no ? `BATCH-${orderData.order_no}` : `BATCH-${batch.id.substring(0, 8).toUpperCase()}`
@@ -352,14 +353,15 @@ export async function GET(
       batch_status: batch.status,
       order_id: batch.order_id,
       order_no: orderData?.order_no || '',
+      display_doc_no: orderData?.display_doc_no || '',
       buyer_org_name: orgData?.org_name || 'Unknown',
       created_at: batch.created_at,
-      
+
       // Master cases progress
       total_master_codes: totalMasterCases ?? 0,
       packed_master_codes: packedCasesCount,
       master_progress_percentage: Math.round(masterProgress),
-      
+
       // Unique codes progress
       total_unique_codes: plannedUniqueCodes,
       planned_unique_codes: plannedUniqueCodes,
@@ -367,26 +369,26 @@ export async function GET(
       actual_packed_unique_codes: packedUniqueCodes ?? 0,
       total_unique_with_buffer: totalUniqueWithBuffer,
       unique_progress_percentage: Math.round(uniqueProgress),
-      
+
       // Buffer codes
       total_buffer_codes: totalBufferCodes ?? 0,
       used_buffer_codes: usedBufferCodes,
       available_buffer_codes: availableBufferCodes,
-      
+
       // Overall progress
       overall_progress_percentage: Math.round(overallProgress),
       is_complete: (packedMasterCases === totalMasterCases) && (packedUniquesForProgress === plannedUniqueCodes),
-      
+
       // Warehouse status
       warehouse_started: (warehouseReceivedCases || 0) > 0,
       warehouse_received_cases: warehouseReceivedCases || 0,
-      
+
       // Case-by-case breakdown
       case_details: caseDetails,
       packed_case_numbers: packedCases,
       partial_case_numbers: partialCases,
       empty_case_numbers: emptyCases,
-      
+
       // Latest activity
       latest_scans: latestScans || []
     })

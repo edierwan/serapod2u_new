@@ -63,27 +63,40 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
   const loadHistory = async () => {
     try {
       setLoading(true)
-      // Cast to any since migration_history table types are not generated yet
+      // Query migration_history records
       const { data, error } = await (supabase as any)
         .from('migration_history')
-        .select(`
-          *,
-          users!migration_history_created_by_fkey (
-            email,
-            full_name
-          )
-        `)
+        .select('*')
         .order('migration_date', { ascending: false })
 
       if (error) throw error
-      
-      // Map the user info to flat structure
-      const historyWithUserInfo = (data || []).map((record: any) => ({
-        ...record,
-        user_email: record.users?.email,
-        user_name: record.users?.full_name
-      }))
-      
+
+      // Manually fetch user info for each record (handles deleted users gracefully)
+      const historyWithUserInfo = await Promise.all(
+        (data || []).map(async (record: any) => {
+          if (!record.created_by) {
+            return {
+              ...record,
+              user_email: null,
+              user_name: null
+            }
+          }
+
+          // Try to get user from public.users first
+          const { data: userData } = await (supabase as any)
+            .from('users')
+            .select('email, full_name')
+            .eq('id', record.created_by)
+            .maybeSingle()
+
+          return {
+            ...record,
+            user_email: userData?.email || 'Deleted User',
+            user_name: userData?.full_name || 'Unknown'
+          }
+        })
+      )
+
       setHistory(historyWithUserInfo as MigrationRecord[])
     } catch (error: any) {
       console.error('Error loading migration history:', error)
@@ -116,7 +129,7 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
         title: "Deleted",
         description: "Migration record deleted successfully"
       })
-      
+
       setHistory(prev => prev.filter(h => h.id !== id))
       if (expandedId === id) {
         setExpandedId(null)
@@ -162,7 +175,7 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
       const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
       const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
       const safeEmail = r.email ? `"${r.email.replace(/"/g, '""')}"` : ''
-      
+
       return [
         r.joinedDate || '',
         safeName,
@@ -282,12 +295,12 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
               <Calendar className="h-4 w-4" />
               {new Date(date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </div>
-            
+
             <div className="space-y-2">
               {records.map((record) => (
                 <div key={record.id} className="border rounded-lg overflow-hidden">
                   {/* Summary Row */}
-                  <div 
+                  <div
                     className="flex items-center justify-between p-4 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => setExpandedId(expandedId === record.id ? null : record.id)}
                   >
@@ -309,7 +322,7 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                         <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -333,24 +346,24 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
                       )}
                     </div>
                   </div>
-                  
+
                   {/* Expanded Details */}
                   {expandedId === record.id && (
                     <div className="p-4 border-t bg-white space-y-4">
                       {/* Action Buttons */}
                       <div className="flex flex-wrap gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => downloadRecords(record, 'all')}
                         >
                           <FileDown className="h-4 w-4 mr-2" />
                           Download All ({record.total_records})
                         </Button>
                         {record.error_count > 0 && (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             className="text-red-600 border-red-200 hover:bg-red-50"
                             onClick={() => downloadRecords(record, 'errors')}
                           >
@@ -359,9 +372,9 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
                           </Button>
                         )}
                         {record.existing_users_count > 0 && (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             className="text-amber-700 border-amber-200 hover:bg-amber-50"
                             onClick={() => downloadRecords(record, 'existing')}
                           >
@@ -369,9 +382,9 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
                             Download Existing ({record.existing_users_count})
                           </Button>
                         )}
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="text-red-600 border-red-200 hover:bg-red-50 ml-auto"
                           onClick={() => handleDelete(record.id)}
                           disabled={deleting === record.id}
@@ -387,16 +400,16 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
 
                       {/* Filter Tabs */}
                       <div className="flex gap-2">
-                        <Button 
-                          variant={filterType === 'all' ? 'default' : 'outline'} 
+                        <Button
+                          variant={filterType === 'all' ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => setFilterType('all')}
                         >
                           All ({record.total_records})
                         </Button>
                         {record.error_count > 0 && (
-                          <Button 
-                            variant={filterType === 'errors' ? 'default' : 'outline'} 
+                          <Button
+                            variant={filterType === 'errors' ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => setFilterType('errors')}
                             className={filterType !== 'errors' ? 'text-red-600 border-red-200' : ''}
@@ -405,8 +418,8 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
                           </Button>
                         )}
                         {record.existing_users_count > 0 && (
-                          <Button 
-                            variant={filterType === 'existing' ? 'default' : 'outline'} 
+                          <Button
+                            variant={filterType === 'existing' ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => setFilterType('existing')}
                             className={filterType !== 'existing' ? 'text-amber-700 border-amber-200' : ''}

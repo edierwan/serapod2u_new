@@ -35,14 +35,14 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
     const [campaigns, setCampaigns] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
-    
+
     // New state for Order Selection
     const [selectedOrder, setSelectedOrder] = useState<any>(null)
     const [orders, setOrders] = useState<any[]>([])
     const [loadingOrders, setLoadingOrders] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
     const itemsPerPage = 9
-    
+
     // State for active game status (for tab coloring)
     const [gameStatuses, setGameStatuses] = useState({
         scratch: false,
@@ -67,11 +67,11 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
     const fetchOrders = async () => {
         setLoadingOrders(true)
         console.log('Fetching orders for org:', userProfile.organization_id)
-        
+
         // 1. Fetch orders - use buyer_org_id or seller_org_id to find orders for this organization
         const { data: orders, error: ordersError } = await supabase
             .from('orders')
-            .select('id, order_no')
+            .select('id, order_no, display_doc_no')
             .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
             .order('created_at', { ascending: false })
 
@@ -100,13 +100,14 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
 
         // 3. Map links to orders
         const linkMap = new Map(links?.map(l => [l.order_id, l.journey_config_id]) || [])
-        
+
         const formattedOrders = orders.map((order: any) => ({
             id: order.id,
-            order_no: order.order_no,
+            order_no: order.display_doc_no || order.order_no,  // Use display_doc_no when available
+            legacy_order_no: order.order_no,  // Keep original order_no as legacy
             journey_config_id: linkMap.get(order.id)
         }))
-        
+
         console.log('Formatted orders:', formattedOrders)
         setOrders(formattedOrders)
         setLoadingOrders(false)
@@ -141,7 +142,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
         if (!selectedOrder) return
 
         setLoading(true)
-        
+
         let tableName = 'scratch_card_campaigns'
         if (activeTab === 'spin-wheel') tableName = 'spin_wheel_campaigns'
         if (activeTab === 'daily-quiz') tableName = 'daily_quiz_campaigns'
@@ -208,7 +209,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                     .from('scratch_card_rewards')
                     .select('*')
                     .eq('campaign_id', campaign.id)
-                
+
                 if (fetchError) throw fetchError
 
                 // 2. Return stock
@@ -216,10 +217,10 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                     for (const reward of rewards) {
                         if (reward.type === 'product' && reward.variant_id) {
                             const remaining = reward.quantity_remaining || 0
-                            
+
                             if (remaining > 0) {
                                 const qtyToReturn = remaining * (reward.product_quantity || 1)
-                                
+
                                 // Find inventory to return to
                                 const { data: inventory } = await supabase
                                     .from('product_inventory')
@@ -228,7 +229,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                                     .order('quantity_available', { ascending: false })
                                     .limit(1)
                                     .single()
-                                
+
                                 if (inventory) {
                                     await supabase
                                         .from('product_inventory')
@@ -238,13 +239,13 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                             }
                         }
                     }
-                    
+
                     // 3. Delete rewards
                     const { error: delRewardsError } = await supabase
                         .from('scratch_card_rewards')
                         .delete()
                         .eq('campaign_id', campaign.id)
-                    
+
                     if (delRewardsError) throw delRewardsError
                 }
 
@@ -256,16 +257,16 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                     .from('scratch_card_campaigns')
                     .delete()
                     .eq('id', campaign.id)
-                
+
                 if (delCampaignError) throw delCampaignError
 
             } else if (activeTab === 'spin-wheel') {
                 // Similar logic for Spin Wheel
-                 const { data: rewards, error: fetchError } = await supabase
+                const { data: rewards, error: fetchError } = await supabase
                     .from('spin_wheel_rewards')
                     .select('*')
                     .eq('campaign_id', campaign.id)
-                
+
                 if (fetchError) throw fetchError
 
                 if (rewards && rewards.length > 0) {
@@ -303,7 +304,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 const { error: delCampaignError } = await supabase.from('daily_quiz_campaigns').delete().eq('id', campaign.id)
                 if (delCampaignError) throw delCampaignError
             }
-            
+
             toast({
                 title: "Success",
                 description: "Campaign deleted successfully",
@@ -323,31 +324,31 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
     if (view === 'create' || view === 'edit') {
         if (activeTab === 'scratch-card') {
             return (
-                <ScratchCardCampaignForm 
-                    userProfile={userProfile} 
-                    campaignId={selectedCampaignId} 
+                <ScratchCardCampaignForm
+                    userProfile={userProfile}
+                    campaignId={selectedCampaignId}
                     initialJourneyId={selectedOrder?.journey_config_id}
-                    onBack={handleBack} 
+                    onBack={handleBack}
                 />
             )
         }
         if (activeTab === 'spin-wheel') {
             return (
-                <SpinWheelCampaignForm 
-                    userProfile={userProfile} 
-                    campaignId={selectedCampaignId} 
+                <SpinWheelCampaignForm
+                    userProfile={userProfile}
+                    campaignId={selectedCampaignId}
                     initialJourneyId={selectedOrder?.journey_config_id}
-                    onBack={handleBack} 
+                    onBack={handleBack}
                 />
             )
         }
         if (activeTab === 'daily-quiz') {
             return (
-                <DailyQuizCampaignForm 
-                    userProfile={userProfile} 
-                    campaignId={selectedCampaignId} 
+                <DailyQuizCampaignForm
+                    userProfile={userProfile}
+                    campaignId={selectedCampaignId}
                     initialJourneyId={selectedOrder?.journey_config_id}
-                    onBack={handleBack} 
+                    onBack={handleBack}
                 />
             )
         }
@@ -359,14 +360,14 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
         const currentOrders = orders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
         return (
-             <div className="space-y-6">
+            <div className="space-y-6">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Games</h2>
                     <p className="text-muted-foreground">
                         Select an Order to manage games.
                     </p>
                 </div>
-                
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Select Order</CardTitle>
@@ -386,11 +387,10 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                                         <Button
                                             key={order.id}
                                             variant="outline"
-                                            className={`h-auto p-3 flex flex-col items-start gap-1.5 ${
-                                                !order.journey_config_id 
-                                                    ? 'opacity-60 cursor-not-allowed' 
+                                            className={`h-auto p-3 flex flex-col items-start gap-1.5 ${!order.journey_config_id
+                                                    ? 'opacity-60 cursor-not-allowed'
                                                     : 'hover:border-green-500 hover:bg-green-50 bg-green-50/30 border-green-200'
-                                            }`}
+                                                }`}
                                             onClick={() => {
                                                 if (order.journey_config_id) {
                                                     setSelectedOrder(order)
@@ -404,7 +404,12 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                                             }}
                                         >
                                             <div className="flex justify-between w-full items-center">
-                                                <span className="font-bold text-base">{order.order_no}</span>
+                                                <div className="text-left">
+                                                    <span className="font-bold text-base">{order.order_no}</span>
+                                                    {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                                                        <p className="text-[10px] text-gray-400">Legacy: {order.legacy_order_no}</p>
+                                                    )}
+                                                </div>
                                                 {!order.journey_config_id ? (
                                                     <Badge variant="secondary" className="text-[10px] px-1.5 h-5">No Journey</Badge>
                                                 ) : (
@@ -417,7 +422,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                                         </Button>
                                     ))}
                                 </div>
-                                
+
                                 {totalPages > 1 && (
                                     <div className="flex items-center justify-center gap-2 mt-6">
                                         <Button
@@ -451,9 +456,9 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
 
     if (view === 'stats' && selectedCampaignId) {
         return (
-            <ScratchCardStats 
-                campaignId={selectedCampaignId} 
-                onBack={handleBack} 
+            <ScratchCardStats
+                campaignId={selectedCampaignId}
+                onBack={handleBack}
             />
         )
     }
@@ -500,9 +505,9 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                             </TableCell>
                             <TableCell>
                                 <Badge variant={
-                                    campaign.status === 'active' ? 'default' : 
-                                    campaign.status === 'draft' ? 'secondary' : 
-                                    'outline'
+                                    campaign.status === 'active' ? 'default' :
+                                        campaign.status === 'draft' ? 'secondary' :
+                                            'outline'
                                 }>
                                     {campaign.status}
                                 </Badge>
@@ -523,9 +528,9 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                                     <Button variant="ghost" size="icon" onClick={() => handleEdit(campaign.id)}>
                                         <Edit className="h-4 w-4" />
                                     </Button>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
                                         className="text-red-500 hover:text-red-600 hover:bg-red-50"
                                         onClick={() => handleDelete(campaign)}
                                     >
@@ -551,6 +556,9 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                         <h2 className="text-3xl font-bold tracking-tight">Games</h2>
                         <p className="text-muted-foreground">
                             Managing games for Order: <span className="font-mono font-medium text-foreground">{selectedOrder.order_no}</span>
+                            {selectedOrder.legacy_order_no && selectedOrder.legacy_order_no !== selectedOrder.order_no && (
+                                <span className="text-[10px] text-gray-400 ml-2">(Legacy: {selectedOrder.legacy_order_no})</span>
+                            )}
                         </p>
                     </div>
                 </div>
@@ -563,24 +571,24 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
 
             <Tabs defaultValue="scratch-card" value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
-                    <TabsTrigger 
-                        value="scratch-card" 
+                    <TabsTrigger
+                        value="scratch-card"
                         className={`flex items-center gap-2 ${gameStatuses.scratch ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
                     >
                         <Ticket className={`w-4 h-4 ${gameStatuses.scratch ? 'text-green-600' : ''}`} />
                         Scratch Card
                         {gameStatuses.scratch && <Badge variant="secondary" className="ml-2 bg-green-200 text-green-800 hover:bg-green-200 text-[10px] h-5">Active</Badge>}
                     </TabsTrigger>
-                    <TabsTrigger 
-                        value="spin-wheel" 
+                    <TabsTrigger
+                        value="spin-wheel"
                         className={`flex items-center gap-2 ${gameStatuses.spin ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
                     >
                         <Gamepad2 className={`w-4 h-4 ${gameStatuses.spin ? 'text-green-600' : ''}`} />
                         Spin the Wheel
                         {gameStatuses.spin && <Badge variant="secondary" className="ml-2 bg-green-200 text-green-800 hover:bg-green-200 text-[10px] h-5">Active</Badge>}
                     </TabsTrigger>
-                    <TabsTrigger 
-                        value="daily-quiz" 
+                    <TabsTrigger
+                        value="daily-quiz"
                         className={`flex items-center gap-2 ${gameStatuses.quiz ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
                     >
                         <Sparkles className={`w-4 h-4 ${gameStatuses.quiz ? 'text-green-600' : ''}`} />

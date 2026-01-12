@@ -23,10 +23,10 @@ import {
 } from '@/components/ui/select'
 import SimpleProgressTracker from '@/components/dashboard/SimpleProgressTracker'
 import type { LucideIcon } from 'lucide-react'
-import { 
+import {
   Warehouse,
   Factory,
-  Scan, 
+  Scan,
   Package,
   CheckCircle,
   Truck as TruckIcon,
@@ -395,7 +395,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
     try {
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_no')
+        .select('id, order_no, display_doc_no')
         .in('id', uniqueIds)
 
       if (error) {
@@ -404,11 +404,15 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
       }
 
       const map = new Map<string, string>()
-      ;(data || []).forEach((row: any) => {
-        if (row?.id && row?.order_no) {
-          map.set(row.id, row.order_no)
-        }
-      })
+        ; (data || []).forEach((row: any) => {
+          if (row?.id) {
+            // Prefer display_doc_no (new format), fallback to order_no (legacy)
+            const docNo = row.display_doc_no || row.order_no
+            if (docNo) {
+              map.set(row.id, docNo)
+            }
+          }
+        })
       return map
     } catch (err) {
       console.error('Error resolving order numbers', err)
@@ -559,9 +563,9 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
   useEffect(() => {
     loadPendingBatches()
     loadReceivedToday()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -570,7 +574,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
     } else {
       setOrderOverview(null)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrderId])
 
   useEffect(() => {
@@ -603,52 +607,52 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
         totalMasters: Array.isArray(data) ? data.length : 0,
         sample: Array.isArray(data) && data.length > 0
           ? {
-              order_id: data[0]?.order_id || data[0]?.qr_batches?.order_id || null,
-              order_no: data[0]?.order_no || null,
-              warehouse_org_id: data[0]?.warehouse_org_id ?? null,
-              manufacturer_scanned_at: data[0]?.manufacturer_scanned_at || null
-            }
+            order_id: data[0]?.order_id || data[0]?.qr_batches?.order_id || null,
+            order_no: data[0]?.order_no || null,
+            warehouse_org_id: data[0]?.warehouse_org_id ?? null,
+            manufacturer_scanned_at: data[0]?.manufacturer_scanned_at || null
+          }
           : null
       })
 
       const grouped = new Map<string, WarehouseOrderSummary>()
       const pendingLookupIds = new Set<string>()
-      ;(data || []).forEach((item: any) => {
-        const orderId = item.order_id || item.qr_batches?.order_id
-        if (!orderId) return
+        ; (data || []).forEach((item: any) => {
+          const orderId = item.order_id || item.qr_batches?.order_id
+          if (!orderId) return
 
-        const manufacturerOrgId = item.seller_org_id || item.qr_batches?.orders?.seller_org_id || null
-        const warehouseOrgId = item.warehouse_org_id || null
-        const rawOrderNo = item.order_no || item.qr_batches?.orders?.order_no || null
-        if ((!rawOrderNo || needsOrderNumberResolution(rawOrderNo)) && orderId) {
-          pendingLookupIds.add(orderId)
-        }
-        const orderNo = buildOrderLabel(orderId, rawOrderNo, item.master_code)
+          const manufacturerOrgId = item.seller_org_id || item.qr_batches?.orders?.seller_org_id || null
+          const warehouseOrgId = item.warehouse_org_id || null
+          const rawOrderNo = item.order_no || item.qr_batches?.orders?.order_no || null
+          if ((!rawOrderNo || needsOrderNumberResolution(rawOrderNo)) && orderId) {
+            pendingLookupIds.add(orderId)
+          }
+          const orderNo = buildOrderLabel(orderId, rawOrderNo, item.master_code)
 
-        if (!grouped.has(orderId)) {
-          console.debug('[WarehouseReceive] Creating order summary', { orderId, orderNo, hasOrderNo: !!item.order_no })
-          grouped.set(orderId, {
-            orderId,
-            orderNo,
-            buyerOrgName: item.buyer_org_name ?? item.qr_batches?.orders?.organizations?.org_name ?? null,
-            readyCases: 0,
-            readyUnits: 0,
-            manufacturerOrgId,
-            warehouseOrgId,
-            source: 'pending'
-          })
-        }
+          if (!grouped.has(orderId)) {
+            console.debug('[WarehouseReceive] Creating order summary', { orderId, orderNo, hasOrderNo: !!item.order_no })
+            grouped.set(orderId, {
+              orderId,
+              orderNo,
+              buyerOrgName: item.buyer_org_name ?? item.qr_batches?.orders?.organizations?.org_name ?? null,
+              readyCases: 0,
+              readyUnits: 0,
+              manufacturerOrgId,
+              warehouseOrgId,
+              source: 'pending'
+            })
+          }
 
-        const summary = grouped.get(orderId)!
-        summary.readyCases += 1
-        summary.readyUnits += item.actual_unit_count || item.expected_unit_count || 0
-        if (!summary.manufacturerOrgId && manufacturerOrgId) {
-          summary.manufacturerOrgId = manufacturerOrgId
-        }
-        if (!summary.warehouseOrgId && warehouseOrgId) {
-          summary.warehouseOrgId = warehouseOrgId
-        }
-      })
+          const summary = grouped.get(orderId)!
+          summary.readyCases += 1
+          summary.readyUnits += item.actual_unit_count || item.expected_unit_count || 0
+          if (!summary.manufacturerOrgId && manufacturerOrgId) {
+            summary.manufacturerOrgId = manufacturerOrgId
+          }
+          if (!summary.warehouseOrgId && warehouseOrgId) {
+            summary.warehouseOrgId = warehouseOrgId
+          }
+        })
 
       const lookupOrderIdList = Array.from(pendingLookupIds)
       if (lookupOrderIdList.length > 0) {
@@ -669,9 +673,9 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
         }
       }
 
-    setPendingMasterCodes(data)
+      setPendingMasterCodes(data)
 
-    const ordersList = Array.from(grouped.values()).sort((a, b) => b.readyCases - a.readyCases)
+      const ordersList = Array.from(grouped.values()).sort((a, b) => b.readyCases - a.readyCases)
 
       let filteredOrders = ordersList
 
@@ -705,8 +709,8 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
                 warehouseIntakeStarted: false,
                 totalCases: order.totalCases ?? order.readyCases,
                 readyCases: order.readyCases,
-                  readyUnits: order.readyUnits,
-                  source: 'pending'
+                readyUnits: order.readyUnits,
+                source: 'pending'
               }
             }
 
@@ -721,8 +725,8 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
               warehouseIntakeStarted: downstreamCases > 0,
               totalCases: overview.totalCases,
               readyCases,
-                readyUnits: order.readyUnits,
-                source: 'pending'
+              readyUnits: order.readyUnits,
+              source: 'pending'
             }
           })
           .filter((order) => order.manufacturingComplete && order.readyCases > 0)
@@ -754,7 +758,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
 
       if (filteredOrders.length > 0) {
         const isCurrentStillValid = filteredOrders.some((order) => order.orderId === selectedOrderId)
-        
+
         // FIX: Only auto-select if current selection is invalid
         // Don't auto-switch when user just completed an order
         // This allows user to see "Today's intake activity" for the order they completed
@@ -782,7 +786,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
   const loadReceivedToday = async () => {
     try {
       const today = new Date().toISOString().split('T')[0]
-      
+
       // Query for master codes received by this warehouse today
       const { data, error } = await supabase
         .from('qr_master_codes')
@@ -800,6 +804,7 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
             orders (
               id,
               order_no,
+              display_doc_no,
               organizations!orders_buyer_org_id_fkey (
                 org_name
               )
@@ -831,11 +836,12 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
         const buyerOrg = order?.organizations ? (Array.isArray(order.organizations) ? order.organizations[0] : order.organizations) : null
 
         const orderId = order?.id || batch?.order_id || null
-        const rawOrderNo = order?.order_no || null
+        // Prefer display_doc_no (new format) over order_no (legacy)
+        const rawOrderNo = order?.display_doc_no || order?.order_no || null
         if ((!rawOrderNo || needsOrderNumberResolution(rawOrderNo)) && orderId) {
           pendingLookupIds.add(orderId)
         }
-  const orderNo = buildOrderLabel(orderId, rawOrderNo, item.master_code)
+        const orderNo = buildOrderLabel(orderId, rawOrderNo, item.master_code)
 
         return {
           ...item,
@@ -955,31 +961,31 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
     let totalUnits = 0
     let completionScore = 0
 
-    ;(data || []).forEach((record: any) => {
-      // Map statuses to movement tracker stages
-      let status: StageKey = 'pending'
-      const originalStatus = record.status
-      
-      if (record.status === 'generated' || record.status === 'packed') {
-        // Manufacturing stages
-        status = 'packed'
-      } else if (record.status === 'warehouse_packed') {
-        // Warehouse has packed for shipment but not yet confirmed shipped
-        // Show as "Received @ Warehouse" since it's in warehouse possession
-        status = 'received_warehouse'
-      } else if (record.status && STAGE_ORDER.includes(record.status)) {
-        // Standard statuses (received_warehouse, shipped_distributor, opened, etc.)
-        status = record.status as StageKey
-      }
-      
-      if (originalStatus !== status) {
-        console.log(`[WarehouseReceive] Mapped status '${originalStatus}' → '${status}'`)
-      }
-      
-      stageCounts[status] += 1
-      totalUnits += record.actual_unit_count || record.expected_unit_count || 0
-      completionScore += STAGE_WEIGHTS[status]
-    })
+      ; (data || []).forEach((record: any) => {
+        // Map statuses to movement tracker stages
+        let status: StageKey = 'pending'
+        const originalStatus = record.status
+
+        if (record.status === 'generated' || record.status === 'packed') {
+          // Manufacturing stages
+          status = 'packed'
+        } else if (record.status === 'warehouse_packed') {
+          // Warehouse has packed for shipment but not yet confirmed shipped
+          // Show as "Received @ Warehouse" since it's in warehouse possession
+          status = 'received_warehouse'
+        } else if (record.status && STAGE_ORDER.includes(record.status)) {
+          // Standard statuses (received_warehouse, shipped_distributor, opened, etc.)
+          status = record.status as StageKey
+        }
+
+        if (originalStatus !== status) {
+          console.log(`[WarehouseReceive] Mapped status '${originalStatus}' → '${status}'`)
+        }
+
+        stageCounts[status] += 1
+        totalUnits += record.actual_unit_count || record.expected_unit_count || 0
+        completionScore += STAGE_WEIGHTS[status]
+      })
 
     console.log('[WarehouseReceive] Stage counts for order', orderId, ':', stageCounts)
 
@@ -1267,10 +1273,10 @@ export default function WarehouseReceiveView({ userProfile, onViewChange }: Ware
                     </div>
                     <div className="flex gap-2">
                       <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300">
-                            {(selectedOrderSummary?.readyCases ?? selectedOrderSummary?.receivedCases ?? 0)} cases ready
+                        {(selectedOrderSummary?.readyCases ?? selectedOrderSummary?.receivedCases ?? 0)} cases ready
                       </Badge>
                       <Badge variant="outline" className="bg-indigo-100 text-indigo-700 border-indigo-300">
-                            {(selectedOrderSummary?.readyUnits ?? selectedOrderSummary?.receivedUnits ?? 0).toLocaleString()} units
+                        {(selectedOrderSummary?.readyUnits ?? selectedOrderSummary?.receivedUnits ?? 0).toLocaleString()} units
                       </Badge>
                     </div>
                   </div>

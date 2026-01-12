@@ -22,6 +22,7 @@ export interface DocumentData {
   id: string;
   doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT';
   doc_no: string;
+  display_doc_no?: string;  // New format: PO26000001, SI26000001, etc.
   status: string;
   order_id: string;
   company_id: string;
@@ -49,6 +50,7 @@ export interface Company {
 export interface OrderData {
   id: string;
   order_no: string;
+  display_doc_no?: string;  // New format: ORD26000001
   order_type: string;
   total_amount: number;
   items: OrderItem[];
@@ -74,11 +76,13 @@ export async function generateSignedPDF(
   signatures: DocumentSignature[]
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    // Use display_doc_no (new format) when available, fallback to legacy doc_no
+    const displayDocNo = document.display_doc_no || document.doc_no;
     const doc = new PDFDocument({
       size: 'A4',
       margins: { top: 50, bottom: 100, left: 50, right: 50 },
       info: {
-        Title: `${document.doc_type} ${document.doc_no}`,
+        Title: `${document.doc_type} ${displayDocNo}`,
         Author: 'Serapod2u',
         Subject: `${document.doc_type} Document`,
         CreationDate: new Date(),
@@ -163,19 +167,23 @@ function renderDocumentInfo(doc: PDFKit.PDFDocument, document: DocumentData, ord
   const leftCol = 50;
   const rightCol = 350;
 
+  // Use display_doc_no (new format) when available, fallback to legacy
+  const displayDocNo = document.display_doc_no || document.doc_no;
+  const displayOrderNo = order.display_doc_no || order.order_no;
+
   doc.fontSize(10).font('Helvetica');
 
   // Left column
   doc
     .text(`${document.doc_type} No:`, leftCol, y, { continued: true })
     .font('Helvetica-Bold')
-    .text(` ${document.doc_no}`);
+    .text(` ${displayDocNo}`);
 
   doc
     .font('Helvetica')
     .text(`Related Order:`, leftCol, doc.y + 5, { continued: true })
     .font('Helvetica-Bold')
-    .text(` ${order.order_no}`);
+    .text(` ${displayOrderNo}`);
 
   // Right column
   doc

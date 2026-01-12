@@ -82,9 +82,11 @@ interface PendingPosting {
   document_id: string
   document_type: string
   document_no: string
+  display_doc_no: string | null  // New document number format
   order_id: string
   document_status: string
   order_no: string
+  order_display_doc_no: string | null  // New order number format (ORD26000017)
   document_date: string
   gl_doc_type: string  // The GL document type for posting
   posting_label: string
@@ -117,22 +119,22 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
   const [loadingPending, setLoadingPending] = useState(true)
   const [total, setTotal] = useState(0)
   const [pendingTotal, setPendingTotal] = useState(0)
-  
+
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('POSTED')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [fromDate, setFromDate] = useState<string>('')
   const [toDate, setToDate] = useState<string>('')
-  
+
   // Pagination
   const [page, setPage] = useState(0)
   const [pendingPage, setPendingPage] = useState(0)
   const limit = 20
-  
+
   // Detail modal
   const [selectedJournal, setSelectedJournal] = useState<JournalDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  
+
   // Posting modal
   const [postingPreview, setPostingPreview] = useState<any>(null)
   const [postingLoading, setPostingLoading] = useState(false)
@@ -255,11 +257,11 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
       })
 
       const data = await response.json()
-      
+
       if (response.ok && data.success) {
-        toast({ 
-          title: 'Success', 
-          description: `Posted to GL. Journal: ${data.journal_number}` 
+        toast({
+          title: 'Success',
+          description: `Posted to GL. Journal: ${data.journal_number}`
         })
         setPostingPreview(null)
         setSelectedPending(null)
@@ -267,10 +269,10 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
         // Refresh journals tab too
         loadJournals()
       } else {
-        toast({ 
-          title: 'Error', 
-          description: data.error || 'Failed to post to GL', 
-          variant: 'destructive' 
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to post to GL',
+          variant: 'destructive'
         })
       }
     } catch (error) {
@@ -553,18 +555,20 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
                         {pendingPostings.map((pending) => (
                           <TableRow key={`${pending.gl_doc_type}-${pending.document_id}`}>
                             <TableCell className="font-mono text-sm">
-                              {pending.document_no}
+                              {pending.display_doc_no || pending.document_no}
                             </TableCell>
-                            <TableCell>{pending.order_no || '-'}</TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {pending.order_display_doc_no || pending.order_no || '-'}
+                            </TableCell>
                             <TableCell>
-                              <Badge 
-                                variant="outline" 
+                              <Badge
+                                variant="outline"
                                 className={
-                                  pending.gl_doc_type === 'SUPPLIER_DEPOSIT_PAYMENT' 
+                                  pending.gl_doc_type === 'SUPPLIER_DEPOSIT_PAYMENT'
                                     ? 'bg-purple-50 text-purple-700 border-purple-200'
                                     : pending.gl_doc_type === 'SUPPLIER_INVOICE_RECOGNITION'
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : 'bg-orange-50 text-orange-700 border-orange-200'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-orange-50 text-orange-700 border-orange-200'
                                 }
                               >
                                 {pending.posting_label}
@@ -638,7 +642,7 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
               {selectedJournal?.journal.description}
             </DialogDescription>
           </DialogHeader>
-          
+
           {detailLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -745,7 +749,7 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
               Review the journal entry before posting
             </DialogDescription>
           </DialogHeader>
-          
+
           {postingLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-blue-500" />

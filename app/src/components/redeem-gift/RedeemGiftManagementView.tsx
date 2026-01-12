@@ -9,21 +9,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { getStorageUrl } from '@/lib/utils';
-import { 
-  Gift, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search, 
-  Package, 
-  Image as ImageIcon,
-  Check,
-  X,
-  Upload,
-  TrendingUp,
-  Users,
-  Calendar,
-  BarChart3
+import {
+    Gift,
+    Plus,
+    Edit,
+    Trash2,
+    Search,
+    Package,
+    Image as ImageIcon,
+    Check,
+    X,
+    Upload,
+    TrendingUp,
+    Users,
+    Calendar,
+    BarChart3
 } from 'lucide-react';
 import {
     Select,
@@ -44,6 +44,8 @@ interface RedeemGiftManagementViewProps {
 interface Order {
     id: string;
     order_no: string;
+    display_doc_no?: string;
+    legacy_order_no?: string;  // Original order_no (e.g., ORD-HM-0126-19)
     order_type: string;
     status: string;
     has_redeem: boolean | null;
@@ -64,155 +66,163 @@ interface RedeemGift {
 }
 
 export default function RedeemGiftManagementView({ userProfile, onViewChange, initialOrderId }: RedeemGiftManagementViewProps) {
-  const supabase = createClient();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [gifts, setGifts] = useState<RedeemGift[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editingGift, setEditingGift] = useState<RedeemGift | null>(null);
-  
-  // Form state
-  const [giftName, setGiftName] = useState('');
-  const [giftDescription, setGiftDescription] = useState('');
-  const [giftImageUrl, setGiftImageUrl] = useState('');
-  const [quantityAvailable, setQuantityAvailable] = useState<number | undefined>(undefined);
-  const [uploadingImage, setUploadingImage] = useState(false);
+    const supabase = createClient();
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [gifts, setGifts] = useState<RedeemGift[]>([]);
+    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [showForm, setShowForm] = useState(false);
+    const [editingGift, setEditingGift] = useState<RedeemGift | null>(null);
 
-  // Statistics state
-  const [totalGifts, setTotalGifts] = useState(0);
-  const [totalRedemptions, setTotalRedemptions] = useState(0);
-  const [redemptionsThisMonth, setRedemptionsThisMonth] = useState(0);
-  const [mostPopularGift, setMostPopularGift] = useState<string>('');
+    // Form state
+    const [giftName, setGiftName] = useState('');
+    const [giftDescription, setGiftDescription] = useState('');
+    const [giftImageUrl, setGiftImageUrl] = useState('');
+    const [quantityAvailable, setQuantityAvailable] = useState<number | undefined>(undefined);
+    const [uploadingImage, setUploadingImage] = useState(false);
 
-  // Alert state
-  const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+    // Statistics state
+    const [totalGifts, setTotalGifts] = useState(0);
+    const [totalRedemptions, setTotalRedemptions] = useState(0);
+    const [redemptionsThisMonth, setRedemptionsThisMonth] = useState(0);
+    const [mostPopularGift, setMostPopularGift] = useState<string>('');
 
-  const showAlert = (type: 'success' | 'error', message: string) => {
-    setAlert({ type, message });
-    setTimeout(() => setAlert(null), 5000);
-  };
+    // Alert state
+    const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
-  /* eslint-disable react-hooks/exhaustive-deps */
-  const fetchRedemptionStatistics = useCallback(async () => {
-    try {
-      // Fetch total gifts defined
-      const { data: allGifts, error: giftsError } = await supabase
-        .from('redeem_gifts')
-        .select('id, gift_name, order_id')
-        .eq('is_active', true);
+    const showAlert = (type: 'success' | 'error', message: string) => {
+        setAlert({ type, message });
+        setTimeout(() => setAlert(null), 5000);
+    };
 
-      if (giftsError) {
-        console.error('Error fetching gifts:', giftsError);
-      }
+    /* eslint-disable react-hooks/exhaustive-deps */
+    const fetchRedemptionStatistics = useCallback(async () => {
+        try {
+            // Fetch total gifts defined
+            const { data: allGifts, error: giftsError } = await supabase
+                .from('redeem_gifts')
+                .select('id, gift_name, order_id')
+                .eq('is_active', true);
 
-      setTotalGifts(allGifts?.length || 0);
-      
-      // Fetch total redemptions from consumer_qr_scans
-      const { count: totalCount, error: totalError } = await supabase
-        .from('consumer_qr_scans')
-        .select('id', { count: 'exact', head: true })
-        .eq('redeemed_gift', true);
+            if (giftsError) {
+                console.error('Error fetching gifts:', giftsError);
+            }
 
-      if (totalError) {
-        console.error('Error fetching total redemptions:', totalError);
-      } else {
-        setTotalRedemptions(totalCount || 0);
-      }
+            setTotalGifts(allGifts?.length || 0);
 
-      // Fetch redemptions this month
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+            // Fetch total redemptions from consumer_qr_scans
+            const { count: totalCount, error: totalError } = await supabase
+                .from('consumer_qr_scans')
+                .select('id', { count: 'exact', head: true })
+                .eq('redeemed_gift', true);
 
-      const { count: monthCount, error: monthError } = await supabase
-        .from('consumer_qr_scans')
-        .select('id', { count: 'exact', head: true })
-        .eq('redeemed_gift', true)
-        .gte('scanned_at', startOfMonth.toISOString());
+            if (totalError) {
+                console.error('Error fetching total redemptions:', totalError);
+            } else {
+                setTotalRedemptions(totalCount || 0);
+            }
 
-      if (monthError) {
-        console.error('Error fetching month redemptions:', monthError);
-      } else {
-        setRedemptionsThisMonth(monthCount || 0);
-      }
+            // Fetch redemptions this month
+            const startOfMonth = new Date();
+            startOfMonth.setDate(1);
+            startOfMonth.setHours(0, 0, 0, 0);
 
-      // Find most popular gift (most redeemed)
-      // This requires joining consumer_qr_scans with qr_codes to get gift info
-      // For now, set to N/A - can be enhanced later
-      setMostPopularGift('N/A');
-      
-    } catch (error) {
-      console.error('Error fetching redemption statistics:', error);
-    }
-  }, []);
-  /* eslint-enable react-hooks/exhaustive-deps */
+            const { count: monthCount, error: monthError } = await supabase
+                .from('consumer_qr_scans')
+                .select('id', { count: 'exact', head: true })
+                .eq('redeemed_gift', true)
+                .gte('scanned_at', startOfMonth.toISOString());
 
-  /* eslint-disable react-hooks/exhaustive-deps */
-  const fetchOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      // Use buyer_org_id or seller_org_id to find orders for this organization
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id, order_no, order_type, status, has_redeem, company_id')
-        .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
-        .eq('has_redeem', true)
-        .order('order_no', { ascending: false });
+            if (monthError) {
+                console.error('Error fetching month redemptions:', monthError);
+            } else {
+                setRedemptionsThisMonth(monthCount || 0);
+            }
 
-      if (error) throw error;
-      setOrders(data || []);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      showAlert('error', 'Failed to load orders');
-    } finally {
-      setLoading(false);
-    }
-  }, [userProfile.organization_id]);
-  /* eslint-enable react-hooks/exhaustive-deps */
+            // Find most popular gift (most redeemed)
+            // This requires joining consumer_qr_scans with qr_codes to get gift info
+            // For now, set to N/A - can be enhanced later
+            setMostPopularGift('N/A');
 
-  /* eslint-disable react-hooks/exhaustive-deps */
-  const fetchGifts = useCallback(async (orderId: string) => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('redeem_gifts')
-        .select('*')
-        .eq('order_id', orderId)
-        .order('created_at', { ascending: false });
+        } catch (error) {
+            console.error('Error fetching redemption statistics:', error);
+        }
+    }, []);
+    /* eslint-enable react-hooks/exhaustive-deps */
 
-      if (error) throw error;
-      setGifts(data || []);
-    } catch (error) {
-      console.error('Error fetching gifts:', error);
-      showAlert('error', 'Failed to load gifts');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  /* eslint-enable react-hooks/exhaustive-deps */
+    /* eslint-disable react-hooks/exhaustive-deps */
+    const fetchOrders = useCallback(async () => {
+        try {
+            setLoading(true);
+            // Use buyer_org_id or seller_org_id to find orders for this organization
+            const { data, error } = await supabase
+                .from('orders')
+                .select('id, order_no, display_doc_no, order_type, status, has_redeem, company_id')
+                .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
+                .eq('has_redeem', true)
+                .order('order_no', { ascending: false });
 
-  useEffect(() => {
-    fetchOrders();
-    fetchRedemptionStatistics();
-  }, [fetchOrders, fetchRedemptionStatistics]);
+            if (error) throw error;
 
-  // Handle initial order selection from URL
-  useEffect(() => {
-    if (orders.length > 0 && initialOrderId && !selectedOrder) {
-      const order = orders.find(o => o.id === initialOrderId);
-      if (order) {
-        setSelectedOrder(order);
-      }
-    }
-  }, [orders, initialOrderId, selectedOrder]);
+            // Transform to include legacy_order_no
+            const transformedOrders = (data || []).map(order => ({
+                ...order,
+                legacy_order_no: order.order_no,  // Keep original order_no as legacy
+                order_no: order.display_doc_no || order.order_no  // Use display_doc_no when available
+            }));
 
-  useEffect(() => {
-    if (selectedOrder) {
-      fetchGifts(selectedOrder.id);
-    }
-  }, [selectedOrder, fetchGifts]);
+            setOrders(transformedOrders);
+        } catch (error) {
+            console.error('Error fetching orders:', error);
+            showAlert('error', 'Failed to load orders');
+        } finally {
+            setLoading(false);
+        }
+    }, [userProfile.organization_id]);
+    /* eslint-enable react-hooks/exhaustive-deps */
+
+    /* eslint-disable react-hooks/exhaustive-deps */
+    const fetchGifts = useCallback(async (orderId: string) => {
+        try {
+            setLoading(true);
+            const { data, error } = await supabase
+                .from('redeem_gifts')
+                .select('*')
+                .eq('order_id', orderId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setGifts(data || []);
+        } catch (error) {
+            console.error('Error fetching gifts:', error);
+            showAlert('error', 'Failed to load gifts');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+    /* eslint-enable react-hooks/exhaustive-deps */
+
+    useEffect(() => {
+        fetchOrders();
+        fetchRedemptionStatistics();
+    }, [fetchOrders, fetchRedemptionStatistics]);
+
+    // Handle initial order selection from URL
+    useEffect(() => {
+        if (orders.length > 0 && initialOrderId && !selectedOrder) {
+            const order = orders.find(o => o.id === initialOrderId);
+            if (order) {
+                setSelectedOrder(order);
+            }
+        }
+    }, [orders, initialOrderId, selectedOrder]);
+
+    useEffect(() => {
+        if (selectedOrder) {
+            fetchGifts(selectedOrder.id);
+        }
+    }, [selectedOrder, fetchGifts]);
 
     const resizeImage = (file: File, maxWidth: number = 800, maxHeight: number = 600): Promise<Blob> => {
         return new Promise((resolve, reject) => {
@@ -551,6 +561,9 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                         <div className="flex items-start justify-between">
                                             <div>
                                                 <p className="font-semibold">{order.order_no}</p>
+                                                {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                                                    <p className="text-[10px] text-gray-400">Legacy: {order.legacy_order_no}</p>
+                                                )}
                                                 <p className="text-sm text-gray-600">{order.order_type}</p>
                                                 <Badge variant="outline" className="mt-1">
                                                     {order.status}
@@ -719,78 +732,78 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                 )}
 
                                 {!loading && gifts.map((gift) => {
-                                                    const totalQty = (gift as any).total_quantity || 0;
-                                                    const claimedQty = (gift as any).claimed_quantity || 0;
-                                                    const remaining = totalQty - claimedQty;
-                                                    
-                                                    return (
-                                                        <Card key={gift.id} className="hover:shadow-md transition-shadow">
-                                                            <CardContent className="p-4">
-                                                                <div className="flex gap-4">
-                                                                    {/* Gift Image */}
-                                                                    {gift.gift_image_url ? (
-                                                                        <div className="w-24 h-24 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
-                                                                            <Image
-                                                                                src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url}
-                                                                                alt={gift.gift_name}
-                                                                                width={96}
-                                                                                height={96}
-                                                                                className="object-contain w-full h-full"
-                                                                            />
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                                            <ImageIcon className="h-8 w-8 text-gray-400" />
-                                                                        </div>
-                                                                    )}
+                                    const totalQty = (gift as any).total_quantity || 0;
+                                    const claimedQty = (gift as any).claimed_quantity || 0;
+                                    const remaining = totalQty - claimedQty;
 
-                                                                    {/* Gift Details */}
-                                                                    <div className="flex-1">
-                                                                        <div className="flex items-start justify-between">
-                                                                            <div>
-                                                                                <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
-                                                                                {gift.gift_description && (
-                                                                                    <p className="text-sm text-gray-600 mt-1">{gift.gift_description}</p>
-                                                                                )}
-                                                                                {totalQty > 0 && (
-                                                                                    <div className="mt-2 space-x-2">
-                                                                                        <Badge variant="outline">
-                                                                                            {remaining} available
-                                                                                        </Badge>
-                                                                                        <Badge variant="secondary">
-                                                                                            {claimedQty} claimed
-                                                                                        </Badge>
-                                                                                    </div>
-                                                                                )}
-                                                                                {totalQty === 0 && (
-                                                                                    <Badge variant="outline" className="mt-2">
-                                                                                        Unlimited
-                                                                                    </Badge>
-                                                                                )}
-                                                                            </div>
-                                                                            <div className="flex gap-2">
-                                                                                <Button
-                                                                                    variant="ghost"
-                                                                                    size="sm"
-                                                                                    onClick={() => handleEditGift(gift)}
-                                                                                >
-                                                                                    <Edit className="h-4 w-4" />
-                                                                                </Button>
-                                                                                <Button
-                                                                                    variant="ghost"
-                                                                                    size="sm"
-                                                                                    onClick={() => handleDeleteGift(gift.id)}
-                                                                                >
-                                                                                    <Trash2 className="h-4 w-4 text-red-600" />
-                                                                                </Button>
-                                                                            </div>
-                                                                        </div>
+                                    return (
+                                        <Card key={gift.id} className="hover:shadow-md transition-shadow">
+                                            <CardContent className="p-4">
+                                                <div className="flex gap-4">
+                                                    {/* Gift Image */}
+                                                    {gift.gift_image_url ? (
+                                                        <div className="w-24 h-24 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
+                                                            <Image
+                                                                src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url}
+                                                                alt={gift.gift_name}
+                                                                width={96}
+                                                                height={96}
+                                                                className="object-contain w-full h-full"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            <ImageIcon className="h-8 w-8 text-gray-400" />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Gift Details */}
+                                                    <div className="flex-1">
+                                                        <div className="flex items-start justify-between">
+                                                            <div>
+                                                                <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
+                                                                {gift.gift_description && (
+                                                                    <p className="text-sm text-gray-600 mt-1">{gift.gift_description}</p>
+                                                                )}
+                                                                {totalQty > 0 && (
+                                                                    <div className="mt-2 space-x-2">
+                                                                        <Badge variant="outline">
+                                                                            {remaining} available
+                                                                        </Badge>
+                                                                        <Badge variant="secondary">
+                                                                            {claimedQty} claimed
+                                                                        </Badge>
                                                                     </div>
-                                                                </div>
-                                                            </CardContent>
-                                                        </Card>
-                                                    );
-                                                })}
+                                                                )}
+                                                                {totalQty === 0 && (
+                                                                    <Badge variant="outline" className="mt-2">
+                                                                        Unlimited
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => handleEditGift(gift)}
+                                                                >
+                                                                    <Edit className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => handleDeleteGift(gift.id)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 text-red-600" />
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    );
+                                })}
                             </div>
                         )}
                     </CardContent>

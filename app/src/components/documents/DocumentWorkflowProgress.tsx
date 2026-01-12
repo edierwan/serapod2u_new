@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { CheckCircle2, Clock, FileText, FileCheck, CreditCard, Receipt } from 'lucide-react'
-import { getDocumentStatusText, type Document } from '@/lib/document-permissions'
+import { getDocumentStatusText, getDisplayDocNo, type Document } from '@/lib/document-permissions'
 
 interface DocumentWorkflowProgressProps {
   documents: {
@@ -24,6 +24,8 @@ interface DocumentWorkflowProgressProps {
   use50_50Split?: boolean
   depositPercentage?: number
   orderType?: string
+  buyerOrgName?: string
+  sellerOrgName?: string
 }
 
 export default function DocumentWorkflowProgress({
@@ -31,9 +33,64 @@ export default function DocumentWorkflowProgress({
   onTabChange,
   use50_50Split = false,
   depositPercentage = 50,
-  orderType
+  orderType,
+  buyerOrgName,
+  sellerOrgName
 }: DocumentWorkflowProgressProps) {
   const balancePercentage = 100 - depositPercentage
+
+  // Determine the pending action and who needs to take it
+  const getPendingActionRemark = (): string | null => {
+    const buyer = buyerOrgName || 'buyer'
+    const seller = sellerOrgName || 'manufacturer'
+
+    if (orderType === 'D2H' || orderType === 'S2D') {
+      // D2H/S2D workflow: SO → DO → Invoice → Payment → Receipt
+      if (!documents.so) return `Awaiting ${seller} to create Sales Order`
+      if (documents.so.status !== 'acknowledged') return `Awaiting ${buyer} to acknowledge Sales Order`
+      if (!documents.do) return `Awaiting ${seller} to create Delivery Order`
+      if (documents.do.status !== 'acknowledged') return `Awaiting ${buyer} to acknowledge Delivery Order`
+      if (!documents.invoice) return `Awaiting ${seller} to upload Invoice`
+      if (documents.invoice.status !== 'acknowledged') return `Awaiting ${buyer} to acknowledge Invoice`
+      if (!documents.payment) return `Awaiting ${buyer} to upload Payment Proof`
+      if (documents.payment.status !== 'acknowledged') return `Awaiting ${seller} to acknowledge Payment`
+      if (!documents.receipt) return `Awaiting ${seller} to issue Receipt`
+      return null // Workflow complete
+    } else if (use50_50Split) {
+      // Split payment workflow: PO → Dep Invoice → Dep Payment → Balance Request → Balance Payment → Receipt
+      if (!documents.po) return `Awaiting ${buyer} to create Purchase Order`
+      if (documents.po.status !== 'acknowledged') return `Awaiting ${seller} to acknowledge PO and upload Proforma Invoice`
+
+      const depositInv = documents.depositInvoice || documents.invoice
+      if (!depositInv) return `Awaiting ${seller} to upload Deposit Invoice`
+      if (depositInv.status !== 'acknowledged') return `Awaiting ${buyer} to acknowledge Deposit Invoice`
+
+      const depositPay = documents.depositPayment || documents.payment
+      if (!depositPay) return `Awaiting ${buyer} to upload Deposit Payment Proof`
+      if (depositPay.status !== 'acknowledged') return `Awaiting ${seller} to acknowledge Deposit Payment`
+
+      if (!documents.balancePaymentRequest) return `Awaiting ${seller} to request Balance Payment`
+      if (documents.balancePaymentRequest.status !== 'acknowledged') return `Awaiting ${buyer} to acknowledge Balance Request`
+
+      if (!documents.balancePayment) return `Awaiting ${buyer} to upload Balance Payment Proof`
+      if (documents.balancePayment.status !== 'acknowledged') return `Awaiting ${seller} to acknowledge Balance Payment`
+
+      if (!documents.receipt && !documents.finalReceipt) return `Awaiting ${seller} to issue Receipt`
+      return null // Workflow complete
+    } else {
+      // Traditional workflow: PO → Invoice → Payment → Receipt
+      if (!documents.po) return `Awaiting ${buyer} to create Purchase Order`
+      if (documents.po.status !== 'acknowledged') return `Awaiting ${seller} to acknowledge PO`
+      if (!documents.invoice) return `Awaiting ${seller} to upload Invoice`
+      if (documents.invoice.status !== 'acknowledged') return `Awaiting ${buyer} to acknowledge Invoice`
+      if (!documents.payment) return `Awaiting ${buyer} to upload Payment Proof`
+      if (documents.payment.status !== 'acknowledged') return `Awaiting ${seller} to acknowledge Payment`
+      if (!documents.receipt) return `Awaiting ${seller} to issue Receipt`
+      return null // Workflow complete
+    }
+  }
+
+  const pendingRemark = getPendingActionRemark()
   // Define steps based on workflow type
   type Step = {
     key: string
@@ -292,7 +349,7 @@ export default function DocumentWorkflowProgress({
                         variant="outline"
                         className="text-[10px] sm:text-xs mb-1"
                       >
-                        <span className="truncate max-w-full block leading-tight">{step.document.doc_no}</span>
+                        <span className="truncate max-w-full block leading-tight">{getDisplayDocNo(step.document)}</span>
                       </Badge>
                       <span className="text-xs hidden sm:block">
                         {getDocumentStatusText(step.document)}
@@ -308,8 +365,8 @@ export default function DocumentWorkflowProgress({
               {index < steps.length - 1 && (
                 <div className="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 z-10">
                   <div className={`w-8 h-0.5 ${getStepStatus(steps[index + 1].document) !== 'not-started'
-                      ? 'bg-green-400'
-                      : 'bg-gray-300'
+                    ? 'bg-green-400'
+                    : 'bg-gray-300'
                     }`}></div>
                 </div>
               )}
@@ -329,6 +386,14 @@ export default function DocumentWorkflowProgress({
           'Standard workflow: Purchase Order → Invoice → Payment → Receipt.'
         )}
       </div>
+
+      {/* Pending Action Remark */}
+      {pendingRemark && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-800 mt-3">
+          <span className="font-bold">Remarks: </span>
+          {pendingRemark}
+        </div>
+      )}
     </Card>
   )
 }

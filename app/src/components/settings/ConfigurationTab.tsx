@@ -7,19 +7,20 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/use-toast'
 import ChartOfAccountsTab from './ChartOfAccountsTab'
 import DefaultAccountsSettings from './DefaultAccountsSettings'
-import { 
-  Calendar, 
-  DollarSign, 
-  Plus, 
-  Save, 
-  Loader2, 
-  CheckCircle2, 
-  Lock, 
+import {
+  Calendar,
+  DollarSign,
+  Plus,
+  Save,
+  Loader2,
+  CheckCircle2,
+  Lock,
   Unlock,
   AlertCircle,
   CalendarDays,
@@ -33,9 +34,171 @@ import {
   Sparkles,
   ShieldAlert,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Zap,
+  Hand
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+
+// Posting Mode Configuration Component
+function PostingModeConfig({
+  status,
+  canManage,
+  onStatusChange
+}: {
+  status: AccountingStatus | null
+  canManage: boolean
+  onStatusChange: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const currentMode = status?.posting_mode || 'MANUAL'
+  const isAutoMode = currentMode === 'AUTO'
+
+  const handleToggle = async (checked: boolean) => {
+    if (!canManage) {
+      toast({
+        title: 'Permission Denied',
+        description: 'You need admin permissions to change posting mode',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    try {
+      setSaving(true)
+      const newMode = checked ? 'AUTO' : 'MANUAL'
+
+      const response = await fetch('/api/accounting/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posting_mode: newMode })
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: `Posting mode changed to ${newMode === 'AUTO' ? 'Automatic' : 'Manual'}`
+        })
+        onStatusChange() // Refresh status
+      } else {
+        const data = await response.json()
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to change posting mode',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      console.error('Error changing posting mode:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to change posting mode',
+        variant: 'destructive'
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <h4 className="font-medium text-gray-900">GL Posting Mode</h4>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Manual Mode Card */}
+        <div
+          className={`p-4 rounded-lg border-2 transition-colors ${!isAutoMode
+              ? 'border-blue-500 bg-blue-50'
+              : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+            }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={`p-2 rounded-lg ${!isAutoMode ? 'bg-blue-500' : 'bg-gray-300'}`}>
+              <Hand className={`w-5 h-5 ${!isAutoMode ? 'text-white' : 'text-gray-600'}`} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h5 className="font-medium text-gray-900">Manual Posting</h5>
+                {!isAutoMode && <Badge variant="default" className="text-xs">Active</Badge>}
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Review and post each document to GL individually. Full control over when entries are posted.
+              </p>
+              <ul className="mt-2 text-xs text-gray-500 space-y-1">
+                <li>• Click "Post to GL" button for each document</li>
+                <li>• Review journal preview before posting</li>
+                <li>• Best for audit trails and controlled environments</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Auto Mode Card */}
+        <div
+          className={`p-4 rounded-lg border-2 transition-colors ${isAutoMode
+              ? 'border-green-500 bg-green-50'
+              : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+            }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={`p-2 rounded-lg ${isAutoMode ? 'bg-green-500' : 'bg-gray-300'}`}>
+              <Zap className={`w-5 h-5 ${isAutoMode ? 'text-white' : 'text-gray-600'}`} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h5 className="font-medium text-gray-900">Automatic Posting</h5>
+                {isAutoMode && <Badge className="text-xs bg-green-500">Active</Badge>}
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Automatically post to GL when documents are created or acknowledged.
+              </p>
+              <ul className="mt-2 text-xs text-gray-500 space-y-1">
+                <li>• Zero manual intervention required</li>
+                <li>• Real-time GL updates</li>
+                <li>• Best for high-volume operations</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Toggle Switch */}
+      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div>
+          <Label htmlFor="posting-mode" className="font-medium">
+            Enable Automatic Posting
+          </Label>
+          <p className="text-sm text-gray-500">
+            {isAutoMode
+              ? 'Documents will be posted to GL automatically'
+              : 'You will need to manually post each document'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {saving && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+          <Switch
+            id="posting-mode"
+            checked={isAutoMode}
+            onCheckedChange={handleToggle}
+            disabled={saving || !canManage}
+          />
+        </div>
+      </div>
+
+      {isAutoMode && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5" />
+            <div className="text-sm text-amber-700">
+              <strong>Note:</strong> In auto-posting mode, journal entries cannot be modified after creation.
+              Ensure your Chart of Accounts and default posting accounts are correctly configured.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface ConfigurationTabProps {
   userProfile: {
@@ -69,6 +232,7 @@ interface AccountingStatus {
   company_id: string | null
   checklist: StatusChecklist[]
   phase: string
+  posting_mode?: 'MANUAL' | 'AUTO'
   features: {
     chart_of_accounts: boolean
     journals_view: boolean
@@ -121,8 +285,8 @@ const CURRENCIES = [
   { code: 'PHP', name: 'Philippine Peso', symbol: '₱' },
 ]
 
-export default function ConfigurationTab({ 
-  userProfile, 
+export default function ConfigurationTab({
+  userProfile,
   status,
   loadStatus,
   canManage,
@@ -145,7 +309,7 @@ export default function ConfigurationTab({
   })
   const [fiscalYears, setFiscalYears] = useState<FiscalYear[]>([])
   const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({})
-  
+
   // New fiscal year dialog
   const [showNewYearDialog, setShowNewYearDialog] = useState(false)
   const [newYear, setNewYear] = useState({
@@ -178,9 +342,9 @@ export default function ConfigurationTab({
         const data = await fiscalRes.json()
         setFiscalYears(data.fiscalYears || [])
         // Auto-expand current fiscal year
-        const currentYear = data.fiscalYears?.find((fy: FiscalYear) => 
-          fy.status === 'open' && 
-          new Date() >= new Date(fy.start_date) && 
+        const currentYear = data.fiscalYears?.find((fy: FiscalYear) =>
+          fy.status === 'open' &&
+          new Date() >= new Date(fy.start_date) &&
           new Date() <= new Date(fy.end_date)
         )
         if (currentYear) {
@@ -389,7 +553,7 @@ export default function ConfigurationTab({
       const startDate = new Date(date)
       const year = startDate.getFullYear()
       const endDate = new Date(year, 11, 31) // Dec 31
-      
+
       return {
         ...prev,
         start_date: date,
@@ -454,7 +618,7 @@ export default function ConfigurationTab({
                 Currency Settings
               </CardTitle>
               <CardDescription>
-                Configure the base currency for your accounting system. 
+                Configure the base currency for your accounting system.
                 This affects how amounts are displayed throughout the system.
               </CardDescription>
             </CardHeader>
@@ -462,8 +626,8 @@ export default function ConfigurationTab({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="currency">Base Currency</Label>
-                  <Select 
-                    value={currency.base_currency_code} 
+                  <Select
+                    value={currency.base_currency_code}
                     onValueChange={handleCurrencyChange}
                     disabled={!canManage}
                   >
@@ -485,9 +649,9 @@ export default function ConfigurationTab({
 
                 <div className="space-y-2">
                   <Label htmlFor="decimal_places">Decimal Places</Label>
-                  <Select 
-                    value={currency.decimal_places.toString()} 
-                    onValueChange={(v) => setCurrency({...currency, decimal_places: parseInt(v)})}
+                  <Select
+                    value={currency.decimal_places.toString()}
+                    onValueChange={(v) => setCurrency({ ...currency, decimal_places: parseInt(v) })}
                     disabled={!canManage}
                   >
                     <SelectTrigger>
@@ -504,9 +668,9 @@ export default function ConfigurationTab({
 
                 <div className="space-y-2">
                   <Label htmlFor="symbol_position">Symbol Position</Label>
-                  <Select 
-                    value={currency.symbol_position} 
-                    onValueChange={(v) => setCurrency({...currency, symbol_position: v})}
+                  <Select
+                    value={currency.symbol_position}
+                    onValueChange={(v) => setCurrency({ ...currency, symbol_position: v })}
                     disabled={!canManage}
                   >
                     <SelectTrigger>
@@ -535,7 +699,7 @@ export default function ConfigurationTab({
                   <div>
                     <h4 className="font-medium text-blue-800">Important Note</h4>
                     <p className="text-sm text-blue-700 mt-1">
-                      Changing the base currency after transactions have been posted is not recommended. 
+                      Changing the base currency after transactions have been posted is not recommended.
                       This setting is primarily for display purposes and does not support multi-currency transactions.
                     </p>
                   </div>
@@ -592,7 +756,7 @@ export default function ConfigurationTab({
                             Define a new fiscal year. Monthly periods will be auto-generated.
                           </DialogDescription>
                         </DialogHeader>
-                        
+
                         <div className="space-y-4 py-4">
                           <div className="space-y-2">
                             <Label htmlFor="start_date">Start Date *</Label>
@@ -613,7 +777,7 @@ export default function ConfigurationTab({
                               id="end_date"
                               type="date"
                               value={newYear.end_date}
-                              onChange={(e) => setNewYear({...newYear, end_date: e.target.value})}
+                              onChange={(e) => setNewYear({ ...newYear, end_date: e.target.value })}
                             />
                           </div>
 
@@ -622,7 +786,7 @@ export default function ConfigurationTab({
                             <Input
                               id="fiscal_year_name"
                               value={newYear.fiscal_year_name}
-                              onChange={(e) => setNewYear({...newYear, fiscal_year_name: e.target.value})}
+                              onChange={(e) => setNewYear({ ...newYear, fiscal_year_name: e.target.value })}
                               placeholder="e.g., Financial Year 2026"
                             />
                           </div>
@@ -632,16 +796,16 @@ export default function ConfigurationTab({
                             <Input
                               id="fiscal_year_code"
                               value={newYear.fiscal_year_code}
-                              onChange={(e) => setNewYear({...newYear, fiscal_year_code: e.target.value.toUpperCase()})}
+                              onChange={(e) => setNewYear({ ...newYear, fiscal_year_code: e.target.value.toUpperCase() })}
                               placeholder="e.g., FY2026"
                             />
                           </div>
 
                           <div className="space-y-2">
                             <Label htmlFor="period_type">Period Type</Label>
-                            <Select 
-                              value={newYear.period_type} 
-                              onValueChange={(v) => setNewYear({...newYear, period_type: v})}
+                            <Select
+                              value={newYear.period_type}
+                              onValueChange={(v) => setNewYear({ ...newYear, period_type: v })}
                             >
                               <SelectTrigger>
                                 <SelectValue />
@@ -691,15 +855,14 @@ export default function ConfigurationTab({
               ) : (
                 <div className="space-y-4">
                   {fiscalYears.map((fy) => (
-                    <div 
-                      key={fy.id} 
+                    <div
+                      key={fy.id}
                       className="border rounded-lg overflow-hidden"
                     >
                       {/* Fiscal Year Header */}
-                      <div 
-                        className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                          expandedYears[fy.id] ? 'bg-gray-50' : ''
-                        }`}
+                      <div
+                        className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${expandedYears[fy.id] ? 'bg-gray-50' : ''
+                          }`}
                         onClick={() => toggleYearExpand(fy.id)}
                       >
                         <div className="flex items-center justify-between">
@@ -723,12 +886,12 @@ export default function ConfigurationTab({
                               </p>
                             </div>
                           </div>
-                          
+
                           {canManage && fy.status !== 'locked' && (
                             <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                               {fy.status === 'open' && (
-                                <Button 
-                                  variant="outline" 
+                                <Button
+                                  variant="outline"
                                   size="sm"
                                   onClick={() => updateFiscalYearStatus(fy.id, 'closed')}
                                 >
@@ -738,16 +901,16 @@ export default function ConfigurationTab({
                               )}
                               {fy.status === 'closed' && (
                                 <>
-                                  <Button 
-                                    variant="outline" 
+                                  <Button
+                                    variant="outline"
                                     size="sm"
                                     onClick={() => updateFiscalYearStatus(fy.id, 'open')}
                                   >
                                     <Unlock className="w-4 h-4 mr-1" />
                                     Reopen
                                   </Button>
-                                  <Button 
-                                    variant="destructive" 
+                                  <Button
+                                    variant="destructive"
                                     size="sm"
                                     onClick={() => updateFiscalYearStatus(fy.id, 'locked')}
                                   >
@@ -768,24 +931,22 @@ export default function ConfigurationTab({
                             <h4 className="text-sm font-medium text-gray-700 mb-3">Accounting Periods</h4>
                             <div className="space-y-2">
                               {fy.fiscal_periods.map((period) => {
-                                const isCurrentPeriod = 
-                                  new Date() >= new Date(period.start_date) && 
+                                const isCurrentPeriod =
+                                  new Date() >= new Date(period.start_date) &&
                                   new Date() <= new Date(period.end_date)
-                                
+
                                 return (
-                                  <div 
+                                  <div
                                     key={period.id}
-                                    className={`flex items-center justify-between p-3 rounded-lg ${
-                                      isCurrentPeriod ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
-                                    }`}
+                                    className={`flex items-center justify-between p-3 rounded-lg ${isCurrentPeriod ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3">
-                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                                        period.status === 'open' ? 'bg-green-100 text-green-700' :
-                                        period.status === 'closed' ? 'bg-yellow-100 text-yellow-700' :
-                                        period.status === 'locked' ? 'bg-red-100 text-red-700' :
-                                        'bg-gray-100 text-gray-600'
-                                      }`}>
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${period.status === 'open' ? 'bg-green-100 text-green-700' :
+                                          period.status === 'closed' ? 'bg-yellow-100 text-yellow-700' :
+                                            period.status === 'locked' ? 'bg-red-100 text-red-700' :
+                                              'bg-gray-100 text-gray-600'
+                                        }`}>
                                         {period.period_number}
                                       </div>
                                       <div>
@@ -800,15 +961,15 @@ export default function ConfigurationTab({
                                         </span>
                                       </div>
                                     </div>
-                                    
+
                                     <div className="flex items-center gap-2">
                                       {getStatusBadge(period.status)}
-                                      
+
                                       {canManage && fy.status !== 'locked' && (
                                         <>
                                           {period.status === 'future' && (
-                                            <Button 
-                                              variant="ghost" 
+                                            <Button
+                                              variant="ghost"
                                               size="sm"
                                               onClick={() => updatePeriodStatus(fy.id, period.id, 'open')}
                                             >
@@ -816,8 +977,8 @@ export default function ConfigurationTab({
                                             </Button>
                                           )}
                                           {period.status === 'open' && (
-                                            <Button 
-                                              variant="ghost" 
+                                            <Button
+                                              variant="ghost"
                                               size="sm"
                                               onClick={() => updatePeriodStatus(fy.id, period.id, 'closed')}
                                             >
@@ -825,8 +986,8 @@ export default function ConfigurationTab({
                                             </Button>
                                           )}
                                           {period.status === 'closed' && (
-                                            <Button 
-                                              variant="ghost" 
+                                            <Button
+                                              variant="ghost"
                                               size="sm"
                                               onClick={() => updatePeriodStatus(fy.id, period.id, 'open')}
                                             >
@@ -889,13 +1050,12 @@ export default function ConfigurationTab({
                 <h4 className="font-medium text-gray-900 mb-3">Readiness Checklist</h4>
                 <div className="space-y-2">
                   {status?.checklist?.map((item, index) => (
-                    <div 
+                    <div
                       key={index}
-                      className={`flex items-start gap-3 p-3 rounded-lg ${
-                        item.status === 'ok' ? 'bg-green-50' :
-                        item.status === 'warning' ? 'bg-yellow-50' :
-                        'bg-red-50'
-                      }`}
+                      className={`flex items-start gap-3 p-3 rounded-lg ${item.status === 'ok' ? 'bg-green-50' :
+                          item.status === 'warning' ? 'bg-yellow-50' :
+                            'bg-red-50'
+                        }`}
                     >
                       {getStatusIcon(item.status)}
                       <div>
@@ -912,8 +1072,8 @@ export default function ConfigurationTab({
                 <div>
                   <h4 className="font-medium text-gray-900 mb-3">Quick Actions</h4>
                   <div className="flex flex-wrap gap-3">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={handleSeedAccounts}
                       disabled={seeding}
                     >
@@ -980,15 +1140,22 @@ export default function ConfigurationTab({
 
               {/* Phase Information */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-800 mb-2">Current Phase: Foundation</h4>
+                <h4 className="font-medium text-blue-800 mb-2">Current Phase: Manual Posting</h4>
                 <p className="text-sm text-blue-700">
-                  Phase 1 provides the Chart of Accounts setup. GL posting, journal management, 
-                  and financial reports will be available in future phases.
+                  Phase 2 provides GL posting and journal management. Financial reports
+                  will be available in Phase 3.
                 </p>
                 <div className="mt-3 text-xs text-blue-600">
-                  <strong>Roadmap:</strong> Phase 2 (Manual Posting) → Phase 3 (Reports) → Phase 4 (Inventory/COGS)
+                  <strong>Roadmap:</strong> <span className="line-through">Phase 1 (Foundation)</span> → <strong className="text-blue-800">Phase 2 (Manual Posting)</strong> → Phase 3 (Reports) → Phase 4 (Inventory/COGS)
                 </div>
               </div>
+
+              {/* Posting Mode Configuration */}
+              <PostingModeConfig
+                status={status}
+                canManage={canManage}
+                onStatusChange={loadStatus}
+              />
 
               {/* DEV-ONLY: Reset Section */}
               {resetAvailable && canManage && (
@@ -1004,10 +1171,10 @@ export default function ConfigurationTab({
                           </Badge>
                         </div>
                         <p className="text-sm text-red-700 mb-3">
-                          Clear all accounting data for this company. This will delete all accounts, 
+                          Clear all accounting data for this company. This will delete all accounts,
                           settings, and any journal entries. Use this for rapid dev iteration.
                         </p>
-                        <Button 
+                        <Button
                           variant="destructive"
                           size="sm"
                           onClick={() => setResetModalOpen(true)}

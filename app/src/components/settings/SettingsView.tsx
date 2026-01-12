@@ -17,6 +17,7 @@ import DangerZoneTab from './DangerZoneTab'
 import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
 import DocumentTemplateTab from './DocumentTemplateTab'
+import DocSequenceTab from './DocSequenceTab'
 import AccountingTab from './AccountingTab'
 import AuthorizationTab from './AuthorizationTab'
 import {
@@ -41,7 +42,8 @@ import {
   Image as ImageIcon,
   Info,
   Package,
-  Calculator
+  Calculator,
+  Hash
 } from 'lucide-react'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 
@@ -1610,11 +1612,12 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
         {/* Preferences Settings */}
         {activeTab === 'preferences' && (
           <TabsComponent defaultValue="system" className="w-full">
-            <TabsList2 className="grid w-full grid-cols-4 mb-4">
+            <TabsList2 className="grid w-full grid-cols-5 mb-4">
               <TabsTrigger2 value="system">System Preferences</TabsTrigger2>
               <TabsTrigger2 value="journey">Journey Builder</TabsTrigger2>
               <TabsTrigger2 value="qr-tracking">QR Tracking</TabsTrigger2>
               <TabsTrigger2 value="document-template">Document Template</TabsTrigger2>
+              <TabsTrigger2 value="doc-sequence">Doc Sequence</TabsTrigger2>
             </TabsList2>
 
             <TabsContent2 value="system">
@@ -1863,6 +1866,10 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
             <TabsContent2 value="document-template">
               <DocumentTemplateTab userProfile={userProfile} />
+            </TabsContent2>
+
+            <TabsContent2 value="doc-sequence">
+              <DocSequenceTab userProfile={userProfile} />
             </TabsContent2>
           </TabsComponent>
         )}

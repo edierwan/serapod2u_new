@@ -66,6 +66,7 @@ export interface TemplateOrderData {
 
 export interface TemplateDocumentData {
   doc_no: string
+  display_doc_no?: string  // New format: PO26000001
   doc_type: string
   status: string
   created_at: string
@@ -145,7 +146,7 @@ export class ClassicTemplate {
     this.doc.setFontSize(9)
 
     const details = [
-      { label: 'PO#:', value: documentData.doc_no },
+      { label: 'PO#:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'Date:', value: this.formatDate(documentData.created_at) },
       { label: 'By:', value: 'User Level' },
       { label: 'Ledger:', value: 'Stock Purchased / Inventory' }

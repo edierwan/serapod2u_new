@@ -22,6 +22,7 @@ interface PendingDocument {
   id: string
   doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST'
   doc_no: string
+  display_doc_no?: string | null  // New format: PO26000001, SI26000001, etc.
   status: string
   created_at: string
   issued_by_org_id: string
@@ -29,6 +30,7 @@ interface PendingDocument {
   order: {
     id: string
     order_no: string
+    display_doc_no?: string | null  // New format: ORD26000001
     order_type: string
     status: string
   }
@@ -41,6 +43,7 @@ interface PendingDocument {
 interface ApprovedH2MOrder {
   id: string
   order_no: string
+  display_doc_no?: string | null  // New format: ORD26000001
   order_type: string
   status: string
   approved_at: string
@@ -53,6 +56,7 @@ interface ApprovedH2MOrder {
 interface SubmittedOrder {
   id: string
   order_no: string
+  display_doc_no?: string | null  // New format: ORD26000001
   order_type: string
   status: string
   created_at: string
@@ -158,6 +162,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         .select(`
           id,
           order_no,
+          display_doc_no,
           order_type,
           status,
           approved_at,
@@ -179,6 +184,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
       const transformedOrders: ApprovedH2MOrder[] = (data || []).map((order: any) => ({
         id: order.id,
         order_no: order.order_no,
+        display_doc_no: order.display_doc_no,
         order_type: order.order_type,
         status: order.status,
         approved_at: order.approved_at,
@@ -212,6 +218,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         .select(`
           id,
           order_no,
+          display_doc_no,
           order_type,
           status,
           created_at,
@@ -258,6 +265,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
       const transformedOrders: SubmittedOrder[] = (data || []).map((order: any) => ({
         id: order.id,
         order_no: order.order_no,
+        display_doc_no: order.display_doc_no,
         order_type: order.order_type,
         status: order.status,
         created_at: order.created_at,
@@ -287,6 +295,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           id,
           doc_type,
           doc_no,
+          display_doc_no,
           status,
           created_at,
           issued_by_org_id,
@@ -294,6 +303,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           order:orders!inner (
             id,
             order_no,
+            display_doc_no,
             order_type,
             status
           ),
@@ -323,11 +333,15 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         id: doc.id,
         doc_type: doc.doc_type,
         doc_no: doc.doc_no,
+        display_doc_no: doc.display_doc_no,
         status: doc.status,
         created_at: doc.created_at,
         issued_by_org_id: doc.issued_by_org_id,
         issued_to_org_id: doc.issued_to_org_id,
-        order: Array.isArray(doc.order) ? doc.order[0] : doc.order,
+        order: {
+          ...((Array.isArray(doc.order) ? doc.order[0] : doc.order) || {}),
+          display_doc_no: (Array.isArray(doc.order) ? doc.order[0] : doc.order)?.display_doc_no
+        },
         issued_by_org: Array.isArray(doc.issued_by_org) ? doc.issued_by_org[0] : doc.issued_by_org,
       }))
 
@@ -459,7 +473,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                     </h4>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Badge variant="outline" className="text-[10px] sm:text-xs font-mono bg-white">
-                        {order.order_no}
+                        {order.display_doc_no || order.order_no}
                       </Badge>
                       <Badge className="text-[10px] sm:text-xs bg-amber-500">
                         {order.order_type}
@@ -536,7 +550,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                     H2M Order Approved
                   </h4>
                   <Badge variant="outline" className="text-[10px] sm:text-xs font-mono bg-white">
-                    {order.order_no}
+                    {order.display_doc_no || order.order_no}
                   </Badge>
                 </div>
               </div>
@@ -590,7 +604,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
               {pendingDocs.map((doc) => (
                 <button
                   key={`mobile-${doc.id}`}
-                  onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.doc_no)}
+                  onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
                   className="p-3 rounded-xl border border-gray-200 bg-white/80 text-left shadow-sm hover:shadow transition-all"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -598,14 +612,14 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                       {getDocumentIcon(doc.doc_type)}
                     </div>
                     <Badge variant="outline" className="text-[10px] font-mono">
-                      {doc.doc_no}
+                      {doc.display_doc_no || doc.doc_no}
                     </Badge>
                   </div>
                   <p className="mt-2 text-xs font-semibold text-gray-900 truncate">
                     {getDocumentTypeLabel(doc.doc_type as Document['doc_type'])}
                   </p>
                   <p className="text-[11px] text-gray-600 truncate">
-                    Order {doc.order.order_no}
+                    Order {doc.order.display_doc_no || doc.order.order_no}
                   </p>
                   <div className="mt-2 flex items-center gap-1 text-[10px] text-gray-400">
                     <Clock className="w-3 h-3" />
@@ -637,14 +651,14 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                             {getDocumentTypeLabel(doc.doc_type as Document['doc_type'])}
                           </h4>
                           <Badge variant="outline" className="text-xs font-mono">
-                            {doc.doc_no}
+                            {doc.display_doc_no || doc.doc_no}
                           </Badge>
                         </div>
                       </div>
 
                       <Button
                         size="sm"
-                        onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.doc_no)}
+                        onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
                         className="flex-shrink-0"
                       >
                         Review
@@ -657,7 +671,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                       userProfile.organizations.org_type_code === 'HQ' &&
                       requirePaymentProof && (
                         <button
-                          onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.doc_no)}
+                          onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
                           className="w-full bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-center justify-between gap-2 hover:bg-amber-100 transition-colors group"
                         >
                           <div className="flex items-center gap-2">
@@ -678,7 +692,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                     {/* Details */}
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600">
-                        Order: <span className="font-medium text-gray-900">{doc.order.order_no}</span>
+                        Order: <span className="font-medium text-gray-900">{doc.order.display_doc_no || doc.order.order_no}</span>
                       </p>
                       <p className="text-sm text-gray-500">
                         From: {doc.issued_by_org.org_name}

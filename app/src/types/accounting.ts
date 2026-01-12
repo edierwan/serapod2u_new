@@ -5,6 +5,8 @@ export type GLAccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'INCOME' | 'EXPEN
 
 export type GLJournalStatus = 'draft' | 'posted' | 'reversed';
 
+export type GLPostingMode = 'MANUAL' | 'AUTO';
+
 // ============================================================================
 // GL Settings (Control Accounts Mapping)
 // ============================================================================
@@ -20,6 +22,8 @@ export interface GLSettings {
   sales_revenue_account_id: string | null;
   cogs_account_id: string | null;
   inventory_account_id: string | null;
+  // Posting configuration
+  posting_mode: GLPostingMode;
   // Metadata
   created_at: string;
   updated_at: string;
@@ -35,6 +39,7 @@ export interface GLSettingsUpdate {
   sales_revenue_account_id?: string | null;
   cogs_account_id?: string | null;
   inventory_account_id?: string | null;
+  posting_mode?: GLPostingMode;
 }
 
 // Settings with joined account details for display
@@ -174,7 +179,7 @@ export const DEFAULT_COA_TEMPLATE: Omit<GLAccountInsert, 'company_id'>[] = [
   { code: '1300', name: 'Inventory', account_type: 'ASSET', subtype: 'Current Asset', is_system: true, normal_balance: 'DEBIT' },
   { code: '1400', name: 'Prepaid Expenses', account_type: 'ASSET', subtype: 'Current Asset', normal_balance: 'DEBIT' },
   { code: '1500', name: 'Fixed Assets', account_type: 'ASSET', subtype: 'Fixed Asset', normal_balance: 'DEBIT' },
-  
+
   // Liabilities (2xxx)
   { code: '2000', name: 'Liabilities', account_type: 'LIABILITY', subtype: 'Header', is_system: true, normal_balance: 'CREDIT' },
   { code: '2100', name: 'Accounts Payable', account_type: 'LIABILITY', subtype: 'Current Liability', is_system: true, normal_balance: 'CREDIT' },
@@ -182,18 +187,18 @@ export const DEFAULT_COA_TEMPLATE: Omit<GLAccountInsert, 'company_id'>[] = [
   { code: '2200', name: 'Accrued Expenses', account_type: 'LIABILITY', subtype: 'Current Liability', normal_balance: 'CREDIT' },
   { code: '2300', name: 'Deposits Received', account_type: 'LIABILITY', subtype: 'Current Liability', normal_balance: 'CREDIT' },
   { code: '2400', name: 'GST/SST Payable', account_type: 'LIABILITY', subtype: 'Current Liability', normal_balance: 'CREDIT' },
-  
+
   // Equity (3xxx)
   { code: '3000', name: 'Equity', account_type: 'EQUITY', subtype: 'Header', is_system: true, normal_balance: 'CREDIT' },
   { code: '3100', name: 'Share Capital', account_type: 'EQUITY', subtype: 'Capital', normal_balance: 'CREDIT' },
   { code: '3200', name: 'Retained Earnings', account_type: 'EQUITY', subtype: 'Retained Earnings', is_system: true, normal_balance: 'CREDIT' },
-  
+
   // Income (4xxx)
   { code: '4000', name: 'Income', account_type: 'INCOME', subtype: 'Header', is_system: true, normal_balance: 'CREDIT' },
   { code: '4100', name: 'Sales Revenue', account_type: 'INCOME', subtype: 'Operating Income', is_system: true, normal_balance: 'CREDIT' },
   { code: '4200', name: 'Service Revenue', account_type: 'INCOME', subtype: 'Operating Income', normal_balance: 'CREDIT' },
   { code: '4900', name: 'Other Income', account_type: 'INCOME', subtype: 'Other Income', normal_balance: 'CREDIT' },
-  
+
   // Expenses (5xxx-6xxx)
   { code: '5000', name: 'Cost of Goods Sold', account_type: 'EXPENSE', subtype: 'Header', is_system: true, normal_balance: 'DEBIT' },
   { code: '5100', name: 'Purchases', account_type: 'EXPENSE', subtype: 'Direct Cost', is_system: true, normal_balance: 'DEBIT' },

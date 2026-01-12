@@ -174,13 +174,13 @@ async function prefetchUsersForBatch(
 
     // Fetch users by phone and email in parallel
     const [phoneResult, emailResult] = await Promise.all([
-        phones.length > 0 
+        phones.length > 0
             ? supabaseAdmin
                 .from("users")
                 .select("id, email, phone, full_name, location, last_migration_point_value, role_code")
                 .in("phone", phones)
             : Promise.resolve({ data: [] }),
-        emails.length > 0 
+        emails.length > 0
             ? supabaseAdmin
                 .from("users")
                 .select("id, email, phone, full_name, location, last_migration_point_value, role_code")
@@ -342,7 +342,7 @@ async function processRowOptimized(
     if (row.email) updates.email = row.email.trim();
     if (normalizedPhone) updates.phone = normalizedPhone;
     if (row.joinedDate) updates.created_at = parseDate(row.joinedDate);
-    
+
     // Ensure role_code and organization_id are set for independent consumers
     if (!user.role_code) updates.role_code = "GUEST";
     if (user.organization_id === undefined) updates.organization_id = null;
@@ -490,7 +490,7 @@ export async function POST(request: NextRequest) {
                     for (const row of batch) {
                         try {
                             const phone = normalizePhone(row.phone);
-                            const user = userCache.byPhone.get(phone) || 
+                            const user = userCache.byPhone.get(phone) ||
                                 (row.email ? userCache.byEmail.get(row.email.trim().toLowerCase()) : null);
                             if (user) {
                                 userIdsForBalance.push(user.id);
@@ -587,13 +587,13 @@ export async function POST(request: NextRequest) {
                     // Add successful results
                     for (const r of processedRows) {
                         let message = `Delta: ${r.delta}`;
-                        
+
                         // Add context about user status
                         if (r.isNewUser) {
-                             message = `New User Created. ${message}`;
+                            message = `New User Created. ${message}`;
                         } else {
-                             const roleInfo = r.userRole && r.userRole !== 'GUEST' ? ` (${r.userRole})` : '';
-                             message = `Existing User Updated${roleInfo}. ${message}`;
+                            const roleInfo = r.userRole && r.userRole !== 'GUEST' ? ` (${r.userRole})` : '';
+                            message = `Existing User Updated${roleInfo}. ${message}`;
                         }
 
                         allResults.push({

@@ -10,11 +10,11 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getStorageUrl } from '@/lib/utils'
-import { 
-  Trophy, 
-  Plus, 
-  Users, 
-  Gift, 
+import {
+  Trophy,
+  Plus,
+  Users,
+  Gift,
   Sparkles,
   BarChart3,
   UserCheck,
@@ -50,6 +50,7 @@ interface UserProfile {
 interface Order {
   id: string
   order_no: string
+  legacy_order_no?: string  // Original order_no (e.g., ORD-HM-0126-19)
   order_type: string
   status: string
   has_lucky_draw: boolean
@@ -122,13 +123,13 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  
+
   // Modal states
   const [showNewCampaignModal, setShowNewCampaignModal] = useState(false)
   const [showPrizeModal, setShowPrizeModal] = useState(false)
   const [showDrawConfirmModal, setShowDrawConfirmModal] = useState(false)
   const [editingPrizeIndex, setEditingPrizeIndex] = useState<number | null>(null)
-  
+
   // Form states
   const [newCampaign, setNewCampaign] = useState({
     campaign_name: '',
@@ -137,18 +138,18 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
     end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     draw_date: ''
   })
-  
+
   const [newPrize, setNewPrize] = useState({
     name: '',
     description: '',
     quantity: 1,
     image_url: ''
   })
-  
+
   const [prizeImageFile, setPrizeImageFile] = useState<File | null>(null)
   const [prizeImagePreview, setPrizeImagePreview] = useState<string | null>(null)
   const [compressedSize, setCompressedSize] = useState<string | null>(null)
-  
+
   const [prizes, setPrizes] = useState<Prize[]>([])
   const [drawResult, setDrawResult] = useState<any>(null)
 
@@ -178,7 +179,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       setLoading(true)
       const response = await fetch('/api/lucky-draw/orders')
       const data = await response.json()
-      
+
       if (data.success) {
         setOrders(data.orders || [])
         if (data.orders && data.orders.length > 0) {
@@ -199,7 +200,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
     try {
       const response = await fetch(`/api/lucky-draw/campaigns?order_id=${orderId}`)
       const data = await response.json()
-      
+
       if (data.success) {
         setCampaigns(data.campaigns || [])
         if (data.campaigns && data.campaigns.length > 0) {
@@ -218,7 +219,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
     try {
       const response = await fetch(`/api/lucky-draw/entries?campaign_id=${campaignId}`)
       const data = await response.json()
-      
+
       if (data.success) {
         setEntries(data.entries || [])
       }
@@ -246,7 +247,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       }
 
       let response;
-      
+
       // If a campaign already exists for this order, update it instead of creating new
       if (campaigns.length > 0 && selectedCampaignId) {
         response = await fetch('/api/lucky-draw/campaigns', {
@@ -264,9 +265,9 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
           body: JSON.stringify(campaignData)
         })
       }
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setShowNewCampaignModal(false)
         // Don't clear form immediately if we might edit again, but for now it's fine as we reset on open
@@ -297,9 +298,9 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campaign_id: campaignId, status: newStatus })
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         if (selectedOrderId) {
           loadCampaigns(selectedOrderId)
@@ -329,7 +330,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       if (fileToUpload && selectedCampaign) {
         const { createClient } = await import('@/lib/supabase/client')
         const supabase = createClient()
-        
+
         const fileExt = fileToUpload.name.split('.').pop()
         const fileName = `${selectedCampaign.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
         const filePath = `lucky-draw-prizes/${selectedCampaign.id}/${fileName}`
@@ -350,7 +351,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         const { data: { publicUrl } } = supabase.storage
           .from('avatars')
           .getPublicUrl(filePath)
-        
+
         imageUrl = `${publicUrl}?v=${Date.now()}`
         fileToUpload = null // Clear file since it's uploaded
       } else if (fileToUpload && !selectedCampaign) {
@@ -358,8 +359,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         imageUrl = prizeImagePreview || ''
       }
 
-      const prizeWithImage: Prize = { 
-        ...newPrize, 
+      const prizeWithImage: Prize = {
+        ...newPrize,
         image_url: imageUrl,
         file: fileToUpload || undefined
       }
@@ -372,7 +373,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       } else {
         updatedPrizes = [...prizes, prizeWithImage]
       }
-      
+
       setPrizes(updatedPrizes)
 
       // Save to database immediately ONLY if we are editing an existing campaign
@@ -394,9 +395,9 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
   const handleEditPrize = (index: number) => {
     setEditingPrizeIndex(index)
     const prize = prizes[index]
-    setNewPrize({ 
-      name: prize.name, 
-      description: prize.description, 
+    setNewPrize({
+      name: prize.name,
+      description: prize.description,
       quantity: prize.quantity,
       image_url: prize.image_url || ''
     })
@@ -407,10 +408,10 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
 
   const handleDeletePrize = async (index: number) => {
     if (!selectedCampaignId) return
-    
+
     const updatedPrizes = prizes.filter((_, i) => i !== index)
     setPrizes(updatedPrizes)
-    
+
     // Save to database immediately
     await handleSavePrizes(updatedPrizes)
   }
@@ -422,14 +423,14 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
       const response = await fetch('/api/lucky-draw/campaigns', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          campaign_id: selectedCampaignId, 
-          prizes_json: prizesToSave 
+        body: JSON.stringify({
+          campaign_id: selectedCampaignId,
+          prizes_json: prizesToSave
         })
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         // Reload campaigns to reflect the updated prizes
         if (selectedOrderId) {
@@ -453,9 +454,9 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campaign_id: selectedCampaignId })
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setDrawResult(data)
         setShowDrawConfirmModal(false)
@@ -478,7 +479,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
   const selectedOrder = orders.find(o => o.id === selectedOrderId)
   const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId)
 
-  const filteredEntries = entries.filter(entry => 
+  const filteredEntries = entries.filter(entry =>
     entry.consumer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     entry.consumer_phone.includes(searchQuery) ||
     entry.entry_number.includes(searchQuery) ||
@@ -581,7 +582,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 <p className="text-gray-600 mt-1">Manage order-specific lucky draw campaigns</p>
               </div>
             </div>
-            <Button 
+            <Button
               className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
               disabled={!selectedOrderId}
               onClick={() => {
@@ -655,7 +656,12 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 <SelectContent>
                   {orders.map(order => (
                     <SelectItem key={order.id} value={order.id}>
-                      {order.order_no} - {order.buyer_org_name}
+                      <div className="flex flex-col">
+                        <span>{order.order_no} - {order.buyer_org_name}</span>
+                        {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                          <span className="text-[10px] text-gray-400">Legacy: {order.legacy_order_no}</span>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -780,7 +786,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                   </div>
                                 </div>
                                 <p className="text-sm text-gray-500 mb-3">{campaign.campaign_description}</p>
-                                
+
                                 {/* Prize Images Preview */}
                                 {campaign.prizes_json && campaign.prizes_json.length > 0 && (
                                   <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2">
@@ -861,8 +867,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                     <div className="flex items-center gap-4">
                       <div className="flex-1 relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                        <Input 
-                          placeholder="Search by name, phone, email, or entry number..." 
+                        <Input
+                          placeholder="Search by name, phone, email, or entry number..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="pl-10"
@@ -878,8 +884,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                       <div className="text-center py-12">
                         <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-500">
-                          {entries.length === 0 
-                            ? 'No participants yet. Participants will appear when consumers enter via Journey Builder.' 
+                          {entries.length === 0
+                            ? 'No participants yet. Participants will appear when consumers enter via Journey Builder.'
                             : 'No matching participants found'}
                         </p>
                       </div>
@@ -912,11 +918,11 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                     <div className="flex items-center gap-3">
                                       <div className="w-8 h-8 rounded border bg-white overflow-hidden flex-shrink-0">
                                         {imageUrl ? (
-                                          <Image 
-                                            src={imageUrl} 
-                                            alt={variantName} 
-                                            width={32} 
-                                            height={32} 
+                                          <Image
+                                            src={imageUrl}
+                                            alt={variantName}
+                                            width={32}
+                                            height={32}
                                             className="w-full h-full object-cover"
                                           />
                                         ) : (
@@ -990,7 +996,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                     {selectedCampaign && selectedCampaign.prizes_json && selectedCampaign.prizes_json.length > 0 ? (
                       <div className="grid gap-4 md:grid-cols-2">
                         {selectedCampaign.prizes_json.map((prize, index) => {
-                          const winnersCount = entries.filter(e => 
+                          const winnersCount = entries.filter(e =>
                             e.is_winner && e.prize_won?.name === prize.name
                           ).length
 
@@ -1140,7 +1146,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
 
                         {selectedCampaign?.status === 'active' && stats.totalParticipants > 0 && stats.totalPrizes > 0 && (
                           <div className="text-center">
-                            <Button 
+                            <Button
                               size="lg"
                               onClick={() => setShowDrawConfirmModal(true)}
                               className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
@@ -1218,7 +1224,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
               <Input
                 id="campaign_name"
                 value={newCampaign.campaign_name}
-                onChange={(e) => setNewCampaign({...newCampaign, campaign_name: e.target.value})}
+                onChange={(e) => setNewCampaign({ ...newCampaign, campaign_name: e.target.value })}
                 placeholder="e.g. Grand Opening Lucky Draw"
               />
             </div>
@@ -1227,7 +1233,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
               <Textarea
                 id="campaign_description"
                 value={newCampaign.campaign_description}
-                onChange={(e) => setNewCampaign({...newCampaign, campaign_description: e.target.value})}
+                onChange={(e) => setNewCampaign({ ...newCampaign, campaign_description: e.target.value })}
                 placeholder="Brief description of the campaign"
                 rows={3}
               />
@@ -1239,7 +1245,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                   id="start_date"
                   type="date"
                   value={newCampaign.start_date}
-                  onChange={(e) => setNewCampaign({...newCampaign, start_date: e.target.value})}
+                  onChange={(e) => setNewCampaign({ ...newCampaign, start_date: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -1248,7 +1254,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                   id="end_date"
                   type="date"
                   value={newCampaign.end_date}
-                  onChange={(e) => setNewCampaign({...newCampaign, end_date: e.target.value})}
+                  onChange={(e) => setNewCampaign({ ...newCampaign, end_date: e.target.value })}
                 />
               </div>
             </div>
@@ -1258,16 +1264,16 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 id="draw_date"
                 type="date"
                 value={newCampaign.draw_date}
-                onChange={(e) => setNewCampaign({...newCampaign, draw_date: e.target.value})}
+                onChange={(e) => setNewCampaign({ ...newCampaign, draw_date: e.target.value })}
               />
             </div>
-            
+
             {/* Prizes Section in Modal */}
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <Label>Prizes (Optional - can add later)</Label>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => {
                     setEditingPrizeIndex(null)
@@ -1304,14 +1310,14 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           variant="ghost"
                           onClick={() => {
                             setEditingPrizeIndex(idx)
-                            setNewPrize({ 
-                              name: prize.name, 
-                              description: prize.description, 
+                            setNewPrize({
+                              name: prize.name,
+                              description: prize.description,
                               quantity: prize.quantity,
                               image_url: prize.image_url || ''
                             })
@@ -1321,8 +1327,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           variant="ghost"
                           onClick={() => handleDeletePrize(idx)}
                         >
@@ -1363,7 +1369,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
               <Input
                 id="prize_name"
                 value={newPrize.name}
-                onChange={(e) => setNewPrize({...newPrize, name: e.target.value})}
+                onChange={(e) => setNewPrize({ ...newPrize, name: e.target.value })}
                 placeholder="e.g. iPhone 15 Pro"
               />
             </div>
@@ -1372,7 +1378,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
               <Textarea
                 id="prize_description"
                 value={newPrize.description}
-                onChange={(e) => setNewPrize({...newPrize, description: e.target.value})}
+                onChange={(e) => setNewPrize({ ...newPrize, description: e.target.value })}
                 placeholder="Prize details"
                 rows={3}
               />
@@ -1384,7 +1390,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 type="number"
                 min="1"
                 value={newPrize.quantity}
-                onChange={(e) => setNewPrize({...newPrize, quantity: parseInt(e.target.value) || 1})}
+                onChange={(e) => setNewPrize({ ...newPrize, quantity: parseInt(e.target.value) || 1 })}
               />
             </div>
             <div className="space-y-2">
@@ -1421,7 +1427,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         onClick={() => {
                           setPrizeImageFile(null)
                           setPrizeImagePreview(null)
-                          setNewPrize({...newPrize, image_url: ''})
+                          setNewPrize({ ...newPrize, image_url: '' })
                           setCompressedSize(null)
                         }}
                       >
@@ -1446,12 +1452,12 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
-                  
+
                   if (!file.type.startsWith('image/') || file.type === 'image/avif') {
                     alert('Please select a valid image file')
                     return
                   }
-                  
+
                   if (file.size > 5 * 1024 * 1024) {
                     alert('Image size must be less than 5MB')
                     return
@@ -1461,7 +1467,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                     // Compress immediately
                     const compressed = await compressImage(file)
                     setCompressedSize(`${(compressed.size / 1024).toFixed(2)} KB`)
-                    
+
                     const reader = new FileReader()
                     reader.onloadend = () => {
                       setPrizeImagePreview(reader.result as string)

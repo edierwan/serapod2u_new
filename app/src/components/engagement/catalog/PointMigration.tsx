@@ -91,11 +91,11 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
   // Save migration results to history
   const saveMigrationHistory = async (fileName: string, migrationResults: MigrationResult[], summary: any) => {
     if (!isReady || !supabase) return
-    
+
     try {
       // Get current user for audit trail
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       // Cast to any since migration_history table types are not generated yet
       const { error } = await (supabase as any).from('migration_history').insert({
         file_name: fileName,
@@ -108,7 +108,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
         migration_date: new Date().toISOString(),
         created_by: user?.id || null
       })
-      
+
       if (error) {
         console.error('Failed to save migration history:', error)
       }
@@ -380,16 +380,16 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
       const userType = r.status === 'Success' ? (r.isNewUser ? 'New Account' : 'Existing Account') : ''
       const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
       const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
-      
+
       return [
-        r.joinedDate, 
-        safeName, 
-        r.phone, 
-        r.email, 
-        r.location, 
-        r.points, 
-        r.password || '', 
-        r.status, 
+        r.joinedDate,
+        safeName,
+        r.phone,
+        r.email,
+        r.location,
+        r.points,
+        r.password || '',
+        r.status,
         userType,
         r.userRole || '',
         safeMessage
@@ -409,7 +409,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     // Filter for existing users - check for isNewUser explicitly false (not undefined)
     const existingRecords = results.filter(r => r.status === 'Success' && r.isNewUser !== undefined && r.isNewUser === false)
     console.log('Existing records for download:', existingRecords.length, 'out of', results.length, 'total')
-    
+
     if (existingRecords.length === 0) {
       alert('No existing user records found to download.')
       return
@@ -421,16 +421,16 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
       const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
       const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
       const safeEmail = r.email ? `"${r.email.replace(/"/g, '""')}"` : ''
-      
+
       return [
-        r.joinedDate || '', 
-        safeName, 
-        r.phone || '', 
-        safeEmail, 
-        r.location || '', 
-        r.points || 0, 
-        r.password || '', 
-        r.status, 
+        r.joinedDate || '',
+        safeName,
+        r.phone || '',
+        safeEmail,
+        r.location || '',
+        r.points || 0,
+        r.password || '',
+        r.status,
         userType,
         r.userRole || 'GUEST',
         safeMessage
@@ -651,54 +651,54 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                  <Badge
-                    variant="outline"
-                    className={`bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors ${filterStatus === 'Success' ? 'ring-2 ring-green-500 ring-offset-1' : ''}`}
-                    onClick={() => {
-                      setFilterStatus('Success')
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    {successCount} Success
-                  </Badge>
+                <Badge
+                  variant="outline"
+                  className={`bg-green-50 text-green-700 border-green-200 cursor-pointer hover:bg-green-100 transition-colors ${filterStatus === 'Success' ? 'ring-2 ring-green-500 ring-offset-1' : ''}`}
+                  onClick={() => {
+                    setFilterStatus('Success')
+                    setCurrentPage(1)
+                  }}
+                >
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  {successCount} Success
+                </Badge>
 
-                  <Badge
-                    variant="outline"
-                    className={`bg-slate-100 text-slate-700 border-slate-300 cursor-pointer hover:bg-slate-200 transition-colors ${filterStatus === 'New' ? 'ring-2 ring-slate-500 ring-offset-1' : ''}`}
-                    onClick={() => {
-                      setFilterStatus('New')
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-slate-500 mr-1.5"></span>
-                    {newUsersCount} New
-                  </Badge>
+                <Badge
+                  variant="outline"
+                  className={`bg-slate-100 text-slate-700 border-slate-300 cursor-pointer hover:bg-slate-200 transition-colors ${filterStatus === 'New' ? 'ring-2 ring-slate-500 ring-offset-1' : ''}`}
+                  onClick={() => {
+                    setFilterStatus('New')
+                    setCurrentPage(1)
+                  }}
+                >
+                  <span className="w-2 h-2 rounded-full bg-slate-500 mr-1.5"></span>
+                  {newUsersCount} New
+                </Badge>
 
-                  <Badge
-                    variant="outline"
-                    className={`bg-amber-50 text-amber-700 border-amber-300 cursor-pointer hover:bg-amber-100 transition-colors ${filterStatus === 'Existing' ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
-                    onClick={() => {
-                      setFilterStatus('Existing')
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>
-                    {existingUsersCount} Exist
-                  </Badge>
-                  
-                  <Badge
-                    variant="outline"
-                    className={`bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors ${filterStatus === 'Error' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
-                    onClick={() => {
-                      setFilterStatus('Error')
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <XCircle className="w-3 h-3 mr-1" />
-                    {errorCount} Errors
-                  </Badge>
-                </div>
+                <Badge
+                  variant="outline"
+                  className={`bg-amber-50 text-amber-700 border-amber-300 cursor-pointer hover:bg-amber-100 transition-colors ${filterStatus === 'Existing' ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
+                  onClick={() => {
+                    setFilterStatus('Existing')
+                    setCurrentPage(1)
+                  }}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>
+                  {existingUsersCount} Exist
+                </Badge>
+
+                <Badge
+                  variant="outline"
+                  className={`bg-red-50 text-red-700 border-red-200 cursor-pointer hover:bg-red-100 transition-colors ${filterStatus === 'Error' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
+                  onClick={() => {
+                    setFilterStatus('Error')
+                    setCurrentPage(1)
+                  }}
+                >
+                  <XCircle className="w-3 h-3 mr-1" />
+                  {errorCount} Errors
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -728,7 +728,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
                   Download All Results
                 </Button>
                 {filterStatus === 'Existing' && existingUsersCount > 0 && (
-                   <Button variant="outline" size="sm" onClick={downloadExistingRecords} className="text-amber-700 hover:text-amber-800 border-amber-200 hover:bg-amber-50">
+                  <Button variant="outline" size="sm" onClick={downloadExistingRecords} className="text-amber-700 hover:text-amber-800 border-amber-200 hover:bg-amber-50">
                     <FileDown className="mr-2 h-4 w-4" />
                     Download Existing Records
                   </Button>

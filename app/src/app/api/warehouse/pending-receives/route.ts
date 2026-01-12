@@ -4,15 +4,15 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError) {
       console.error('❌ Auth error in pending-receives:', authError)
       return NextResponse.json({ error: 'Authentication failed', details: authError.message }, { status: 401 })
     }
-    
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized - no user session' }, { status: 401 })
     }
@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
             order_id,
             orders (
               order_no,
+              display_doc_no,
               buyer_org_id,
               seller_org_id,
               buyer:organizations!orders_buyer_org_id_fkey (
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
             batch_id: batch?.id || null,
             company_id: batch?.company_id || null,
             order_id: batch?.order_id || null,
-            order_no: order?.order_no || null,
+            order_no: order?.display_doc_no || order?.order_no || null,
             buyer_org_id: order?.buyer_org_id || null,
             buyer_org_name: buyer?.org_name || null,
             seller_org_id: order?.seller_org_id || null
@@ -118,21 +119,21 @@ export async function GET(request: NextRequest) {
     }
 
     const summaryByOrder = new Map<string, { readyCases: number; lastScan?: string | null }>()
-    ;(pendingBatches || []).forEach((item: any) => {
-      const orderId = item.order_id
-      if (!orderId) return
-      if (!summaryByOrder.has(orderId)) {
-        summaryByOrder.set(orderId, {
-          readyCases: 0,
-          lastScan: item.manufacturer_scanned_at || null
-        })
-      }
-      const record = summaryByOrder.get(orderId)!
-      record.readyCases += 1
-      if (!record.lastScan || (item.manufacturer_scanned_at && item.manufacturer_scanned_at > record.lastScan)) {
-        record.lastScan = item.manufacturer_scanned_at
-      }
-    })
+      ; (pendingBatches || []).forEach((item: any) => {
+        const orderId = item.order_id
+        if (!orderId) return
+        if (!summaryByOrder.has(orderId)) {
+          summaryByOrder.set(orderId, {
+            readyCases: 0,
+            lastScan: item.manufacturer_scanned_at || null
+          })
+        }
+        const record = summaryByOrder.get(orderId)!
+        record.readyCases += 1
+        if (!record.lastScan || (item.manufacturer_scanned_at && item.manufacturer_scanned_at > record.lastScan)) {
+          record.lastScan = item.manufacturer_scanned_at
+        }
+      })
 
     console.info('📊 Pending batches summary', {
       warehouse_org_id,
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(transformedBatches)
   } catch (error: any) {
     console.error('❌ Pending receives error:', error)
-    
+
     // Ensure we always return valid JSON
     const errorMessage = error?.message || String(error) || 'Failed to load pending receives'
     const errorDetails = {
@@ -183,7 +184,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined
     }
-    
+
     return NextResponse.json(errorDetails, { status: 500 })
   }
 }

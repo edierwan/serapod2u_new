@@ -7,12 +7,21 @@ export interface Document {
   id: string
   doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST' | 'SO' | 'DO'
   doc_no: string
+  display_doc_no?: string | null
   status: 'pending' | 'acknowledged' | 'completed'
   issued_by_org_id: string
   issued_to_org_id: string
   created_at: string
   acknowledged_at?: string
   acknowledged_by?: string
+}
+
+/**
+ * Get the display document number (new format) or fall back to legacy doc_no
+ */
+export function getDisplayDocNo(doc: Document | null | undefined): string {
+  if (!doc) return ''
+  return doc.display_doc_no || doc.doc_no || ''
 }
 
 export interface UserPermissions {
