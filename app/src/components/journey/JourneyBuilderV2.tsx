@@ -30,12 +30,14 @@ import {
     BarChart3,
     Loader2,
     LayoutGrid,
-    List
+    List,
+    Megaphone
 } from 'lucide-react'
 import JourneyOrderSelectorV2 from './JourneyOrderSelectorV2'
 import JourneyDesignerV2 from './JourneyDesignerV2'
 import JourneyCardWithStats from './JourneyCardWithStats'
 import JourneyListRow from './JourneyListRow'
+import MasterAnnouncementBannerView from '@/components/announcement-banner/MasterAnnouncementBannerView'
 
 interface UserProfile {
     id: string
@@ -415,9 +417,13 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
 
             {/* Main Content */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-2 max-w-md">
+                <TabsList className="grid w-full grid-cols-3 max-w-xl">
                     <TabsTrigger value="existing">Existing Journeys</TabsTrigger>
                     <TabsTrigger value="create">Create New</TabsTrigger>
+                    <TabsTrigger value="announcement-banner" className="flex items-center gap-1.5">
+                        <Megaphone className="w-4 h-4" />
+                        Announcement Banner
+                    </TabsTrigger>
                 </TabsList>
 
                 {/* Existing Journeys Tab */}
@@ -557,6 +563,11 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                         userProfile={userProfile}
                         onOrderSelected={handleOrderSelected}
                     />
+                </TabsContent>
+
+                {/* Announcement Banner Tab */}
+                <TabsContent value="announcement-banner">
+                    <MasterAnnouncementBannerView userProfile={userProfile} />
                 </TabsContent>
             </Tabs>
         </div>

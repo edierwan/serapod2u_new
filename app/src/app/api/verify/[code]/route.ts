@@ -178,7 +178,7 @@ async function resolveJourneyConfig(
   }
 }
 
-function normalizeJourneyConfig(journey: any, order?: OrderInfo | null) {
+function normalizeJourneyConfig(journey: any, order?: OrderInfo | null, masterBannerConfig?: any) {
   const orderHasPoints = typeof order?.has_points === 'boolean' ? order.has_points : true
   const orderHasLuckyDraw = typeof order?.has_lucky_draw === 'boolean' ? order.has_lucky_draw : false
   const orderHasRedeem = typeof order?.has_redeem === 'boolean' ? order.has_redeem : false
@@ -197,6 +197,14 @@ function normalizeJourneyConfig(journey: any, order?: OrderInfo | null) {
 
   const redemptionRequiresLogin = !!journey?.require_customer_otp_for_redemption
 
+  // Determine banner config: use journey's banner if configured, otherwise fall back to master
+  let bannerConfig = journey?.banner_config ?? null
+
+  // If journey doesn't have banner enabled or configured, use master banner as fallback
+  if (!bannerConfig?.enabled && masterBannerConfig?.banner_config?.enabled) {
+    bannerConfig = masterBannerConfig.banner_config
+  }
+
   return {
     welcome_title: journey?.welcome_title ?? 'Welcome!',
     welcome_message:
@@ -213,7 +221,29 @@ function normalizeJourneyConfig(journey: any, order?: OrderInfo | null) {
     genuine_badge_style: journey?.genuine_badge_style ?? 'gold',
     redemption_requires_login: redemptionRequiresLogin,
     require_customer_otp_for_redemption: redemptionRequiresLogin,
-    banner_config: journey?.banner_config ?? null
+    banner_config: bannerConfig
+  }
+}
+
+// Fetch master banner config for an organization
+async function fetchMasterBannerConfig(supabaseAdmin: SupabaseAdminClient, orgId: string) {
+  try {
+    const { data: masterBanner, error } = await supabaseAdmin
+      .from('master_banner_configs')
+      .select('*')
+      .eq('org_id', orgId)
+      .eq('is_active', true)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error fetching master banner config:', error)
+      return null
+    }
+
+    return masterBanner
+  } catch (error) {
+    console.error('Unexpected error fetching master banner config:', error)
+    return null
   }
 }
 
@@ -222,13 +252,13 @@ async function handleProductCodeVerification(
   code: string
 ) {
   console.log('🔍 handleProductCodeVerification - Starting for code:', code)
-  
+
   // Try to fetch the QR code directly first (exact match)
   console.log('🔍 Looking up code (exact match):', code)
-  
+
   let qrRowsRaw: any = null
   let qrError: any = null
-  
+
   // First attempt: exact match with full code
   const result1 = await supabaseAdmin
     .from('qr_codes')
@@ -254,10 +284,10 @@ async function handleProductCodeVerification(
     )
     .eq('code', code)
     .limit(1)
-  
+
   qrRowsRaw = result1.data
   qrError = result1.error
-  
+
   // If not found and code looks like it might have a hash, try without the last segment
   if ((!qrRowsRaw || qrRowsRaw.length === 0) && !qrError) {
     const possibleBaseCode = getBaseCode(code)
@@ -287,7 +317,7 @@ async function handleProductCodeVerification(
         )
         .eq('code', possibleBaseCode)
         .limit(1)
-      
+
       qrRowsRaw = result2.data
       qrError = result2.error
     }
@@ -326,12 +356,12 @@ async function handleProductCodeVerification(
   // ===== SECURITY HASH VALIDATION =====
   // Now that we have the DB record, check if this code requires hash validation
   const storedHash = qrCode.qr_hash
-  
+
   if (storedHash) {
     // This is a secure code with hash - validate it
     console.log('🔐 Secure code detected - validating hash')
     const securityCheck = validateQRCodeSecurity(code, false) // Don't allow legacy for hashed codes
-    
+
     if (!securityCheck.isValid || !securityCheck.hasHash) {
       console.log('❌ Security validation failed:', securityCheck.reason)
       return buildInvalidResponse(
@@ -339,7 +369,7 @@ async function handleProductCodeVerification(
         null
       )
     }
-    
+
     // Extract hash from scanned code and compare with stored hash
     const parts = extractQRCodeParts(code)
     if (!parts || parts.hash.toLowerCase() !== storedHash.toLowerCase()) {
@@ -349,7 +379,7 @@ async function handleProductCodeVerification(
         null
       )
     }
-    
+
     console.log('✅ Security hash validated successfully')
   } else {
     // Legacy code without stored hash - no validation needed
@@ -386,23 +416,23 @@ async function handleProductCodeVerification(
 
   // Fetch organization settings to determine activation trigger
   let activationTrigger = 'shipped_distributor' // Default
-  
+
   if (order?.company_id) {
-     const { data: orgData } = await supabaseAdmin
-       .from('organizations')
-       .select('settings')
-       .eq('id', order.company_id)
-       .single()
-     
-     const settings = orgData?.settings as any
-     if (settings?.journey_builder_activation) {
-       activationTrigger = settings.journey_builder_activation
-     }
+    const { data: orgData } = await supabaseAdmin
+      .from('organizations')
+      .select('settings')
+      .eq('id', order.company_id)
+      .single()
+
+    const settings = orgData?.settings as any
+    if (settings?.journey_builder_activation) {
+      activationTrigger = settings.journey_builder_activation
+    }
   }
 
   const validStatuses = new Set(PRODUCT_CONSUMER_READY_STATUSES)
   if (activationTrigger === 'shipped_distributor') {
-     validStatuses.delete('received_warehouse')
+    validStatuses.delete('received_warehouse')
   }
 
   const status = qrCode.status as string | null
@@ -425,7 +455,11 @@ async function handleProductCodeVerification(
   }
 
   const journey = await resolveJourneyConfig(supabaseAdmin, order.id, order.company_id)
-  const journeyConfig = normalizeJourneyConfig(journey, order)
+
+  // Fetch master banner config as fallback
+  const masterBannerConfig = await fetchMasterBannerConfig(supabaseAdmin, order.company_id)
+
+  const journeyConfig = normalizeJourneyConfig(journey, order, masterBannerConfig)
 
   return NextResponse.json({
     success: true,
@@ -509,7 +543,11 @@ async function handleMasterCodeVerification(
   }
 
   const journey = await resolveJourneyConfig(supabaseAdmin, order.id, order.company_id)
-  const journeyConfig = normalizeJourneyConfig(journey, order)
+
+  // Fetch master banner config as fallback
+  const masterBannerConfig = await fetchMasterBannerConfig(supabaseAdmin, order.company_id)
+
+  const journeyConfig = normalizeJourneyConfig(journey, order, masterBannerConfig)
 
   return NextResponse.json({
     success: true,
