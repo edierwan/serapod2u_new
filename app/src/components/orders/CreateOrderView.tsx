@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, User, Package, CheckSquare, Loader2, Trash2 } from 'lucide-react'
 
 interface UserProfile {
@@ -150,6 +151,7 @@ const getDefaultCaseSize = (family: string): number => {
 }
 
 export default function CreateOrderView({ userProfile, onViewChange }: CreateOrderViewProps) {
+  const { toast } = useToast()
   const supabase = createClient()
 
   // Determine order type based on user's organization type
@@ -1227,11 +1229,24 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
         if (hqError) {
           console.error('Error fetching HQ default warehouse:', hqError)
+          toast({
+            title: 'Error',
+            description: 'Failed to fetch HQ configuration. Please contact support.',
+            variant: 'destructive',
+          })
           setSaving(false)
           return
         }
 
+        // For H2M orders, if the buyer (manufacturer) doesn't have a default warehouse set,
+        // we can't create the order because we don't know where to inventory the goods.
+        // TODO: Allow selecting a warehouse manually if default is not set?
         if (!hqData?.default_warehouse_org_id) {
+          toast({
+            title: 'Configuration Error',
+            description: 'Your organization does not have a default warehouse configured. Cannot route inventory.',
+            variant: 'destructive',
+          })
           setSaving(false)
           return
         }
@@ -1385,6 +1400,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
     } catch (error: any) {
       console.error('Error saving order:', error)
+      toast({
+        title: 'Error Creating Order',
+        description: error.message || 'An unexpected error occurred.',
+        variant: 'destructive',
+      })
     } finally {
       setSaving(false)
     }
