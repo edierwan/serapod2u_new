@@ -1149,7 +1149,6 @@ export default function PremiumLoyaltyTemplate({
                     if (data.qr_code_id) {
                         setQrCodeDbId(data.qr_code_id)
                     }
-                }
                 } else {
                     console.error('❌ QR status check failed:', data.error || 'Unknown error')
                 }
