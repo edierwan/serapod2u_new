@@ -187,7 +187,6 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    }
 
     // 4. Get current points balance
     let currentBalance = 0

@@ -292,7 +292,7 @@ export function AdminSupportInbox() {
                         fetchThreads()
                     }}
                 />
-            )}}
+            )}
 
             <BlastModal open={showBlastModal} onOpenChange={setShowBlastModal} />
         </div>
