@@ -49,13 +49,12 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
+    // First, fetch threads without user joins (FK relationship may not exist for consumer users)
     let query = supabaseAdmin
       .from('support_threads' as any)
       .select(`
         *,
-        created_by:created_by_user_id(email, full_name, phone),
-        assigned_to:assigned_admin_user_id(email, full_name),
-        support_thread_reads(last_read_at)
+        support_thread_reads(last_read_at, user_id)
       `, { count: 'exact' })
       .order('last_message_at', { ascending: false })
       .range(offset, offset + limit - 1)
@@ -81,10 +80,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch threads' }, { status: 500 })
     }
     
-    // Calculate admin unread status
+    // Calculate admin unread status and fetch user details
     // Admin is unread if last message is from user AND (last_read_at < last_message_at OR no read record)
-    // This is complex to do in one query without a view.
-    // We'll do it in code for the page.
     
     const threadsWithDetails = await Promise.all((threads as any[] || []).map(async (thread: any) => {
         // Get last message to check sender
@@ -101,8 +98,57 @@ export async function GET(request: NextRequest) {
         
         const isUnread = lastMsg && lastMsg.sender_type === 'user' && (!lastReadAt || lastMsg.created_at > lastReadAt)
         
+        // Fetch user details separately (works for both public.users and auth.users)
+        let createdBy = { email: 'Unknown', full_name: 'Unknown User', phone: '' }
+        let assignedTo = null
+        
+        if (thread.created_by_user_id) {
+            // Try public.users first
+            const { data: publicUser } = await supabaseAdmin
+                .from('users')
+                .select('email, full_name, phone')
+                .eq('id', thread.created_by_user_id)
+                .single()
+            
+            if (publicUser) {
+                createdBy = {
+                    email: publicUser.email || 'Unknown',
+                    full_name: publicUser.full_name || 'Unknown User',
+                    phone: publicUser.phone || ''
+                }
+            } else {
+                // Fallback: try auth.users via admin API
+                try {
+                    const { data: authUserData } = await supabaseAdmin.auth.admin.getUserById(thread.created_by_user_id)
+                    if (authUserData?.user) {
+                        createdBy = {
+                            email: authUserData.user.email || 'Unknown',
+                            full_name: authUserData.user.user_metadata?.full_name || authUserData.user.email?.split('@')[0] || 'Unknown User',
+                            phone: authUserData.user.phone || authUserData.user.user_metadata?.phone || ''
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error fetching auth user:', e)
+                }
+            }
+        }
+        
+        // Fetch assigned admin if exists
+        if (thread.assigned_admin_user_id) {
+            const { data: adminUser } = await supabaseAdmin
+                .from('users')
+                .select('email, full_name')
+                .eq('id', thread.assigned_admin_user_id)
+                .single()
+            if (adminUser) {
+                assignedTo = adminUser
+            }
+        }
+        
         return {
             ...thread,
+            created_by: createdBy,
+            assigned_to: assignedTo,
             is_unread: isUnread
         }
     }))

@@ -100,7 +100,15 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
                          activeThread?.subject || 'Chat'}
                     </h2>
                 </div>
-                <Button variant="ghost" size="icon" onClick={onClose}>
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onClose()
+                    }}
+                >
                     <X className="w-5 h-5" />
                 </Button>
             </div>
@@ -203,10 +211,80 @@ function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread 
 }
 
 function NewChatView({ onCancel, onSuccess }: any) {
+    const supabase = createClient()
     const [subject, setSubject] = useState('')
     const [message, setMessage] = useState('')
     const [loading, setLoading] = useState(false)
     const [attachments, setAttachments] = useState<any[]>([])
+    const [uploading, setUploading] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            alert('Please select an image file')
+            return
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image must be less than 5MB')
+            return
+        }
+
+        setUploading(true)
+        try {
+            // Get current user
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) {
+                alert('Please login to upload images')
+                return
+            }
+
+            // Create unique filename
+            const fileExt = file.name.split('.').pop()
+            const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+
+            // Upload to Supabase Storage
+            const { data, error } = await supabase.storage
+                .from('support-attachments')
+                .upload(fileName, file)
+
+            if (error) {
+                console.error('Upload error:', error)
+                alert('Failed to upload image: ' + error.message)
+                return
+            }
+
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('support-attachments')
+                .getPublicUrl(fileName)
+
+            // Add to attachments
+            setAttachments([...attachments, { 
+                url: publicUrl, 
+                name: file.name, 
+                type: file.type,
+                path: fileName 
+            }])
+        } catch (error: any) {
+            console.error('Upload failed:', error)
+            alert('Failed to upload image')
+        } finally {
+            setUploading(false)
+            if (fileInputRef.current) {
+                fileInputRef.current.value = ''
+            }
+        }
+    }
+
+    const removeAttachment = (index: number) => {
+        setAttachments(attachments.filter((_, i) => i !== index))
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -254,13 +332,53 @@ function NewChatView({ onCancel, onSuccess }: any) {
                     />
                 </div>
                 
-                {/* Simple Image Upload Placeholder */}
-                <div className="flex items-center gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => alert('Image upload implementation requires Supabase Storage setup on client')}>
-                        <ImageIcon className="w-4 h-4 mr-2" /> Attach Image
+                {/* Image Upload */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                    />
+                    <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                    >
+                        {uploading ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                            <ImageIcon className="w-4 h-4 mr-2" />
+                        )}
+                        {uploading ? 'Uploading...' : 'Attach Image'}
                     </Button>
-                    <span className="text-xs text-gray-400">Optional</span>
+                    <span className="text-xs text-gray-400">Optional (max 5MB)</span>
                 </div>
+
+                {/* Attachment Preview */}
+                {attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                        {attachments.map((att, idx) => (
+                            <div key={idx} className="relative group">
+                                <img 
+                                    src={att.url} 
+                                    alt={att.name} 
+                                    className="w-16 h-16 object-cover rounded-lg border"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => removeAttachment(idx)}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 <Button type="submit" className="w-full h-12" disabled={loading}>
                     {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}

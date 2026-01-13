@@ -94,18 +94,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Subject and message are required' }, { status: 400 })
     }
 
-    // Create thread and first message atomically? 
-    // Supabase doesn't support multi-table transactions via client easily without RPC.
-    // We'll do it in sequence. If message fails, we have an empty thread.
-    // Better to use the admin client to ensure consistency or handle cleanup.
+    // Use admin client to bypass RLS for thread/message creation
+    // This ensures consumer users can create support threads even without explicit RLS policies
 
-    const { data: threadData, error: threadError } = await supabase
+    const { data: threadData, error: threadError } = await supabaseAdmin
       .from('support_threads' as any)
       .insert({
         created_by_user_id: user.id,
         subject,
         status: 'open',
-        last_message_preview: message.substring(0, 50),
+        last_message_preview: message.substring(0, 100),
         last_message_at: new Date().toISOString()
       })
       .select()
@@ -113,12 +111,12 @@ export async function POST(request: NextRequest) {
 
     if (threadError) {
       console.error('Error creating thread:', threadError)
-      return NextResponse.json({ error: 'Failed to create thread' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to create thread: ' + threadError.message }, { status: 500 })
     }
 
     const thread = threadData as any
 
-    const { error: messageError } = await supabase
+    const { error: messageError } = await supabaseAdmin
       .from('support_messages' as any)
       .insert({
         thread_id: thread.id,
@@ -132,17 +130,19 @@ export async function POST(request: NextRequest) {
       console.error('Error creating message:', messageError)
       // Rollback thread creation (best effort)
       await supabaseAdmin.from('support_threads' as any).delete().eq('id', thread.id)
-      return NextResponse.json({ error: 'Failed to create message' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to create message: ' + messageError.message }, { status: 500 })
     }
     
     // Mark as read for the user immediately
-    await supabase
+    await supabaseAdmin
         .from('support_thread_reads' as any)
         .upsert({
             thread_id: thread.id,
             user_id: user.id,
             last_read_at: new Date().toISOString()
         })
+
+    console.log('Support thread created successfully:', thread.id, 'by user:', user.id, user.email)
 
     return NextResponse.json({ threadId: thread.id })
   } catch (error) {
