@@ -246,10 +246,12 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
             })
             const data = await res.json()
             if (data.message) {
-                setMessages([...messages, data.message])
+                setMessages(prev => [...prev, data.message])
                 setNewMessage('')
                 setStatus('pending') // Auto update status locally
                 setTimeout(scrollToBottom, 100)
+            } else {
+                console.error('Failed to send reply, no message returned', data)
             }
         } catch (error) {
             console.error('Failed to send reply', error)

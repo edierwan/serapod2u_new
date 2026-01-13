@@ -1,8 +1,8 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { 
-  extractQRCodeFromPath, 
-  extractTokenFromQRCode, 
+import {
+  extractQRCodeFromPath,
+  extractTokenFromQRCode,
   replaceTokenInQRCode,
   splitSecurityToken,
   writeSecurityMappingCookie
@@ -29,12 +29,12 @@ async function handleQRSecurityRedirect(
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { 
-      cookies: { 
-        get: () => undefined, 
-        set: () => undefined, 
-        remove: () => undefined 
-      } 
+    {
+      cookies: {
+        get: () => undefined,
+        set: () => undefined,
+        remove: () => undefined
+      }
     }
   );
 
@@ -52,14 +52,14 @@ async function handleQRSecurityRedirect(
 
   // Get the company_id from QR code directly (if available) or from order
   let companyId = qrRow.company_id;
-  
+
   if (!companyId && qrRow.order_id) {
     const { data: orderRow } = await supabase
       .from("orders")
       .select("company_id")
       .eq("id", qrRow.order_id)
       .maybeSingle();
-    
+
     companyId = orderRow?.company_id;
   }
 
@@ -103,7 +103,7 @@ async function handleQRSecurityRedirect(
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    
+
     requireSecurity = journeyRow?.require_security_code === true;
   }
 
@@ -145,12 +145,12 @@ export async function middleware(request: NextRequest) {
 
   // Public paths that don't require authentication
   const PUBLIC_PATHS = ['/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app']
-  
+
   // Check if current path is public
-  const isPublicPath = PUBLIC_PATHS.some((path) => 
+  const isPublicPath = PUBLIC_PATHS.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   )
-  
+
   // Allow public paths to proceed without auth check
   if (isPublicPath) {
     return NextResponse.next({
@@ -232,7 +232,7 @@ export async function middleware(request: NextRequest) {
     // Handle authentication errors
     if (authError) {
       console.error('🔴 Auth Error in Middleware:', authError.message, authError.status)
-      
+
       // Check for rate limit error
       if (authError.status === 429 || authError.message?.toLowerCase().includes('rate limit')) {
         console.error('⚠️ Rate limit reached - too many requests')
@@ -242,7 +242,7 @@ export async function middleware(request: NextRequest) {
           return response // Allow access to login page
         }
       }
-      
+
       // Handle token errors
       if (
         authError.message?.includes('refresh_token_not_found') ||
@@ -252,11 +252,11 @@ export async function middleware(request: NextRequest) {
         authError.status === 400
       ) {
         console.log('🔴 Invalid/expired token - clearing session and redirecting to login')
-        
+
         // Only redirect if not already on login page
         if (request.nextUrl.pathname !== '/login') {
           response = NextResponse.redirect(new URL('/login', request.url))
-          
+
           // Clear ALL session cookies
           const cookieNames = [
             'sb-access-token',
@@ -264,14 +264,14 @@ export async function middleware(request: NextRequest) {
             `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`,
             `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token-code-verifier`
           ]
-          
+
           cookieNames.forEach(name => {
             if (name) {
               response.cookies.delete(name)
               request.cookies.delete(name)
             }
           })
-          
+
           return response
         }
       }
