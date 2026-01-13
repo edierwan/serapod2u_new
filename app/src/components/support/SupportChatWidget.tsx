@@ -26,6 +26,7 @@ import Image from 'next/image'
 
 type Thread = {
     id: string
+    case_id: string
     subject: string
     status: 'open' | 'pending' | 'resolved' | 'closed'
     last_message_preview: string
@@ -143,7 +144,8 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
                 )}
                 {view === 'thread' && activeThread && (
                     <ChatThreadView 
-                        thread={activeThread} 
+                        thread={activeThread}
+                        onRefresh={() => fetchThreads()}
                     />
                 )}
             </div>
@@ -152,8 +154,20 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
 }
 
 function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread }: any) {
+    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+    
     if (loading && threads.length === 0) {
         return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+    }
+
+    const handleDelete = (e: React.MouseEvent, threadId: string) => {
+        e.stopPropagation()
+        setDeleteConfirm(threadId)
+    }
+
+    const confirmDelete = async (threadId: string) => {
+        await onDeleteThread(threadId)
+        setDeleteConfirm(null)
     }
 
     return (
@@ -170,32 +184,69 @@ function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread 
                         threads.map((thread: Thread) => (
                             <div 
                                 key={thread.id}
-                                onClick={() => onThreadClick(thread)}
-                                onContextMenu={(e) => {
-                                    e.preventDefault()
-                                    onDeleteThread(thread.id)
-                                }}
-                                className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 active:scale-[0.98] transition-transform cursor-pointer relative overflow-hidden"
+                                className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
                             >
-                                <div className="flex justify-between items-start mb-1">
-                                    <h3 className="font-semibold text-gray-900 truncate pr-4">{thread.subject}</h3>
-                                    <span className="text-xs text-gray-400 whitespace-nowrap">
-                                        {format(new Date(thread.last_message_at), 'MMM d, HH:mm')}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <p className={cn("text-sm truncate flex-1 pr-4", thread.unread_count > 0 ? "text-gray-900 font-medium" : "text-gray-500")}>
-                                        {thread.last_message_preview || 'No messages'}
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                        {thread.unread_count > 0 && (
-                                            <Badge variant="destructive" className="rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center">
-                                                {thread.unread_count}
-                                            </Badge>
-                                        )}
-                                        <StatusBadge status={thread.status} />
+                                {deleteConfirm === thread.id ? (
+                                    <div className="p-4 bg-red-50 flex items-center justify-between">
+                                        <span className="text-sm text-red-700">Delete this conversation?</span>
+                                        <div className="flex gap-2">
+                                            <Button 
+                                                size="sm" 
+                                                variant="outline" 
+                                                onClick={() => setDeleteConfirm(null)}
+                                            >
+                                                Cancel
+                                            </Button>
+                                            <Button 
+                                                size="sm" 
+                                                variant="destructive" 
+                                                onClick={() => confirmDelete(thread.id)}
+                                            >
+                                                Delete
+                                            </Button>
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div 
+                                        onClick={() => onThreadClick(thread)}
+                                        className="p-4 active:scale-[0.98] transition-transform cursor-pointer relative"
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                <h3 className="font-semibold text-gray-900 truncate">{thread.subject}</h3>
+                                                <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
+                                                    {thread.case_id || `#${thread.id.slice(0, 6)}`}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0 ml-2">
+                                                <span className="text-xs text-gray-400 whitespace-nowrap">
+                                                    {format(new Date(thread.last_message_at), 'MMM d, HH:mm')}
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-gray-400 hover:text-red-500"
+                                                    onClick={(e) => handleDelete(e, thread.id)}
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <p className={cn("text-sm truncate flex-1 pr-4", thread.unread_count > 0 ? "text-gray-900 font-medium" : "text-gray-500")}>
+                                                {thread.last_message_preview || 'No messages'}
+                                            </p>
+                                            <div className="flex items-center gap-2">
+                                                {thread.unread_count > 0 && (
+                                                    <Badge variant="destructive" className="rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center">
+                                                        {thread.unread_count}
+                                                    </Badge>
+                                                )}
+                                                <StatusBadge status={thread.status} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ))
                     )}
@@ -389,10 +440,11 @@ function NewChatView({ onCancel, onSuccess }: any) {
     )
 }
 
-function ChatThreadView({ thread }: { thread: Thread }) {
+function ChatThreadView({ thread, onRefresh }: { thread: Thread, onRefresh?: () => void }) {
     const [messages, setMessages] = useState<Message[]>([])
     const [newMessage, setNewMessage] = useState('')
     const [sending, setSending] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [polling, setPolling] = useState(0)
 
@@ -441,6 +493,7 @@ function ChatThreadView({ thread }: { thread: Thread }) {
         e.preventDefault()
         if (!newMessage.trim()) return
 
+        setError(null)
         setSending(true)
         try {
             const res = await fetch(`/api/support/threads/${thread.id}/messages`, {
@@ -449,13 +502,25 @@ function ChatThreadView({ thread }: { thread: Thread }) {
                 body: JSON.stringify({ message: newMessage })
             })
             const data = await res.json()
+            
+            if (!res.ok) {
+                setError(data.error || 'Failed to send message')
+                console.error('Failed to send message:', data)
+                return
+            }
+            
             if (data.message) {
-                setMessages([...messages, data.message])
+                setMessages(prev => [...prev, data.message])
                 setNewMessage('')
                 setTimeout(scrollToBottom, 100)
+                onRefresh?.()
+            } else {
+                setError('No message returned from server')
+                console.error('No message in response:', data)
             }
         } catch (error) {
             console.error('Failed to send message', error)
+            setError('Network error - please try again')
         } finally {
             setSending(false)
         }
@@ -465,8 +530,13 @@ function ChatThreadView({ thread }: { thread: Thread }) {
         <div className="flex flex-col h-full bg-gray-50">
             <div className="bg-white border-b px-4 py-2 flex justify-between items-center text-xs text-gray-500">
                 <span>Status: <StatusBadge status={thread.status} /></span>
-                <span>ID: {thread.id.slice(0, 8)}</span>
+                <span>ID: {thread.case_id || thread.id.slice(0, 8)}</span>
             </div>
+            {error && (
+                <div className="bg-red-50 border-b border-red-100 px-4 py-2 text-xs text-red-600">
+                    {error}
+                </div>
+            )}
             
             <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4 pb-4">
