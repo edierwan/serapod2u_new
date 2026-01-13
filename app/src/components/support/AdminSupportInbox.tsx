@@ -65,10 +65,17 @@ export function AdminSupportInbox() {
     const [statusFilter, setStatusFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [showBlastModal, setShowBlastModal] = useState(false)
+    
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1)
+    const [rowsPerPage, setRowsPerPage] = useState(20)
+    const [totalCount, setTotalCount] = useState(0)
+    
+    const totalPages = Math.ceil(totalCount / rowsPerPage)
 
     useEffect(() => {
         fetchThreads()
-    }, [statusFilter])
+    }, [statusFilter, currentPage, rowsPerPage])
 
     const fetchThreads = async () => {
         setLoading(true)
@@ -76,11 +83,14 @@ export function AdminSupportInbox() {
             const params = new URLSearchParams()
             if (statusFilter !== 'all') params.append('status', statusFilter)
             if (searchQuery) params.append('q', searchQuery)
+            params.append('page', currentPage.toString())
+            params.append('limit', rowsPerPage.toString())
             
             const res = await fetch(`/api/admin/support/threads?${params.toString()}`)
             const data = await res.json()
             if (data.threads) {
                 setThreads(data.threads)
+                setTotalCount(data.total || data.threads.length)
             }
         } catch (error) {
             console.error('Failed to fetch threads', error)
@@ -94,6 +104,11 @@ export function AdminSupportInbox() {
         setActiveThread(thread)
         setView('detail')
     }
+    
+    const handleSearch = () => {
+        setCurrentPage(1) // Reset to first page when searching
+        fetchThreads()
+    }
 
     return (
         <div className="h-[600px] min-h-[400px] flex flex-col bg-white rounded-lg border shadow-sm overflow-hidden">
@@ -105,14 +120,14 @@ export function AdminSupportInbox() {
                             <div className="relative flex-1 max-w-sm">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
                                 <Input 
-                                    placeholder="Search subjects..." 
+                                    placeholder="Search subjects, user name, or phone..." 
                                     className="pl-9 bg-white"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && fetchThreads()}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 />
                             </div>
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
                                 <SelectTrigger className="w-[150px] bg-white">
                                     <SelectValue placeholder="Status" />
                                 </SelectTrigger>
@@ -142,7 +157,7 @@ export function AdminSupportInbox() {
                             ) : threads.length === 0 ? (
                                 <div className="p-8 text-center text-gray-500">No threads found.</div>
                             ) : (
-                                threads.map((thread) => (
+                                threads.map((thread, index) => (
                                     <div 
                                         key={thread.id}
                                         onClick={() => handleThreadClick(thread)}
@@ -154,37 +169,50 @@ export function AdminSupportInbox() {
                                             thread.is_unread ? "bg-blue-50/50" : "bg-white"
                                         )}
                                     >
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className={cn("text-sm font-medium truncate", thread.is_unread ? "text-gray-900 font-bold" : "text-gray-700")}>
-                                                        {thread.subject}
-                                                    </h4>
-                                                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
-                                                        {thread.case_id || `#${thread.id.slice(0, 6)}`}
-                                                    </span>
-                                                    {thread.is_unread && <Badge className="h-1.5 w-1.5 rounded-full p-0 bg-blue-600" />}
-                                                </div>
-                                                <span className="text-xs text-gray-400 whitespace-nowrap">
-                                                    {format(new Date(thread.last_message_at), 'MMM d, HH:mm')}
-                                                </span>
+                                        <div className="flex items-start gap-3">
+                                            {/* Sequence Number */}
+                                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-600">
+                                                {(currentPage - 1) * rowsPerPage + index + 1}
                                             </div>
-                                            <p className="text-sm text-gray-500 truncate mb-2">
-                                                {thread.last_message_preview || 'No messages'}
-                                            </p>
-                                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                <span className="flex items-center gap-1">
-                                                    <User className="w-3 h-3" />
-                                                    {thread.created_by?.full_name || thread.created_by?.email || 'Unknown User'}
-                                                </span>
-                                                <span>•</span>
-                                                <StatusBadge status={thread.status} />
-                                                {thread.assigned_to && (
-                                                    <>
-                                                        <span>•</span>
-                                                        <span>Assigned to: {thread.assigned_to.full_name}</span>
-                                                    </>
-                                                )}
+                                            
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className={cn("text-sm font-medium truncate", thread.is_unread ? "text-gray-900 font-bold" : "text-gray-700")}>
+                                                            {thread.subject}
+                                                        </h4>
+                                                        <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
+                                                            {thread.case_id || `#${thread.id.slice(0, 6)}`}
+                                                        </span>
+                                                        {thread.is_unread && <Badge className="h-1.5 w-1.5 rounded-full p-0 bg-blue-600" />}
+                                                    </div>
+                                                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                                                        {format(new Date(thread.last_message_at), 'MMM d, HH:mm')}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-500 truncate mb-2">
+                                                    {thread.last_message_preview || 'No messages'}
+                                                </p>
+                                                <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                                                    <span className="flex items-center gap-1">
+                                                        <User className="w-3 h-3" />
+                                                        {thread.created_by?.full_name || thread.created_by?.email || 'Unknown User'}
+                                                    </span>
+                                                    {thread.created_by?.phone && (
+                                                        <>
+                                                            <span>•</span>
+                                                            <span className="text-blue-600">{thread.created_by.phone}</span>
+                                                        </>
+                                                    )}
+                                                    <span>•</span>
+                                                    <StatusBadge status={thread.status} />
+                                                    {thread.assigned_to && (
+                                                        <>
+                                                            <span>•</span>
+                                                            <span>Assigned to: {thread.assigned_to.full_name}</span>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -192,6 +220,69 @@ export function AdminSupportInbox() {
                             )}
                         </div>
                     </ScrollArea>
+                    
+                    {/* Pagination Controls */}
+                    {!loading && threads.length > 0 && (
+                        <div className="p-3 border-t bg-gray-50/50 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <span>Rows per page:</span>
+                                <Select value={rowsPerPage.toString()} onValueChange={(v) => { setRowsPerPage(parseInt(v)); setCurrentPage(1); }}>
+                                    <SelectTrigger className="w-[70px] h-8 bg-white">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="10">10</SelectItem>
+                                        <SelectItem value="20">20</SelectItem>
+                                        <SelectItem value="50">50</SelectItem>
+                                        <SelectItem value="100">100</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <span className="text-gray-400">|</span>
+                                <span>{(currentPage - 1) * rowsPerPage + 1}-{Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => setCurrentPage(1)}
+                                    disabled={currentPage === 1}
+                                    className="h-8 px-2"
+                                >
+                                    First
+                                </Button>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="h-8 px-2"
+                                >
+                                    Prev
+                                </Button>
+                                <span className="px-3 text-sm text-gray-600">
+                                    Page {currentPage} of {totalPages || 1}
+                                </span>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage >= totalPages}
+                                    className="h-8 px-2"
+                                >
+                                    Next
+                                </Button>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    disabled={currentPage >= totalPages}
+                                    className="h-8 px-2"
+                                >
+                                    Last
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <AdminChatThreadView 
@@ -201,7 +292,7 @@ export function AdminSupportInbox() {
                         fetchThreads()
                     }}
                 />
-            )}
+            )}}
 
             <BlastModal open={showBlastModal} onOpenChange={setShowBlastModal} />
         </div>

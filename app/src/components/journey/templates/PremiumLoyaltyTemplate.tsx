@@ -531,8 +531,12 @@ export default function PremiumLoyaltyTemplate({
     const [redemptionDetails, setRedemptionDetails] = useState<{
         rewardName: string
         pointsDeducted: number
+        pointsEarned?: number
         newBalance: number
         redemptionCode: string
+        isBonusPoints?: boolean
+        bonusMessage?: string
+        encourageMessage?: string
     } | null>(null)
     // Track last redeemed reward for Recent Activity display
     const [lastRedeemedReward, setLastRedeemedReward] = useState<{
@@ -2575,16 +2579,21 @@ export default function PremiumLoyaltyTemplate({
         //     return
         // }
 
-        const pointsNeeded = reward.point_offer || reward.points_required
+        // For Point category (bonus points), no points check needed - it's free to collect
+        const isPointCategory = (reward as any).category === 'point'
+        
+        if (!isPointCategory) {
+            const pointsNeeded = reward.point_offer || reward.points_required
 
-        // Check if user has enough points
-        if (userPoints < pointsNeeded) {
-            setInsufficientPointsData({
-                needed: pointsNeeded,
-                available: userPoints
-            })
-            setShowInsufficientPoints(true)
-            return
+            // Check if user has enough points
+            if (userPoints < pointsNeeded) {
+                setInsufficientPointsData({
+                    needed: pointsNeeded,
+                    available: userPoints
+                })
+                setShowInsufficientPoints(true)
+                return
+            }
         }
 
         // Show confirmation
@@ -2611,19 +2620,30 @@ export default function PremiumLoyaltyTemplate({
             const data = await response.json()
 
             if (response.ok && data.success) {
+                // Check if this is a bonus points redemption
+                const isBonusPoints = data.is_bonus_points === true
+                
                 // Set redemption details for animation
                 setRedemptionDetails({
                     rewardName: data.reward_name,
-                    pointsDeducted: data.points_deducted,
+                    pointsDeducted: isBonusPoints ? 0 : data.points_deducted,
+                    pointsEarned: isBonusPoints ? data.points_earned : 0,
                     newBalance: data.new_balance,
-                    redemptionCode: data.redemption_code
+                    redemptionCode: data.redemption_code,
+                    isBonusPoints: isBonusPoints,
+                    bonusMessage: data.message,
+                    encourageMessage: data.encourage_message
                 })
 
-                // Track last redeemed reward for Recent Activity display
-                setLastRedeemedReward({
-                    rewardName: data.reward_name,
-                    pointsDeducted: data.points_deducted
-                })
+                // Track last redeemed/earned reward for Recent Activity display
+                if (isBonusPoints) {
+                    setLastEarnedPoints(data.points_earned)
+                } else {
+                    setLastRedeemedReward({
+                        rewardName: data.reward_name,
+                        pointsDeducted: data.points_deducted
+                    })
+                }
 
                 // Update local points balance
                 setUserPoints(data.new_balance)
@@ -3026,8 +3046,10 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="p-3">
                                     <p className="text-xs font-medium text-gray-900 line-clamp-1">{reward.item_name}</p>
                                     <div className="flex items-center gap-1 mt-1">
-                                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                        {reward.point_offer ? (
+                                        <Star className={`w-3 h-3 ${(reward as any).category === 'point' ? 'text-green-500 fill-green-500' : 'text-amber-500 fill-amber-500'}`} />
+                                        {(reward as any).category === 'point' ? (
+                                            <span className="text-xs font-bold text-green-600">+{(reward as any).point_reward_amount || 0} pts</span>
+                                        ) : reward.point_offer ? (
                                             <div className="flex items-center gap-1">
                                                 <span className="text-xs text-gray-400 line-through">{reward.points_required}</span>
                                                 <span className="text-xs font-bold text-red-500">{reward.point_offer} pts</span>
@@ -5640,8 +5662,14 @@ export default function PremiumLoyaltyTemplate({
                                     <Gift className="w-10 h-10 animate-pulse" style={{ color: config.primary_color }} />
                                 </div>
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900">Confirm Redemption</h3>
-                            <p className="text-sm text-gray-500 mt-2">Are you sure you want to redeem this reward?</p>
+                            <h3 className="text-xl font-bold text-gray-900">
+                                {(selectedReward as any).category === 'point' ? 'Collect Bonus Points' : 'Confirm Redemption'}
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-2">
+                                {(selectedReward as any).category === 'point' 
+                                    ? 'Collect your bonus points now!' 
+                                    : 'Are you sure you want to redeem this reward?'}
+                            </p>
                         </div>
 
                         <div className="bg-gray-50 rounded-xl p-4 space-y-3">
@@ -5668,23 +5696,42 @@ export default function PremiumLoyaltyTemplate({
 
                             {/* Points Info */}
                             <div className="pt-3 border-t border-gray-200">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-gray-600">Points Required:</span>
-                                    <span className="font-bold text-red-600">
-                                        -{selectedReward.point_offer || selectedReward.points_required}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between text-sm mt-1">
-                                    <span className="text-gray-600">New Balance:</span>
-                                    <span className="font-bold text-green-600">
-                                        {userPoints - (selectedReward.point_offer || selectedReward.points_required)}
-                                    </span>
-                                </div>
+                                {(selectedReward as any).category === 'point' ? (
+                                    <>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-gray-600">Bonus Points:</span>
+                                            <span className="font-bold text-green-600">
+                                                +{(selectedReward as any).point_reward_amount || 0}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm mt-1">
+                                            <span className="text-gray-600">New Balance:</span>
+                                            <span className="font-bold text-green-600">
+                                                {userPoints + ((selectedReward as any).point_reward_amount || 0)}
+                                            </span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-gray-600">Points Required:</span>
+                                            <span className="font-bold text-red-600">
+                                                -{selectedReward.point_offer || selectedReward.points_required}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm mt-1">
+                                            <span className="text-gray-600">New Balance:</span>
+                                            <span className="font-bold text-green-600">
+                                                {userPoints - (selectedReward.point_offer || selectedReward.points_required)}
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
 
-                        {/* Cashback Bank Info Warning */}
-                        {selectedReward.item_code.toLowerCase().includes('cashback') && (!bankId || !bankAccountNumber || !bankAccountHolderName) && (
+                        {/* Cashback Bank Info Warning - hide for Point category */}
+                        {(selectedReward as any).category !== 'point' && selectedReward.item_code.toLowerCase().includes('cashback') && (!bankId || !bankAccountNumber || !bankAccountHolderName) && (
                             <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
                                 <div className="flex items-start gap-3">
                                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -5709,8 +5756,8 @@ export default function PremiumLoyaltyTemplate({
                             </div>
                         )}
 
-                        {/* Address Required for Physical Rewards (non-Cashback) */}
-                        {!selectedReward.item_code.toLowerCase().includes('cashback') && !userAddress && (
+                        {/* Address Required for Physical Rewards (non-Cashback) - hide for Point category */}
+                        {(selectedReward as any).category !== 'point' && !selectedReward.item_code.toLowerCase().includes('cashback') && !userAddress && (
                             <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
                                 <div className="flex items-start gap-3">
                                     <MapPin className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
@@ -5758,13 +5805,15 @@ export default function PremiumLoyaltyTemplate({
                                 onClick={confirmRedemption}
                                 disabled={redeeming}
                                 className="flex-1 px-4 py-3 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                style={{ backgroundColor: config.button_color }}
+                                style={{ backgroundColor: (selectedReward as any).category === 'point' ? '#10B981' : config.button_color }}
                             >
                                 {redeeming ? (
                                     <>
                                         <Loader2 className="w-4 h-4 animate-spin" />
                                         Processing...
                                     </>
+                                ) : (selectedReward as any).category === 'point' ? (
+                                    'Collect Points'
                                 ) : (
                                     'Confirm'
                                 )}
@@ -5789,10 +5838,14 @@ export default function PremiumLoyaltyTemplate({
                     isOpen={showRedeemSuccess}
                     rewardName={redemptionDetails.rewardName}
                     pointsDeducted={redemptionDetails.pointsDeducted}
+                    pointsEarned={redemptionDetails.pointsEarned}
                     newBalance={redemptionDetails.newBalance}
                     redemptionCode={redemptionDetails.redemptionCode}
                     onClose={handleRedeemSuccessClose}
                     isCashback={selectedReward?.item_code?.toLowerCase().includes('cashback') || false}
+                    isBonusPoints={redemptionDetails.isBonusPoints}
+                    bonusMessage={redemptionDetails.bonusMessage}
+                    encourageMessage={redemptionDetails.encourageMessage}
                     deliveryAddress={userAddress || undefined}
                     bankName={banks.find(b => b.id === bankId)?.short_name}
                     bankAccount={bankAccountNumber || undefined}
@@ -5982,15 +6035,32 @@ export default function PremiumLoyaltyTemplate({
 
                         <div className="flex items-center justify-between py-4 border-t border-b border-gray-100">
                             <div className="space-y-1">
-                                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Points Required</p>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 bg-amber-100 rounded-full">
-                                        <Star className="w-4 h-4 text-amber-600 fill-amber-600" />
-                                    </div>
-                                    <span className="text-2xl font-bold text-gray-900">
-                                        {formatNumber(selectedRewardForDetail?.point_offer || selectedRewardForDetail?.points_required)}
-                                    </span>
-                                </div>
+                                {(selectedRewardForDetail as any)?.category === 'point' ? (
+                                    <>
+                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Bonus Points</p>
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 bg-green-100 rounded-full">
+                                                <Star className="w-4 h-4 text-green-600 fill-green-600" />
+                                            </div>
+                                            <span className="text-2xl font-bold text-green-600">
+                                                +{formatNumber((selectedRewardForDetail as any)?.point_reward_amount || 0)}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-green-600">Free to collect!</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Points Required</p>
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 bg-amber-100 rounded-full">
+                                                <Star className="w-4 h-4 text-amber-600 fill-amber-600" />
+                                            </div>
+                                            <span className="text-2xl font-bold text-gray-900">
+                                                {formatNumber(selectedRewardForDetail?.point_offer || selectedRewardForDetail?.points_required)}
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                             <div className="space-y-1 text-right">
                                 <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Stock</p>
@@ -6020,7 +6090,21 @@ export default function PremiumLoyaltyTemplate({
                                 Close
                             </Button>
                             {selectedRewardForDetail && (
-                                userPoints < (selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required) ? (
+                                // For Point category (bonus points), always show collect button
+                                (selectedRewardForDetail as any)?.category === 'point' ? (
+                                    <Button
+                                        className="flex-1 h-12 rounded-xl text-white shadow-lg shadow-green-500/20"
+                                        style={{ backgroundColor: '#10B981' }}
+                                        onClick={() => {
+                                            setShowRewardDetailModal(false)
+                                            handleRedeemReward(selectedRewardForDetail)
+                                        }}
+                                        disabled={!isAuthenticated}
+                                    >
+                                        <Gift className="w-4 h-4 mr-2" />
+                                        Collect Bonus
+                                    </Button>
+                                ) : userPoints < (selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required) ? (
                                     <Button
                                         className="flex-1 h-12 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-200 border-none shadow-none"
                                         onClick={() => {

@@ -51,6 +51,19 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
+    // If searching, first find users matching the search query (name, email, or phone)
+    let matchingUserIds: string[] = []
+    if (q) {
+      const { data: matchingUsers } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`)
+      
+      if (matchingUsers) {
+        matchingUserIds = matchingUsers.map(u => u.id)
+      }
+    }
+
     // First, fetch threads without user joins (FK relationship may not exist for consumer users)
     let query = supabaseAdmin
       .from('support_threads' as any)
@@ -59,7 +72,6 @@ export async function GET(request: NextRequest) {
         support_thread_reads(last_read_at, user_id)
       `, { count: 'exact' })
       .order('last_message_at', { ascending: false })
-      .range(offset, offset + limit - 1)
 
     if (status && status !== 'all') {
       query = query.eq('status', status)
@@ -71,9 +83,18 @@ export async function GET(request: NextRequest) {
       query = query.is('assigned_admin_user_id', null)
     }
 
+    // Search by subject OR by matching user IDs
     if (q) {
-      query = query.ilike('subject', `%${q}%`)
+      if (matchingUserIds.length > 0) {
+        // Search by subject OR by user that created the thread
+        query = query.or(`subject.ilike.%${q}%,created_by_user_id.in.(${matchingUserIds.join(',')})`)
+      } else {
+        query = query.ilike('subject', `%${q}%`)
+      }
     }
+    
+    // Apply pagination after search filter
+    query = query.range(offset, offset + limit - 1)
 
     const { data: threads, error, count } = await query
 

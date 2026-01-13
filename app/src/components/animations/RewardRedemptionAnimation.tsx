@@ -9,12 +9,16 @@ interface RewardRedemptionAnimationProps {
     isOpen: boolean
     rewardName: string
     pointsDeducted: number
+    pointsEarned?: number
     newBalance: number
     redemptionCode: string
     onClose: () => void
     autoCloseDelay?: number
     // Optional delivery info
     isCashback?: boolean
+    isBonusPoints?: boolean
+    bonusMessage?: string
+    encourageMessage?: string
     deliveryAddress?: string
     bankName?: string
     bankAccount?: string
@@ -25,11 +29,15 @@ export function RewardRedemptionAnimation({
     isOpen,
     rewardName,
     pointsDeducted,
+    pointsEarned,
     newBalance,
     redemptionCode,
     onClose,
     autoCloseDelay = 0, // 0 means no auto-close, user must click Done
     isCashback = false,
+    isBonusPoints = false,
+    bonusMessage,
+    encourageMessage,
     deliveryAddress,
     bankName,
     bankAccount,
@@ -116,8 +124,12 @@ export function RewardRedemptionAnimation({
                                 className="inline-flex items-center justify-center mb-6"
                             >
                                 <div className="relative">
-                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-                                        <Gift className="w-12 h-12 text-white" />
+                                    <div className={`w-24 h-24 rounded-full ${isBonusPoints ? 'bg-gradient-to-br from-green-400 to-emerald-500' : 'bg-gradient-to-br from-amber-400 to-orange-500'} flex items-center justify-center shadow-lg`}>
+                                        {isBonusPoints ? (
+                                            <Sparkles className="w-12 h-12 text-white" />
+                                        ) : (
+                                            <Gift className="w-12 h-12 text-white" />
+                                        )}
                                     </div>
                                     {showCheck && (
                                         <motion.div
@@ -139,7 +151,7 @@ export function RewardRedemptionAnimation({
                                 transition={{ delay: 0.3 }}
                                 className="text-2xl font-bold text-gray-900 mb-2"
                             >
-                                Redemption Successful! 🎉
+                                {isBonusPoints ? (bonusMessage || 'Congratulations! 🎉') : 'Redemption Successful! 🎉'}
                             </motion.h2>
 
                             <motion.p
@@ -148,7 +160,9 @@ export function RewardRedemptionAnimation({
                                 transition={{ delay: 0.4 }}
                                 className="text-gray-600 text-sm mb-6"
                             >
-                                Your reward is being prepared for delivery
+                                {isBonusPoints 
+                                    ? "You've successfully collected points"
+                                    : 'Your reward is being prepared for delivery'}
                             </motion.p>
 
                             {/* Reward details */}
@@ -173,29 +187,42 @@ export function RewardRedemptionAnimation({
                                     {/* Points info */}
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="bg-gray-50 rounded-xl p-3 text-left">
-                                            <p className="text-xs text-gray-500 mb-1">Points Used</p>
-                                            <p className="text-lg font-bold text-red-600">-{pointsDeducted}</p>
+                                            <p className="text-xs text-gray-500 mb-1">
+                                                {isBonusPoints ? 'Points Earned' : 'Points Used'}
+                                            </p>
+                                            <p className={`text-lg font-bold ${isBonusPoints ? 'text-green-600' : 'text-red-600'}`}>
+                                                {isBonusPoints ? `+${pointsEarned || 0}` : `-${pointsDeducted}`}
+                                            </p>
                                         </div>
                                         <div className="bg-gray-50 rounded-xl p-3 text-left">
-                                            <p className="text-xs text-gray-500 mb-1">New Balance</p>
-                                            <p className="text-lg font-bold text-green-600">{newBalance}</p>
+                                            <p className="text-xs text-gray-500 mb-1">Total Balance</p>
+                                            <p className="text-lg font-bold text-green-600">{newBalance} pts</p>
                                         </div>
                                     </div>
 
-                                    {/* Redemption code */}
-                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-100">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <Sparkles className="w-5 h-5 text-blue-600" />
-                                            <p className="text-xs font-medium text-gray-600">Redemption Code</p>
+                                    {/* Redemption code - hide for bonus points */}
+                                    {!isBonusPoints && (
+                                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-100">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <Sparkles className="w-5 h-5 text-blue-600" />
+                                                <p className="text-xs font-medium text-gray-600">Redemption Code</p>
+                                            </div>
+                                            <p className="text-2xl font-mono font-bold text-blue-900 tracking-wider">
+                                                {redemptionCode}
+                                            </p>
                                         </div>
-                                        <p className="text-2xl font-mono font-bold text-blue-900 tracking-wider">
-                                            {redemptionCode}
-                                        </p>
-                                    </div>
+                                    )}
 
                                     {/* Processing message with delivery/bank info */}
                                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-100">
-                                        {isCashback && bankName && bankAccount && bankHolder ? (
+                                        {isBonusPoints ? (
+                                            <div className="flex flex-col items-center justify-center gap-2 text-center">
+                                                <Sparkles className="w-6 h-6 text-green-600" />
+                                                <p className="text-sm font-medium text-green-700">
+                                                    {encourageMessage || 'Keep collecting and enjoy your rewards!'}
+                                                </p>
+                                            </div>
+                                        ) : isCashback && bankName && bankAccount && bankHolder ? (
                                             <div className="space-y-2">
                                                 <div className="flex items-center gap-2 text-green-700">
                                                     <Building2 className="w-5 h-5" />

@@ -116,14 +116,77 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Reward found:', reward.item_name, 'Points required:', reward.points_required)
 
-    const pointsRequired = reward.point_offer || reward.points_required
+    // Check if this is a Point category reward (bonus points)
+    const isPointCategory = reward.category === 'point'
+    const pointRewardAmount = (reward as any).point_reward_amount || 0
+    const collectionMode = (reward as any).collection_mode || 'always'
+    const perUserLimit = (reward as any).per_user_limit || false
+    
+    // For Point category, points_required should be 0 (free to collect)
+    const pointsRequired = isPointCategory ? 0 : (reward.point_offer || reward.points_required)
 
-    // 3. Check stock
-    if (typeof reward.stock_quantity === 'number' && reward.stock_quantity <= 0) {
+    // 3. Check stock (skip for Point category which typically has unlimited stock)
+    if (!isPointCategory && typeof reward.stock_quantity === 'number' && reward.stock_quantity <= 0) {
       return NextResponse.json(
         { success: false, error: 'This reward is out of stock' },
         { status: 400 }
       )
+    }
+
+    // 3.5 For Point category, check collection restrictions
+    if (isPointCategory) {
+      const consumerPhone = userProfile.phone || ''
+      
+      // Check per-user limit
+      if (perUserLimit) {
+        // Get previous collections of this reward by this user
+        const { data: previousCollections, error: prevError } = await supabaseAdmin
+          .from('points_transactions')
+          .select('id, created_at')
+          .eq('redeem_item_id', reward_id)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+        
+        if (previousCollections && previousCollections.length > 0) {
+          if (collectionMode === 'once') {
+            // One-time collection only
+            return NextResponse.json(
+              { success: false, error: 'You have already collected this reward. One-time collection only!' },
+              { status: 400 }
+            )
+          } else if (collectionMode === 'daily') {
+            // Check if already collected today
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const lastCollection = new Date(previousCollections[0].created_at)
+            lastCollection.setHours(0, 0, 0, 0)
+            
+            if (lastCollection.getTime() >= today.getTime()) {
+              return NextResponse.json(
+                { success: false, error: 'You have already collected today! Come back tomorrow to collect again.' },
+                { status: 400 }
+              )
+            }
+          }
+        }
+      } else if (collectionMode === 'daily') {
+        // Daily collection without per-user tracking (by phone)
+        const today = new Date().toISOString().split('T')[0]
+        const { count } = await supabaseAdmin
+          .from('points_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('redeem_item_id', reward_id)
+          .eq('consumer_phone', consumerPhone)
+          .gte('created_at', `${today}T00:00:00.000Z`)
+        
+        if (count && count > 0) {
+          return NextResponse.json(
+            { success: false, error: 'You have already collected today! Come back tomorrow.' },
+            { status: 400 }
+          )
+        }
+      }
+    }
     }
 
     // 4. Get current points balance
@@ -205,15 +268,20 @@ export async function POST(request: NextRequest) {
     // IMPORTANT: Use shopId (the shop's organization ID) as company_id
     // so the shop_points_ledger view can properly filter by shop_id
     const consumerPhone = userProfile.phone || ''
-    const newBalance = currentBalance - pointsRequired
+    
+    // For Point category, we ADD points instead of deducting
+    const pointsChange = isPointCategory ? pointRewardAmount : -pointsRequired
+    const newBalance = currentBalance + pointsChange
 
     // Generate redemption code (will be finalized after insert with transaction ID)
-    const tempRedemptionCode = `RED-${Date.now().toString(36).toUpperCase()}`
+    const tempRedemptionCode = isPointCategory 
+      ? `BONUS-${Date.now().toString(36).toUpperCase()}`
+      : `RED-${Date.now().toString(36).toUpperCase()}`
 
-    console.log('📝 Recording redemption:', {
+    console.log('📝 Recording ' + (isPointCategory ? 'bonus points' : 'redemption') + ':', {
       shop_id: shopId,
       consumer_phone: consumerPhone,
-      points_amount: -pointsRequired,
+      points_amount: pointsChange,
       balance_after: newBalance,
       reward_name: reward.item_name
     })
@@ -224,15 +292,18 @@ export async function POST(request: NextRequest) {
         company_id: isIndependent ? null : shopId, // Use shop's org ID if available, else null
         consumer_phone: consumerPhone,
         consumer_email: consumer_email || userProfile.email || null,
-        transaction_type: 'redeem',
-        points_amount: -pointsRequired,
+        transaction_type: isPointCategory ? 'collect' : 'redeem',  // Use 'collect' for bonus points
+        points_amount: pointsChange,
         balance_after: newBalance,
         redeem_item_id: reward_id,
-        description: `Redeemed: ${reward.item_name}`,
+        description: isPointCategory 
+          ? `Bonus Points: ${reward.item_name}` 
+          : `Redeemed: ${reward.item_name}`,
         transaction_date: new Date().toISOString(),
-        fulfillment_status: 'pending',
+        fulfillment_status: isPointCategory ? 'completed' : 'pending',
         redemption_code: tempRedemptionCode,
-        user_id: user.id // Record the user ID for independent consumers
+        user_id: user.id, // Record the user ID for independent consumers
+        source: isPointCategory ? 'bonus_reward' : undefined  // Mark source as bonus reward
       } as any)
       .select()
       .single()
@@ -240,7 +311,7 @@ export async function POST(request: NextRequest) {
     if (txnError) {
       console.error('❌ Transaction error:', txnError)
       return NextResponse.json(
-        { success: false, error: 'Failed to process redemption: ' + txnError.message },
+        { success: false, error: 'Failed to process ' + (isPointCategory ? 'bonus points' : 'redemption') + ': ' + txnError.message },
         { status: 500 }
       )
     }
@@ -248,7 +319,9 @@ export async function POST(request: NextRequest) {
     console.log('✅ Transaction recorded:', transaction.id)
 
     // Generate final redemption code using transaction ID
-    const redemptionCode = `RED-${transaction.id.split('-')[0].toUpperCase()}`
+    const redemptionCode = isPointCategory 
+      ? `BONUS-${transaction.id.split('-')[0].toUpperCase()}`
+      : `RED-${transaction.id.split('-')[0].toUpperCase()}`
 
     // Update the transaction with the final redemption code
     await supabase
@@ -256,8 +329,8 @@ export async function POST(request: NextRequest) {
       .update({ redemption_code: redemptionCode } as any)
       .eq('id', transaction.id)
 
-    // 8. Update stock quantity (if applicable)
-    if (typeof reward.stock_quantity === 'number' && reward.stock_quantity > 0) {
+    // 8. Update stock quantity (if applicable - skip for Point category)
+    if (!isPointCategory && typeof reward.stock_quantity === 'number' && reward.stock_quantity > 0) {
       const { error: stockError } = await supabase
         .from('redeem_items')
         .update({
@@ -274,12 +347,48 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Return success with details
+    // For Point category, return bonus-specific response
+    if (isPointCategory) {
+      // Determine congratulatory message based on collection mode
+      let congratsMessage = 'Congratulations! You\'ve earned bonus points!'
+      let encourageMessage = ''
+      
+      if (perUserLimit && collectionMode === 'daily') {
+        congratsMessage = '🎉 Daily Bonus Collected!'
+        encourageMessage = 'Come back tomorrow to collect more points. Stay loyal, earn more!'
+      } else if (perUserLimit && collectionMode === 'once') {
+        congratsMessage = '🌟 Thank You, Loyal Customer!'
+        encourageMessage = 'Check back often for more exciting rewards and bonuses!'
+      } else if (collectionMode === 'daily') {
+        congratsMessage = '✨ Daily Bonus Unlocked!'
+        encourageMessage = 'Visit us every day to keep earning bonus points!'
+      } else {
+        congratsMessage = '🎁 Bonus Points Added!'
+        encourageMessage = reward.reward_message || 'Thank you for being an amazing customer!'
+      }
+      
+      return NextResponse.json({
+        success: true,
+        is_bonus_points: true,
+        message: congratsMessage,
+        encourage_message: encourageMessage,
+        reward_message: reward.reward_message || null,
+        transaction_id: transaction.id,
+        reward_name: reward.item_name,
+        points_earned: pointRewardAmount,
+        new_balance: newBalance,
+        redemption_code: redemptionCode,
+        collection_mode: collectionMode,
+        per_user_limit: perUserLimit
+      })
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Reward redeemed successfully!',
       transaction_id: transaction.id,
       reward_name: reward.item_name,
-      points_deducted: reward.points_required,
+      points_deducted: pointsRequired,
       new_balance: newBalance,
       redemption_code: redemptionCode,
       instructions: 'Your redemption is being processed. Please show this confirmation to redeem your reward.'

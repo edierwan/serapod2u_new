@@ -63,22 +63,46 @@ export async function POST(request: NextRequest) {
 
       await sendProgress({ type: 'status', message: 'Fetching target users...' })
 
+      // Helper function to fetch all users with pagination (Supabase default limit is 1000)
+      const fetchAllUsers = async (query: any): Promise<string[]> => {
+        const PAGE_SIZE = 1000
+        let allIds: string[] = []
+        let offset = 0
+        let hasMore = true
+        
+        while (hasMore) {
+          const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1)
+          if (error) {
+            console.error('Error fetching users:', error)
+            throw error
+          }
+          if (data && data.length > 0) {
+            allIds = [...allIds, ...data.map((u: any) => u.id)]
+            offset += PAGE_SIZE
+            hasMore = data.length === PAGE_SIZE
+          } else {
+            hasMore = false
+          }
+        }
+        return allIds
+      }
+
       // Get target users based on filters
       let targetUserIds: string[] = []
       
       if (targetType === 'all' || !targetType) {
-        const { data: allUsers, error: usersError } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .not('email', 'is', null)
-
-        if (usersError) {
+        try {
+          const query = supabaseAdmin
+            .from('users')
+            .select('id')
+            .not('email', 'is', null)
+          
+          targetUserIds = await fetchAllUsers(query)
+        } catch (error) {
           await sendProgress({ type: 'error', error: 'Failed to fetch users' })
           await writer.close()
           return
         }
-        
-        targetUserIds = (allUsers || []).map(u => u.id)
       } else if (targetType === 'state' && states && states.length > 0) {
         const { data: orgs, error: orgsError } = await supabaseAdmin
           .from('organizations')
@@ -87,13 +111,19 @@ export async function POST(request: NextRequest) {
 
         if (!orgsError && orgs && orgs.length > 0) {
           const orgIds = orgs.map(o => o.id)
-          const { data: users } = await supabaseAdmin
-            .from('users')
-            .select('id')
-            .in('company_id', orgIds)
-            .not('email', 'is', null)
-          
-          targetUserIds = (users || []).map(u => u.id)
+          try {
+            const query = supabaseAdmin
+              .from('users')
+              .select('id')
+              .in('company_id', orgIds)
+              .not('email', 'is', null)
+            
+            targetUserIds = await fetchAllUsers(query)
+          } catch (error) {
+            await sendProgress({ type: 'error', error: 'Failed to fetch users' })
+            await writer.close()
+            return
+          }
         }
       } else if (targetType === 'role' && roles && roles.length > 0) {
         const roleMapping: Record<string, string[]> = {
@@ -105,13 +135,19 @@ export async function POST(request: NextRequest) {
         
         const actualRoles = roles.flatMap((r: string) => roleMapping[r] || [r])
         
-        const { data: users } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .in('role_code', actualRoles)
-          .not('email', 'is', null)
-        
-        targetUserIds = (users || []).map(u => u.id)
+        try {
+          const query = supabaseAdmin
+            .from('users')
+            .select('id')
+            .in('role_code', actualRoles)
+            .not('email', 'is', null)
+          
+          targetUserIds = await fetchAllUsers(query)
+        } catch (error) {
+          await sendProgress({ type: 'error', error: 'Failed to fetch users' })
+          await writer.close()
+          return
+        }
       }
 
       if (targetUserIds.length === 0) {
