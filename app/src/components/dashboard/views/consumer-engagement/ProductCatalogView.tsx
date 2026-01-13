@@ -66,12 +66,12 @@ interface CartItem {
 interface ProductCatalogViewProps {
   userProfile: {
     id: string
-    organization_id: string
+    organization_id: string | null
     organizations: {
       id: string
       org_name: string
       org_type_code: string
-    }
+    } | null
     roles: {
       role_level: number
     }
@@ -89,6 +89,9 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
+
+  // Check if user is independent (no organization)
+  const isIndependentUser = !userProfile.organization_id || !userProfile.organizations
 
   useEffect(() => {
     if (isReady) {
@@ -216,11 +219,17 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
             </div>
             Product Catalog
           </h1>
-          <p className="text-gray-600 mt-1">Browse and order products from our extensive catalog</p>
+          <p className="text-gray-600 mt-1">
+            {isIndependentUser 
+              ? 'Browse products from our extensive catalog'
+              : 'Browse and order products from our extensive catalog'
+            }
+          </p>
         </div>
       </div>
 
-      {/* Info Banner */}
+      {/* Info Banner - Only show for users with organization */}
+      {!isIndependentUser && (
       <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
@@ -236,6 +245,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
@@ -354,7 +364,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                     </div>
                   )}
 
-                  {!product.hide_price && (
+                  {!product.hide_price && !isIndependentUser && (
                   <Button
                     className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                     onClick={() => {
@@ -430,7 +440,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
                           </p>
                         </>
                       )}
-                      {!product.hide_price && (
+                      {!product.hide_price && !isIndependentUser && (
                       <Button
                         className="mt-4"
                         onClick={() => {
