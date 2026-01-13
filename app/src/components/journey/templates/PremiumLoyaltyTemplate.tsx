@@ -800,7 +800,8 @@ export default function PremiumLoyaltyTemplate({
                         console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
                         setIsShopUser(isShop)
                         setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                        setUserAvatarUrl(avatarUrl)
+                        // Only update avatar if we have a new one or explicitly null (prevents flicker)
+                        if (avatarUrl !== undefined) setUserAvatarUrl(avatarUrl)
                         setShopName(orgName)
                         setUserPhone(phone)
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
@@ -5848,8 +5849,19 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Support Chat Modal */}
             {showFeedbackModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 sm:p-4">
-                    <div className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 sm:p-4"
+                    onClick={(e) => {
+                        // Only close if clicking the backdrop, not the modal content
+                        if (e.target === e.currentTarget) {
+                            setShowFeedbackModal(false)
+                        }
+                    }}
+                >
+                    <div 
+                        className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <SupportChatWidget onClose={() => setShowFeedbackModal(false)} />
                     </div>
                 </div>

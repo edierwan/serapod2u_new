@@ -100,7 +100,15 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
                          activeThread?.subject || 'Chat'}
                     </h2>
                 </div>
-                <Button variant="ghost" size="icon" onClick={onClose}>
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onClose()
+                    }}
+                >
                     <X className="w-5 h-5" />
                 </Button>
             </div>
