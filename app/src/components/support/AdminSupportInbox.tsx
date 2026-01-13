@@ -21,7 +21,8 @@ import {
     Megaphone,
     Loader2,
     User,
-    ArrowLeft
+    ArrowLeft,
+    X
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -29,6 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 
 type Thread = {
     id: string
+    case_id: string
     subject: string
     status: 'open' | 'pending' | 'resolved' | 'closed'
     priority: 'low' | 'normal' | 'high'
@@ -158,6 +160,9 @@ export function AdminSupportInbox() {
                                                     <h4 className={cn("text-sm font-medium truncate", thread.is_unread ? "text-gray-900 font-bold" : "text-gray-700")}>
                                                         {thread.subject}
                                                     </h4>
+                                                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
+                                                        {thread.case_id || `#${thread.id.slice(0, 6)}`}
+                                                    </span>
                                                     {thread.is_unread && <Badge className="h-1.5 w-1.5 rounded-full p-0 bg-blue-600" />}
                                                 </div>
                                                 <span className="text-xs text-gray-400 whitespace-nowrap">
@@ -207,6 +212,7 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
     const [messages, setMessages] = useState<Message[]>([])
     const [newMessage, setNewMessage] = useState('')
     const [sending, setSending] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [status, setStatus] = useState(thread.status)
 
@@ -237,6 +243,7 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
         e.preventDefault()
         if (!newMessage.trim()) return
 
+        setError(null)
         setSending(true)
         try {
             const res = await fetch(`/api/admin/support/threads/${thread.id}/reply`, {
@@ -245,14 +252,25 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
                 body: JSON.stringify({ message: newMessage })
             })
             const data = await res.json()
+            
+            if (!res.ok) {
+                setError(data.error || 'Failed to send reply')
+                console.error('Failed to send reply:', data)
+                return
+            }
+            
             if (data.message) {
-                setMessages([...messages, data.message])
+                setMessages(prev => [...prev, data.message])
                 setNewMessage('')
                 setStatus('pending') // Auto update status locally
                 setTimeout(scrollToBottom, 100)
+            } else {
+                setError('No message returned from server')
+                console.error('Failed to send reply, no message returned', data)
             }
         } catch (error) {
             console.error('Failed to send reply', error)
+            setError('Network error - please try again')
         } finally {
             setSending(false)
         }
@@ -280,7 +298,12 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
                         <ArrowLeft className="w-5 h-5" />
                     </Button>
                     <div>
-                        <h3 className="font-semibold text-gray-900">{thread.subject}</h3>
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-gray-900">{thread.subject}</h3>
+                            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                                {thread.case_id || `#${thread.id.slice(0, 6)}`}
+                            </span>
+                        </div>
                         <p className="text-xs text-gray-500">
                             {thread.created_by?.full_name} ({thread.created_by?.email}) • {thread.created_by?.phone}
                         </p>
@@ -300,6 +323,16 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
                     </Select>
                 </div>
             </div>
+
+            {/* Error Display */}
+            {error && (
+                <div className="bg-red-50 border-b border-red-100 px-4 py-2 text-sm text-red-600 flex items-center justify-between">
+                    <span>{error}</span>
+                    <Button variant="ghost" size="sm" onClick={() => setError(null)} className="h-6 text-red-600 hover:text-red-800">
+                        <X className="w-4 h-4" />
+                    </Button>
+                </div>
+            )}
 
             {/* Chat Area */}
             <ScrollArea className="flex-1 p-4 bg-gray-50/30">
