@@ -17,9 +17,10 @@ function getAdminClient() {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabaseAdmin = getAdminClient()
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -29,17 +30,22 @@ export async function POST(
     }
 
     // Check admin role
+    console.log('[Admin Reply] Checking role for user:', user.id, 'thread:', id)
     const { data: userData, error: userError } = await supabaseAdmin
         .from('users')
         .select('role_code')
         .eq('id', user.id)
         .single()
+    
+    console.log('[Admin Reply] User role data:', userData, 'error:', userError)
         
     if (userError || !userData || !['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)) {
+         console.log('[Admin Reply] Role check failed. Role:', userData?.role_code)
          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    
+    console.log('[Admin Reply] Role check passed:', userData.role_code)
 
-    const { id } = params
     const body = await request.json()
     const { message, attachments } = body
 
@@ -48,22 +54,39 @@ export async function POST(
     }
 
     // Insert message
+    console.log('[Admin Reply] Inserting message for thread:', id, 'user:', user.id)
+    console.log('[Admin Reply] Message body:', message?.substring(0, 50))
+    
+    const messagePayload = {
+      thread_id: id,
+      sender_type: 'admin',
+      sender_user_id: user.id,
+      body: message,
+      attachments: attachments || []
+    }
+    console.log('[Admin Reply] Payload:', JSON.stringify(messagePayload))
+    
     const { data: newMessage, error: messageError } = await supabaseAdmin
       .from('support_messages' as any)
-      .insert({
-        thread_id: id,
-        sender_type: 'admin',
-        sender_user_id: user.id,
-        body: message,
-        attachments: attachments || []
-      })
+      .insert(messagePayload)
       .select()
       .single()
 
     if (messageError) {
-      console.error('Error sending reply:', messageError)
-      return NextResponse.json({ error: 'Failed to send reply' }, { status: 500 })
+      console.error('[Admin Reply] Error sending reply:', {
+        code: messageError.code,
+        message: messageError.message,
+        details: messageError.details,
+        hint: messageError.hint
+      })
+      return NextResponse.json({ 
+        error: 'Failed to send reply', 
+        details: messageError.message,
+        code: messageError.code 
+      }, { status: 500 })
     }
+    
+    console.log('[Admin Reply] Message inserted successfully:', newMessage?.id)
 
     // Update thread status to pending (waiting for user)
     await supabaseAdmin

@@ -265,7 +265,10 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
             console.log('Response data:', data)
             
             if (!res.ok) {
-                setError(data.error || `Failed to send reply (${res.status})`)
+                const errorMsg = data.details 
+                    ? `${data.error}: ${data.details} (${data.code || res.status})`
+                    : data.error || `Failed to send reply (${res.status})`
+                setError(errorMsg)
                 console.error('Failed to send reply:', data)
                 return
             }
@@ -415,6 +418,24 @@ function BlastModal({ open, onOpenChange }: any) {
     const [loadingStates, setLoadingStates] = useState(false)
     const [previewCount, setPreviewCount] = useState<number | null>(null)
     const [loadingPreview, setLoadingPreview] = useState(false)
+    
+    // Progress tracking state
+    const [progress, setProgress] = useState<{
+        status: 'idle' | 'sending' | 'complete' | 'error'
+        total: number
+        sent: number
+        failed: number
+        percent: number
+        message: string
+        errors?: string[]
+    }>({
+        status: 'idle',
+        total: 0,
+        sent: 0,
+        failed: 0,
+        percent: 0,
+        message: ''
+    })
 
     // User role options
     const roleOptions = [
@@ -490,8 +511,17 @@ function BlastModal({ open, onOpenChange }: any) {
         if (!confirm(`Are you sure you want to send this announcement to ${targetDescription}?`)) return
 
         setSending(true)
+        setProgress({
+            status: 'sending',
+            total: 0,
+            sent: 0,
+            failed: 0,
+            percent: 0,
+            message: 'Starting...'
+        })
+        
         try {
-            const res = await fetch('/api/admin/support/blast', {
+            const res = await fetch('/api/admin/support/blast/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -503,24 +533,89 @@ function BlastModal({ open, onOpenChange }: any) {
                 })
             })
             
-            const data = await res.json()
-            
-            if (!res.ok) {
-                alert('Failed to send announcement: ' + (data.error || 'Unknown error'))
-                return
+            if (!res.body) {
+                throw new Error('No response body')
             }
             
+            const reader = res.body.getReader()
+            const decoder = new TextDecoder()
+            
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                
+                const chunk = decoder.decode(value)
+                const lines = chunk.split('\n')
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6))
+                            
+                            if (data.type === 'start') {
+                                setProgress(prev => ({
+                                    ...prev,
+                                    total: data.total,
+                                    message: data.message
+                                }))
+                            } else if (data.type === 'progress') {
+                                setProgress(prev => ({
+                                    ...prev,
+                                    sent: data.sent,
+                                    failed: data.failed,
+                                    percent: data.progress,
+                                    message: data.message
+                                }))
+                            } else if (data.type === 'complete') {
+                                setProgress({
+                                    status: 'complete',
+                                    total: data.total,
+                                    sent: data.sent,
+                                    failed: data.failed,
+                                    percent: 100,
+                                    message: data.message,
+                                    errors: data.errors
+                                })
+                            } else if (data.type === 'error') {
+                                setProgress(prev => ({
+                                    ...prev,
+                                    status: 'error',
+                                    message: data.error
+                                }))
+                            }
+                        } catch (e) {
+                            // Skip invalid JSON
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to send blast', error)
+            setProgress(prev => ({
+                ...prev,
+                status: 'error',
+                message: 'Network error - please try again'
+            }))
+        } finally {
+            setSending(false)
+        }
+    }
+    
+    const handleClose = () => {
+        if (!sending) {
             onOpenChange(false)
             setMessage('')
             setTargetType('all')
             setSelectedStates([])
             setSelectedRoles([])
-            alert(`Announcement sent successfully to ${data.sentCount || 'all'} user(s)`)
-        } catch (error) {
-            console.error('Failed to send blast', error)
-            alert('Failed to send announcement')
-        } finally {
-            setSending(false)
+            setProgress({
+                status: 'idle',
+                total: 0,
+                sent: 0,
+                failed: 0,
+                percent: 0,
+                message: ''
+            })
         }
     }
 
@@ -644,18 +739,68 @@ function BlastModal({ open, onOpenChange }: any) {
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         className="min-h-[150px]"
+                        disabled={sending}
                     />
+                    
+                    {/* Progress Display */}
+                    {progress.status !== 'idle' && (
+                        <div className={cn(
+                            "p-4 rounded-lg border",
+                            progress.status === 'complete' && "bg-green-50 border-green-200",
+                            progress.status === 'error' && "bg-red-50 border-red-200",
+                            progress.status === 'sending' && "bg-blue-50 border-blue-200"
+                        )}>
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">
+                                    {progress.status === 'complete' ? '✅ Complete' : 
+                                     progress.status === 'error' ? '❌ Error' : 
+                                     '📤 Sending...'}
+                                </span>
+                                {progress.total > 0 && (
+                                    <span className="text-sm text-gray-600">
+                                        {progress.sent}/{progress.total} sent
+                                        {progress.failed > 0 && <span className="text-red-600 ml-2">({progress.failed} failed)</span>}
+                                    </span>
+                                )}
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            {progress.status === 'sending' && progress.total > 0 && (
+                                <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                                    <div 
+                                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                        style={{ width: `${progress.percent}%` }}
+                                    />
+                                </div>
+                            )}
+                            
+                            <p className="text-sm text-gray-700">{progress.message}</p>
+                            
+                            {progress.errors && progress.errors.length > 0 && (
+                                <details className="mt-2">
+                                    <summary className="text-xs text-red-600 cursor-pointer">View errors ({progress.errors.length})</summary>
+                                    <ul className="mt-1 text-xs text-red-500 list-disc list-inside">
+                                        {progress.errors.map((err, i) => <li key={i}>{err}</li>)}
+                                    </ul>
+                                </details>
+                            )}
+                        </div>
+                    )}
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button 
-                        onClick={handleSend} 
-                        disabled={sending || !message.trim() || (targetType === 'state' && selectedStates.length === 0) || (targetType === 'role' && selectedRoles.length === 0)} 
-                        className="bg-purple-600 hover:bg-purple-700"
-                    >
-                        {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Megaphone className="w-4 h-4 mr-2" />}
-                        Send Blast
+                    <Button variant="outline" onClick={handleClose} disabled={sending}>
+                        {progress.status === 'complete' ? 'Close' : 'Cancel'}
                     </Button>
+                    {progress.status !== 'complete' && (
+                        <Button 
+                            onClick={handleSend} 
+                            disabled={sending || !message.trim() || (targetType === 'state' && selectedStates.length === 0) || (targetType === 'role' && selectedRoles.length === 0)} 
+                            className="bg-purple-600 hover:bg-purple-700"
+                        >
+                            {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Megaphone className="w-4 h-4 mr-2" />}
+                            {sending ? 'Sending...' : 'Send Blast'}
+                        </Button>
+                    )}
                 </DialogFooter>
             </DialogContent>
         </Dialog>
