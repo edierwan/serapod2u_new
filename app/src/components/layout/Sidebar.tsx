@@ -103,6 +103,10 @@ const navigationItems: MenuItem[] = [
     label: 'Order Management',
     icon: FileText,
     description: 'Order processing',
+    access: {
+      // Restrict access for user level 50 (SHOP_MANAGER)
+      maxRoleLevel: 40 // Only managers level 40 and below (higher privilege)
+    },
     submenu: [
       {
         id: 'orders',
@@ -111,7 +115,7 @@ const navigationItems: MenuItem[] = [
         // Accessible to all except WAREHOUSE
         access: {
           allowedOrgTypes: ['HQ', 'MANU', 'MFG', 'DIST', 'SHOP'],
-          maxRoleLevel: 60
+          maxRoleLevel: 40
         }
       },
       {

@@ -77,7 +77,7 @@ export function hasMenuAccess(
   const userRoleCode = userProfile.role_code
   const userEmail = userProfile.email
   const userOrgType = userProfile.organizations?.org_type_code
-  const userRoleLevel = userProfile.roles?.role_level
+  const userRoleLevel = userProfile.roles?.role_level ?? 999 // Default to lowest privilege if undefined
 
   // Check if user is an independent user (no organization)
   const isIndependentUser = !userProfile.organizations || !userOrgType
