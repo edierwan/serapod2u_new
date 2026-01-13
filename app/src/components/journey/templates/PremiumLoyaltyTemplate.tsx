@@ -567,6 +567,7 @@ export default function PremiumLoyaltyTemplate({
     const [submittingFeedback, setSubmittingFeedback] = useState(false)
     const [feedbackError, setFeedbackError] = useState('')
     const [feedbackSuccess, setFeedbackSuccess] = useState(false)
+    const [unreadMessageCount, setUnreadMessageCount] = useState(0)
 
     // Free Gift Redemption states
     interface FreeGift {
@@ -800,7 +801,8 @@ export default function PremiumLoyaltyTemplate({
                         console.log('🔐 Profile data received:', { isShop, fullName, avatarUrl, orgName, phone, pointsBalance })
                         setIsShopUser(isShop)
                         setUserName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
-                        setUserAvatarUrl(avatarUrl)
+                        // Only update avatar if we have a new one or explicitly null (prevents flicker)
+                        if (avatarUrl !== undefined) setUserAvatarUrl(avatarUrl)
                         setShopName(orgName)
                         setUserPhone(phone)
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
@@ -931,6 +933,43 @@ export default function PremiumLoyaltyTemplate({
             subscription.unsubscribe()
         }
     }, [supabase, qrCode])
+
+    // Fetch unread message count for notification badge
+    const fetchUnreadMessageCount = async () => {
+        if (!isAuthenticated) {
+            setUnreadMessageCount(0)
+            return
+        }
+        try {
+            const res = await fetch('/api/support/threads')
+            const data = await res.json()
+            if (data.threads) {
+                const totalUnread = data.threads.reduce((acc: number, t: any) => acc + (t.unread_count || 0), 0)
+                setUnreadMessageCount(totalUnread)
+            }
+        } catch (error) {
+            console.error('Failed to fetch unread count', error)
+        }
+    }
+
+    // Fetch unread count on auth change and periodically
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchUnreadMessageCount()
+            // Poll every 30 seconds
+            const interval = setInterval(fetchUnreadMessageCount, 30000)
+            return () => clearInterval(interval)
+        } else {
+            setUnreadMessageCount(0)
+        }
+    }, [isAuthenticated])
+
+    // Refresh unread count when feedback modal closes
+    useEffect(() => {
+        if (!showFeedbackModal && isAuthenticated) {
+            fetchUnreadMessageCount()
+        }
+    }, [showFeedbackModal, isAuthenticated])
 
     // Show genuine product verified animation on page load
     useEffect(() => {
@@ -5284,12 +5323,17 @@ export default function PremiumLoyaltyTemplate({
                             setFeedbackError('')
                             setFeedbackSuccess(false)
                         }}
-                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
+                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none relative"
                         style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-                        title="Send Feedback"
-                        aria-label="Send Feedback"
+                        title="Messages"
+                        aria-label="Messages"
                     >
                         <MessageSquare className="w-4 h-4 text-white pointer-events-none" />
+                        {unreadMessageCount > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
+                                {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                            </span>
+                        )}
                     </button>
                     <button
                         type="button"
@@ -5848,8 +5892,19 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Support Chat Modal */}
             {showFeedbackModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 sm:p-4">
-                    <div className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 sm:p-4"
+                    onClick={(e) => {
+                        // Only close if clicking the backdrop, not the modal content
+                        if (e.target === e.currentTarget) {
+                            setShowFeedbackModal(false)
+                        }
+                    }}
+                >
+                    <div 
+                        className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <SupportChatWidget onClose={() => setShowFeedbackModal(false)} />
                     </div>
                 </div>

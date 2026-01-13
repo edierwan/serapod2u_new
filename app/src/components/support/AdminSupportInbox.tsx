@@ -88,12 +88,13 @@ export function AdminSupportInbox() {
     }
 
     const handleThreadClick = (thread: Thread) => {
+        console.log('Thread clicked:', thread.id, thread.subject)
         setActiveThread(thread)
         setView('detail')
     }
 
     return (
-        <div className="h-[calc(100vh-200px)] flex flex-col bg-white rounded-lg border shadow-sm overflow-hidden">
+        <div className="h-[600px] min-h-[400px] flex flex-col bg-white rounded-lg border shadow-sm overflow-hidden">
             {view === 'list' ? (
                 <div className="flex flex-col h-full">
                     {/* Toolbar */}
@@ -143,9 +144,12 @@ export function AdminSupportInbox() {
                                     <div 
                                         key={thread.id}
                                         onClick={() => handleThreadClick(thread)}
+                                        role="button"
+                                        tabIndex={0}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleThreadClick(thread)}
                                         className={cn(
-                                            "p-4 hover:bg-gray-50 cursor-pointer transition-colors flex items-start gap-4",
-                                            thread.is_unread ? "bg-blue-50/50" : ""
+                                            "p-4 hover:bg-blue-50 cursor-pointer transition-all border-b last:border-b-0",
+                                            thread.is_unread ? "bg-blue-50/50" : "bg-white"
                                         )}
                                     >
                                         <div className="flex-1 min-w-0">

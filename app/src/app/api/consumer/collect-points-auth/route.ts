@@ -92,10 +92,11 @@ export async function POST(request: NextRequest) {
     const organization = shopUser.organizations as any
 
     // Allow if:
-    // 1. User has no organization (Independent Consumer)
+    // 1. User has no organization (legacy Independent Consumer)
     // 2. User belongs to a SHOP organization
-    if (organization && organization.org_type_code !== 'SHOP') {
-      console.error('User is from non-shop organization:', organization?.org_type_code)
+    // 3. User belongs to an INDEP (Independent) organization
+    if (organization && organization.org_type_code !== 'SHOP' && organization.org_type_code !== 'INDEP') {
+      console.error('User is from non-shop/non-independent organization:', organization?.org_type_code)
       return NextResponse.json(
         {
           success: false,
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer')
+    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer', '| Type:', organization?.org_type_code || 'none')
 
     // Resolve QR code record (handles both new codes with hash and legacy codes)
     const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)
@@ -196,7 +197,8 @@ export async function POST(request: NextRequest) {
 
     // Independent consumers can collect from any QR code
     // Shop users need organization relationship validation
-    const isIndependentConsumer = !organization
+    // Independent consumers: either no organization OR org_type_code is 'INDEP'
+    const isIndependentConsumer = !organization || organization.org_type_code === 'INDEP'
 
     if (!isIndependentConsumer) {
       // Validate organization relationship for shop users

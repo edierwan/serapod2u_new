@@ -49,6 +49,10 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [filterConsumer, setFilterConsumer] = useState('')
   const [filterShop, setFilterShop] = useState('')
 
+  // Column ordering for drag-and-drop
+  const [columnOrder, setColumnOrder] = useState(['order', 'product'])
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+
   // Sorting & Pagination
   const [sortColumn, setSortColumn] = useState('updated_at')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
@@ -150,7 +154,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           is_points_collected,
           points_value,
           product_id,
+          order_id,
           sequence_number,
+          orders ( order_no, display_doc_no ),
           products ( id, product_name ),
           product_variants ( variant_name, image_url ),
           redeem_items ( item_name, item_image_url ),
@@ -170,8 +176,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             consumer_id,
             points_amount,
             scanned_at,
-            organizations ( org_name ),
-            users!consumer_qr_scans_consumer_id_fkey ( full_name, phone, email )
+            organizations ( org_name, org_type_code ),
+            users!consumer_qr_scans_consumer_id_fkey ( full_name, phone, email, organization_id, organizations!fk_users_organization ( org_type_code ) )
           )
         `, { count: 'exact' })
         .eq('company_id', userProfile.organizations.id)
@@ -289,6 +295,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         }
         // Else stays 'Anonymous' for legacy data without tracking
 
+        // Check if user is independent (org_type_code = 'INDEP')
+        const isIndependentUser = scanUser?.organizations?.org_type_code === 'INDEP';
+        const independentUserName = isIndependentUser ? scanUser?.full_name : null;
+
+        // Order document numbers
+        const orderDocNo = qr.orders?.display_doc_no || qr.orders?.order_no || 'N/A';
+        const legacyOrderNo = qr.orders?.display_doc_no ? qr.orders?.order_no : null;
+
         return {
           id: qr.id,
           consumer_name: consumerName,
@@ -300,6 +314,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           gift_redeemed: qr.is_redeemed,
           activation_location: location,
           shop_name: shopName,
+          independent_user_name: independentUserName,
+          order_doc_no: orderDocNo,
+          legacy_order_no: legacyOrderNo,
           product_name: qr.products?.product_name || 'Unknown Product',
           variant_name: qr.product_variants?.variant_name,
           variant_image: qr.product_variants?.image_url,
@@ -344,6 +361,29 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       setSortColumn(column)
       setSortDirection('asc')
     }
+  }
+
+  const handleDragStart = (column: string) => {
+    setDraggedColumn(column)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (targetColumn: string) => {
+    if (!draggedColumn || draggedColumn === targetColumn) return
+
+    const newOrder = [...columnOrder]
+    const draggedIndex = newOrder.indexOf(draggedColumn)
+    const targetIndex = newOrder.indexOf(targetColumn)
+
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      newOrder[draggedIndex] = targetColumn
+      newOrder[targetIndex] = draggedColumn
+      setColumnOrder(newOrder)
+    }
+    setDraggedColumn(null)
   }
 
   const totalPages = Math.ceil(totalCount / pageSize)
@@ -656,12 +696,45 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                        onClick={() => handleSort('product_id')}
-                      >
-                        <div className="flex items-center gap-1">Product <ArrowUpDown className="w-3 h-3" /></div>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        #
                       </th>
+                      {columnOrder.map((col) => {
+                        if (col === 'order') {
+                          return (
+                            <th
+                              key="order"
+                              draggable
+                              onDragStart={() => handleDragStart('order')}
+                              onDragOver={handleDragOver}
+                              onDrop={() => handleDrop('order')}
+                              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-move hover:bg-gray-100"
+                            >
+                              <div className="flex items-center gap-1">
+                                Ord No
+                                <span className="text-[10px] text-gray-400">(Drag)</span>
+                              </div>
+                            </th>
+                          )
+                        } else {
+                          return (
+                            <th
+                              key="product"
+                              draggable
+                              onDragStart={() => handleDragStart('product')}
+                              onDragOver={handleDragOver}
+                              onDrop={() => handleDrop('product')}
+                              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-move hover:bg-gray-100"
+                              onClick={() => handleSort('product_id')}
+                            >
+                              <div className="flex items-center gap-1">
+                                Product <ArrowUpDown className="w-3 h-3" />
+                                <span className="text-[10px] text-gray-400">(Drag)</span>
+                              </div>
+                            </th>
+                          )
+                        }
+                      })}
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort('sequence_number')}
@@ -681,6 +754,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                         <div className="flex items-center gap-1">Consumer <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Shop</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
                         onClick={() => handleSort('points_value')}
@@ -694,31 +768,53 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                   <tbody className="divide-y divide-gray-200">
                     {loading ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">Loading...</td>
+                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">Loading...</td>
                       </tr>
                     ) : activations.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No activations found</td>
+                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">No activations found</td>
                       </tr>
                     ) : (
-                      activations.map((activation) => (
+                      activations.map((activation, index) => {
+                        const rowNumber = (currentPage - 1) * pageSize + index + 1
+                        return (
                         <tr key={activation.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              {activation.variant_image && (
-                                <Avatar className="h-8 w-8">
-                                  <AvatarImage src={activation.variant_image} alt={activation.variant_name} />
-                                  <AvatarFallback>{activation.variant_name?.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                              )}
-                              <div>
-                                <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
-                                {activation.variant_name && (
-                                  <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
-                                )}
-                              </div>
-                            </div>
+                          <td className="px-4 py-3 text-xs text-gray-600 font-medium">
+                            {rowNumber}
                           </td>
+                          {columnOrder.map((col) => {
+                            if (col === 'order') {
+                              return (
+                                <td key="order" className="px-4 py-3">
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-medium text-blue-600">{activation.order_doc_no}</span>
+                                    {activation.legacy_order_no && (
+                                      <span className="text-[10px] text-gray-500">Legacy: {activation.legacy_order_no}</span>
+                                    )}
+                                  </div>
+                                </td>
+                              )
+                            } else {
+                              return (
+                                <td key="product" className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    {activation.variant_image && (
+                                      <Avatar className="h-8 w-8">
+                                        <AvatarImage src={activation.variant_image} alt={activation.variant_name} />
+                                        <AvatarFallback>{activation.variant_name?.charAt(0)}</AvatarFallback>
+                                      </Avatar>
+                                    )}
+                                    <div>
+                                      <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
+                                      {activation.variant_name && (
+                                        <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              )
+                            }
+                          })}
                           <td className="px-4 py-3 text-xs text-gray-600">
                             {activation.sequence_number || '-'}
                           </td>
@@ -738,6 +834,13 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-600">
                             {activation.shop_name}
+                          </td>
+                          <td className="px-4 py-3">
+                            {activation.independent_user_name ? (
+                              <span className="text-xs font-medium text-blue-600">{activation.independent_user_name}</span>
+                            ) : (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             {activation.points_awarded > 0 ? (
@@ -785,7 +888,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                             )}
                           </td>
                         </tr>
-                      ))
+                      )})
                     )}
                   </tbody>
                 </table>

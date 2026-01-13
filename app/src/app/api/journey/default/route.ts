@@ -10,13 +10,32 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await createClient()
+        // Use service role client to bypass RLS for public consumer access
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+            console.error('Missing Supabase environment variables')
+            return NextResponse.json(
+                { success: false, error: 'Server configuration error' },
+                { status: 500 }
+            )
+        }
+
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY,
+            {
+                auth: {
+                    autoRefreshToken: false,
+                    persistSession: false
+                }
+            }
+        )
+
         const { searchParams } = new URL(request.url)
         const orgId = searchParams.get('org_id')
 
