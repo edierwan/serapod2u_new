@@ -1085,21 +1085,17 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
 
-            console.log('🔍 Starting QR status check for:', qrCode)
             setCheckingQrStatus(true)
 
-            // Add timeout to prevent infinite loading - FORCE enable buttons after timeout
-            const safetyTimeoutId = setTimeout(() => {
-                console.warn('⚠️ QR status check timed out (10s), FORCE enabling buttons')
+            // Add timeout to prevent infinite loading
+            const timeoutId = setTimeout(() => {
+                console.warn('⚠️ QR status check timed out, enabling buttons')
                 setCheckingQrStatus(false)
-            }, 10000) // 10 second safety timeout
+            }, 10000) // 10 second timeout
 
             try {
                 const controller = new AbortController()
-                const fetchTimeoutId = setTimeout(() => {
-                    console.warn('⏰ Aborting QR status check after 8s')
-                    controller.abort()
-                }, 8000)
+                const fetchTimeoutId = setTimeout(() => controller.abort(), 8000)
 
                 const response = await fetch(
                     `/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`,
@@ -1108,16 +1104,12 @@ export default function PremiumLoyaltyTemplate({
                 clearTimeout(fetchTimeoutId)
 
                 const data = await response.json()
-                console.log('📊 QR Status check result:', data)
 
                 if (data.success) {
                     // Check if points already collected from this QR
                     if (data.is_points_collected) {
-                        console.log('✅ Points already collected for this QR')
                         setQrPointsCollected(true)
                         setPointsCollected(true)
-                    } else {
-                        console.log('✅ Points NOT collected yet - button should be enabled')
                     }
 
                     // Check if lucky draw already entered from this QR
@@ -1149,19 +1141,16 @@ export default function PremiumLoyaltyTemplate({
                     if (data.qr_code_id) {
                         setQrCodeDbId(data.qr_code_id)
                     }
-                } else {
-                    console.error('❌ QR status check failed:', data.error || 'Unknown error')
                 }
             } catch (error: any) {
                 if (error.name === 'AbortError') {
                     console.warn('⚠️ QR status check aborted (timeout)')
                 } else {
-                    console.error('❌ Error checking QR status:', error)
+                    console.error('Error checking QR status:', error)
                 }
             } finally {
-                clearTimeout(safetyTimeoutId)
+                clearTimeout(timeoutId)
                 setCheckingQrStatus(false)
-                console.log('✅ QR status check complete, buttons enabled')
             }
         }
 
@@ -2847,20 +2836,7 @@ export default function PremiumLoyaltyTemplate({
                 <div className="bg-white rounded-2xl shadow-lg p-3 flex justify-between gap-2">
                     {config.points_enabled && (
                         <button
-                            onClick={() => {
-                                console.log('🔘 Collect button clicked', {
-                                    qrCode,
-                                    collectingPoints,
-                                    pointsCollected,
-                                    qrPointsCollected,
-                                    checkingQrStatus
-                                })
-                                if (qrCode) {
-                                    handleProtectedAction('collect-points')
-                                } else {
-                                    setShowScanner(true)
-                                }
-                            }}
+                            onClick={() => qrCode ? handleProtectedAction('collect-points') : setShowScanner(true)}
                             disabled={qrCode ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
                             className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                                 }`}

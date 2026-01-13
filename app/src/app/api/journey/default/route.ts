@@ -16,10 +16,18 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
     try {
-        // Use service role for this endpoint since we need to fetch journey configs without auth
+        // Use service role client to bypass RLS for public consumer access
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+            console.error('Missing Supabase environment variables')
+            return NextResponse.json(
+                { success: false, error: 'Server configuration error' },
+                { status: 500 }
+            )
+        }
+
         const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY,
             {
                 auth: {
                     autoRefreshToken: false,
@@ -27,6 +35,7 @@ export async function GET(request: NextRequest) {
                 }
             }
         )
+
         const { searchParams } = new URL(request.url)
         const orgId = searchParams.get('org_id')
 
