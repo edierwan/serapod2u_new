@@ -241,20 +241,31 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!newMessage.trim()) return
+        e.stopPropagation()
+        
+        const messageToSend = newMessage.trim()
+        if (!messageToSend) {
+            console.log('No message to send')
+            return
+        }
 
+        console.log('Sending admin reply:', { threadId: thread.id, message: messageToSend })
         setError(null)
         setSending(true)
+        
         try {
             const res = await fetch(`/api/admin/support/threads/${thread.id}/reply`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: newMessage })
+                body: JSON.stringify({ message: messageToSend })
             })
+            
+            console.log('Response status:', res.status)
             const data = await res.json()
+            console.log('Response data:', data)
             
             if (!res.ok) {
-                setError(data.error || 'Failed to send reply')
+                setError(data.error || `Failed to send reply (${res.status})`)
                 console.error('Failed to send reply:', data)
                 return
             }
@@ -268,9 +279,9 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
                 setError('No message returned from server')
                 console.error('Failed to send reply, no message returned', data)
             }
-        } catch (error) {
-            console.error('Failed to send reply', error)
-            setError('Network error - please try again')
+        } catch (error: any) {
+            console.error('Failed to send reply:', error)
+            setError(`Network error: ${error.message || 'please try again'}`)
         } finally {
             setSending(false)
         }
@@ -397,21 +408,114 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
 function BlastModal({ open, onOpenChange }: any) {
     const [message, setMessage] = useState('')
     const [sending, setSending] = useState(false)
+    const [targetType, setTargetType] = useState<'all' | 'state' | 'role'>('all')
+    const [selectedStates, setSelectedStates] = useState<string[]>([])
+    const [selectedRoles, setSelectedRoles] = useState<string[]>([])
+    const [states, setStates] = useState<{ id: string, state_name: string, state_code: string }[]>([])
+    const [loadingStates, setLoadingStates] = useState(false)
+    const [previewCount, setPreviewCount] = useState<number | null>(null)
+    const [loadingPreview, setLoadingPreview] = useState(false)
+
+    // User role options
+    const roleOptions = [
+        { value: 'consumer', label: 'Consumers' },
+        { value: 'shop', label: 'Shop Owners' },
+        { value: 'SA', label: 'Sales Agents' },
+        { value: 'HQ', label: 'HQ Staff' }
+    ]
+
+    // Fetch states on mount
+    useEffect(() => {
+        if (open) {
+            fetchStates()
+        }
+    }, [open])
+
+    // Update preview count when filters change
+    useEffect(() => {
+        if (open && message.trim()) {
+            fetchPreviewCount()
+        } else {
+            setPreviewCount(null)
+        }
+    }, [targetType, selectedStates, selectedRoles, open])
+
+    const fetchStates = async () => {
+        setLoadingStates(true)
+        try {
+            const res = await fetch('/api/admin/states')
+            const data = await res.json()
+            if (data.states) {
+                setStates(data.states)
+            }
+        } catch (error) {
+            console.error('Failed to fetch states:', error)
+        } finally {
+            setLoadingStates(false)
+        }
+    }
+
+    const fetchPreviewCount = async () => {
+        setLoadingPreview(true)
+        try {
+            const params = new URLSearchParams()
+            params.append('targetType', targetType)
+            if (targetType === 'state' && selectedStates.length > 0) {
+                params.append('states', selectedStates.join(','))
+            }
+            if (targetType === 'role' && selectedRoles.length > 0) {
+                params.append('roles', selectedRoles.join(','))
+            }
+            
+            const res = await fetch(`/api/admin/support/blast/preview?${params.toString()}`)
+            const data = await res.json()
+            setPreviewCount(data.count || 0)
+        } catch (error) {
+            console.error('Failed to get preview count:', error)
+            setPreviewCount(null)
+        } finally {
+            setLoadingPreview(false)
+        }
+    }
 
     const handleSend = async () => {
         if (!message.trim()) return
-        if (!confirm('Are you sure you want to send this announcement to ALL users?')) return
+        
+        const targetDescription = targetType === 'all' 
+            ? 'ALL users' 
+            : targetType === 'state' 
+                ? `users in ${selectedStates.length} state(s)` 
+                : `users with ${selectedRoles.length} role(s)`
+        
+        if (!confirm(`Are you sure you want to send this announcement to ${targetDescription}?`)) return
 
         setSending(true)
         try {
-            await fetch('/api/admin/support/blast', {
+            const res = await fetch('/api/admin/support/blast', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, subject: 'Announcement' })
+                body: JSON.stringify({ 
+                    message, 
+                    subject: 'Announcement',
+                    targetType,
+                    states: targetType === 'state' ? selectedStates : [],
+                    roles: targetType === 'role' ? selectedRoles : []
+                })
             })
+            
+            const data = await res.json()
+            
+            if (!res.ok) {
+                alert('Failed to send announcement: ' + (data.error || 'Unknown error'))
+                return
+            }
+            
             onOpenChange(false)
             setMessage('')
-            alert('Announcement sent successfully')
+            setTargetType('all')
+            setSelectedStates([])
+            setSelectedRoles([])
+            alert(`Announcement sent successfully to ${data.sentCount || 'all'} user(s)`)
         } catch (error) {
             console.error('Failed to send blast', error)
             alert('Failed to send announcement')
@@ -420,17 +524,121 @@ function BlastModal({ open, onOpenChange }: any) {
         }
     }
 
+    const toggleState = (stateCode: string) => {
+        setSelectedStates(prev => 
+            prev.includes(stateCode) 
+                ? prev.filter(s => s !== stateCode) 
+                : [...prev, stateCode]
+        )
+    }
+
+    const toggleRole = (role: string) => {
+        setSelectedRoles(prev => 
+            prev.includes(role) 
+                ? prev.filter(r => r !== role) 
+                : [...prev, role]
+        )
+    }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Send Announcement Blast</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
+                    {/* Target Selection */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Send To</label>
+                        <Select value={targetType} onValueChange={(v: any) => setTargetType(v)}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Users</SelectItem>
+                                <SelectItem value="state">Filter by State/Location</SelectItem>
+                                <SelectItem value="role">Filter by User Type</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* State Filter */}
+                    {targetType === 'state' && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Select States {selectedStates.length > 0 && `(${selectedStates.length} selected)`}
+                            </label>
+                            {loadingStates ? (
+                                <div className="text-sm text-gray-500">Loading states...</div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-2 bg-gray-50 rounded-lg">
+                                    {states.map(state => (
+                                        <label 
+                                            key={state.state_code} 
+                                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-1 rounded"
+                                        >
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedStates.includes(state.state_code)}
+                                                onChange={() => toggleState(state.state_code)}
+                                                className="rounded border-gray-300"
+                                            />
+                                            {state.state_name}
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Role Filter */}
+                    {targetType === 'role' && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Select User Types {selectedRoles.length > 0 && `(${selectedRoles.length} selected)`}
+                            </label>
+                            <div className="grid grid-cols-2 gap-2 p-2 bg-gray-50 rounded-lg">
+                                {roleOptions.map(role => (
+                                    <label 
+                                        key={role.value} 
+                                        className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-2 rounded"
+                                    >
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedRoles.includes(role.value)}
+                                            onChange={() => toggleRole(role.value)}
+                                            className="rounded border-gray-300"
+                                        />
+                                        {role.label}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Preview Count */}
+                    {previewCount !== null && (
+                        <div className="bg-blue-50 p-3 rounded-md border border-blue-200 text-sm text-blue-800">
+                            {loadingPreview ? (
+                                <span className="flex items-center gap-2">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Calculating recipients...
+                                </span>
+                            ) : (
+                                <span>This message will be sent to approximately <strong>{previewCount}</strong> user(s)</span>
+                            )}
+                        </div>
+                    )}
+
                     <div className="bg-yellow-50 p-3 rounded-md border border-yellow-200 text-sm text-yellow-800 flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                        <p>This message will be sent to ALL active users as a new thread or update to their "Announcements" thread.</p>
+                        <p>
+                            {targetType === 'all' 
+                                ? 'This message will be sent to ALL active users as a new thread or update to their "Announcements" thread.'
+                                : 'This message will be sent to users matching the selected filters.'}
+                        </p>
                     </div>
+                    
                     <Textarea 
                         placeholder="Type your announcement here..." 
                         value={message}
@@ -440,7 +648,11 @@ function BlastModal({ open, onOpenChange }: any) {
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button onClick={handleSend} disabled={sending || !message.trim()} className="bg-purple-600 hover:bg-purple-700">
+                    <Button 
+                        onClick={handleSend} 
+                        disabled={sending || !message.trim() || (targetType === 'state' && selectedStates.length === 0) || (targetType === 'role' && selectedRoles.length === 0)} 
+                        className="bg-purple-600 hover:bg-purple-700"
+                    >
                         {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Megaphone className="w-4 h-4 mr-2" />}
                         Send Blast
                     </Button>

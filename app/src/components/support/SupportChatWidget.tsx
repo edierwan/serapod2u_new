@@ -123,9 +123,19 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
                         onThreadClick={handleThreadClick} 
                         onNewChat={() => setView('new-chat')}
                         onDeleteThread={async (id: string) => {
-                            if (confirm('Delete this conversation?')) {
-                                await fetch(`/api/support/threads/${id}`, { method: 'DELETE' })
-                                fetchThreads()
+                            try {
+                                const res = await fetch(`/api/support/threads/${id}`, { method: 'DELETE' })
+                                const data = await res.json()
+                                if (res.ok && data.success) {
+                                    // Refresh the list
+                                    fetchThreads()
+                                } else {
+                                    console.error('Delete failed:', data)
+                                    alert('Failed to delete conversation')
+                                }
+                            } catch (error) {
+                                console.error('Delete error:', error)
+                                alert('Failed to delete conversation')
                             }
                         }}
                     />
@@ -155,6 +165,7 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
 
 function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread }: any) {
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+    const [deleting, setDeleting] = useState(false)
     
     if (loading && threads.length === 0) {
         return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
@@ -166,8 +177,13 @@ function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread 
     }
 
     const confirmDelete = async (threadId: string) => {
-        await onDeleteThread(threadId)
-        setDeleteConfirm(null)
+        setDeleting(true)
+        try {
+            await onDeleteThread(threadId)
+        } finally {
+            setDeleting(false)
+            setDeleteConfirm(null)
+        }
     }
 
     return (
@@ -194,6 +210,7 @@ function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread 
                                                 size="sm" 
                                                 variant="outline" 
                                                 onClick={() => setDeleteConfirm(null)}
+                                                disabled={deleting}
                                             >
                                                 Cancel
                                             </Button>
@@ -201,8 +218,9 @@ function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread 
                                                 size="sm" 
                                                 variant="destructive" 
                                                 onClick={() => confirmDelete(thread.id)}
+                                                disabled={deleting}
                                             >
-                                                Delete
+                                                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
                                             </Button>
                                         </div>
                                     </div>
@@ -268,7 +286,63 @@ function NewChatView({ onCancel, onSuccess }: any) {
     const [loading, setLoading] = useState(false)
     const [attachments, setAttachments] = useState<any[]>([])
     const [uploading, setUploading] = useState(false)
+    const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    // Image compression function
+    const compressImage = async (file: File, maxWidth: number = 1200, quality: number = 0.8): Promise<{ blob: Blob, originalSize: number, compressedSize: number }> => {
+        return new Promise((resolve, reject) => {
+            const originalSize = file.size
+            const reader = new FileReader()
+            reader.readAsDataURL(file)
+            reader.onload = (event) => {
+                const img = document.createElement('img')
+                img.src = event.target?.result as string
+                img.onload = () => {
+                    const canvas = document.createElement('canvas')
+                    let width = img.width
+                    let height = img.height
+                    
+                    // Scale down if larger than maxWidth
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width)
+                        width = maxWidth
+                    }
+                    
+                    canvas.width = width
+                    canvas.height = height
+                    
+                    const ctx = canvas.getContext('2d')
+                    if (!ctx) {
+                        reject(new Error('Could not get canvas context'))
+                        return
+                    }
+                    
+                    ctx.drawImage(img, 0, 0, width, height)
+                    
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                resolve({ blob, originalSize, compressedSize: blob.size })
+                            } else {
+                                reject(new Error('Failed to compress image'))
+                            }
+                        },
+                        'image/jpeg',
+                        quality
+                    )
+                }
+                img.onerror = () => reject(new Error('Failed to load image'))
+            }
+            reader.onerror = () => reject(new Error('Failed to read file'))
+        })
+    }
+
+    const formatFileSize = (bytes: number): string => {
+        if (bytes < 1024) return bytes + ' B'
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+    }
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -280,13 +354,14 @@ function NewChatView({ onCancel, onSuccess }: any) {
             return
         }
 
-        // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-            alert('Image must be less than 5MB')
+        // Validate file size (max 10MB for original, will be compressed)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('Image must be less than 10MB')
             return
         }
 
         setUploading(true)
+        setCompressionInfo(null)
         try {
             // Get current user
             const { data: { user } } = await supabase.auth.getUser()
@@ -295,14 +370,37 @@ function NewChatView({ onCancel, onSuccess }: any) {
                 return
             }
 
+            // Compress image
+            let fileToUpload: Blob | File = file
+            let compressionMsg = ''
+            
+            if (file.size > 500 * 1024) { // Compress if larger than 500KB
+                try {
+                    const { blob, originalSize, compressedSize } = await compressImage(file)
+                    fileToUpload = blob
+                    const savings = ((originalSize - compressedSize) / originalSize * 100).toFixed(0)
+                    compressionMsg = `Optimized: ${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)} (${savings}% smaller)`
+                    setCompressionInfo(compressionMsg)
+                } catch (compressError) {
+                    console.error('Compression failed, using original:', compressError)
+                    compressionMsg = `Original: ${formatFileSize(file.size)}`
+                    setCompressionInfo(compressionMsg)
+                }
+            } else {
+                compressionMsg = `Size: ${formatFileSize(file.size)}`
+                setCompressionInfo(compressionMsg)
+            }
+
             // Create unique filename
-            const fileExt = file.name.split('.').pop()
+            const fileExt = file.type === 'image/png' ? 'png' : 'jpg'
             const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
 
             // Upload to Supabase Storage
             const { data, error } = await supabase.storage
                 .from('support-attachments')
-                .upload(fileName, file)
+                .upload(fileName, fileToUpload, {
+                    contentType: 'image/jpeg'
+                })
 
             if (error) {
                 console.error('Upload error:', error)
@@ -315,12 +413,18 @@ function NewChatView({ onCancel, onSuccess }: any) {
                 .from('support-attachments')
                 .getPublicUrl(fileName)
 
+            // Create local preview URL for immediate display
+            const localPreviewUrl = URL.createObjectURL(fileToUpload)
+
             // Add to attachments
             setAttachments([...attachments, { 
-                url: publicUrl, 
+                url: publicUrl,
+                previewUrl: localPreviewUrl,
                 name: file.name, 
-                type: file.type,
-                path: fileName 
+                type: 'image/jpeg',
+                path: fileName,
+                size: fileToUpload.size,
+                compressionInfo: compressionMsg
             }])
         } catch (error: any) {
             console.error('Upload failed:', error)
@@ -334,7 +438,12 @@ function NewChatView({ onCancel, onSuccess }: any) {
     }
 
     const removeAttachment = (index: number) => {
+        const att = attachments[index]
+        if (att.previewUrl) {
+            URL.revokeObjectURL(att.previewUrl)
+        }
         setAttachments(attachments.filter((_, i) => i !== index))
+        setCompressionInfo(null)
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -411,21 +520,27 @@ function NewChatView({ onCancel, onSuccess }: any) {
 
                 {/* Attachment Preview */}
                 {attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                         {attachments.map((att, idx) => (
-                            <div key={idx} className="relative group">
-                                <img 
-                                    src={att.url} 
-                                    alt={att.name} 
-                                    className="w-16 h-16 object-cover rounded-lg border"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => removeAttachment(idx)}
-                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                    <X className="w-3 h-3" />
-                                </button>
+                            <div key={idx} className="flex items-start gap-3 p-2 bg-gray-50 rounded-lg border">
+                                <div className="relative shrink-0">
+                                    <img 
+                                        src={att.previewUrl || att.url} 
+                                        alt={att.name} 
+                                        className="w-20 h-20 object-cover rounded-lg border"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => removeAttachment(idx)}
+                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-700 truncate">{att.name}</p>
+                                    <p className="text-xs text-green-600 mt-1">{att.compressionInfo}</p>
+                                </div>
                             </div>
                         ))}
                     </div>
