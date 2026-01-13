@@ -254,7 +254,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
           password: userData.password, 
           full_name: userData.full_name, 
           role_code: userData.role_code, 
-          organization_id: userData.organization_id || userProfile.organization_id, 
+          organization_id: userData.organization_id || undefined, // Don't auto-assign to admin's org - allow independent users
           phone: userData.phone || undefined 
         })
         

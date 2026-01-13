@@ -613,7 +613,7 @@ export default function UserManagementNew({
           full_name: userData.full_name,
           role_code: userData.role_code,
           organization_id:
-            userData.organization_id || userProfile.organization_id,
+            userData.organization_id || undefined, // Don't auto-assign to admin's org - allow independent users
           phone: userData.phone || undefined,
         });
 
@@ -645,7 +645,7 @@ export default function UserManagementNew({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   organizationId:
-                    userData.organization_id || userProfile.organization_id,
+                    userData.organization_id || undefined, // Don't default to admin's org for independent users
                   bankId: (userData as any).bank_id,
                   bankAccountNumber: (userData as any).bank_account_number,
                   bankAccountHolderName: (userData as any)

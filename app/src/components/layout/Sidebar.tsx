@@ -293,8 +293,9 @@ const navigationItems: MenuItem[] = [
     description: 'Stock management',
     access: {
       // Hide Inventory menu for SHOP and MANUFACTURER organizations
+      // Restrict to Level 40 and below (higher privilege)
       allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-      maxRoleLevel: 60
+      maxRoleLevel: 40
     },
     submenu: [
       {
@@ -303,7 +304,7 @@ const navigationItems: MenuItem[] = [
         icon: Package,
         access: {
           allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-          maxRoleLevel: 60
+          maxRoleLevel: 40 // Match parent restriction
         }
       },
       {
@@ -459,7 +460,9 @@ const secondaryItems: MenuItem[] = [
     description: 'System settings',
     access: {
       // Only HQ can access settings
-      allowedOrgTypes: ['HQ']
+      // Restrict to Level 40 and below (higher privilege)
+      allowedOrgTypes: ['HQ'],
+      maxRoleLevel: 40
     }
   }
 ]
