@@ -38,6 +38,9 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
+  // Check if user is independent (no organization) - Guest users
+  const isIndependentUser = !userProfile?.organization_id || !userProfile?.organizations
+
   useEffect(() => {
     if (isReady) {
       fetchProductDetails()
@@ -796,10 +799,13 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                         <span className="text-[10px] text-gray-400 uppercase tracking-wide">Retail Price</span>
                         <span className="text-[13px] font-semibold text-blue-600">RM {variant.suggested_retail_price?.toFixed(2) || '0.00'}</span>
                       </div>
+                      {/* Hide BASE COST for independent users (Level 50 Guest users) */}
+                      {!isIndependentUser && (
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] text-gray-400 uppercase tracking-wide">Base Cost</span>
                         <span className="text-[11px] font-medium text-gray-600">RM {variant.base_cost?.toFixed(2) || '0.00'}</span>
                       </div>
+                      )}
                     </div>
                   </div>
                 </div>
