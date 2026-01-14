@@ -1011,26 +1011,26 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   }
 
   // Helper function to get the organization name to display in the Name column
-  // For D2H orders, we want to show the distributor (seller) name
+  // For D2H orders, we want to show the distributor (buyer) name - the distributor placing the order
   // For H2M orders, we want to show the manufacturer (seller) name
   // For S2D orders, we want to show the shop (buyer) name from distributor's view, or distributor (seller) from shop's view
   const getDisplayOrgName = (order: Order): string => {
-    // For D2H (Distributor → HQ), show the distributor name (seller)
-    // If seller is HQ (wrong data), use buyer instead
+    // For D2H (Distributor → HQ), show the distributor name (buyer)
+    // In D2H orders: buyer = distributor (placing order), seller = HQ/Warehouse (fulfilling order)
     if (order.order_type === 'D2H') {
-      const sellerIsHQ = order.seller_org?.org_type_code === 'HQ'
-      const buyerIsHQ = order.buyer_org?.org_type_code === 'HQ'
+      const sellerIsHQorWH = order.seller_org?.org_type_code === 'HQ' || order.seller_org?.org_type_code === 'WH'
+      const buyerIsDist = order.buyer_org?.org_type_code === 'DIST'
 
-      // If data is correct (seller is distributor), return seller name
-      if (!sellerIsHQ && order.seller_org?.org_name) {
-        return order.seller_org.org_name
-      }
-      // If data is reversed (buyer is distributor), return buyer name
-      if (!buyerIsHQ && order.buyer_org?.org_name) {
+      // If buyer is distributor, return buyer (distributor) name - this is the expected data structure
+      if (buyerIsDist && order.buyer_org?.org_name) {
         return order.buyer_org.org_name
       }
-      // Fallback
-      return order.seller_org?.org_name || order.buyer_org?.org_name || 'N/A'
+      // Legacy fallback: If seller is distributor (old data structure), return seller name
+      if (!sellerIsHQorWH && order.seller_org?.org_name) {
+        return order.seller_org.org_name
+      }
+      // Final fallback - show buyer name as it should be the distributor
+      return order.buyer_org?.org_name || order.seller_org?.org_name || 'N/A'
     }
 
     // For H2M (HQ → Manufacturer), show the manufacturer name (seller)
