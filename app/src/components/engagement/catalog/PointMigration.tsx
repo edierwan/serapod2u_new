@@ -349,14 +349,27 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     // Updated template with Password column
     const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password']
     const exampleRow = '2025-01-11,AZMIR,0179244297,nurazmirpcb@gmail.com,Kelantan,20,hb080397'
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + exampleRow
-    const encodedUri = encodeURI(csvContent)
+    const csvContent = headers.join(",") + "\n" + exampleRow
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
+    link.setAttribute("href", url)
     link.setAttribute("download", "point_migration_template.csv")
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  // Helper function to properly escape CSV fields
+  const escapeCSVField = (value: any): string => {
+    if (value === null || value === undefined) return ''
+    const str = String(value)
+    // Always quote fields that contain commas, quotes, or newlines
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`
+    }
+    return str
   }
 
   const downloadErrorRecords = () => {
@@ -364,17 +377,28 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     if (errorRecords.length === 0) return
 
     const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'ErrorMessage']
-    const rows = errorRecords.map(r =>
-      [r.joinedDate, r.name, r.phone, r.email, r.location, r.points, r.password || '', r.message].join(',')
-    )
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.join("\n")
-    const encodedUri = encodeURI(csvContent)
+    const rows = errorRecords.map(r => {
+      return [
+        escapeCSVField(r.joinedDate),
+        escapeCSVField(r.name),
+        escapeCSVField(r.phone),
+        escapeCSVField(r.email),
+        escapeCSVField(r.location),
+        escapeCSVField(r.points),
+        escapeCSVField(r.password || ''),
+        escapeCSVField(r.message)
+      ].join(',')
+    })
+    const csvContent = headers.join(",") + "\n" + rows.join("\n")
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
+    link.setAttribute("href", url)
     link.setAttribute("download", `migration_errors_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   const downloadAllResults = () => {
@@ -383,31 +407,31 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'Status', 'UserType', 'MatchedRole', 'Message']
     const rows = results.map(r => {
       const userType = r.status === 'Success' ? (r.isNewUser ? 'New Account' : 'Existing Account') : ''
-      const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
-      const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
 
       return [
-        r.joinedDate,
-        safeName,
-        r.phone,
-        r.email,
-        r.location,
-        r.points,
-        r.password || '',
-        r.status,
-        userType,
-        r.userRole || '',
-        safeMessage
+        escapeCSVField(r.joinedDate),
+        escapeCSVField(r.name),
+        escapeCSVField(r.phone),
+        escapeCSVField(r.email),
+        escapeCSVField(r.location),
+        escapeCSVField(r.points),
+        escapeCSVField(r.password || ''),
+        escapeCSVField(r.status),
+        escapeCSVField(userType),
+        escapeCSVField(r.userRole || ''),
+        escapeCSVField(r.message)
       ].join(',')
     })
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.join("\n")
-    const encodedUri = encodeURI(csvContent)
+    const csvContent = headers.join(",") + "\n" + rows.join("\n")
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
+    link.setAttribute("href", url)
     link.setAttribute("download", `migration_results_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   const downloadExistingRecords = () => {
@@ -423,32 +447,31 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
     const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Password', 'Status', 'UserType', 'MatchedRole', 'Message']
     const rows = existingRecords.map(r => {
       const userType = 'Existing Account'
-      const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
-      const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
-      const safeEmail = r.email ? `"${r.email.replace(/"/g, '""')}"` : ''
 
       return [
-        r.joinedDate || '',
-        safeName,
-        r.phone || '',
-        safeEmail,
-        r.location || '',
-        r.points || 0,
-        r.password || '',
-        r.status,
-        userType,
-        r.userRole || 'GUEST',
-        safeMessage
+        escapeCSVField(r.joinedDate || ''),
+        escapeCSVField(r.name),
+        escapeCSVField(r.phone || ''),
+        escapeCSVField(r.email),
+        escapeCSVField(r.location || ''),
+        escapeCSVField(r.points || 0),
+        escapeCSVField(r.password || ''),
+        escapeCSVField(r.status),
+        escapeCSVField(userType),
+        escapeCSVField(r.userRole || 'GUEST'),
+        escapeCSVField(r.message)
       ].join(',')
     })
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.join("\n")
-    const encodedUri = encodeURI(csvContent)
+    const csvContent = headers.join(",") + "\n" + rows.join("\n")
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
+    link.setAttribute("href", url)
     link.setAttribute("download", `migration_existing_users_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   // Handle column sorting

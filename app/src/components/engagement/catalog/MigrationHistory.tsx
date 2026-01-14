@@ -146,6 +146,17 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
     }
   }
 
+  // Helper function to properly escape CSV fields
+  const escapeCSVField = (value: any): string => {
+    if (value === null || value === undefined) return ''
+    const str = String(value)
+    // Always quote fields that contain commas, quotes, or newlines
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`
+    }
+    return str
+  }
+
   const downloadRecords = (record: MigrationRecord, type: 'all' | 'errors' | 'existing') => {
     let records = record.results || []
     let filename = ''
@@ -172,21 +183,18 @@ export function MigrationHistory({ onRefresh }: MigrationHistoryProps) {
     const headers = ['JoinedDate', 'Name', 'MobileNumber', 'EmailAddress', 'Location', 'Balance', 'Status', 'UserType', 'Role', 'Message']
     const rows = records.map((r: any) => {
       const userType = r.status === 'Success' ? (r.isNewUser ? 'New Account' : 'Existing Account') : ''
-      const safeMessage = r.message ? `"${r.message.replace(/"/g, '""')}"` : ''
-      const safeName = r.name ? `"${r.name.replace(/"/g, '""')}"` : ''
-      const safeEmail = r.email ? `"${r.email.replace(/"/g, '""')}"` : ''
 
       return [
-        r.joinedDate || '',
-        safeName,
-        r.phone || '',
-        safeEmail,
-        r.location || '',
-        r.points || 0,
-        r.status || '',
-        userType,
-        r.userRole || '',
-        safeMessage
+        escapeCSVField(r.joinedDate || ''),
+        escapeCSVField(r.name),
+        escapeCSVField(r.phone || ''),
+        escapeCSVField(r.email),
+        escapeCSVField(r.location || ''),
+        escapeCSVField(r.points || 0),
+        escapeCSVField(r.status || ''),
+        escapeCSVField(userType),
+        escapeCSVField(r.userRole || ''),
+        escapeCSVField(r.message)
       ].join(',')
     })
 
