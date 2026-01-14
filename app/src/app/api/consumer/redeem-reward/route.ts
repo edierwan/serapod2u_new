@@ -301,8 +301,7 @@ export async function POST(request: NextRequest) {
         transaction_date: new Date().toISOString(),
         fulfillment_status: isPointCategory ? 'completed' : 'pending',
         redemption_code: tempRedemptionCode,
-        user_id: user.id, // Record the user ID for independent consumers
-        source: isPointCategory ? 'bonus_reward' : undefined  // Mark source as bonus reward
+        user_id: user.id // Record the user ID for independent consumers
       } as any)
       .select()
       .single()

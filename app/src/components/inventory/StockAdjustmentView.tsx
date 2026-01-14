@@ -491,8 +491,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       }
     }
 
-    // If this reason requires manufacturer proof (quality/return), ensure files are attached
-    const requiresEvidenceCodes = ['quality_issue', 'return_to_supplier']
+    // If this reason requires manufacturer proof (quality/return/damaged), ensure files are attached
+    const requiresEvidenceCodes = ['damaged_goods', 'quality_issue', 'return_to_supplier']
     if (requiresEvidenceCodes.includes(reasonCode) && evidenceFiles.length === 0) {
       toast({
         title: 'Evidence Required',
@@ -556,9 +556,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     try {
       // Prevent processing if any pending item requires evidence but has none
       const reasonsMap = new Map(reasons.map(r => [r.id, r]))
+      const qualityReasonCodes = ['damaged_goods', 'quality_issue', 'return_to_supplier']
       const missingEvidenceItems = pendingAdjustments.filter(item => {
         const r = reasonsMap.get(item.reasonId)
-        return r && ['quality_issue', 'return_to_supplier'].includes((r as any).reason_code) && (!item.evidenceFiles || item.evidenceFiles.length === 0)
+        return r && qualityReasonCodes.includes((r as any).reason_code) && (!item.evidenceFiles || item.evidenceFiles.length === 0)
       })
 
       if (missingEvidenceItems.length > 0) {
@@ -610,6 +611,65 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             console.error('RPC Error for item:', item.variantName, JSON.stringify(error, null, 2))
             throw error
           }
+
+          // For quality/return related reasons, also create a stock_adjustments record
+          // so it appears in the Quality Issues view for manufacturer acknowledgement
+          const reasonData = reasonsMap.get(item.reasonId)
+          const qualityReasonCodes = ['damaged_goods', 'quality_issue', 'return_to_supplier']
+          
+          if (reasonData && qualityReasonCodes.includes(reasonData.reason_code)) {
+            console.log('Creating quality issue record for reason:', reasonData.reason_code)
+            
+            // Get the manufacturer_id from the product variant
+            const { data: variantData } = await supabase
+              .from('product_variants')
+              .select('product_id, products!inner(manufacturer_id)')
+              .eq('id', item.variantId)
+              .single()
+            
+            const manufacturerId = (variantData as any)?.products?.manufacturer_id || null
+            
+            // Create the stock_adjustments record
+            const { data: adjustmentData, error: adjError } = await supabase
+              .from('stock_adjustments')
+              .insert({
+                organization_id: item.warehouseId,
+                reason_id: item.reasonId,
+                notes: item.notes || `Physical count: ${item.physicalCount}, System count: ${item.systemCount}, Adjustment: ${item.adjustment}`,
+                proof_images: evidenceUrls.length > 0 ? evidenceUrls : null,
+                status: 'completed',
+                created_by: userProfile.id,
+                target_manufacturer_org_id: manufacturerId,
+                manufacturer_assigned_at: manufacturerId ? new Date().toISOString() : null,
+                manufacturer_status: 'pending'
+              })
+              .select()
+              .single()
+
+            if (adjError) {
+              console.error('Error creating stock_adjustments record:', adjError)
+              // Don't throw - the main adjustment was successful
+            } else if (adjustmentData) {
+              // Create the stock_adjustment_items record
+              const { error: itemError } = await supabase
+                .from('stock_adjustment_items')
+                .insert({
+                  adjustment_id: adjustmentData.id,
+                  variant_id: item.variantId,
+                  system_quantity: item.systemCount,
+                  physical_quantity: item.physicalCount,
+                  adjustment_quantity: item.adjustment,
+                  unit_cost: item.unitCost
+                })
+              
+              if (itemError) {
+                console.error('Error creating stock_adjustment_items record:', itemError)
+              } else {
+                console.log('✅ Quality issue record created successfully:', adjustmentData.id)
+              }
+            }
+          }
+
           successCount++
         } catch (error: any) {
           console.error('Error processing item:', item.variantName, error)
@@ -659,11 +719,12 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const selectedReasonData = reasons.find(r => r.id === selectedReason)
 
   // Count pending items that require evidence but have none
+  const qualityReasonCodesForUI = ['damaged_goods', 'quality_issue', 'return_to_supplier']
   const missingEvidenceCount = pendingAdjustments.reduce((acc, item) => {
     const r = reasons.find(rr => rr.id === item.reasonId)
     if (!r) return acc
     const rc = (r as any).reason_code
-    if (['quality_issue', 'return_to_supplier'].includes(rc) && (!item.evidenceFiles || item.evidenceFiles.length === 0)) return acc + 1
+    if (qualityReasonCodesForUI.includes(rc) && (!item.evidenceFiles || item.evidenceFiles.length === 0)) return acc + 1
     return acc
   }, 0)
 

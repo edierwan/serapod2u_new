@@ -325,6 +325,7 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12 text-center">#</TableHead>
               <TableHead 
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('subgroup_name')}
@@ -362,8 +363,9 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
           </TableHeader>
           <TableBody>
             {getSortedSubGroups().length > 0 ? (
-              getSortedSubGroups().map((subgroup) => (
+              getSortedSubGroups().map((subgroup, index) => (
                 <TableRow key={subgroup.id} className="hover:bg-gray-50">
+                  <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
                   <TableCell className="text-sm">{subgroup.subgroup_name}</TableCell>
                   <TableCell className="text-xs text-gray-600">{subgroup.group_name}</TableCell>
                   <TableCell className="text-xs text-gray-600 truncate max-w-xs">{subgroup.subgroup_description || '-'}</TableCell>
@@ -398,7 +400,7 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                   No sub-groups found
                 </TableCell>
               </TableRow>

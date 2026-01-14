@@ -326,6 +326,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12 text-center">#</TableHead>
               <TableHead>Image</TableHead>
               <TableHead 
                 className="cursor-pointer hover:bg-gray-100 select-none"
@@ -380,8 +381,9 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           </TableHeader>
           <TableBody>
             {getSortedVariants().length > 0 ? (
-              getSortedVariants().map((variant) => (
+              getSortedVariants().map((variant, index) => (
                 <TableRow key={variant.id} className="hover:bg-gray-50">
+                  <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
                   <TableCell>
                     <Avatar className="w-10 h-10 rounded-lg">
                       {variant.image_url ? (
@@ -434,7 +436,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                   No variants found
                 </TableCell>
               </TableRow>

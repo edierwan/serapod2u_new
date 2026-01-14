@@ -300,6 +300,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12 text-center">#</TableHead>
               <TableHead 
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('category_name')}
@@ -337,8 +338,9 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
           </TableHeader>
           <TableBody>
             {getSortedCategories().length > 0 ? (
-              getSortedCategories().map((category) => (
+              getSortedCategories().map((category, index) => (
                 <TableRow key={category.id} className="hover:bg-gray-50">
+                  <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
                   <TableCell className="text-sm">{category.category_name}</TableCell>
                   <TableCell className="text-xs text-gray-600 truncate max-w-xs">{category.category_description || '-'}</TableCell>
                   <TableCell className="text-center">
@@ -377,7 +379,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                   No categories found
                 </TableCell>
               </TableRow>

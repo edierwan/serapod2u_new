@@ -2672,6 +2672,8 @@ export default function PremiumLoyaltyTemplate({
     const handleRedeemSuccessClose = () => {
         setShowRedeemSuccess(false)
         setSelectedReward(null)
+        // Navigate to rewards tab after closing success animation
+        setActiveTab('rewards')
         setRedemptionDetails(null)
     }
 

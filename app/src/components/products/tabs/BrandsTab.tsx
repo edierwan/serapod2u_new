@@ -269,6 +269,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12 text-center">#</TableHead>
               <TableHead 
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('brand_name')}
@@ -298,12 +299,21 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
           </TableHeader>
           <TableBody>
             {getSortedBrands().length > 0 ? (
-              getSortedBrands().map((brand) => (
+              getSortedBrands().map((brand, index) => (
                 <TableRow key={brand.id} className="hover:bg-gray-50">
+                  <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="w-10 h-10">
-                        {brand.logo_url && <AvatarImage src={getStorageUrl(brand.logo_url) || brand.logo_url} alt={brand.brand_name} />}
+                        {brand.logo_url && (
+                          <AvatarImage 
+                            src={getStorageUrl(brand.logo_url) || brand.logo_url} 
+                            alt={brand.brand_name}
+                            onError={(e) => {
+                              console.log('Brand logo load error:', brand.brand_name, brand.logo_url)
+                            }}
+                          />
+                        )}
                         <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
                           {getBrandInitials(brand.brand_name)}
                         </AvatarFallback>
@@ -346,7 +356,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
                   No brands found
                 </TableCell>
               </TableRow>
