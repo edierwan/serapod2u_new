@@ -3324,8 +3324,10 @@ export default function PremiumLoyaltyTemplate({
                                             <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{reward.item_description || 'Redeem your points'}</p>
                                             <div className="flex items-center justify-between mt-2">
                                                 <div className="flex items-center gap-1">
-                                                    <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                                    {reward.point_offer ? (
+                                                    <Star className={`w-3 h-3 ${(reward as any).category === 'point' ? 'text-green-500 fill-green-500' : 'text-amber-500 fill-amber-500'}`} />
+                                                    {(reward as any).category === 'point' ? (
+                                                        <span className="text-sm font-bold text-green-600">+{(reward as any).point_reward_amount || 0} pts</span>
+                                                    ) : reward.point_offer ? (
                                                         <div className="flex flex-col leading-none">
                                                             <span className="text-[10px] text-gray-400 line-through">{formatNumber(reward.points_required)}</span>
                                                             <span className="text-sm font-bold text-red-500">{formatNumber(reward.point_offer)}</span>
