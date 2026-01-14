@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
         company_id: isIndependent ? null : shopId, // Use shop's org ID if available, else null
         consumer_phone: consumerPhone,
         consumer_email: consumer_email || userProfile.email || null,
-        transaction_type: isPointCategory ? 'collect' : 'redeem',  // Use 'collect' for bonus points
+        transaction_type: isPointCategory ? 'earn' : 'redeem',  // Use 'earn' for bonus points (valid: earn, redeem, expire, adjust)
         points_amount: pointsChange,
         balance_after: newBalance,
         redeem_item_id: reward_id,
