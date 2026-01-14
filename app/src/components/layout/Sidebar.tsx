@@ -321,7 +321,7 @@ const navigationItems: MenuItem[] = [
         label: 'Stock Adjustment',
         icon: SettingsIcon,
         access: {
-          allowedOrgTypes: ['HQ'],
+          allowedOrgTypes: ['HQ', 'WH'],
           maxRoleLevel: 40
         }
       },
