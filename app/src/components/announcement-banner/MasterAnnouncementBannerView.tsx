@@ -157,7 +157,9 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     banner_config: masterConfig.banner_config,
-                    is_active: masterConfig.is_active
+                    // Always set is_active to true when saving - if user is saving a config, they want it active
+                    // The banner_config.enabled field controls whether banners actually display
+                    is_active: true
                 })
             })
 
