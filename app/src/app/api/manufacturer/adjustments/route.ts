@@ -48,9 +48,31 @@ export async function GET(request: NextRequest) {
       query = query.eq('target_manufacturer_org_id', userProfile.organization_id)
     }
 
-    const { data, error } = await query
+    const { data: adjustments, error } = await query
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Manually fetch created_by_user since the foreign key relationship is missing or misconfigured
+    const userIds = Array.from(new Set((adjustments || []).map((a: any) => a.created_by).filter(Boolean))) as string[]
+    
+    let usersMap: Record<string, any> = {}
+    if (userIds.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .in('id', userIds)
+      
+      if (users) {
+        users.forEach((u: any) => {
+          usersMap[u.id] = u
+        })
+      }
+    }
+
+    const data = (adjustments || []).map((a: any) => ({
+      ...a,
+      created_by_user: usersMap[a.created_by] || null
+    }))
 
     return NextResponse.json({ data })
   } catch (err: any) {

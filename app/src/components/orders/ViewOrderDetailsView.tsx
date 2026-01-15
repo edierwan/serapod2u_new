@@ -314,6 +314,17 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
   }
 
   const subtotal = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.line_total || 0), 0) || 0
+  
+  // Logic to swap display for Sales Orders (SO) vs Purchase Orders (PO)
+  // For PO: Header is Buyer (Issuer), Section is Supplier
+  // For SO: Header is Seller (Issuer), Section is Customer
+  const isSalesOrder = orderData.order_type === 'SO' || orderData.order_no?.startsWith('SO')
+  const headerOrg = isSalesOrder ? orderData.seller_org : orderData.buyer_org
+  const otherOrg = isSalesOrder ? orderData.buyer_org : orderData.seller_org
+  const otherOrgLabel = isSalesOrder ? 'Customer:' : 'Supplier:'
+  const docTitle = isSalesOrder ? 'SALES ORDER' : 'PURCHASE ORDER'
+  const docNoLabel = isSalesOrder ? 'SO#:' : 'PO#:'
+
   const totalQuantity = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
 
   // Helper to get status color based on payment status
@@ -409,10 +420,10 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         <div className="flex justify-between items-start mb-12 print:mb-6 gap-8">
           {/* Left: Company Logo */}
           <div className="flex-shrink-0">
-            {orderData.buyer_org?.logo_url ? (
+            {headerOrg?.logo_url ? (
               <img
-                src={orderData.buyer_org.logo_url}
-                alt={orderData.buyer_org.org_name}
+                src={headerOrg.logo_url}
+                alt={headerOrg.org_name}
                 className="h-60 object-contain"
               />
             ) : (
@@ -423,22 +434,22 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
           {/* Center: Headquarters Detail */}
           <div className="flex-1">
             <h2 className="font-bold text-gray-900 uppercase mb-2 text-sm tracking-wide">
-              {orderData.buyer_org?.org_name}
+              {headerOrg?.org_name}
             </h2>
             <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
-              <p className="whitespace-pre-line">{orderData.buyer_org?.address || 'No address provided'}</p>
-              {orderData.buyer_org?.phone && <p>Phone: {orderData.buyer_org.phone}</p>}
-              {orderData.buyer_org?.email && <p>Email: {orderData.buyer_org.email}</p>}
-              {orderData.buyer_org?.website && <p>Website: {orderData.buyer_org.website}</p>}
+              <p className="whitespace-pre-line">{headerOrg?.address || 'No address provided'}</p>
+              {headerOrg?.phone && <p>Phone: {headerOrg.phone}</p>}
+              {headerOrg?.email && <p>Email: {headerOrg.email}</p>}
+              {headerOrg?.website && <p>Website: {headerOrg.website}</p>}
             </div>
           </div>
 
           {/* Right: PO Detail */}
           <div className="flex-shrink-0 text-right">
-            <h1 className="text-xl font-light text-gray-900 mb-4 uppercase tracking-wider">PURCHASE ORDER</h1>
+            <h1 className="text-xl font-light text-gray-900 mb-4 uppercase tracking-wider">{docTitle}</h1>
             <div className="text-xs space-y-2">
               <div className="flex justify-between gap-4">
-                <span className="text-gray-500">PO#:</span>
+                <span className="text-gray-500">{docNoLabel}</span>
                 <span className="font-medium text-gray-900">{orderData.display_doc_no || orderData.order_no}</span>
               </div>
               {orderData.display_doc_no && (
@@ -467,13 +478,13 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
         <div className="flex justify-between items-start mb-12 print:mb-6 border-t border-gray-100 pt-8 print:pt-4">
           {/* Supplier Info */}
           <div className="w-1/2">
-            <h3 className="font-bold text-gray-900 mb-3 text-sm">Supplier:</h3>
+            <h3 className="font-bold text-gray-900 mb-3 text-sm">{otherOrgLabel}</h3>
             <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
-              <p className="font-bold text-gray-800 uppercase mb-1">{orderData.seller_org?.org_name}</p>
+              <p className="font-bold text-gray-800 uppercase mb-1">{otherOrg?.org_name}</p>
               {/* Contact Person if available, otherwise generic */}
-              <p className="uppercase">{orderData.seller_org?.contact_person || ''}</p>
-              <p className="whitespace-pre-line max-w-xs">{orderData.seller_org?.address || 'No address provided'}</p>
-              <p>{orderData.seller_org?.email}</p>
+              <p className="uppercase">{otherOrg?.contact_person || ''}</p>
+              <p className="whitespace-pre-line max-w-xs">{otherOrg?.address || 'No address provided'}</p>
+              <p>{otherOrg?.email}</p>
             </div>
           </div>
 
@@ -545,13 +556,13 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
           <div className="flex justify-between items-start">
             {/* Left: Issued By with Company Signature */}
             <div>
-              {orderData.buyer_org?.signature_type === 'electronic' && orderData.buyer_org?.signature_url && (
+              {headerOrg?.signature_type === 'electronic' && headerOrg?.signature_url && (
                 <div className="mb-6">
                   <p className="text-sm font-bold text-gray-900 mb-2">Issued by:</p>
                   <div className="flex items-start gap-4">
                     <div className="w-32 h-24 flex items-center">
                       <img
-                        src={orderData.buyer_org.signature_url}
+                        src={headerOrg.signature_url}
                         alt="Company Signature"
                         className="max-w-full max-h-full object-contain"
                       />
