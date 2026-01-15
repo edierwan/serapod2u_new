@@ -1517,7 +1517,7 @@ export default function JourneyDesignerV2({
                                         <strong>Using Master Banner:</strong> Since no banner is configured for this journey,
                                         the master announcement banner will be displayed to consumers (if configured).{' '}
                                         <a
-                                            href="/engagement/announcement-banner"
+                                            href="/engagement/journey-builder?tab=announcement-banner"
                                             className="text-blue-600 underline hover:text-blue-800"
                                             target="_blank"
                                         >

@@ -110,6 +110,15 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
 
     const supabase = createClient()
 
+    // Handle URL parameters for direct tab navigation
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        const tab = params.get('tab')
+        if (tab === 'announcement-banner') {
+            setActiveTab('announcement-banner')
+        }
+    }, [])
+
     useEffect(() => {
         loadJourneys()
         // eslint-disable-next-line react-hooks/exhaustive-deps
