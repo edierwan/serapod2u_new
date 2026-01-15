@@ -165,6 +165,61 @@ interface ProductInfo {
     brand_name?: string
 }
 
+// Utility function to compress images before upload
+async function compressImage(file: File, maxSize: number = 200, quality: number = 0.8): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+            const img = document.createElement('img')
+            img.onload = () => {
+                const canvas = document.createElement('canvas')
+                let width = img.width
+                let height = img.height
+
+                // Calculate new dimensions maintaining aspect ratio
+                if (width > height) {
+                    if (width > maxSize) {
+                        height = Math.round((height * maxSize) / width)
+                        width = maxSize
+                    }
+                } else {
+                    if (height > maxSize) {
+                        width = Math.round((width * maxSize) / height)
+                        height = maxSize
+                    }
+                }
+
+                canvas.width = width
+                canvas.height = height
+
+                const ctx = canvas.getContext('2d')
+                if (!ctx) {
+                    reject(new Error('Could not get canvas context'))
+                    return
+                }
+
+                ctx.drawImage(img, 0, 0, width, height)
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            resolve(blob)
+                        } else {
+                            reject(new Error('Could not compress image'))
+                        }
+                    },
+                    'image/jpeg',
+                    quality
+                )
+            }
+            img.onerror = () => reject(new Error('Could not load image'))
+            img.src = e.target?.result as string
+        }
+        reader.onerror = () => reject(new Error('Could not read file'))
+        reader.readAsDataURL(file)
+    })
+}
+
 interface PremiumLoyaltyTemplateProps {
     config: JourneyConfig
     qrCode?: string
@@ -274,16 +329,34 @@ export default function PremiumLoyaltyTemplate({
             }
 
             const file = event.target.files[0]
-            const fileExt = file.name.split('.').pop()
+            
+            // Check file size - max 2MB before compression
+            const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
+            if (file.size > MAX_FILE_SIZE) {
+                toast({
+                    title: "File too large",
+                    description: "Please select an image smaller than 2MB",
+                    variant: "destructive"
+                })
+                return
+            }
+
+            // Compress image before upload
+            const compressedFile = await compressImage(file, 200, 0.8) // 200px, 80% quality
+            
+            const fileExt = 'jpg' // Always use jpg for compressed images
             const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
             const filePath = `${currentUserId}/${fileName}`
 
             setIsUploadingAvatar(true)
 
-            // 1. Upload to Supabase Storage
+            // 1. Upload compressed image to Supabase Storage
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
-                .upload(filePath, file)
+                .upload(filePath, compressedFile, {
+                    contentType: 'image/jpeg',
+                    upsert: true
+                })
 
             if (uploadError) {
                 throw uploadError
