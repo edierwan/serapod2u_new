@@ -23,6 +23,7 @@ interface ConsumerUser {
   total_redeemed: number
   transaction_count: number
   last_transaction_date: string | null
+  last_migration_by_name?: string | null
 }
 
 interface UserPointsMonitorProps {
@@ -227,7 +228,9 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                             <div className="text-purple-600 font-medium">
                               {user.total_migration > 0 ? '+' : ''}{formatNumber(user.total_migration)}
                             </div>
-                            <div className="text-xs text-muted-foreground">via migration</div>
+                            <div className="text-xs text-muted-foreground">
+                              {user.last_migration_by_name ? `by ${user.last_migration_by_name}` : 'via migration'}
+                            </div>
                           </td>
                           <td className="px-4 py-4">
                             <div className="text-orange-600">

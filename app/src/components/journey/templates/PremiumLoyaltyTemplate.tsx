@@ -17,6 +17,7 @@ import {
     Gift,
     Star,
     Gamepad2,
+    Building2,
     User,
     ChevronRight,
     ChevronLeft,
@@ -476,6 +477,11 @@ export default function PremiumLoyaltyTemplate({
     const [editingAddress, setEditingAddress] = useState(false)
     const [newAddress, setNewAddress] = useState('')
 
+    // Shop Name states
+    const [userShopName, setUserShopName] = useState('')
+    const [editingShopName, setEditingShopName] = useState(false)
+    const [newShopName, setNewShopName] = useState('')
+
     // Password change states
     const [showChangePassword, setShowChangePassword] = useState(false)
     const [currentPassword, setCurrentPassword] = useState('')
@@ -692,6 +698,7 @@ export default function PremiumLoyaltyTemplate({
                 orgName: profile.orgName || '',
                 phone: profile.phone || '',
                 address: profile.address || '',
+                shop_name: profile.shop_name || '',
                 pointsBalance: profile.pointsBalance || 0,
                 bankId: profile.bankId || '',
                 bankName: profile.bankName || '',
@@ -783,7 +790,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, shop_name, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -822,6 +829,8 @@ export default function PremiumLoyaltyTemplate({
                         // Set address
                         setUserAddress(address || '')
                         setNewAddress(address || '')
+                        setUserShopName(shop_name || '')
+                        setNewShopName(shop_name || '')
                     } else {
                         console.warn('🔐 Profile fetch failed, using basic info')
                         setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
@@ -887,7 +896,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, shop_name, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
 
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -907,6 +916,8 @@ export default function PremiumLoyaltyTemplate({
                             // Set address
                             setUserAddress(address || '')
                             setNewAddress(address || '')
+                            setUserShopName(shop_name || '')
+                            setNewShopName(shop_name || '')
                         }
                     } catch (error) {
                         console.error('🔐 Profile fetch error on auth change:', error)
@@ -1895,6 +1906,11 @@ export default function PremiumLoyaltyTemplate({
                 updateData.address = newAddress.trim() || null
             }
 
+            // Add shop name if changed (only for independent users)
+            if (!shopName && newShopName !== userShopName) {
+                updateData.shop_name = newShopName.trim() || null
+            }
+
             // Add bank details if shop user or independent consumer
             if (isShopUser || !shopName) {
                 // If any bank field is filled, validate all required fields
@@ -1975,11 +1991,15 @@ export default function PremiumLoyaltyTemplate({
             if (updateData.address !== undefined) {
                 setUserAddress(updateData.address || '')
             }
+            if (updateData.shop_name !== undefined) {
+                setUserShopName(updateData.shop_name || '')
+            }
 
             setProfileSaveSuccess(true)
             setEditingName(false)
             setEditingPhone(false)
             setEditingAddress(false)
+            setEditingShopName(false)
 
             // Clear success message after 3 seconds
             setTimeout(() => setProfileSaveSuccess(false), 3000)
@@ -5171,8 +5191,66 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                             </div>
 
+                            {/* Shop Name - Only for independent consumers */}
+                            {!shopName && (
+                                <div className="p-4 border-t border-gray-100">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-medium text-gray-700">Shop Name</label>
+                                        {!editingShopName && (
+                                            <button
+                                                onClick={() => {
+                                                    setEditingShopName(true)
+                                                    setNewShopName(userShopName)
+                                                }}
+                                                className="text-sm font-medium"
+                                                style={{ color: config.primary_color }}
+                                            >
+                                                Edit
+                                            </button>
+                                        )}
+                                    </div>
+                                    {editingShopName ? (
+                                        <div className="space-y-2">
+                                            <input
+                                                type="text"
+                                                value={newShopName}
+                                                onChange={(e) => {
+                                                    const value = e.target.value
+                                                    // Convert to title case as user types
+                                                    const titleCased = value.replace(/\b\w/g, (char) => char.toUpperCase())
+                                                    if (titleCased.length <= 50) {
+                                                        setNewShopName(titleCased)
+                                                    }
+                                                }}
+                                                placeholder="Enter your shop name"
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                maxLength={50}
+                                            />
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs text-gray-500">{newShopName.length}/50</span>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => {
+                                                        setEditingShopName(false)
+                                                        setNewShopName(userShopName)
+                                                    }}
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-start gap-2">
+                                            <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
+                                            <span className="text-gray-900 text-sm">{userShopName || 'Not set'}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Save Button */}
-                            {(editingName || editingPhone || editingAddress) && (newName !== userName || newPhone !== userPhone || newAddress !== userAddress) && (
+                            {(editingName || editingPhone || editingAddress || editingShopName) && (newName !== userName || newPhone !== userPhone || newAddress !== userAddress || (!shopName && newShopName !== userShopName)) && (
                                 <div className="p-4 border-t border-gray-100">
                                     <Button
                                         onClick={handleSaveProfile}

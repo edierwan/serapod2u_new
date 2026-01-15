@@ -73,6 +73,22 @@ export async function GET(request: NextRequest) {
 
         const journey = journeys[0] as any
 
+        // Check/Resolve banner configuration
+        let bannerConfig = journey.banner_config
+        // If banner is not configured or disabled, try to fetch master banner
+        if (!bannerConfig || !bannerConfig.enabled) {
+            const { data: masterBanner } = await supabase
+                .from('master_banner_configs')
+                .select('banner_config')
+                .eq('org_id', journey.org_id)
+                .eq('is_active', true)
+                .single()
+            
+            if (masterBanner && masterBanner.banner_config && masterBanner.banner_config.enabled) {
+                bannerConfig = masterBanner.banner_config
+            }
+        }
+
         return NextResponse.json({
             success: true,
             data: {
@@ -107,7 +123,7 @@ export async function GET(request: NextRequest) {
                     scratch_card_title: journey.scratch_card_title,
                     scratch_card_description: journey.scratch_card_description,
                     scratch_card_icon: journey.scratch_card_icon,
-                    banner_config: journey.banner_config,
+                    banner_config: bannerConfig,
                     show_product_image: journey.show_product_image,
                     product_image_source: journey.product_image_source || 'variant',
                     custom_image_url: journey.custom_image_url,

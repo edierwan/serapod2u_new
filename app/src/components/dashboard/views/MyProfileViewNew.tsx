@@ -26,6 +26,7 @@ interface UserProfile {
   full_name: string | null
   phone: string | null
   address: string | null
+  shop_name: string | null
   role_code: string
   organization_id: string
   avatar_url: string | null
@@ -79,6 +80,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     full_name: '',
     phone: '',
     address: '',
+    shop_name: '',
     bank_id: '',
     bank_account_number: '',
     bank_account_holder_name: ''
@@ -169,6 +171,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           full_name: transformedProfile.full_name || '',
           phone: transformedProfile.phone || '',
           address: transformedProfile.address || '',
+          shop_name: transformedProfile.shop_name || '',
           bank_id: transformedProfile.bank_id || '',
           bank_account_number: transformedProfile.bank_account_number || '',
           bank_account_holder_name: transformedProfile.bank_account_holder_name || ''
@@ -348,6 +351,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         full_name: formData.full_name?.trim() || null,
         phone: formData.phone?.trim() || null,
         address: formData.address?.trim() || null,
+        shop_name: formData.shop_name?.trim() || null,
         updated_at: new Date().toISOString()
       }
 
@@ -741,6 +745,29 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     />
                     <p className="text-xs text-gray-500 mt-1">{formData.address.length}/255 characters</p>
                   </div>
+
+                  {(!userProfile.organizations || !userProfile.organizations.org_name) && (
+                    <div>
+                      <Label htmlFor="shop_name" className="text-sm font-medium">Shop Name</Label>
+                      <Input
+                        id="shop_name"
+                        value={formData.shop_name}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          const titleCased = toTitleCase(value)
+                          if (titleCased.length <= 50) {
+                            setFormData({ ...formData, shop_name: titleCased })
+                          }
+                        }}
+                        placeholder="Enter your shop name"
+                        disabled={isSaving}
+                        className="mt-1"
+                        maxLength={50}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">{formData.shop_name.length}/50 characters</p>
+                    </div>
+                  )}
+
                   <div className="flex gap-3 pt-4">
                     <Button
                       onClick={handleSave}
@@ -829,6 +856,28 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                       </p>
                     </div>
                   </div>
+
+                  {(!userProfile.organizations || !userProfile.organizations.org_name) && (
+                    <div className="flex items-start gap-3 text-gray-700">
+                      <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-gray-500 font-medium">Shop Name</p>
+                          <button
+                            onClick={() => setIsEditing(true)}
+                            className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                          >
+                            [Edit]
+                          </button>
+                        </div>
+                        <p className="text-base font-medium text-gray-900 mt-1">
+                          {userProfile.shop_name || (
+                            <span className="text-gray-400 italic">Not set</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>

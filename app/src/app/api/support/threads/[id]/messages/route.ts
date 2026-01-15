@@ -22,6 +22,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabaseAdmin = getAdminClient()
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
@@ -30,13 +31,25 @@ export async function GET(
     }
 
     const { id } = params
+    
+    // Check thread access securely using admin client
+    const { data: thread, error: threadAccessError } = await supabaseAdmin
+        .from('support_threads')
+        .select('created_by_user_id')
+        .eq('id', id)
+        .single()
+        
+    if (threadAccessError || !thread || thread.created_by_user_id !== user.id) {
+         return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
+    }
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = (page - 1) * limit
 
-    // Fetch messages
-    const { data: messages, error, count } = await supabase
+    // Fetch messages using admin client
+    const { data: messages, error, count } = await supabaseAdmin
       .from('support_messages' as any)
       .select('*', { count: 'exact' })
       .eq('thread_id', id)
@@ -76,21 +89,21 @@ export async function POST(
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
-    // Verify thread ownership/access
-    const { data: thread, error: threadCheckError } = await supabase
+    // Verify thread ownership/access using admin client
+    const { data: thread, error: threadCheckError } = await supabaseAdmin
       .from('support_threads' as any)
-      .select('id, status')
+      .select('id, status, created_by_user_id')
       .eq('id', id)
       .single()
 
-    if (threadCheckError || !thread) {
+    if (threadCheckError || !thread || thread.created_by_user_id !== user.id) {
       return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
     }
 
     const threadData = thread as any
 
-    // Insert message
-    const { data: newMessage, error: messageError } = await supabase
+    // Insert message using admin client
+    const { data: newMessage, error: messageError } = await supabaseAdmin
       .from('support_messages' as any)
       .insert({
         thread_id: id,

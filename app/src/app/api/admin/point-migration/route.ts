@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
@@ -187,7 +188,8 @@ async function processBatch(
   rows: any[],
   supabaseAdmin: any,
   passwordMode: string,
-  defaultPassword: string
+  defaultPassword: string,
+  createdBy?: string
 ): Promise<any[]> {
   const results: any[] = [];
 
@@ -323,6 +325,7 @@ async function processBatch(
             balance_after: realCurrentBalance + delta,
             description: `Migration: ${newMigrationValue} (Prev: ${lastMigrationValue})`,
             transaction_date: new Date().toISOString(),
+            created_by: createdBy || null
           });
 
         if (transactionError) {
@@ -381,6 +384,11 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
+
+    // Get the current authenticated user
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const createdBy = user?.id;
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
@@ -466,7 +474,8 @@ export async function POST(request: NextRequest) {
         batch,
         supabaseAdmin,
         passwordMode,
-        defaultPassword
+        defaultPassword,
+        createdBy
       );
       allResults.push(...batchResults);
 

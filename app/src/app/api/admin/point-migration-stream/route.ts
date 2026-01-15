@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
@@ -389,6 +390,11 @@ export async function POST(request: NextRequest) {
                     process.env.SUPABASE_SERVICE_ROLE_KEY!,
                 );
 
+                // Get current user
+                const supabase = await createServerClient();
+                const { data: { user } } = await supabase.auth.getUser();
+                const createdBy = user?.id;
+
                 const formData = await request.formData();
                 const file = formData.get("file") as File;
                 const passwordMode = (formData.get("passwordMode") as string) || "default";
@@ -561,6 +567,7 @@ export async function POST(request: NextRequest) {
                             balance_after: r.realCurrentBalance + r.delta,
                             description: `Migration: ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`,
                             transaction_date: new Date().toISOString(),
+                            created_by: createdBy || null
                         }));
 
                     if (transactions.length > 0) {
