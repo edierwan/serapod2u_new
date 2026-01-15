@@ -200,10 +200,28 @@ function normalizeJourneyConfig(journey: any, order?: OrderInfo | null, masterBa
   // Determine banner config: use journey's banner if configured, otherwise fall back to master
   let bannerConfig = journey?.banner_config ?? null
 
+  console.log('🎯 [BannerFallback] Journey banner:', {
+    enabled: journey?.banner_config?.enabled,
+    itemCount: journey?.banner_config?.items?.length
+  })
+  console.log('🎯 [BannerFallback] Master banner:', {
+    enabled: masterBannerConfig?.banner_config?.enabled,
+    itemCount: masterBannerConfig?.banner_config?.items?.length
+  })
+
   // If journey doesn't have banner enabled or configured, use master banner as fallback
   if (!bannerConfig?.enabled && masterBannerConfig?.banner_config?.enabled) {
+    console.log('🎯 [BannerFallback] Using MASTER banner as fallback')
     bannerConfig = masterBannerConfig.banner_config
+  } else {
+    console.log('🎯 [BannerFallback] Using JOURNEY banner (or none)')
   }
+
+  console.log('🎯 [BannerFallback] Final banner config:', {
+    enabled: bannerConfig?.enabled,
+    template: bannerConfig?.template,
+    itemCount: bannerConfig?.items?.length
+  })
 
   return {
     // Core identification
@@ -268,6 +286,7 @@ function normalizeJourneyConfig(journey: any, order?: OrderInfo | null, masterBa
 
 // Fetch master banner config for an organization
 async function fetchMasterBannerConfig(supabaseAdmin: SupabaseAdminClient, orgId: string) {
+  console.log('🎯 [MasterBanner] Fetching master banner for org:', orgId)
   try {
     const { data: masterBanner, error } = await supabaseAdmin
       .from('master_banner_configs')
@@ -275,6 +294,13 @@ async function fetchMasterBannerConfig(supabaseAdmin: SupabaseAdminClient, orgId
       .eq('org_id', orgId)
       .eq('is_active', true)
       .single()
+
+    console.log('🎯 [MasterBanner] Result:', {
+      found: !!masterBanner,
+      bannerEnabled: masterBanner?.banner_config?.enabled,
+      itemCount: masterBanner?.banner_config?.items?.length,
+      error: error?.code
+    })
 
     if (error && error.code !== 'PGRST116') {
       console.error('Error fetching master banner config:', error)
