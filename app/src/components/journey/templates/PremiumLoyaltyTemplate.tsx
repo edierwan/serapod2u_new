@@ -262,6 +262,23 @@ export default function PremiumLoyaltyTemplate({
     const [selectedRewardForDetail, setSelectedRewardForDetail] = useState<RewardItem | null>(null)
     const [currentRewardImageIndex, setCurrentRewardImageIndex] = useState(0)
 
+    // Master Banner State
+    const [masterBannerConfig, setMasterBannerConfig] = useState<any>(null)
+
+    // Fetch master banner config
+    useEffect(() => {
+        if (orgId) {
+            fetch(`/api/master-banner/${orgId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        setMasterBannerConfig(data.data)
+                    }
+                })
+                .catch(err => console.error('Error fetching master banner:', err))
+        }
+    }, [orgId])
+
     // Calculate next reward based on user points and available rewards
     const nextRewardInfo = useMemo(() => {
         if (!rewards || rewards.length === 0) {
@@ -2827,18 +2844,24 @@ export default function PremiumLoyaltyTemplate({
     // Render Home Tab
     // Helper to render banner based on location
     const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile') => {
-        if (!config.banner_config?.enabled || config.banner_config.items.length === 0) return null
+        const individualItems = (config.banner_config?.enabled && config.banner_config.items) ? config.banner_config.items : []
+        const masterItems = (masterBannerConfig?.enabled && masterBannerConfig.items) ? masterBannerConfig.items : []
+        const allItems = [...individualItems, ...masterItems]
+
+        if (allItems.length === 0) return null
 
         // Filter items by page (defaults to 'home' if page is not set)
-        const pageItems = config.banner_config.items.filter(item => (item.page || 'home') === location)
+        const pageItems = allItems.filter((item: any) => (item.page || 'home') === location)
 
         if (pageItems.length === 0) return null
+
+        const template = config.banner_config?.template || masterBannerConfig?.template || 'grid'
 
         return (
             <div className="mt-6">
                 <AnnouncementBanner
-                    items={pageItems}
-                    template={config.banner_config.template}
+                    items={pageItems as any[]}
+                    template={template}
                     onItemClick={(item) => {
                         if (item.link_to === 'rewards') setActiveTab('rewards')
                         else if (item.link_to === 'products') setActiveTab('products')
