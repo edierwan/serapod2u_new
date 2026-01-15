@@ -21,7 +21,10 @@ import {
     Info,
     Loader2,
     CheckCircle2,
-    Megaphone
+    Megaphone,
+    Eye,
+    EyeOff,
+    Bell
 } from 'lucide-react'
 
 interface BannerItem {
@@ -30,6 +33,7 @@ interface BannerItem {
     link_to: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
     expires_at: string
     page?: 'home' | 'rewards' | 'products' | 'profile'
+    is_active?: boolean  // Whether this banner is active (defaults to true)
 }
 
 interface BannerConfig {
@@ -317,37 +321,37 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                         className="w-full"
                                     >
                                         <TabsList className="grid w-full grid-cols-4">
-                                            <TabsTrigger value="home">
+                                            <TabsTrigger value="home" className="relative">
                                                 Home
-                                                {masterConfig.banner_config.items.filter(i => (i.page || 'home') === 'home').length > 0 && (
-                                                    <Badge variant="secondary" className="ml-1 h-5 px-1">
-                                                        {masterConfig.banner_config.items.filter(i => (i.page || 'home') === 'home').length}
-                                                    </Badge>
-                                                )}
+                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
+                                                    activeBannerTab === 'home' ? 'bg-green-500' : 'bg-gray-400'
+                                                }`}>
+                                                    {masterConfig.banner_config.items.filter(i => (i.page || 'home') === 'home').length}
+                                                </span>
                                             </TabsTrigger>
-                                            <TabsTrigger value="rewards">
+                                            <TabsTrigger value="rewards" className="relative">
                                                 Rewards
-                                                {masterConfig.banner_config.items.filter(i => i.page === 'rewards').length > 0 && (
-                                                    <Badge variant="secondary" className="ml-1 h-5 px-1">
-                                                        {masterConfig.banner_config.items.filter(i => i.page === 'rewards').length}
-                                                    </Badge>
-                                                )}
+                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
+                                                    activeBannerTab === 'rewards' ? 'bg-green-500' : 'bg-gray-400'
+                                                }`}>
+                                                    {masterConfig.banner_config.items.filter(i => i.page === 'rewards').length}
+                                                </span>
                                             </TabsTrigger>
-                                            <TabsTrigger value="products">
+                                            <TabsTrigger value="products" className="relative">
                                                 Product
-                                                {masterConfig.banner_config.items.filter(i => i.page === 'products').length > 0 && (
-                                                    <Badge variant="secondary" className="ml-1 h-5 px-1">
-                                                        {masterConfig.banner_config.items.filter(i => i.page === 'products').length}
-                                                    </Badge>
-                                                )}
+                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
+                                                    activeBannerTab === 'products' ? 'bg-green-500' : 'bg-gray-400'
+                                                }`}>
+                                                    {masterConfig.banner_config.items.filter(i => i.page === 'products').length}
+                                                </span>
                                             </TabsTrigger>
-                                            <TabsTrigger value="profile">
+                                            <TabsTrigger value="profile" className="relative">
                                                 Profile
-                                                {masterConfig.banner_config.items.filter(i => i.page === 'profile').length > 0 && (
-                                                    <Badge variant="secondary" className="ml-1 h-5 px-1">
-                                                        {masterConfig.banner_config.items.filter(i => i.page === 'profile').length}
-                                                    </Badge>
-                                                )}
+                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
+                                                    activeBannerTab === 'profile' ? 'bg-green-500' : 'bg-gray-400'
+                                                }`}>
+                                                    {masterConfig.banner_config.items.filter(i => i.page === 'profile').length}
+                                                </span>
                                             </TabsTrigger>
                                         </TabsList>
                                     </Tabs>
@@ -369,7 +373,8 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                                     image_url: '',
                                                     link_to: 'rewards',
                                                     expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                                                    page: activeBannerTab
+                                                    page: activeBannerTab,
+                                                    is_active: true
                                                 })
                                                 updateConfig({ items: newItems })
                                             }}
@@ -388,22 +393,68 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                     ) : (
                                         currentPageItems.map((item) => {
                                             const actualIndex = masterConfig.banner_config.items.findIndex(i => i.id === item.id)
+                                            const isActive = item.is_active !== false // defaults to true
                                             return (
                                                 <div
                                                     key={item.id}
-                                                    className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 relative"
+                                                    className={`p-4 rounded-lg border space-y-3 relative ${
+                                                        isActive 
+                                                            ? 'bg-gray-50 border-gray-200' 
+                                                            : 'bg-gray-100 border-gray-300 opacity-60'
+                                                    }`}
                                                 >
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="absolute top-2 right-2 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                        onClick={() => {
-                                                            const newItems = masterConfig.banner_config.items.filter(i => i.id !== item.id)
-                                                            updateConfig({ items: newItems })
-                                                        }}
-                                                    >
-                                                        Remove
-                                                    </Button>
+                                                    {/* Action buttons row */}
+                                                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                                                        {/* Active/Inactive Toggle */}
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className={`${
+                                                                isActive 
+                                                                    ? 'text-green-600 hover:text-green-700 hover:bg-green-50' 
+                                                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                                            }`}
+                                                            onClick={() => {
+                                                                const newItems = [...masterConfig.banner_config.items]
+                                                                newItems[actualIndex].is_active = !isActive
+                                                                updateConfig({ items: newItems })
+                                                                toast({
+                                                                    title: isActive ? "Banner Deactivated" : "Banner Activated",
+                                                                    description: isActive 
+                                                                        ? "This banner will not be shown to consumers" 
+                                                                        : "This banner is now visible to consumers",
+                                                                    variant: isActive ? "default" : "default"
+                                                                })
+                                                            }}
+                                                            title={isActive ? "Click to deactivate" : "Click to activate"}
+                                                        >
+                                                            {isActive ? (
+                                                                <Eye className="w-4 h-4" />
+                                                            ) : (
+                                                                <EyeOff className="w-4 h-4" />
+                                                            )}
+                                                        </Button>
+                                                        {/* Remove button */}
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                            onClick={() => {
+                                                                const newItems = masterConfig.banner_config.items.filter(i => i.id !== item.id)
+                                                                updateConfig({ items: newItems })
+                                                            }}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </div>
+
+                                                    {/* Status indicator */}
+                                                    {!isActive && (
+                                                        <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200">
+                                                            <EyeOff className="w-4 h-4" />
+                                                            <span>This banner is inactive and will not be shown to consumers</span>
+                                                        </div>
+                                                    )}
 
                                                     <div className="space-y-2">
                                                         <Label>Image URL</Label>

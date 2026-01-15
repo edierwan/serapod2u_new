@@ -176,6 +176,7 @@ interface JourneyConfig {
             link_to: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
             expires_at: string
             page?: 'home' | 'rewards' | 'products' | 'profile' // new: which page to show this banner
+            is_active?: boolean // whether this banner is active (defaults to true)
         }>
     }
 }

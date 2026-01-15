@@ -121,6 +121,7 @@ interface JourneyConfig {
             link_to?: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
             expires_at?: string
             page?: 'home' | 'rewards' | 'products' | 'profile'
+            is_active?: boolean
         }>
     }
 }
@@ -2601,7 +2602,7 @@ export default function PremiumLoyaltyTemplate({
 
         // For Point category (bonus points), no points check needed - it's free to collect
         const isPointCategory = (reward as any).category === 'point'
-        
+
         if (!isPointCategory) {
             const pointsNeeded = reward.point_offer || reward.points_required
 
@@ -2642,7 +2643,7 @@ export default function PremiumLoyaltyTemplate({
             if (response.ok && data.success) {
                 // Check if this is a bonus points redemption
                 const isBonusPoints = data.is_bonus_points === true
-                
+
                 // Set redemption details for animation
                 setRedemptionDetails({
                     rewardName: data.reward_name,
@@ -5748,8 +5749,8 @@ export default function PremiumLoyaltyTemplate({
                                 {(selectedReward as any).category === 'point' ? 'Collect Bonus Points' : 'Confirm Redemption'}
                             </h3>
                             <p className="text-sm text-gray-500 mt-2">
-                                {(selectedReward as any).category === 'point' 
-                                    ? 'Collect your bonus points now!' 
+                                {(selectedReward as any).category === 'point'
+                                    ? 'Collect your bonus points now!'
                                     : 'Are you sure you want to redeem this reward?'}
                             </p>
                         </div>
@@ -6027,7 +6028,7 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Support Chat Modal */}
             {showFeedbackModal && (
-                <div 
+                <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 sm:p-4"
                     onClick={(e) => {
                         // Only close if clicking the backdrop, not the modal content
@@ -6036,7 +6037,7 @@ export default function PremiumLoyaltyTemplate({
                         }
                     }}
                 >
-                    <div 
+                    <div
                         className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >

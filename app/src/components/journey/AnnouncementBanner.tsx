@@ -18,6 +18,7 @@ interface BannerItem {
     link_to?: 'rewards' | 'products' | string
     expires_at?: string
     page?: 'home' | 'rewards' | 'products' | 'profile'  // Which page to display the banner on
+    is_active?: boolean  // Whether this banner is active (defaults to true)
     crop_data?: {
         x: number
         y: number
@@ -50,9 +51,11 @@ export function AnnouncementBanner({
     const [lightboxOpen, setLightboxOpen] = useState(false)
     const [lightboxImage, setLightboxImage] = useState<string>("")
 
-    // Filter out expired items
+    // Filter out expired and inactive items
     const activeItems = items.filter(
-        item => item.image_url && (!item.expires_at || new Date(item.expires_at) > new Date())
+        item => item.image_url && 
+                item.is_active !== false && // defaults to true if not set
+                (!item.expires_at || new Date(item.expires_at) > new Date())
     )
 
     if (activeItems.length === 0) return null
