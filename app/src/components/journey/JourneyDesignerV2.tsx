@@ -1656,24 +1656,35 @@ export default function JourneyDesignerV2({
                                                                     accept="image/*"
                                                                     onChange={(e) => {
                                                                         const file = e.target.files?.[0]
-                                                                        if (file) handleImageUpload(file, (url) => {
-                                                                            const newItems = [...config.banner_config!.items]
-                                                                            newItems[actualIndex].image_url = url
-                                                                            setConfig({
-                                                                                ...config,
-                                                                                banner_config: {
-                                                                                    ...config.banner_config!,
-                                                                                    items: newItems
-                                                                                }
-                                                                            })
-                                                                        }, { isBanner: true }) // Use banner-specific compression
+                                                                        if (file) {
+                                                                            const itemId = item.id // Capture item ID
+                                                                            handleImageUpload(file, (url) => {
+                                                                                setConfig(prevConfig => {
+                                                                                    const newItems = [...(prevConfig.banner_config?.items || [])]
+                                                                                    const idx = newItems.findIndex(i => i.id === itemId)
+                                                                                    if (idx !== -1) {
+                                                                                        newItems[idx].image_url = url
+                                                                                    }
+                                                                                    return {
+                                                                                        ...prevConfig,
+                                                                                        banner_config: {
+                                                                                            ...prevConfig.banner_config!,
+                                                                                            items: newItems
+                                                                                        }
+                                                                                    }
+                                                                                })
+                                                                            }, { isBanner: true })
+                                                                        }
+                                                                        // Reset the input value to allow re-uploading same file
+                                                                        e.target.value = ''
                                                                     }}
                                                                 />
                                                                 <Button
                                                                     variant="outline"
+                                                                    disabled={uploadingImage}
                                                                     onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
                                                                 >
-                                                                    Upload
+                                                                    {uploadingImage ? 'Uploading...' : 'Upload'}
                                                                 </Button>
                                                             </div>
                                                         </div>

@@ -206,21 +206,62 @@ function normalizeJourneyConfig(journey: any, order?: OrderInfo | null, masterBa
   }
 
   return {
+    // Core identification
+    id: journey?.id ?? null,
+    
+    // Welcome/Thank you messages
     welcome_title: journey?.welcome_title ?? 'Welcome!',
     welcome_message:
       journey?.welcome_message ?? 'Thank you for scanning our QR code. Enjoy exclusive rewards and benefits!',
     thank_you_message: journey?.thank_you_message ?? 'Thank you for your participation!',
+    
+    // Theme colors
     primary_color: journey?.primary_color ?? '#2563eb',
     button_color: journey?.button_color ?? '#3b82f6',
+    
+    // Feature flags
     points_enabled: pointsEnabled,
     lucky_draw_enabled: luckyDrawEnabled,
     redemption_enabled: redemptionEnabled,
+    enable_scratch_card_game: journey?.enable_scratch_card_game ?? false,
+    
+    // Security code settings
+    require_security_code: journey?.require_security_code ?? false,
+    skip_security_code_for_points: journey?.skip_security_code_for_points ?? false,
+    skip_security_code_for_lucky_draw: journey?.skip_security_code_for_lucky_draw ?? false,
+    skip_security_code_for_redemption: journey?.skip_security_code_for_redemption ?? false,
+    skip_security_code_for_scratch_card: journey?.skip_security_code_for_scratch_card ?? false,
+    
+    // Product image settings
     show_product_image: journey?.show_product_image ?? false,
     product_image_source: journey?.product_image_source ?? 'genuine_badge',
     custom_image_url: journey?.custom_image_url ?? null,
     genuine_badge_style: journey?.genuine_badge_style ?? 'gold',
+    
+    // Redemption settings
     redemption_requires_login: redemptionRequiresLogin,
     require_customer_otp_for_redemption: redemptionRequiresLogin,
+    
+    // Points customization
+    points_title: journey?.points_title ?? null,
+    points_description: journey?.points_description ?? null,
+    
+    // Lucky draw customization
+    lucky_draw_title: journey?.lucky_draw_title ?? null,
+    lucky_draw_description: journey?.lucky_draw_description ?? null,
+    lucky_draw_image_url: journey?.lucky_draw_image_url ?? null,
+    lucky_draw_campaign_name: journey?.lucky_draw_campaign_name ?? null,
+    lucky_draw_prizes: journey?.lucky_draw_prizes ?? [],
+    
+    // Redemption customization
+    redemption_title: journey?.redemption_title ?? null,
+    redemption_description: journey?.redemption_description ?? null,
+    
+    // Scratch card customization
+    scratch_card_title: journey?.scratch_card_title ?? null,
+    scratch_card_description: journey?.scratch_card_description ?? null,
+    
+    // Banner configuration
     banner_config: bannerConfig
   }
 }

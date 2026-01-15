@@ -477,12 +477,27 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                                                     onChange={(e) => {
                                                                         const file = e.target.files?.[0]
                                                                         if (file) {
+                                                                            const itemId = item.id // Capture item ID to avoid stale closure
                                                                             handleImageUpload(file, (url) => {
-                                                                                const newItems = [...masterConfig.banner_config.items]
-                                                                                newItems[actualIndex].image_url = url
-                                                                                updateConfig({ items: newItems })
+                                                                                setMasterConfig(prevConfig => {
+                                                                                    if (!prevConfig) return prevConfig
+                                                                                    const newItems = [...prevConfig.banner_config.items]
+                                                                                    const idx = newItems.findIndex(i => i.id === itemId)
+                                                                                    if (idx !== -1) {
+                                                                                        newItems[idx].image_url = url
+                                                                                    }
+                                                                                    return {
+                                                                                        ...prevConfig,
+                                                                                        banner_config: {
+                                                                                            ...prevConfig.banner_config,
+                                                                                            items: newItems
+                                                                                        }
+                                                                                    }
+                                                                                })
                                                                             })
                                                                         }
+                                                                        // Reset the input value to allow re-uploading same file
+                                                                        e.target.value = ''
                                                                     }}
                                                                 />
                                                                 <Button
