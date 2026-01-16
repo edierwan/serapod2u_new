@@ -281,9 +281,10 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             if (count) {
                 setReportTotalPages(Math.ceil(count / ITEMS_PER_PAGE));
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error fetching reports:', error);
-            showAlert('error', 'Failed to load report data');
+            const errorMsg = error?.message || error?.details || 'Unknown error';
+            showAlert('error', `Failed to load report data: ${errorMsg}`);
         } finally {
             setReportLoading(false);
         }
@@ -573,9 +574,10 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             // Refresh gifts list
             await fetchGifts(selectedOrder?.id);
             handleCancelForm();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving gift:', error);
-            showAlert('error', 'Failed to save gift');
+            const errorMsg = error?.message || error?.details || 'Unknown error';
+            showAlert('error', `Failed to save gift: ${errorMsg}`);
         } finally {
             setLoading(false);
         }
