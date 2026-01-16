@@ -52,15 +52,24 @@ interface Order {
     company_id: string;
 }
 
+
 interface RedeemGift {
     id: string;
-    order_id: string;
+    order_id: string | null;
+    redeem_type: 'order' | 'master';
+    category: 'gift' | 'point_pool';
     gift_name: string;
     gift_description: string | null;
     gift_image_url?: string | null;
     total_quantity?: number;
     claimed_quantity?: number;
     quantity_available?: number;
+    points_per_collection?: number;
+    total_points_allocated?: number;
+    remaining_points?: number;
+    collection_option_1?: boolean;
+    collection_option_2?: boolean;
+    status?: string;
     created_at: string;
     updated_at: string;
 }
@@ -75,11 +84,23 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     const [showForm, setShowForm] = useState(false);
     const [editingGift, setEditingGift] = useState<RedeemGift | null>(null);
 
+    // Filter State
+    const [redeemScope, setRedeemScope] = useState<'order' | 'master'>('order');
+
     // Form state
+    const [redeemType, setRedeemType] = useState<'order' | 'master'>('order'); // For the form (usually matches scope but explicit)
+    const [redeemCategory, setRedeemCategory] = useState<'gift' | 'point_pool'>('gift');
     const [giftName, setGiftName] = useState('');
     const [giftDescription, setGiftDescription] = useState('');
     const [giftImageUrl, setGiftImageUrl] = useState('');
     const [quantityAvailable, setQuantityAvailable] = useState<number | undefined>(undefined);
+    
+    // Point Pool Form State
+    const [pointsPerCollection, setPointsPerCollection] = useState<number>(0);
+    const [totalPointsAllocated, setTotalPointsAllocated] = useState<number>(0);
+    const [collectionOption1, setCollectionOption1] = useState<boolean>(false);
+    const [collectionOption2, setCollectionOption2] = useState<boolean>(false);
+
     const [uploadingImage, setUploadingImage] = useState(false);
 
     // Statistics state
@@ -183,14 +204,27 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     /* eslint-enable react-hooks/exhaustive-deps */
 
     /* eslint-disable react-hooks/exhaustive-deps */
-    const fetchGifts = useCallback(async (orderId: string) => {
+    const fetchGifts = useCallback(async (orderId?: string) => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
+            let query = supabase
                 .from('redeem_gifts')
                 .select('*')
-                .eq('order_id', orderId)
                 .order('created_at', { ascending: false });
+
+            if (redeemScope === 'order') {
+                if (!orderId) {
+                    setGifts([]);
+                    setLoading(false);
+                    return;
+                }
+                query = query.eq('order_id', orderId);
+            } else {
+                // Master scope
+                query = query.is('order_id', null);
+            }
+
+            const { data, error } = await query;
 
             if (error) throw error;
             setGifts(data || []);
@@ -200,7 +234,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [redeemScope]);
     /* eslint-enable react-hooks/exhaustive-deps */
 
     useEffect(() => {
@@ -210,19 +244,23 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
 
     // Handle initial order selection from URL
     useEffect(() => {
-        if (orders.length > 0 && initialOrderId && !selectedOrder) {
+        if (orders.length > 0 && initialOrderId && !selectedOrder && redeemScope === 'order') {
             const order = orders.find(o => o.id === initialOrderId);
             if (order) {
                 setSelectedOrder(order);
             }
         }
-    }, [orders, initialOrderId, selectedOrder]);
+    }, [orders, initialOrderId, selectedOrder, redeemScope]);
 
     useEffect(() => {
-        if (selectedOrder) {
+        if (redeemScope === 'master') {
+            fetchGifts();
+        } else if (selectedOrder) {
             fetchGifts(selectedOrder.id);
+        } else {
+            setGifts([]);
         }
-    }, [selectedOrder, fetchGifts]);
+    }, [selectedOrder, fetchGifts, redeemScope]);
 
     const resizeImage = (file: File, maxWidth: number = 800, maxHeight: number = 600): Promise<Blob> => {
         return new Promise((resolve, reject) => {
@@ -333,7 +371,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     };
 
     const handleSaveGift = async () => {
-        if (!selectedOrder) {
+        if (redeemScope === 'order' && !selectedOrder) {
             showAlert('error', 'Please select an order first');
             return;
         }
@@ -343,44 +381,70 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             return;
         }
 
+        if (redeemCategory === 'point_pool') {
+            if (pointsPerCollection <= 0) {
+                showAlert('error', 'Points per collection must be greater than 0');
+                return;
+            }
+            if (totalPointsAllocated <= 0) {
+                showAlert('error', 'Total points must be greater than 0');
+                return;
+            }
+        }
+
         try {
             setLoading(true);
+
+            const payload: any = {
+                gift_name: giftName,
+                gift_description: giftDescription,
+                gift_image_url: giftImageUrl || null,
+                redeem_type: redeemScope,
+                category: redeemCategory,
+                updated_at: new Date().toISOString()
+            };
+
+            if (redeemCategory === 'point_pool') {
+                payload.points_per_collection = pointsPerCollection;
+                payload.total_points_allocated = totalPointsAllocated;
+                payload.collection_option_1 = collectionOption1;
+                payload.collection_option_2 = collectionOption2;
+                // Note: remaining_points not updated on edit here to prevent reset, only on create
+            } else {
+                payload.total_quantity = quantityAvailable || 0;
+            }
 
             if (editingGift) {
                 // Update existing gift
                 const { error } = await supabase
                     .from('redeem_gifts')
-                    .update({
-                        gift_name: giftName,
-                        gift_description: giftDescription,
-                        gift_image_url: giftImageUrl || null,
-                        total_quantity: quantityAvailable || 0,
-                        updated_at: new Date().toISOString()
-                    })
+                    .update(payload)
                     .eq('id', editingGift.id);
 
                 if (error) throw error;
                 showAlert('success', 'Gift updated successfully');
             } else {
                 // Create new gift
+                if (redeemScope === 'order' && selectedOrder) {
+                    payload.order_id = selectedOrder.id;
+                }
+                payload.claimed_quantity = 0;
+                payload.is_active = true;
+                
+                if (redeemCategory === 'point_pool') {
+                    payload.remaining_points = totalPointsAllocated;
+                }
+
                 const { error } = await supabase
                     .from('redeem_gifts')
-                    .insert({
-                        order_id: selectedOrder.id,
-                        gift_name: giftName,
-                        gift_description: giftDescription,
-                        gift_image_url: giftImageUrl || null,
-                        total_quantity: quantityAvailable || 0,
-                        claimed_quantity: 0,
-                        is_active: true
-                    });
+                    .insert(payload);
 
                 if (error) throw error;
                 showAlert('success', 'Gift created successfully');
             }
 
             // Refresh gifts list
-            await fetchGifts(selectedOrder.id);
+            await fetchGifts(selectedOrder?.id);
             handleCancelForm();
         } catch (error) {
             console.error('Error saving gift:', error);
@@ -395,8 +459,20 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
         setGiftName(gift.gift_name);
         setGiftDescription(gift.gift_description || '');
         setGiftImageUrl(gift.gift_image_url || '');
-        // Use total_quantity from the database
-        setQuantityAvailable((gift as any).total_quantity);
+        
+        // Restore category and type
+        setRedeemCategory(gift.category || 'gift');
+        setRedeemType(gift.redeem_type || 'order'); 
+
+        if (gift.category === 'point_pool') {
+            setPointsPerCollection(gift.points_per_collection || 0);
+            setTotalPointsAllocated(gift.total_points_allocated || 0);
+            setCollectionOption1(gift.collection_option_1 || false);
+            setCollectionOption2(gift.collection_option_2 || false);
+        } else {
+            // Use total_quantity from the database
+            setQuantityAvailable(gift.total_quantity);
+        }
         setShowForm(true);
     };
 
@@ -433,6 +509,11 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
         setGiftDescription('');
         setGiftImageUrl('');
         setQuantityAvailable(undefined);
+        setPointsPerCollection(0);
+        setTotalPointsAllocated(0);
+        setCollectionOption1(false);
+        setCollectionOption2(false);
+        setRedeemCategory('gift');
     };
 
     const filteredOrders = orders.filter(order =>
@@ -446,6 +527,31 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                 <div>
                     <h1 className="text-3xl font-bold">Redeem Gift Management</h1>
                     <p className="text-gray-600 mt-1">Manage free gifts that consumers can claim when scanning QR codes at shops</p>
+                </div>
+            </div>
+
+            {/* Scope Selection */}
+            <div className="bg-white p-4 rounded-lg border shadow-sm flex items-center gap-4">
+                <span className="font-medium text-sm text-gray-700">Redeem Scope:</span>
+                <div className="flex gap-2">
+                    <Button 
+                        variant={redeemScope === 'order' ? 'default' : 'outline'}
+                        onClick={() => setRedeemScope('order')}
+                        size="sm"
+                        className="gap-2"
+                    >
+                        <Package className="h-4 w-4" />
+                        By Order
+                    </Button>
+                    <Button 
+                        variant={redeemScope === 'master' ? 'default' : 'outline'}
+                        onClick={() => setRedeemScope('master')}
+                        size="sm"
+                        className="gap-2"
+                    >
+                        <Gift className="h-4 w-4" />
+                        Master Redeem (Global)
+                    </Button>
                 </div>
             </div>
 
@@ -514,6 +620,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Order Selection Panel */}
+                {redeemScope === 'order' && (
                 <Card className="lg:col-span-1">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -579,15 +686,16 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                         </div>
                     </CardContent>
                 </Card>
+                )}
 
                 {/* Gifts Management Panel */}
-                <Card className="lg:col-span-2">
+                <Card className={redeemScope === 'order' ? "lg:col-span-2" : "lg:col-span-3"}>
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <div>
                                 <CardTitle className="flex items-center gap-2">
                                     <Gift className="h-5 w-5" />
-                                    Redemption Gifts
+                                    {redeemScope === 'master' ? 'Master Redeem Gifts' : 'Redemption Gifts'}
                                     {selectedOrder && (
                                         <Badge variant="outline" className="ml-2">
                                             {selectedOrder.order_no}
@@ -595,21 +703,23 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                     )}
                                 </CardTitle>
                                 <CardDescription>
-                                    {selectedOrder
-                                        ? 'Define what free gifts consumers will receive'
-                                        : 'Select an order to manage its gifts'}
+                                    {redeemScope === 'master' 
+                                        ? 'Manage global redemption gifts available to all users' 
+                                        : (selectedOrder
+                                            ? 'Define what free gifts consumers will receive'
+                                            : 'Select an order to manage its gifts')}
                                 </CardDescription>
                             </div>
-                            {selectedOrder && !showForm && (
+                            {(redeemScope === 'master' || selectedOrder) && !showForm && (
                                 <Button onClick={() => setShowForm(true)}>
                                     <Plus className="h-4 w-4 mr-2" />
-                                    Add Gift
+                                    {redeemScope === 'master' ? 'Add Master Gift' : 'Add Gift'}
                                 </Button>
                             )}
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {!selectedOrder ? (
+                        {(!selectedOrder && redeemScope === 'order') ? (
                             <div className="text-center py-12 text-gray-500">
                                 <Gift className="h-16 w-16 mx-auto mb-4 opacity-50" />
                                 <p className="text-lg">Select an order to view and manage gifts</p>
@@ -627,11 +737,31 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                 </div>
 
                                 <div className="space-y-4">
+                                    {/* Category Selector */}
                                     <div>
-                                        <Label htmlFor="giftName">Gift Name *</Label>
+                                        <Label className="mb-2 block">Category</Label>
+                                        <Select 
+                                            value={redeemCategory} 
+                                            onValueChange={(val: 'gift' | 'point_pool') => setRedeemCategory(val)}
+                                            disabled={!!editingGift}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select Category" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="gift">Standard Gift</SelectItem>
+                                                <SelectItem value="point_pool">Point Redeem Pool</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="giftName">
+                                            {redeemCategory === 'point_pool' ? 'Reward Name *' : 'Gift Name *'}
+                                        </Label>
                                         <Input
                                             id="giftName"
-                                            placeholder="e.g., Premium Coffee Mug"
+                                            placeholder="e.g., Premium Coffee Mug or 100 Points Reward"
                                             value={giftName}
                                             onChange={(e) => setGiftName(e.target.value)}
                                         />
@@ -648,16 +778,76 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                         />
                                     </div>
 
-                                    <div>
-                                        <Label htmlFor="quantityAvailable">Quantity Available (Optional)</Label>
-                                        <Input
-                                            id="quantityAvailable"
-                                            type="number"
-                                            placeholder="Leave empty for unlimited"
-                                            value={quantityAvailable || ''}
-                                            onChange={(e) => setQuantityAvailable(e.target.value ? parseInt(e.target.value) : undefined)}
-                                        />
-                                    </div>
+                                    {redeemCategory === 'point_pool' ? (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <Label htmlFor="pointsPerCollection">Points per Collection *</Label>
+                                                    <Input
+                                                        id="pointsPerCollection"
+                                                        type="number"
+                                                        placeholder="e.g. 100"
+                                                        value={pointsPerCollection || ''}
+                                                        onChange={(e) => setPointsPerCollection(parseInt(e.target.value) || 0)}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="totalPointsAllocated">Total Points Allocated *</Label>
+                                                    <Input
+                                                        id="totalPointsAllocated"
+                                                        type="number"
+                                                        placeholder="e.g. 1000"
+                                                        value={totalPointsAllocated || ''}
+                                                        onChange={(e) => setTotalPointsAllocated(parseInt(e.target.value) || 0)}
+                                                        disabled={!!editingGift} 
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="space-y-3 pt-2 bg-gray-50 p-4 rounded-md border">
+                                                <Label className="font-semibold">Collection Options</Label>
+                                                <div className="flex flex-col gap-3">
+                                                    <div className="flex items-start space-x-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="opt1"
+                                                            checked={collectionOption1}
+                                                            onChange={(e) => setCollectionOption1(e.target.checked)}
+                                                            className="mt-1 rounded border-gray-300"
+                                                        />
+                                                        <div>
+                                                            <Label htmlFor="opt1" className="cursor-pointer font-medium">Option 1 - Per user only (based on user ID)</Label>
+                                                            <p className="text-xs text-gray-500">If enabled, each user can only collect this reward based on the collection mode below.</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start space-x-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="opt2"
+                                                            checked={collectionOption2}
+                                                            onChange={(e) => setCollectionOption2(e.target.checked)}
+                                                            className="mt-1 rounded border-gray-300"
+                                                        />
+                                                        <div>
+                                                            <Label htmlFor="opt2" className="cursor-pointer font-medium">Option 2 - Everyday (daily collection)</Label>
+                                                            <p className="text-xs text-gray-500">If enabled, users can collect once per day. Otherwise, collection is one-time only.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div>
+                                            <Label htmlFor="quantityAvailable">Quantity Available (Optional)</Label>
+                                            <Input
+                                                id="quantityAvailable"
+                                                type="number"
+                                                placeholder="Leave empty for unlimited"
+                                                value={quantityAvailable || ''}
+                                                onChange={(e) => setQuantityAvailable(e.target.value ? parseInt(e.target.value) : undefined)}
+                                            />
+                                        </div>
+                                    )}
 
                                     <div>
                                         <Label>Gift Image</Label>
@@ -732,9 +922,17 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                 )}
 
                                 {!loading && gifts.map((gift) => {
+                                    const isPool = gift.category === 'point_pool';
                                     const totalQty = (gift as any).total_quantity || 0;
                                     const claimedQty = (gift as any).claimed_quantity || 0;
                                     const remaining = totalQty - claimedQty;
+                                    
+                                    // Pool specific
+                                    const totalPoints = gift.total_points_allocated || 0;
+                                    const remainingPoints = gift.remaining_points !== undefined ? gift.remaining_points : totalPoints;
+                                    const pointsPer = gift.points_per_collection || 0;
+                                    const isDaily = gift.collection_option_2;
+                                    const isOnce = gift.collection_option_1 && !isDaily;
 
                                     return (
                                         <Card key={gift.id} className="hover:shadow-md transition-shadow">
@@ -761,11 +959,32 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                                     <div className="flex-1">
                                                         <div className="flex items-start justify-between">
                                                             <div>
-                                                                <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
+                                                                <div className="flex items-center gap-2">
+                                                                    <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
+                                                                    {isPool && (
+                                                                        <>
+                                                                            <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 text-[10px]">Point Pool</Badge>
+                                                                            {isDaily && <Badge variant="outline" className="text-[10px]">Daily</Badge>}
+                                                                            {isOnce && <Badge variant="outline" className="text-[10px]">One-time</Badge>}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                
                                                                 {gift.gift_description && (
                                                                     <p className="text-sm text-gray-600 mt-1">{gift.gift_description}</p>
                                                                 )}
-                                                                {totalQty > 0 && (
+                                                                
+                                                                {isPool ? (
+                                                                     <div className="mt-2 space-y-1">
+                                                                         <div className="text-sm">
+                                                                             <span className="font-bold text-green-600">+{pointsPer} Points</span> / claim
+                                                                         </div>
+                                                                         <div className="flex gap-2 text-xs text-gray-500">
+                                                                              <span>Pool: {remainingPoints} / {totalPoints} pts</span>
+                                                                         </div>
+                                                                     </div>
+                                                                ) : (
+                                                                    totalQty > 0 ? (
                                                                     <div className="mt-2 space-x-2">
                                                                         <Badge variant="outline">
                                                                             {remaining} available
@@ -774,11 +993,11 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                                                             {claimedQty} claimed
                                                                         </Badge>
                                                                     </div>
-                                                                )}
-                                                                {totalQty === 0 && (
+                                                                    ) : (
                                                                     <Badge variant="outline" className="mt-2">
                                                                         Unlimited
                                                                     </Badge>
+                                                                    )
                                                                 )}
                                                             </div>
                                                             <div className="flex gap-2">
