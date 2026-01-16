@@ -127,18 +127,7 @@ export function AdminSupportInbox() {
                                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 />
                             </div>
-                            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
-                                <SelectTrigger className="w-[150px] bg-white">
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="open">Open</SelectItem>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="resolved">Resolved</SelectItem>
-                                    <SelectItem value="closed">Closed</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            {/* Status filter removed */}
                             <Button variant="outline" size="icon" onClick={fetchThreads}>
                                 <RefreshCw className="h-4 w-4" />
                             </Button>
@@ -204,8 +193,6 @@ export function AdminSupportInbox() {
                                                             <span className="text-blue-600">{thread.created_by.phone}</span>
                                                         </>
                                                     )}
-                                                    <span>•</span>
-                                                    <StatusBadge status={thread.status} />
                                                     {thread.assigned_to && (
                                                         <>
                                                             <span>•</span>
@@ -414,19 +401,7 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Select value={status} onValueChange={updateStatus}>
-                        <SelectTrigger className="w-[130px] h-8">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="open">Open</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="resolved">Resolved</SelectItem>
-                            <SelectItem value="closed">Closed</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
+                {/* Status dropdown removed */}
             </div>
 
             {/* Error Display */}

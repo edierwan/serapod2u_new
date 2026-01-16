@@ -88,9 +88,13 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
     return (
         <div className="flex flex-col h-full bg-gray-50">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 bg-white border-b shadow-sm sticky top-0 z-10">
+            <div className="flex items-center justify-between p-4 bg-white border-b shadow-sm sticky top-0 z-10 w-full">
                 <div className="flex items-center gap-2">
-                    {view !== 'inbox' && (
+                    {view === 'inbox' ? (
+                        <Button variant="ghost" size="icon" onClick={() => onClose()} className="-ml-2">
+                             <ArrowLeft className="w-5 h-5" />
+                        </Button>
+                    ) : (
                         <Button variant="ghost" size="icon" onClick={handleBack} className="-ml-2">
                             <ArrowLeft className="w-5 h-5" />
                         </Button>
@@ -101,17 +105,6 @@ export function SupportChatWidget({ onClose }: { onClose: () => void }) {
                          activeThread?.subject || 'Chat'}
                     </h2>
                 </div>
-                <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        onClose()
-                    }}
-                >
-                    <X className="w-5 h-5" />
-                </Button>
             </div>
 
             {/* Content */}
@@ -260,7 +253,7 @@ function InboxView({ threads, loading, onThreadClick, onNewChat, onDeleteThread 
                                                         {thread.unread_count}
                                                     </Badge>
                                                 )}
-                                                <StatusBadge status={thread.status} />
+                                                {/* Status removed as per request */}
                                             </div>
                                         </div>
                                     </div>
@@ -644,7 +637,6 @@ function ChatThreadView({ thread, onRefresh }: { thread: Thread, onRefresh?: () 
     return (
         <div className="flex flex-col h-full bg-gray-50">
             <div className="bg-white border-b px-4 py-2 flex justify-between items-center text-xs text-gray-500">
-                <span>Status: <StatusBadge status={thread.status} /></span>
                 <span>ID: {thread.case_id || thread.id.slice(0, 8)}</span>
             </div>
             {error && (
