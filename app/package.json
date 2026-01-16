@@ -60,6 +60,7 @@
     "react-hook-form": "^7.48.2",
     "recharts": "^3.5.1",
     "recharts-scale": "^0.4.5",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^2.2.0",
     "zod": "^3.22.4"
   },

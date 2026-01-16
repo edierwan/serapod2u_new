@@ -1057,11 +1057,10 @@ export default function PremiumLoyaltyTemplate({
             return
         }
         try {
-            const res = await fetch('/api/support/threads')
+            const res = await fetch('/api/support/unread-count')
             const data = await res.json()
-            if (data.threads) {
-                const totalUnread = data.threads.reduce((acc: number, t: any) => acc + (t.unread_count || 0), 0)
-                setUnreadMessageCount(totalUnread)
+            if (typeof data.count === 'number') {
+                setUnreadMessageCount(data.count)
             }
         } catch (error) {
             console.error('Failed to fetch unread count', error)

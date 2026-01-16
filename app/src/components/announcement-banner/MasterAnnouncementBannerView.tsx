@@ -114,30 +114,25 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
         try {
             setUploadingImage(true)
 
-            const fileExt = 'jpg'
-            const fileName = `master-banner-${userProfile.organization_id}-${Date.now()}.${fileExt}`
-            const filePath = `journey-images/${fileName}`
+            const formData = new FormData()
+            formData.append('file', file)
 
-            // Upload to Supabase storage
-            const { error: uploadError } = await supabase.storage
-                .from('product-images')
-                .upload(filePath, file, {
-                    cacheControl: '3600',
-                    upsert: true
-                })
+            const res = await fetch('/api/master-banner/upload', {
+                method: 'POST',
+                body: formData
+            })
 
-            if (uploadError) throw uploadError
+            const data = await res.json()
 
-            // Get public URL
-            const { data: urlData } = supabase.storage
-                .from('product-images')
-                .getPublicUrl(filePath)
+            if (!data.success) {
+                throw new Error(data.error || 'Upload failed')
+            }
 
-            onSuccess(urlData.publicUrl)
+            onSuccess(data.url)
 
             toast({
                 title: "Image uploaded",
-                description: "Banner image has been uploaded successfully",
+                description: "Banner image has been processed (16:9) and uploaded successfully",
             })
         } catch (error: any) {
             console.error('Error uploading image:', error)
@@ -595,7 +590,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                                         </div>
                                                         {item.image_url && (
                                                             <div className="space-y-2">
-                                                                <p className="text-xs text-gray-500">Preview (16:9 aspect ratio):</p>
+                                                                <p className="text-xs text-gray-500">Preview (Auto-resized to 16:9):</p>
                                                                 <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
                                                                     <Image
                                                                         src={getStorageUrl(item.image_url) || item.image_url}
