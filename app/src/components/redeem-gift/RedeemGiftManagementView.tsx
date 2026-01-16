@@ -1286,6 +1286,5 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             </TabsContent>
         </Tabs>
             </div>
-        </div>
     );
 }
