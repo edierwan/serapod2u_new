@@ -7,7 +7,7 @@ import { formatNumber } from '@/lib/utils/formatters'
 import { createClient } from '@/lib/supabase/client'
 import { logoutConsumer } from '@/app/actions/consumer'
 import { registerConsumer } from '@/lib/actions'
-import { SupportChatWidget } from '@/components/support/SupportChatWidget'
+import { SupportChatWidgetV2 } from '@/components/support/SupportChatWidgetV2'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -6316,7 +6316,7 @@ export default function PremiumLoyaltyTemplate({
                         className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <SupportChatWidget onClose={() => setShowFeedbackModal(false)} />
+                        <SupportChatWidgetV2 onClose={() => setShowFeedbackModal(false)} />
                     </div>
                 </div>
             )}

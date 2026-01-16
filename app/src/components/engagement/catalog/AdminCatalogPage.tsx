@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStorageUrl } from "@/lib/utils"
-import { AdminSupportInbox } from '@/components/support/AdminSupportInbox'
+import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
 import {
   Select,
   SelectContent,
@@ -1846,7 +1846,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <AdminSupportInbox />
+              <AdminSupportInboxV2 />
             </CardContent>
           </Card>
         </TabsContent>
