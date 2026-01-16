@@ -554,6 +554,7 @@ export default function PremiumLoyaltyTemplate({
     const [newName, setNewName] = useState('')
     const [newPhone, setNewPhone] = useState('')
     const [newReferralPhone, setNewReferralPhone] = useState('')
+    const [referralName, setReferralName] = useState('')
     const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
     const [savingProfile, setSavingProfile] = useState(false)
     const [profileSaveError, setProfileSaveError] = useState('')
@@ -1976,12 +1977,14 @@ export default function PremiumLoyaltyTemplate({
     const checkReferralPhone = async (phone: string) => {
         if (!phone || !phone.trim()) {
             setReferralCheckStatus('idle')
+            setReferralName('')
             return
         }
 
         const validation = validatePhoneNumber(phone)
         if (!validation.isValid) {
             setReferralCheckStatus('invalid')
+            setReferralName('')
             return
         }
 
@@ -1998,12 +2001,30 @@ export default function PremiumLoyaltyTemplate({
 
             if (isValid) {
                 setReferralCheckStatus('valid')
+                // Fetch name
+                try {
+                    const res = await fetch('/api/user/lookup-phone', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ phone: normalizedPhone })
+                    })
+                    const data = await res.json()
+                    if (data.success && data.name) {
+                        setReferralName(data.name)
+                    } else {
+                        setReferralName('')
+                    }
+                } catch (e) {
+                    console.error("Error looking up referral name", e)
+                }
             } else {
                 setReferralCheckStatus('invalid')
+                setReferralName('')
             }
         } catch (error) {
             console.error('Error checking referral:', error)
             setReferralCheckStatus('idle')
+            setReferralName('')
         }
     }
 
@@ -2920,7 +2941,7 @@ export default function PremiumLoyaltyTemplate({
         const configuredPlacement = masterBannerConfig?.placement || config.banner_config?.placement || 'top'
         if (configuredPlacement !== currentPlacement) return null
 
-        const template = config.banner_config?.template || masterBannerConfig?.template || 'grid'
+        const template = masterBannerConfig?.template || config.banner_config?.template || 'grid'
 
         return (
             <div className={`px-4 ${currentPlacement === 'top' ? 'mt-6 mb-4' : 'mt-4 mb-6'}`}>
@@ -5355,9 +5376,16 @@ export default function PremiumLoyaltyTemplate({
                                             </div>
                                         )}
                                         {referralCheckStatus === 'valid' && (
-                                            <div className="flex items-center gap-2 text-xs text-green-600">
-                                                <CheckCircle2 className="w-3 h-3" />
-                                                Valid Serapod Reference
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2 text-xs text-green-600">
+                                                    <CheckCircle2 className="w-3 h-3" />
+                                                    Valid Serapod Reference
+                                                </div>
+                                                {referralName && (
+                                                    <div className="ml-5 text-xs text-gray-500">
+                                                        {referralName}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         {referralCheckStatus === 'invalid' && (
