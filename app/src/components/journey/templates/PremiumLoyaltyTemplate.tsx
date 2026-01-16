@@ -5498,7 +5498,7 @@ export default function PremiumLoyaltyTemplate({
                             )}
 
                             {/* Save Button */}
-                            {(editingName || editingPhone || editingAddress || editingShopName) && (newName !== userName || newPhone !== userPhone || newAddress !== userAddress || (!shopName && newShopName !== userShopName)) && (
+                            {(editingName || editingPhone || editingAddress || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || newAddress !== userAddress || (!shopName && newShopName !== userShopName) || newReferralPhone !== userReferralPhone) && (
                                 <div className="p-4 border-t border-gray-100">
                                     <Button
                                         onClick={handleSaveProfile}
