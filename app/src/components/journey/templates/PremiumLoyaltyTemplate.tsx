@@ -1057,15 +1057,47 @@ export default function PremiumLoyaltyTemplate({
             return
         }
         try {
-            const res = await fetch('/api/support/unread-count')
+            // Use the new summary endpoint
+            const res = await fetch('/api/support/unread-summary')
             const data = await res.json()
-            if (typeof data.count === 'number') {
-                setUnreadMessageCount(data.count)
+            if (typeof data.total_unread === 'number') {
+                setUnreadMessageCount(data.total_unread)
             }
         } catch (error) {
             console.error('Failed to fetch unread count', error)
         }
     }
+
+    // Subscribe to realtime updates for new messages
+    useEffect(() => {
+        if (!isAuthenticated || !userId) return
+
+        console.log('Setting up realtime support subscription for user:', userId)
+        
+        // Subscribe to changes in support_conversations for this user
+        // This handles "admin replies" which update the user_unread_count on the conversation row
+        const channel = supabase
+            .channel('support-unread-updates')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'support_conversations',
+                    filter: `created_by_user_id=eq.${userId}`
+                },
+                (payload) => {
+                    console.log('Realtime support update:', payload)
+                    // If the user_unread_count changed, or we just want to be safe, refetch
+                    fetchUnreadMessageCount()
+                }
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [isAuthenticated, userId, supabase])
 
     // Fetch unread count on auth change and periodically
     useEffect(() => {
