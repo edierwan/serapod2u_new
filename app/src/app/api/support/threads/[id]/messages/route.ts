@@ -31,16 +31,16 @@ export async function GET(
     }
 
     const { id } = params
-    
+
     // Check thread access securely using admin client
     const { data: thread, error: threadAccessError } = await supabaseAdmin
-        .from('support_threads')
-        .select('created_by_user_id')
-        .eq('id', id)
-        .single()
-        
+      .from('support_threads')
+      .select('created_by_user_id')
+      .eq('id', id)
+      .single()
+
     if (threadAccessError || !thread || thread.created_by_user_id !== user.id) {
-         return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -48,19 +48,23 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = (page - 1) * limit
 
-    // Fetch messages using admin client
+    console.log('[GET Messages] Fetching messages for thread:', id, 'user:', user.id)
+
+    // Fetch messages using admin client, excluding deleted messages
     const { data: messages, error, count } = await supabaseAdmin
       .from('support_messages' as any)
       .select('*', { count: 'exact' })
       .eq('thread_id', id)
+      .or('is_deleted_by_user.is.null,is_deleted_by_user.eq.false')
       .order('created_at', { ascending: false }) // Newest first for infinite scroll usually
       .range(offset, offset + limit - 1)
 
     if (error) {
-      console.error('Error fetching messages:', error)
+      console.error('[GET Messages] Error fetching messages:', error)
       return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
     }
 
+    console.log('[GET Messages] Found messages:', messages?.length || 0)
     return NextResponse.json({ messages, total: count, page, limit })
   } catch (error) {
     console.error('Unexpected error:', error)
@@ -129,24 +133,24 @@ export async function POST(
     }
 
     if (threadData.status === 'resolved' || threadData.status === 'closed') {
-        updates.status = 'open'
+      updates.status = 'open'
     } else if (threadData.status === 'pending') {
-        updates.status = 'open'
+      updates.status = 'open'
     }
 
     await supabaseAdmin
       .from('support_threads' as any)
       .update(updates)
       .eq('id', id)
-      
+
     // Mark as read for user
     await supabase
-        .from('support_thread_reads' as any)
-        .upsert({
-            thread_id: id,
-            user_id: user.id,
-            last_read_at: new Date().toISOString()
-        })
+      .from('support_thread_reads' as any)
+      .upsert({
+        thread_id: id,
+        user_id: user.id,
+        last_read_at: new Date().toISOString()
+      })
 
     return NextResponse.json({ message: newMessage })
   } catch (error) {

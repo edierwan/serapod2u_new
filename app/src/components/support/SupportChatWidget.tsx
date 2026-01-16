@@ -576,18 +576,34 @@ function ChatThreadView({ thread, onRefresh }: { thread: Thread, onRefresh?: () 
 
     const fetchMessages = async (silent = false) => {
         try {
+            console.log('[User Chat] Fetching messages for thread:', thread.id)
             const res = await fetch(`/api/support/threads/${thread.id}/messages?limit=50`)
             const data = await res.json()
+            console.log('[User Chat] Messages response:', data)
+            
+            if (!res.ok) {
+                console.error('[User Chat] Failed to fetch messages:', data)
+                setError(data.error || 'Failed to load messages')
+                return
+            }
+            
             if (data.messages) {
+                console.log('[User Chat] Received messages count:', data.messages.length)
                 // Check if we have new messages to scroll down
                 const isNew = data.messages.length > messages.length
-                setMessages(data.messages.reverse()) // API returns newest first, we want oldest first for display usually, or reverse list
+                // Filter out deleted messages and reverse for chronological order
+                const validMessages = data.messages.filter((m: Message) => !m.is_deleted_by_user)
+                console.log('[User Chat] Valid messages after filter:', validMessages.length)
+                setMessages(validMessages.reverse()) // API returns newest first, we want oldest first for display
                 if (isNew && !silent) {
                     setTimeout(scrollToBottom, 100)
                 }
+            } else {
+                console.warn('[User Chat] No messages array in response')
             }
         } catch (error) {
-            console.error('Failed to fetch messages', error)
+            console.error('[User Chat] Failed to fetch messages', error)
+            setError('Failed to load messages')
         }
     }
 
@@ -647,6 +663,12 @@ function ChatThreadView({ thread, onRefresh }: { thread: Thread, onRefresh?: () 
             
             <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4 pb-4">
+                    {messages.length === 0 && !error && (
+                        <div className="text-center py-8 text-gray-400">
+                            <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                            <p className="text-sm">No messages yet</p>
+                        </div>
+                    )}
                     {messages.map((msg) => {
                         const isMe = msg.sender_type === 'user'
                         const isSystem = msg.sender_type === 'system'
