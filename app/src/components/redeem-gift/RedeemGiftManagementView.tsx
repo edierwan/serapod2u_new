@@ -253,7 +253,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                         points_per_collection,
                         order_id
                     ),
-                    users (
+                    users!redeem_gift_transactions_user_profile_fkey (
                         display_name,
                         phone
                     ),
