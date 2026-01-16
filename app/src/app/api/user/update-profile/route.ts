@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, address, bank_id, bank_account_number, bank_account_holder_name } = body
+    const { userId, full_name, phone, referral_phone, address, shop_name, bank_id, bank_account_number, bank_account_holder_name } = body
 
     // Verify user is updating their own profile
     if (authUser.id !== userId) {
@@ -242,6 +242,16 @@ export async function POST(request: NextRequest) {
         )
       }
       updateData.address = address?.trim() || null
+    }
+
+    // Handle shop_name update
+    if (shop_name !== undefined) {
+      updateData.shop_name = shop_name?.trim() || null
+    }
+
+    // Handle referral_phone update
+    if (referral_phone !== undefined) {
+      updateData.referral_phone = referral_phone?.trim() || null
     }
 
     // Update database

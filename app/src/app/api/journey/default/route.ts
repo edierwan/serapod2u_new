@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
                 .eq('org_id', journey.org_id)
                 .eq('is_active', true)
                 .single()
-            
+
             if (masterBanner && masterBanner.banner_config && masterBanner.banner_config.enabled) {
                 bannerConfig = masterBanner.banner_config
             }

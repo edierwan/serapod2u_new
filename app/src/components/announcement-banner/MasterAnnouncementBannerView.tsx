@@ -40,6 +40,11 @@ interface BannerConfig {
     enabled: boolean
     template: 'grid' | 'carousel'
     items: BannerItem[]
+    placement?: 'top' | 'bottom'
+    autoSlide?: boolean
+    slideInterval?: number
+    showDots?: boolean
+    showProgress?: boolean
 }
 
 interface MasterBannerConfig {
@@ -309,6 +314,83 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                     Grid shows banners stacked vertically. Carousel allows horizontal scrolling.
                                 </p>
                             </div>
+
+                            {/* Placement Setting */}
+                            <div className="space-y-2">
+                                <Label>Banner Placement</Label>
+                                <Select
+                                    value={masterConfig.banner_config.placement || 'top'}
+                                    onValueChange={(value: 'top' | 'bottom') => updateConfig({ placement: value })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="top">Top (Before Content)</SelectItem>
+                                        <SelectItem value="bottom">Bottom (After Content)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-gray-500">
+                                    Choose whether to display the banner at the top or bottom of the page content.
+                                </p>
+                            </div>
+
+                            {/* Carousel Settings */}
+                            {masterConfig.banner_config.template === 'carousel' && (
+                                <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                    <h4 className="font-medium text-sm text-gray-900">Slider Configuration</h4>
+                                    
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-sm">Auto-play Slideshow</Label>
+                                            <p className="text-xs text-gray-500">Automatically advance slides</p>
+                                        </div>
+                                        <Switch
+                                            checked={masterConfig.banner_config.autoSlide !== false}
+                                            onCheckedChange={(checked) => updateConfig({ autoSlide: checked })}
+                                        />
+                                    </div>
+
+                                    {(masterConfig.banner_config.autoSlide !== false) && (
+                                        <div className="space-y-2">
+                                            <Label className="text-sm">Slide Duration (Seconds)</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    max={60}
+                                                    value={masterConfig.banner_config.slideInterval || 5}
+                                                    onChange={(e) => updateConfig({ slideInterval: parseInt(e.target.value) || 5 })}
+                                                    className="w-24"
+                                                />
+                                                <span className="text-sm text-gray-500">seconds</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-sm">Show Dots Navigation</Label>
+                                            <p className="text-xs text-gray-500">Show indicators for each slide</p>
+                                        </div>
+                                        <Switch
+                                            checked={masterConfig.banner_config.showDots !== false}
+                                            onCheckedChange={(checked) => updateConfig({ showDots: checked })}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-sm">Show Progress Bar</Label>
+                                            <p className="text-xs text-gray-500">Show timer progress between slides</p>
+                                        </div>
+                                        <Switch
+                                            checked={masterConfig.banner_config.showProgress !== false}
+                                            onCheckedChange={(checked) => updateConfig({ showProgress: checked })}
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Page Tabs */}
                             <div className="space-y-4 p-4 border border-gray-200 rounded-lg">

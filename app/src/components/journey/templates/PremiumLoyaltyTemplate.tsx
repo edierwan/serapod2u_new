@@ -346,7 +346,7 @@ export default function PremiumLoyaltyTemplate({
             }
 
             const file = event.target.files[0]
-            
+
             // Check file size - max 2MB before compression
             const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
             if (file.size > MAX_FILE_SIZE) {
@@ -360,7 +360,7 @@ export default function PremiumLoyaltyTemplate({
 
             // Compress image before upload
             const compressedFile = await compressImage(file, 200, 0.8) // 200px, 80% quality
-            
+
             const fileExt = 'jpg' // Always use jpg for compressed images
             const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
             const filePath = `${currentUserId}/${fileName}`
@@ -537,9 +537,11 @@ export default function PremiumLoyaltyTemplate({
 
     // Account settings states
     const [userPhone, setUserPhone] = useState('')
+    const [userReferralPhone, setUserReferralPhone] = useState('')
     const [userId, setUserId] = useState<string | null>(null)
     const [editingName, setEditingName] = useState(false)
     const [editingPhone, setEditingPhone] = useState(false)
+    const [editingReferralPhone, setEditingReferralPhone] = useState(false)
 
     // Bank details state
     const [bankDetails, setBankDetails] = useState<{
@@ -551,6 +553,8 @@ export default function PremiumLoyaltyTemplate({
     const [showBankDetailsModal, setShowBankDetailsModal] = useState(false)
     const [newName, setNewName] = useState('')
     const [newPhone, setNewPhone] = useState('')
+    const [newReferralPhone, setNewReferralPhone] = useState('')
+    const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
     const [savingProfile, setSavingProfile] = useState(false)
     const [profileSaveError, setProfileSaveError] = useState('')
     const [profileSaveSuccess, setProfileSaveSuccess] = useState(false)
@@ -794,7 +798,8 @@ export default function PremiumLoyaltyTemplate({
                 bankId: profile.bankId || '',
                 bankName: profile.bankName || '',
                 bankAccountNumber: profile.bankAccountNumber || '',
-                bankAccountHolderName: profile.bankAccountHolderName || ''
+                bankAccountHolderName: profile.bankAccountHolderName || '',
+                referralPhone: profile.referralPhone || ''
             }
         } catch (error) {
             console.error('🔐 Error checking user organization:', error)
@@ -881,7 +886,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, shop_name, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -907,8 +912,10 @@ export default function PremiumLoyaltyTemplate({
                         if (avatarUrl !== undefined) setUserAvatarUrl(avatarUrl)
                         setShopName(orgName)
                         setUserPhone(phone)
+                        setUserReferralPhone(referralPhone || '')
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                         setNewPhone(phone)
+                        setNewReferralPhone(referralPhone || '')
 
                         // Set points and bank details for ALL users (Shop and Independent)
                         console.log('🔐 Setting user points balance:', pointsBalance)
@@ -987,7 +994,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, address, shop_name, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
 
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -996,8 +1003,10 @@ export default function PremiumLoyaltyTemplate({
                             setUserAvatarUrl(avatarUrl)
                             setShopName(orgName)
                             setUserPhone(phone)
+                            setUserReferralPhone(referralPhone || '')
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
+                            setNewReferralPhone(referralPhone || '')
 
                             // Set points and bank details for ALL users
                             setUserPoints(pointsBalance)
@@ -1963,6 +1972,41 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
+    // Check referral phone validity
+    const checkReferralPhone = async (phone: string) => {
+        if (!phone || !phone.trim()) {
+            setReferralCheckStatus('idle')
+            return
+        }
+
+        const validation = validatePhoneNumber(phone)
+        if (!validation.isValid) {
+            setReferralCheckStatus('invalid')
+            return
+        }
+
+        const normalizedPhone = normalizePhone(phone)
+        setReferralCheckStatus('checking')
+
+        try {
+            const { data: isValid, error } = await supabase
+                .rpc('check_serapod_user_phone', {
+                    p_phone: normalizedPhone
+                })
+
+            if (error) throw error
+
+            if (isValid) {
+                setReferralCheckStatus('valid')
+            } else {
+                setReferralCheckStatus('invalid')
+            }
+        } catch (error) {
+            console.error('Error checking referral:', error)
+            setReferralCheckStatus('idle')
+        }
+    }
+
     // Handle profile update (name and phone)
     const handleSaveProfile = async () => {
         if (!userId) return
@@ -2000,6 +2044,19 @@ export default function PremiumLoyaltyTemplate({
             // Add shop name if changed (only for independent users)
             if (!shopName && newShopName !== userShopName) {
                 updateData.shop_name = newShopName.trim() || null
+            }
+
+            // Add referral phone if changed
+            if (newReferralPhone !== userReferralPhone) {
+                if (newReferralPhone && newReferralPhone.trim()) {
+                    const validation = validatePhoneNumber(newReferralPhone.trim())
+                    if (!validation.isValid) {
+                        setProfileSaveError('Invalid referral phone format')
+                        setSavingProfile(false)
+                        return
+                    }
+                }
+                updateData.referral_phone = newReferralPhone.trim() || null
             }
 
             // Add bank details if shop user or independent consumer
@@ -2085,12 +2142,16 @@ export default function PremiumLoyaltyTemplate({
             if (updateData.shop_name !== undefined) {
                 setUserShopName(updateData.shop_name || '')
             }
+            if (updateData.referral_phone !== undefined) {
+                setUserReferralPhone(updateData.referral_phone || '')
+            }
 
             setProfileSaveSuccess(true)
             setEditingName(false)
             setEditingPhone(false)
             setEditingAddress(false)
             setEditingShopName(false)
+            setEditingReferralPhone(false)
 
             // Clear success message after 3 seconds
             setTimeout(() => setProfileSaveSuccess(false), 3000)
@@ -2843,7 +2904,7 @@ export default function PremiumLoyaltyTemplate({
 
     // Render Home Tab
     // Helper to render banner based on location
-    const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile') => {
+    const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile', currentPlacement: 'top' | 'bottom' = 'top') => {
         const individualItems = (config.banner_config?.enabled && config.banner_config.items) ? config.banner_config.items : []
         const masterItems = (masterBannerConfig?.enabled && masterBannerConfig.items) ? masterBannerConfig.items : []
         const allItems = [...individualItems, ...masterItems]
@@ -2855,13 +2916,21 @@ export default function PremiumLoyaltyTemplate({
 
         if (pageItems.length === 0) return null
 
+        // Check placement from master banner config
+        const configuredPlacement = masterBannerConfig?.placement || config.banner_config?.placement || 'top'
+        if (configuredPlacement !== currentPlacement) return null
+
         const template = config.banner_config?.template || masterBannerConfig?.template || 'grid'
 
         return (
-            <div className="mt-6">
+            <div className={`px-4 ${currentPlacement === 'top' ? 'mt-6 mb-4' : 'mt-4 mb-6'}`}>
                 <AnnouncementBanner
                     items={pageItems as any[]}
                     template={template}
+                    autoSlide={masterBannerConfig?.autoSlide}
+                    slideInterval={masterBannerConfig?.slideInterval}
+                    showDots={masterBannerConfig?.showDots}
+                    showProgress={masterBannerConfig?.showProgress}
                     onItemClick={(item) => {
                         if (item.link_to === 'rewards') setActiveTab('rewards')
                         else if (item.link_to === 'products') setActiveTab('products')
@@ -3192,7 +3261,7 @@ export default function PremiumLoyaltyTemplate({
             </div>
 
             {/* Promotions Banner */}
-            {renderBanner('home')}
+            {renderBanner('home', 'top')}
 
             {/* Recent Activity */}
             <div className="px-5 mt-6 mb-4">
@@ -3246,6 +3315,9 @@ export default function PremiumLoyaltyTemplate({
                     )}
                 </div>
             </div>
+
+            {/* Bottom Banner */}
+            {renderBanner('home', 'bottom')}
         </div>
     )
 
@@ -3331,7 +3403,7 @@ export default function PremiumLoyaltyTemplate({
 
                 {/* Tab Content */}
                 <div className="px-5 mt-4">
-                    {renderBanner('rewards')}
+                    {renderBanner('rewards', 'top')}
                     {/* Free Gifts Section - Show when redemption is enabled and there are gifts */}
                     {config.redemption_enabled && showFreeGifts && (
                         <div className="mb-6">
@@ -3821,6 +3893,7 @@ export default function PremiumLoyaltyTemplate({
                         </div>
                     )}
                 </div>
+                {renderBanner('rewards', 'bottom')}
             </div>
         )
     }
@@ -4509,7 +4582,7 @@ export default function PremiumLoyaltyTemplate({
 
                 {/* Products Grid */}
                 <div className="px-5 -mt-4 relative z-20">
-                    {renderBanner('products')}
+                    {renderBanner('products', 'top')}
                     {loadingProducts ? (
                         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
                             <Loader2 className="w-8 h-8 mx-auto animate-spin text-gray-400" />
@@ -4573,14 +4646,13 @@ export default function PremiumLoyaltyTemplate({
                             <p className="text-sm text-gray-500 mt-1">Check back soon for new products!</p>
                         </div>
                     )}
+                    {renderBanner('products', 'bottom')}
                 </div>
             </div>
         )
     }
 
-
-
-    // Render Profile Tab
+    // Call to action button handlers
     const renderProfileTab = () => (
         <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
             <div
@@ -4636,7 +4708,7 @@ export default function PremiumLoyaltyTemplate({
             </div>
 
             <div className="px-5 -mt-8 relative z-10 space-y-4">
-                {renderBanner('profile')}
+                {renderBanner('profile', 'top')}
                 {/* Login/Logout Section */}
                 {!isAuthenticated ? (
                     <div className="bg-white rounded-2xl shadow-lg p-5">
@@ -4950,6 +5022,7 @@ export default function PremiumLoyaltyTemplate({
                 )}
 
             </div>
+            {renderBanner('profile', 'bottom')}
         </div>
     )
 
@@ -5220,6 +5293,84 @@ export default function PremiumLoyaltyTemplate({
                                     <div className="flex items-center gap-2">
                                         <Phone className="w-4 h-4 text-gray-400" />
                                         <span className="text-gray-900">{userPhone || 'Not set'}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Reference */}
+                            <div className="p-4 border-b border-gray-100">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-sm font-medium text-gray-700">Reference</label>
+                                    {!editingReferralPhone && (
+                                        <button
+                                            onClick={() => {
+                                                setEditingReferralPhone(true)
+                                                setNewReferralPhone(userReferralPhone)
+                                                if (userReferralPhone) checkReferralPhone(userReferralPhone)
+                                            }}
+                                            className="text-sm font-medium"
+                                            style={{ color: config.primary_color }}
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
+                                </div>
+                                {editingReferralPhone ? (
+                                    <div className="space-y-2">
+                                        <div className="flex gap-2">
+                                            <Input
+                                                type="tel"
+                                                value={newReferralPhone}
+                                                onChange={(e) => {
+                                                    setNewReferralPhone(e.target.value)
+                                                    if (e.target.value.length >= 8) {
+                                                        checkReferralPhone(e.target.value)
+                                                    } else {
+                                                        setReferralCheckStatus('idle')
+                                                    }
+                                                }}
+                                                placeholder="e.g., +60123456789"
+                                                className={`h-10 flex-1 ${
+                                                    referralCheckStatus === 'valid' ? 'border-green-500 focus-visible:ring-green-500' :
+                                                    referralCheckStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''
+                                                }`}
+                                            />
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    setEditingReferralPhone(false)
+                                                    setNewReferralPhone(userReferralPhone)
+                                                    setReferralCheckStatus('idle')
+                                                }}
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                        {/* Status Message */}
+                                        {referralCheckStatus === 'checking' && (
+                                            <div className="flex items-center gap-2 text-xs text-blue-600">
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                Looking up reference...
+                                            </div>
+                                        )}
+                                        {referralCheckStatus === 'valid' && (
+                                            <div className="flex items-center gap-2 text-xs text-green-600">
+                                                <CheckCircle2 className="w-3 h-3" />
+                                                Valid Serapod Reference
+                                            </div>
+                                        )}
+                                        {referralCheckStatus === 'invalid' && (
+                                            <div className="flex items-center gap-2 text-xs text-red-600">
+                                                <XCircle className="w-3 h-3" />
+                                                Invalid Reference (Must be a Serapod Representative)
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <Shield className="w-4 h-4 text-gray-400" />
+                                        <span className="text-gray-900">{userReferralPhone || 'Not set'}</span>
                                     </div>
                                 )}
                             </div>

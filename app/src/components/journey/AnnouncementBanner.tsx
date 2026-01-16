@@ -31,6 +31,10 @@ interface AnnouncementBannerProps {
     template: 'grid' | 'carousel'
     onItemClick?: (item: BannerItem) => void
     className?: string
+    autoSlide?: boolean
+    slideInterval?: number // seconds
+    showDots?: boolean
+    showProgress?: boolean
 }
 
 /**
@@ -46,10 +50,22 @@ export function AnnouncementBanner({
     items, 
     template, 
     onItemClick,
-    className = ""
+    className = "",
+    autoSlide = true,
+    slideInterval = 5,
+    showDots = true,
+    showProgress = true
 }: AnnouncementBannerProps) {
     const [lightboxOpen, setLightboxOpen] = useState(false)
     const [lightboxImage, setLightboxImage] = useState<string>("")
+    const [currentSlide, setCurrentSlide] = useState(0)
+    const [isPaused, setIsPaused] = useState(false)
+    const [progress, setProgress] = useState(0)
+    
+    const sliderRef = useRef<HTMLDivElement>(null)
+    const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
+    const startTimeRef = useRef<number>(0)
+    const remainingTimeRef = useRef<number>(slideInterval * 1000)
 
     // Filter out expired and inactive items
     const activeItems = items.filter(
@@ -57,6 +73,84 @@ export function AnnouncementBanner({
                 item.is_active !== false && // defaults to true if not set
                 (!item.expires_at || new Date(item.expires_at) > new Date())
     )
+
+    // Handle auto-slide logic
+    useEffect(() => {
+        if (template !== 'carousel' || !autoSlide || activeItems.length <= 1) return
+
+        const interval = slideInterval * 1000
+        
+        const startTimer = () => {
+            if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+            
+            const stepTime = 50 // Update progress every 50ms
+            const stepPercent = (stepTime / interval) * 100
+            
+            startTimeRef.current = Date.now()
+            
+            progressIntervalRef.current = setInterval(() => {
+                if (!isPaused) {
+                    setProgress(prev => {
+                        const newProgress = prev + stepPercent
+                        if (newProgress >= 100) {
+                            // Time to slide
+                            handleNextSlide()
+                            return 0
+                        }
+                        return newProgress
+                    })
+                }
+            }, stepTime)
+        }
+
+        if (!isPaused) {
+            startTimer()
+        }
+
+        return () => {
+            if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+        }
+    }, [template, autoSlide, activeItems.length, slideInterval, isPaused, currentSlide])
+
+    // Detect scroll to update current slide index
+    const handleScroll = () => {
+        if (sliderRef.current) {
+            const scrollLeft = sliderRef.current.scrollLeft
+            const width = sliderRef.current.clientWidth * 0.85 // 85% width based on CSS
+            const index = Math.round(scrollLeft / width)
+            if (index !== currentSlide && index >= 0 && index < activeItems.length) {
+                setCurrentSlide(index)
+                // Reset progress on manual scroll
+                setProgress(0)
+            }
+        }
+    }
+
+    const handleNextSlide = () => {
+        const nextSlide = (currentSlide + 1) % activeItems.length
+        scrollToSlide(nextSlide)
+    }
+
+    const scrollToSlide = (index: number) => {
+        if (sliderRef.current) {
+            const width = sliderRef.current.clientWidth * 0.85
+            sliderRef.current.scrollTo({
+                left: index * width,
+                behavior: 'smooth'
+            })
+            setCurrentSlide(index)
+            setProgress(0)
+        }
+    }
+
+    const handleInteractionStart = () => {
+        setIsPaused(true)
+    }
+
+    const handleInteractionEnd = () => {
+        // Resume after a delay
+        setTimeout(() => setIsPaused(false), 2000)
+    }
 
     if (activeItems.length === 0) return null
 
@@ -98,16 +192,61 @@ export function AnnouncementBanner({
                         ))}
                     </div>
                 ) : (
-                    <div className="flex overflow-x-auto gap-3 pb-2 snap-x scrollbar-hide -mx-5 px-5">
-                        {activeItems.map((item) => (
-                            <div key={item.id} className="min-w-[85%] snap-center flex-shrink-0">
-                                <BannerImage 
-                                    item={item}
-                                    onClick={(e) => handleBannerClick(item, e)}
-                                    onLongPress={() => handleLongPress(item)}
-                                />
+                    <div className="relative">
+                        <div 
+                            ref={sliderRef}
+                            className="flex overflow-x-auto gap-3 pb-2 snap-x scrollbar-hide -mx-5 px-5"
+                            onScroll={handleScroll}
+                            onTouchStart={handleInteractionStart}
+                            onTouchEnd={handleInteractionEnd}
+                            onMouseEnter={handleInteractionStart}
+                            onMouseLeave={handleInteractionEnd}
+                        >
+                            {activeItems.map((item) => (
+                                <div key={item.id} className="min-w-[85%] snap-center flex-shrink-0">
+                                    <BannerImage 
+                                        item={item}
+                                        onClick={(e) => handleBannerClick(item, e)}
+                                        onLongPress={() => handleLongPress(item)}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Progress Bar */}
+                        {showProgress && activeItems.length > 1 && (
+                            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10">
+                                <div className="bg-black/30 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-2 pointer-events-none">
+                                    <div className="w-12 h-1 bg-white/30 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-white transition-all duration-100 ease-linear"
+                                            style={{ width: `${progress}%` }}
+                                        />
+                                    </div>
+                                    <span className="text-[10px] text-white font-medium w-3">
+                                        {Math.ceil(slideInterval - (slideInterval * progress / 100))}
+                                    </span>
+                                </div>
                             </div>
-                        ))}
+                        )}
+
+                        {/* Dots */}
+                        {showDots && activeItems.length > 1 && (
+                            <div className="flex justify-center gap-1.5 mt-1 pb-2">
+                                {activeItems.map((_, index) => (
+                                    <button
+                                        key={index}
+                                        onClick={() => scrollToSlide(index)}
+                                        className={`h-1.5 rounded-full transition-all duration-300 ${
+                                            currentSlide === index 
+                                                ? 'bg-orange-500 w-4' 
+                                                : 'bg-gray-300 w-1.5 hover:bg-gray-400'
+                                        }`}
+                                        aria-label={`Go to slide ${index + 1}`}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
