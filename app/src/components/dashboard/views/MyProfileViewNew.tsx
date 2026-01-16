@@ -42,6 +42,7 @@ interface UserProfile {
   bank_id: string | null
   bank_account_number: string | null
   bank_account_holder_name: string | null
+  referral_phone: string | null
   organizations?: {
     id: string
     org_name: string
@@ -83,11 +84,17 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     shop_name: '',
     bank_id: '',
     bank_account_number: '',
-    bank_account_holder_name: ''
+    bank_account_holder_name: '',
+    referral_phone: ''
   })
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
+  const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
+  const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const referralCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [banks, setBanks] = useState<MsiaBank[]>([])
   const [isSavingBank, setIsSavingBank] = useState(false)
   const [isEditingBank, setIsEditingBank] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -95,8 +102,11 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   useEffect(() => {
     loadUserProfile()
     loadBanks()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
+    
+    return () => {
+      if (phoneCheckTimeoutRef.current) clearTimeout(phoneCheckTimeoutRef.current)
+      if (referralCheckTimeoutRef.current) clearTimeout(referralCheckTimeoutRef.current)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -174,7 +184,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           shop_name: transformedProfile.shop_name || '',
           bank_id: transformedProfile.bank_id || '',
           bank_account_number: transformedProfile.bank_account_number || '',
-          bank_account_holder_name: transformedProfile.bank_account_holder_name || ''
+          bank_account_holder_name: transformedProfile.bank_account_holder_name || '',
+          referral_phone: transformedProfile.referral_phone || ''
         })
       }
     } catch (error: any) {
@@ -186,6 +197,98 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const checkPhoneAvailability = async (phone: string) => {
+    // Validate phone format
+    const validation = validatePhoneNumber(phone)
+    if (!validation.isValid) {
+      setPhoneCheckStatus('invalid')
+      setValidationErrors(prev => ({ ...prev, phone: validation.error || 'Invalid phone format' }))
+      return
+    }
+
+    const normalizedPhone = normalizePhone(phone)
+    
+    // If same as current user's phone, it's valid (their own)
+    if (userProfile.phone && normalizePhone(userProfile.phone) === normalizedPhone) {
+      setPhoneCheckStatus('available')
+      setValidationErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors.phone
+        return newErrors
+      })
+      return
+    }
+
+    setPhoneCheckStatus('checking')
+    try {
+      const { data: exists, error } = await supabase
+        .rpc('check_phone_exists', {
+          p_phone: normalizedPhone,
+          p_exclude_user_id: userProfile.id
+        })
+
+      if (error) throw error
+
+      if (exists) {
+        setPhoneCheckStatus('taken')
+        setValidationErrors(prev => ({ ...prev, phone: 'Phone number already exists' }))
+      } else {
+        setPhoneCheckStatus('available')
+        setValidationErrors(prev => {
+          const newErrors = { ...prev }
+          delete newErrors.phone
+          return newErrors
+        })
+      }
+    } catch (error) {
+      console.error('Error checking phone:', error)
+      setPhoneCheckStatus('idle')
+    }
+  }
+
+  const checkReferralPhone = async (phone: string) => {
+    if (!phone || !phone.trim()) {
+      setReferralCheckStatus('idle')
+      return
+    }
+
+    const validation = validatePhoneNumber(phone)
+    if (!validation.isValid) {
+      setReferralCheckStatus('invalid')
+      setValidationErrors(prev => ({ ...prev, referral_phone: 'Invalid phone format' }))
+      return
+    }
+
+    const normalizedPhone = normalizePhone(phone)
+    setReferralCheckStatus('checking')
+
+    try {
+      const { data: isValid, error } = await supabase
+        .rpc('check_serapod_user_phone', {
+          p_phone: normalizedPhone
+        })
+
+      if (error) throw error
+
+        console.log("isValid", isValid)
+
+      if (isValid) {
+        setReferralCheckStatus('valid')
+        setValidationErrors(prev => {
+          const newErrors = { ...prev }
+          delete newErrors.referral_phone
+          return newErrors
+        })
+      } else {
+        setReferralCheckStatus('invalid')
+        setValidationErrors(prev => ({ ...prev, referral_phone: 'Referral not found or not a Serapod representative' }))
+      }
+    } catch (error) {
+      console.error('Error checking referral:', error)
+      setReferralCheckStatus('idle')
     }
   }
 
@@ -347,11 +450,44 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         }
       }
 
+      // Validate referral phone if provided
+      if (formData.referral_phone && formData.referral_phone.trim()) {
+        const validation = validatePhoneNumber(formData.referral_phone)
+        if (!validation.isValid) {
+          toast({
+            title: "Invalid Reference",
+            description: validation.error || "Please enter a valid phone number for the reference.",
+            variant: "destructive",
+          })
+          setIsSaving(false)
+          return
+        }
+
+        const normalizedReferral = normalizePhone(formData.referral_phone)
+        const { data: isValid, error: checkError } = await supabase
+          .rpc('check_serapod_user_phone', {
+            p_phone: normalizedReferral
+          })
+        
+        if (checkError) throw checkError
+
+        if (!isValid) {
+          toast({
+            title: "Invalid Reference",
+            description: "Repsonible person not found or is not a Serapod representative.",
+            variant: "destructive",
+          })
+          setIsSaving(false)
+          return
+        }
+      }
+
       let updateData: any = {
         full_name: formData.full_name?.trim() || null,
         phone: formData.phone?.trim() || null,
         address: formData.address?.trim() || null,
         shop_name: formData.shop_name?.trim() || null,
+        referral_phone: formData.referral_phone?.trim() || null,
         updated_at: new Date().toISOString()
       }
 
@@ -446,7 +582,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       address: userProfile.address || '',
       bank_id: userProfile.bank_id || '',
       bank_account_number: userProfile.bank_account_number || '',
-      bank_account_holder_name: userProfile.bank_account_holder_name || ''
+      bank_account_holder_name: userProfile.bank_account_holder_name || '',
+      referral_phone: userProfile.referral_phone || ''
     })
     setAvatarFile(null)
     setAvatarPreview(null)
@@ -716,14 +853,62 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   </div>
                   <div>
                     <Label htmlFor="phone" className="text-sm font-medium">Phone Number</Label>
-                    <Input
-                      id="phone"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="Enter your phone number"
-                      disabled={isSaving}
-                      className="mt-1"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="phone"
+                        value={formData.phone}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setFormData({ ...formData, phone: val })
+                          setPhoneCheckStatus('idle')
+                          
+                          if (phoneCheckTimeoutRef.current) clearTimeout(phoneCheckTimeoutRef.current)
+                          phoneCheckTimeoutRef.current = setTimeout(() => {
+                             checkPhoneAvailability(val)
+                          }, 500)
+                        }}
+                        placeholder="Enter your phone number"
+                        disabled={isSaving}
+                        className={`mt-1 pr-10 ${validationErrors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                      />
+                      <div className="absolute right-3 top-3">
+                        {phoneCheckStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+                        {phoneCheckStatus === 'available' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                        {(phoneCheckStatus === 'taken' || phoneCheckStatus === 'invalid') && <XCircle className="h-4 w-4 text-red-500" />}
+                      </div>
+                    </div>
+                    {phoneCheckStatus === 'available' && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Phone number is available</p>}
+                    {validationErrors.phone && <p className="text-xs text-red-500 mt-1">{validationErrors.phone}</p>}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="referral_phone" className="text-sm font-medium">Reference (Serapod Representative)</Label>
+                    <div className="relative">
+                      <Input
+                        id="referral_phone"
+                        value={formData.referral_phone}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setFormData({ ...formData, referral_phone: val })
+                          setReferralCheckStatus('idle')
+                          
+                          if (referralCheckTimeoutRef.current) clearTimeout(referralCheckTimeoutRef.current)
+                          referralCheckTimeoutRef.current = setTimeout(() => {
+                             checkReferralPhone(val)
+                          }, 500)
+                        }}
+                        placeholder="Enter Serapod representative phone number"
+                        disabled={isSaving}
+                        className={`mt-1 pr-10 ${validationErrors.referral_phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                      />
+                      <div className="absolute right-3 top-3">
+                        {referralCheckStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+                        {referralCheckStatus === 'valid' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                        {referralCheckStatus === 'invalid' && <XCircle className="h-4 w-4 text-red-500" />}
+                      </div>
+                    </div>
+                    {referralCheckStatus === 'valid' && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Valid Serapod Reference</p>}
+                    {validationErrors.referral_phone && <p className="text-xs text-red-500 mt-1">{validationErrors.referral_phone}</p>}
                   </div>
                   <div>
                     <Label htmlFor="address" className="text-sm font-medium">Address</Label>
@@ -832,6 +1017,25 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                       </div>
                       <p className="text-base font-medium text-gray-900 mt-1">
                         {userProfile.phone || (
+                          <span className="text-gray-400 italic">Not set</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 text-gray-700">
+                    <Shield className="h-5 w-5 text-gray-400 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-gray-500 font-medium">Reference</p>
+                        <button
+                          onClick={() => setIsEditing(true)}
+                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                        >
+                          [Edit]
+                        </button>
+                      </div>
+                      <p className="text-base font-medium text-gray-900 mt-1">
+                        {userProfile.referral_phone || (
                           <span className="text-gray-400 italic">Not set</span>
                         )}
                       </p>
