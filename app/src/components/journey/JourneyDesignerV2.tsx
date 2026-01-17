@@ -561,16 +561,30 @@ export default function JourneyDesignerV2({
 
                 // Check Redemption
                 if (order.has_redeem) {
-                    const { count } = await supabase
+                    // Check order specific gifts
+                    const { count: orderGiftsCount } = await supabase
                         .from('redeem_gifts')
                         .select('*', { count: 'exact', head: true })
                         .eq('order_id', order.id)
 
-                    const hasRedeem = (count || 0) > 0
+                    // Check master gifts
+                    const { count: masterGiftsCount } = await supabase
+                        .from('redeem_gifts')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('redeem_type', 'master')
+                        .eq('is_active', true)
+
+                    const hasOrderGifts = (orderGiftsCount || 0) > 0
+                    const hasMasterGifts = (masterGiftsCount || 0) > 0
+                    const hasRedeem = hasOrderGifts || hasMasterGifts
+
                     setHasRedemptionConfig(hasRedeem)
 
-                    // If no redemption config, ensure toggle is off
-                    if (!hasRedeem && !journey) {
+                    // Auto-enable if master gifts exist
+                    if (hasMasterGifts) {
+                        setConfig(prev => ({ ...prev, redemption_enabled: true }))
+                    } else if (!hasRedeem && !journey) {
+                        // If no redemption config, ensure toggle is off
                         setConfig(prev => ({ ...prev, redemption_enabled: false }))
                     }
                 }

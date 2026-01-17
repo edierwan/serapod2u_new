@@ -19,15 +19,9 @@ import {
     Image as ImageIcon,
     Check,
     X,
-    Upload,
     TrendingUp,
-    Users,
     Calendar,
-    BarChart3,
-    FileText,
-    ChevronLeft,
-    ChevronRight,
-    Loader2
+    BarChart3
 } from 'lucide-react';
 import {
     Select,
@@ -38,16 +32,6 @@ import {
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { format } from 'date-fns';
 
 interface RedeemGiftManagementViewProps {
     userProfile: any;
@@ -90,16 +74,6 @@ interface RedeemGift {
     updated_at: string;
 }
 
-interface ReportLog {
-    id: string;
-    consumer_name: string | null;
-    consumer_phone: string;
-    gift_name: string;
-    points: number;
-    redeemed_at: string;
-    order_no?: string;
-}
-
 export default function RedeemGiftManagementView({ userProfile, onViewChange, initialOrderId }: RedeemGiftManagementViewProps) {
     const supabase = createClient();
     const [orders, setOrders] = useState<Order[]>([]);
@@ -109,9 +83,6 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     const [searchTerm, setSearchTerm] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [editingGift, setEditingGift] = useState<RedeemGift | null>(null);
-
-    // Active View Tab
-    const [activeTab, setActiveTab] = useState("management");
 
     // Settings
     const [pointValueRM, setPointValueRM] = useState<number>(0);
@@ -136,13 +107,6 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     const [endDate, setEndDate] = useState<string>('');
 
     const [uploadingImage, setUploadingImage] = useState(false);
-
-    // Reports State
-    const [reportLogs, setReportLogs] = useState<ReportLog[]>([]);
-    const [reportLoading, setReportLoading] = useState(false);
-    const [reportPage, setReportPage] = useState(1);
-    const [reportTotalPages, setReportTotalPages] = useState(1);
-    const ITEMS_PER_PAGE = 10;
 
     // Statistics state
     const [totalGifts, setTotalGifts] = useState(0);
@@ -233,64 +197,6 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
         }
     }, [userProfile.organization_id]);
 
-    const fetchReports = useCallback(async (page: number) => {
-        try {
-            setReportLoading(true);
-            const from = (page - 1) * ITEMS_PER_PAGE;
-            const to = from + ITEMS_PER_PAGE - 1;
-
-            // Fetch pool redemption transactions
-            // Join with redeem_gifts to get name, order (optional)
-            // Join with users to get name/phone if not in transaction
-            const { data, error, count } = await supabase
-                .from('redeem_gift_transactions')
-                .select(`
-                    id,
-                    redeemed_at,
-                    redeem_gifts!inner (
-                        gift_name,
-                        category,
-                        points_per_collection,
-                        order_id
-                    ),
-                    users!redeem_gift_transactions_user_profile_fkey (
-                        display_name,
-                        phone
-                    ),
-                    orders (
-                        order_no
-                    )
-                `, { count: 'exact' })
-                .eq('redeem_gifts.category', 'point_pool')
-                .order('redeemed_at', { ascending: false })
-                .range(from, to);
-
-            if (error) throw error;
-
-            const logs: ReportLog[] = (data || []).map((item: any) => ({
-                id: item.id,
-                consumer_name: item.users?.display_name || 'Unknown',
-                consumer_phone: item.users?.phone || 'N/A',
-                gift_name: item.redeem_gifts?.gift_name || 'Unknown',
-                points: item.redeem_gifts?.points_per_collection || 0,
-                redeemed_at: item.redeemed_at,
-                order_no: item.orders?.order_no || 'Global'
-            }));
-
-            setReportLogs(logs);
-            if (count) {
-                setReportTotalPages(Math.ceil(count / ITEMS_PER_PAGE));
-            }
-        } catch (error: any) {
-            console.error('Error fetching reports:', error);
-            const errorMsg = error?.message || error?.details || 'Unknown error';
-            showAlert('error', `Failed to load report data: ${errorMsg}`);
-        } finally {
-            setReportLoading(false);
-        }
-    }, []);
-    /* eslint-enable react-hooks/exhaustive-deps */
-
     /* eslint-disable react-hooks/exhaustive-deps */
     const fetchOrders = useCallback(async () => {
         try {
@@ -361,12 +267,6 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
         fetchRedemptionStatistics();
         fetchOrgSettings();
     }, [fetchOrders, fetchRedemptionStatistics, fetchOrgSettings]);
-
-    useEffect(() => {
-        if (activeTab === 'reports') {
-            fetchReports(reportPage);
-        }
-    }, [activeTab, reportPage, fetchReports]);
 
     // Handle initial order selection from URL
     useEffect(() => {
@@ -693,18 +593,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                 </Alert>
             )}
 
-            <Tabs defaultValue="campaigns" className="space-y-4" onValueChange={(val) => {
-                if (val === 'reports') {
-                    fetchReports(1);
-                    setReportPage(1);
-                }
-            }}>
-                <TabsList>
-                    <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-                    <TabsTrigger value="reports">Reports</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="campaigns" className="space-y-6">
+            <div className="space-y-6">
                     {/* Statistics Dashboard */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <Card>
@@ -1192,101 +1081,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                     </CardContent>
                 </Card>
             </div>
-            </TabsContent>
-
-            <TabsContent value="reports">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Pool Redemption Reports</CardTitle>
-                        <CardDescription>View redemption history for point pool rewards</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            <div className="flex justify-end">
-                                <Button variant="outline" size="sm" onClick={() => fetchReports(1)}>
-                                    Refresh
-                                </Button>
-                            </div>
-                            
-                            <div className="rounded-md border">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Date & Time</TableHead>
-                                            <TableHead>Consumer Name</TableHead>
-                                            <TableHead>Phone</TableHead>
-                                            <TableHead>Gift Name</TableHead>
-                                            <TableHead>Points</TableHead>
-                                            <TableHead>Order</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {reportLoading ? (
-                                            <TableRow>
-                                                <TableCell colSpan={6} className="h-24 text-center">
-                                                    <div className="flex justify-center items-center gap-2">
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                        Loading...
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : reportLogs.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
-                                                    No redemption records found.
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            reportLogs.map((log) => (
-                                                <TableRow key={log.id}>
-                                                    <TableCell>{format(new Date(log.redeemed_at), 'dd MMM yyyy HH:mm')}</TableCell>
-                                                    <TableCell>{log.consumer_name}</TableCell>
-                                                    <TableCell>{log.consumer_phone}</TableCell>
-                                                    <TableCell>{log.gift_name}</TableCell>
-                                                    <TableCell>{log.points}</TableCell>
-                                                    <TableCell>{log.order_no}</TableCell>
-                                                </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </div>
-
-                            {/* Pagination */}
-                            {reportTotalPages > 1 && (
-                                <div className="flex items-center justify-end space-x-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            setReportPage(p => Math.max(1, p - 1));
-                                            fetchReports(reportPage - 1);
-                                        }}
-                                        disabled={reportPage <= 1 || reportLoading}
-                                    >
-                                        <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <span className="text-sm text-gray-600">
-                                        Page {reportPage} of {reportTotalPages}
-                                    </span>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            setReportPage(p => Math.min(reportTotalPages, p + 1));
-                                            fetchReports(reportPage + 1);
-                                        }}
-                                        disabled={reportPage >= reportTotalPages || reportLoading}
-                                    >
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-            </TabsContent>
-        </Tabs>
+            </div>
             </div>
     );
 }
