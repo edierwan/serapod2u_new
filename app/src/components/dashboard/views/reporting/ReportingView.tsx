@@ -146,7 +146,11 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                         ) : (
                             <div className="text-3xl font-bold text-gray-900 tracking-tight">
                                 {typeof value === 'number' ? (
-                                    <AnimatedCounter value={value} prefix={title.includes('Revenue') || title.includes('Payment') ? 'RM ' : ''} />
+                                    <AnimatedCounter 
+                                        value={value} 
+                                        prefix={title.includes('Revenue') ? 'RM ' : ''} 
+                                        decimals={title.includes('Revenue') ? 2 : 0}
+                                    />
                                 ) : value}
                             </div>
                         )}
@@ -440,12 +444,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                         {/* KPI Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             <MetricCard
-                                title="Total Units Shipped"
-                                value={data?.summary?.totalUnits || 0}
+                                title="Total Revenue"
+                                value={data?.summary?.totalRevenue || 0}
                                 change={12.5}
                                 changeType="increase"
-                                icon={Package}
-                                color={COLORS.primary}
+                                icon={DollarSign}
+                                color={COLORS.success}
                                 subtitle={`in ${periodDays} days`}
                                 loading={loading}
                             />
@@ -455,28 +459,28 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 change={8.3}
                                 changeType="increase"
                                 icon={ShoppingCart}
-                                color={COLORS.success}
+                                color={COLORS.primary}
                                 subtitle="processed"
                                 loading={loading}
                             />
                             <MetricCard
-                                title="Active Distributors"
-                                value={data?.summary?.activeDistributors || 0}
+                                title="Total Units"
+                                value={data?.summary?.totalUnits || 0}
                                 change={2.1}
                                 changeType="increase"
-                                icon={Users}
+                                icon={Package}
                                 color={COLORS.purple}
-                                subtitle="receiving shipments"
+                                subtitle="shipped"
                                 loading={loading}
                             />
                             <MetricCard
-                                title="Avg Units/Order"
-                                value={data?.summary?.totalOrders ? Math.round((data?.summary?.totalUnits || 0) / data.summary.totalOrders) : 0}
-                                change={-1.2}
-                                changeType="decrease"
-                                icon={Target}
+                                title="Active Buyers"
+                                value={data?.summary?.activeDistributors || 0}
+                                change={5.2}
+                                changeType="increase"
+                                icon={Users}
                                 color={COLORS.warning}
-                                subtitle="efficiency metric"
+                                subtitle="distributors & shops"
                                 loading={loading}
                             />
                         </div>
@@ -683,34 +687,34 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 value={data?.summary?.ordersInProgress || 0}
                                 icon={Clock}
                                 color={COLORS.warning}
-                                subtitle="processing"
+                                subtitle="submitted/approved"
                                 loading={loading}
                             />
                             <MetricCard
                                 title="Completed Orders"
-                                value={data?.summary?.completedOrders || data?.summary?.totalOrders || 0}
+                                value={data?.summary?.completedOrders || 0}
                                 icon={CheckCircle2}
                                 color={COLORS.success}
-                                subtitle="delivered"
+                                subtitle="shipped/closed"
                                 loading={loading}
                             />
                             <MetricCard
-                                title="Warehouse Utilization"
-                                value="78%"
+                                title="Total POs"
+                                value={data?.summary?.totalPOs || 0}
                                 change={5.2}
                                 changeType="increase"
-                                icon={BoxIcon}
+                                icon={Receipt}
                                 color={COLORS.purple}
-                                subtitle="capacity used"
+                                subtitle="purchase orders"
+                                loading={loading}
                             />
                             <MetricCard
-                                title="Avg Processing Time"
-                                value="2.4 days"
-                                change={-8.5}
-                                changeType="increase"
-                                icon={Zap}
+                                title="Pending DOs"
+                                value={data?.summary?.pendingDOs || 0}
+                                icon={Truck}
                                 color={COLORS.cyan}
-                                subtitle="order to ship"
+                                subtitle="delivery orders"
+                                loading={loading}
                             />
                         </div>
 
@@ -882,25 +886,28 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                     <TabsContent value="products" className="space-y-6 animate-in fade-in-50 duration-500">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             <MetricCard
-                                title="Total SKUs Active"
-                                value={productMixData.length || 0}
+                                title="Active SKUs"
+                                value={data?.summary?.totalSKUs || productMixData.length || 0}
                                 icon={Package}
                                 color={COLORS.primary}
-                                subtitle="in portfolio"
+                                subtitle="in inventory"
+                                loading={loading}
                             />
                             <MetricCard
-                                title="Top Performer Units"
-                                value={productMixData[0]?.units || 0}
+                                title="Total Units Ordered"
+                                value={data?.summary?.totalUnits || 0}
                                 icon={TrendingUp}
                                 color={COLORS.success}
-                                subtitle={productMixData[0]?.name || 'N/A'}
+                                subtitle="across all orders"
+                                loading={loading}
                             />
                             <MetricCard
-                                title="Avg Units/SKU"
-                                value={productMixData.length ? Math.round(productMixData.reduce((sum: number, p: any) => sum + p.units, 0) / productMixData.length) : 0}
-                                icon={Layers}
+                                title="Inventory Stock"
+                                value={data?.summary?.totalInventory || 0}
+                                icon={BoxIcon}
                                 color={COLORS.purple}
-                                subtitle="distribution"
+                                subtitle="units on hand"
+                                loading={loading}
                             />
                             <MetricCard
                                 title="Product Diversity"
@@ -908,6 +915,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 icon={PieChartIcon}
                                 color={COLORS.cyan}
                                 subtitle="portfolio health"
+                                loading={loading}
                             />
                         </div>
 

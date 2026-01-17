@@ -30,172 +30,256 @@ export async function GET(request: Request) {
     }
 
     const isSuperAdmin = profile.roles?.role_level === 1
-    const warehouseOrgId = profile.organization_id
 
-    // Build query
-    let query = supabase
-      .from('qr_validation_reports')
+    // ==========================================
+    // FETCH DATA FROM ACTUAL POPULATED TABLES
+    // ==========================================
+
+    // 1. Fetch Orders with Items
+    let ordersQuery = supabase
+      .from('orders')
       .select(`
         id,
-        warehouse_org_id,
-        distributor_org_id,
-        destination_order_id,
-        validation_status,
-        scanned_quantities,
+        order_no,
+        display_doc_no,
+        order_type,
+        status,
+        paid_amount,
         created_at,
         updated_at,
-        approved_at,
-        destination_order:orders!qr_validation_reports_destination_order_id_fkey (
+        buyer:organizations!orders_buyer_org_id_fkey (
           id,
-          order_no,
-          buyer_org_id,
-          buyer:organizations!orders_buyer_org_id_fkey (
-            id,
-            org_name
-          )
+          org_name,
+          org_type_code
         ),
-        distributor:organizations!qr_validation_reports_distributor_org_id_fkey (
+        seller:organizations!orders_seller_org_id_fkey (
           id,
-          org_name
+          org_name,
+          org_type_code
+        ),
+        order_items (
+          id,
+          variant_id,
+          qty,
+          unit_price,
+          line_total
         )
       `)
-      .in('validation_status', ['approved', 'pending', 'matched'])
+      .in('status', ['approved', 'closed', 'submitted', 'shipped_distributor', 'shipped_shop'])
+      .order('created_at', { ascending: false })
 
-    // Apply filters
+    // Apply date filters
     if (startDate) {
-      query = query.gte('created_at', startDate)
+      ordersQuery = ordersQuery.gte('created_at', startDate)
     }
     if (endDate) {
-      query = query.lte('created_at', endDate)
+      ordersQuery = ordersQuery.lte('created_at', endDate)
     }
-    if (!isSuperAdmin && warehouseOrgId) {
-      query = query.eq('warehouse_org_id', warehouseOrgId)
-    }
+    
+    // Filter by distributor if specified
     if (distributorId) {
-      query = query.eq('distributor_org_id', distributorId)
+      ordersQuery = ordersQuery.eq('buyer_org_id', distributorId)
     }
 
-    const { data: sessions, error } = await query
+    const { data: orders, error: ordersError } = await ordersQuery
 
-    if (error) {
-      console.error('Reporting API Error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (ordersError) {
+      console.error('Orders fetch error:', ordersError)
+      return NextResponse.json({ error: ordersError.message }, { status: 500 })
     }
 
-    // Process data for reporting
-    const stats = {
-      totalUnits: 0,
-      totalCases: 0,
-      totalOrders: new Set(),
-      activeDistributors: new Set(),
-      distributorPerformance: {} as Record<string, number>,
-      productMix: {} as Record<string, number>,
-      trend: {} as Record<string, number>,
-      recentShipments: [] as any[]
-    }
-
-    sessions?.forEach((session: any) => {
-      // Monthly aggregation (YYYY-MM)
-      const dateObj = new Date(session.approved_at || session.updated_at || session.created_at)
-      const date = dateObj.toISOString().slice(0, 7) // YYYY-MM
-      const dailyDate = dateObj.toISOString().split('T')[0] // Keep daily for recent shipments display
-
-      const distributorName = session.distributor?.org_name || session.destination_order?.buyer?.org_name || 'Unknown Distributor'
-      const orderNo = session.destination_order?.order_no
-      
-      if (orderNo) stats.totalOrders.add(orderNo)
-      stats.activeDistributors.add(distributorName)
-
-      // Aggregate Units from scanned_quantities
-      let sessionUnits = 0
-      const quantities = session.scanned_quantities as any
-      
-      if (quantities && quantities.per_variant) {
-        Object.entries(quantities.per_variant).forEach(([product, data]: [string, any]) => {
-          const quantity = Number(data.units || 0)
-          sessionUnits += quantity
-          
-          // Product Mix
-          stats.productMix[product] = (stats.productMix[product] || 0) + quantity
-        })
-      } else if (quantities && quantities.total_units) {
-        // Fallback if per_variant is missing but total_units exists
-        sessionUnits = Number(quantities.total_units)
-      }
-
-      stats.totalUnits += sessionUnits
-      
-      // Distributor Performance
-      stats.distributorPerformance[distributorName] = (stats.distributorPerformance[distributorName] || 0) + sessionUnits
-
-      // Trend (Monthly)
-      stats.trend[date] = (stats.trend[date] || 0) + sessionUnits
-
-            // Recent Shipments (simplified)
-      if (stats.recentShipments.length < 10) {
-        stats.recentShipments.push({
-          id: session.id,
-          date: dailyDate,
-          distributor: distributorName,
-          orderNo: orderNo || '-',
-          units: sessionUnits,
-          status: session.validation_status
-        })
-      }
+    // 2. Fetch Product Variants for names
+    const variantIds = new Set<string>()
+    orders?.forEach((order: any) => {
+      order.order_items?.forEach((item: any) => {
+        if (item.variant_id) variantIds.add(item.variant_id)
+      })
     })
 
-    // Resolve Product Names
-    const variantIds = Object.keys(stats.productMix)
     let productNames: Record<string, string> = {}
-    
-    if (variantIds.length > 0) {
+    if (variantIds.size > 0) {
       const { data: variants } = await supabase
         .from('product_variants')
         .select(`
           id,
+          variant_code,
           variant_name,
-          product:products (
+          products (
             product_name
           )
         `)
-        .in('id', variantIds)
-      
+        .in('id', Array.from(variantIds))
+
       variants?.forEach((v: any) => {
-        // Construct a readable name: "Product Name - Variant Name" or just "Variant Name"
-        const pName = v.product?.product_name
+        const pName = v.products?.product_name
         const vName = v.variant_name
         const fullName = pName && vName && pName !== vName ? `${pName} - ${vName}` : (vName || pName || 'Unknown Product')
-        
-        // Extract content within brackets [ ]
+        // Extract content within brackets [ ] for shorter names
         const match = fullName.match(/\[(.*?)\]/)
-        const shortName = match ? match[1].trim() : fullName
-        
-        productNames[v.id] = shortName
+        productNames[v.id] = match ? match[1].trim() : fullName
       })
     }
+
+    // 3. Process statistics
+    const stats = {
+      totalUnits: 0,
+      totalRevenue: 0,
+      totalOrders: 0,
+      ordersInProgress: 0,
+      completedOrders: 0,
+      activeDistributors: new Set<string>(),
+      distributorPerformance: {} as Record<string, { units: number; revenue: number }>,
+      productMix: {} as Record<string, number>,
+      trend: {} as Record<string, { units: number; orders: number; revenue: number }>,
+      recentShipments: [] as any[]
+    }
+
+    orders?.forEach((order: any) => {
+      const dateObj = new Date(order.created_at)
+      const monthKey = dateObj.toISOString().slice(0, 7) // YYYY-MM
+      const dailyDate = dateObj.toISOString().split('T')[0]
+
+      // Get distributor name (buyer for orders)
+      const distributorName = order.buyer?.org_name || 'Unknown'
+      const isDistributor = order.buyer?.org_type_code === 'DIST'
+      
+      stats.totalOrders++
+      
+      // Track order status
+      if (['submitted', 'approved'].includes(order.status)) {
+        stats.ordersInProgress++
+      } else if (['closed', 'shipped_distributor', 'shipped_shop'].includes(order.status)) {
+        stats.completedOrders++
+      }
+
+      // Track distributors
+      if (isDistributor || order.buyer?.org_type_code === 'SHOP') {
+        stats.activeDistributors.add(distributorName)
+      }
+
+      // Process order items
+      let orderUnits = 0
+      let orderRevenue = 0
+      
+      order.order_items?.forEach((item: any) => {
+        const qty = item.qty || 0
+        const lineTotal = Number(item.line_total) || 0
+        
+        orderUnits += qty
+        orderRevenue += lineTotal
+
+        // Product mix
+        if (item.variant_id) {
+          stats.productMix[item.variant_id] = (stats.productMix[item.variant_id] || 0) + qty
+        }
+      })
+
+      stats.totalUnits += orderUnits
+      stats.totalRevenue += orderRevenue
+
+      // Distributor performance
+      if (!stats.distributorPerformance[distributorName]) {
+        stats.distributorPerformance[distributorName] = { units: 0, revenue: 0 }
+      }
+      stats.distributorPerformance[distributorName].units += orderUnits
+      stats.distributorPerformance[distributorName].revenue += orderRevenue
+
+      // Monthly trend
+      if (!stats.trend[monthKey]) {
+        stats.trend[monthKey] = { units: 0, orders: 0, revenue: 0 }
+      }
+      stats.trend[monthKey].units += orderUnits
+      stats.trend[monthKey].orders++
+      stats.trend[monthKey].revenue += orderRevenue
+
+      // Recent shipments
+      if (stats.recentShipments.length < 10) {
+        stats.recentShipments.push({
+          id: order.id,
+          date: order.created_at,
+          distributor: distributorName,
+          orderNo: order.display_doc_no || order.order_no,
+          units: orderUnits,
+          revenue: orderRevenue,
+          status: order.status
+        })
+      }
+    })
+
+    // 4. Fetch inventory summary
+    const { data: inventory } = await supabase
+      .from('product_inventory')
+      .select('variant_id, quantity_on_hand, quantity_available, cases_on_hand, units_on_hand')
+
+    let totalInventory = 0
+    let totalSKUs = new Set<string>()
+    inventory?.forEach((inv: any) => {
+      totalInventory += (inv.quantity_on_hand || 0)
+      if (inv.variant_id) totalSKUs.add(inv.variant_id)
+    })
+
+    // 5. Fetch document stats
+    const { data: documents } = await supabase
+      .from('documents')
+      .select('doc_type, status')
+      .in('doc_type', ['PO', 'INVOICE', 'PAYMENT', 'RECEIPT', 'DO'])
+
+    const docStats = {
+      totalPOs: 0,
+      totalInvoices: 0,
+      totalPayments: 0,
+      pendingDOs: 0
+    }
+    documents?.forEach((doc: any) => {
+      if (doc.doc_type === 'PO') docStats.totalPOs++
+      if (doc.doc_type === 'INVOICE') docStats.totalInvoices++
+      if (doc.doc_type === 'PAYMENT' && doc.status === 'acknowledged') docStats.totalPayments++
+      if (doc.doc_type === 'DO' && doc.status === 'pending') docStats.pendingDOs++
+    })
 
     // Format for frontend
     const response = {
       summary: {
         totalUnits: stats.totalUnits,
-        totalOrders: stats.totalOrders.size,
+        totalRevenue: stats.totalRevenue,
+        totalOrders: stats.totalOrders,
+        ordersInProgress: stats.ordersInProgress,
+        completedOrders: stats.completedOrders,
         activeDistributors: stats.activeDistributors.size,
+        totalInventory,
+        totalSKUs: totalSKUs.size,
+        ...docStats
       },
       trend: Object.entries(stats.trend)
-        .map(([date, units]) => ({ date, units }))
+        .map(([date, data]) => ({ 
+          date, 
+          units: data.units,
+          orders: data.orders,
+          revenue: data.revenue
+        }))
         .sort((a, b) => a.date.localeCompare(b.date)),
       productMix: Object.entries(stats.productMix)
         .map(([id, units]) => ({
+          id,
           name: productNames[id] || 'Unknown Product',
           units
         }))
         .sort((a, b) => b.units - a.units)
-        .slice(0, 5),
+        .slice(0, 10),
       distributorPerformance: Object.entries(stats.distributorPerformance)
-        .map(([name, units]) => ({ name, units }))
+        .map(([name, data]) => ({ 
+          name, 
+          units: data.units,
+          revenue: data.revenue
+        }))
         .sort((a, b) => b.units - a.units)
-        .slice(0, 5),
-      recentShipments: stats.recentShipments
+        .slice(0, 10),
+      recentShipments: stats.recentShipments,
+      inventory: {
+        total: totalInventory,
+        skuCount: totalSKUs.size,
+        items: inventory || []
+      }
     }
 
     return NextResponse.json(response)
