@@ -65,7 +65,7 @@ export async function GET(request: Request) {
           line_total
         )
       `)
-      .in('status', ['approved', 'closed', 'submitted', 'shipped_distributor', 'shipped_shop'])
+      .in('status', ['approved', 'closed', 'submitted'])
       .order('created_at', { ascending: false })
 
     // Apply date filters

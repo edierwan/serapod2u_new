@@ -283,7 +283,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
             const { data: orders } = await supabase
                 .from('orders')
                 .select('id, order_no, paid_amount, status, created_at')
-                .in('status', ['approved', 'closed', 'shipped_distributor'])
+                .in('status', ['approved', 'closed'])
                 .order('created_at', { ascending: false })
                 .limit(50)
 

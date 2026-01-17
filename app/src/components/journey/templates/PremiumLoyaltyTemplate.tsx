@@ -45,6 +45,7 @@ import {
     Lock,
     Shield,
     MapPin,
+    Store,
     Save,
     Check,
     MessageSquare,
@@ -519,6 +520,10 @@ export default function PremiumLoyaltyTemplate({
     const [signUpPhone, setSignUpPhone] = useState('')
     const [signUpLocation, setSignUpLocation] = useState('')
     const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('')
+    // New Signup Fields
+    const [signUpReference, setSignUpReference] = useState('')
+    const [signUpAddress, setSignUpAddress] = useState('')
+    const [signUpShopName, setSignUpShopName] = useState('')
 
     // Security modal states
     const [showSecurityModal, setShowSecurityModal] = useState(false)
@@ -1721,27 +1726,30 @@ export default function PremiumLoyaltyTemplate({
                 if (data.session && data.user) {
                     console.log('🔐 Auto-logging in after signup...', data.user.id)
 
-                    // Update phone in public.users via API (bypasses RLS)
-                    if (signUpPhone) {
+                    // Update profile with additional details via API (bypasses RLS)
+                    if (signUpPhone || signUpAddress || signUpShopName || signUpReference) {
                         try {
-                            console.log('🔐 Updating phone in public.users via API')
-                            const response = await fetch('/api/user/update-phone', {
+                            console.log('🔐 Updating profile with additional details')
+                            const response = await fetch('/api/user/update-profile', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     userId: data.user.id,
-                                    phone: signUpPhone
+                                    phone: signUpPhone || undefined,
+                                    referral_phone: signUpReference || undefined,
+                                    address: signUpAddress || undefined,
+                                    shop_name: signUpShopName || undefined
                                 })
                             })
 
                             const result = await response.json()
                             if (result.success) {
-                                console.log('🔐 Phone number updated successfully in public.users')
+                                console.log('🔐 Profile updated successfully')
                             } else {
-                                console.error('🔐 Error updating phone in public.users:', result.error)
+                                console.error('🔐 Error updating profile:', result.error)
                             }
-                        } catch (phoneError) {
-                            console.error('🔐 Error updating phone:', phoneError)
+                        } catch (profileError) {
+                            console.error('🔐 Error updating profile:', profileError)
                         }
                     }
 
@@ -1754,6 +1762,9 @@ export default function PremiumLoyaltyTemplate({
                     setLoginPassword('')
                     setSignUpName('')
                     setSignUpPhone('')
+                    setSignUpReference('')
+                    setSignUpAddress('')
+                    setSignUpShopName('')
                     setSignUpConfirmPassword('')
 
                     // IMPORTANT: Force profile fetch after successful login
@@ -1793,6 +1804,9 @@ export default function PremiumLoyaltyTemplate({
                     setLoginPassword('')
                     setSignUpName('')
                     setSignUpPhone('')
+                    setSignUpReference('')
+                    setSignUpAddress('')
+                    setSignUpShopName('')
                     setSignUpConfirmPassword('')
 
                     toast({
@@ -4913,6 +4927,53 @@ export default function PremiumLoyaltyTemplate({
                                                 <p className="text-xs text-red-500 mt-1">{phoneError}</p>
                                             )}
                                             <p className="text-xs text-gray-500 mt-1">Supported: Malaysia (+60) and China (+86) mobile numbers</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Reference (Optional)
+                                            </label>
+                                            <div className="relative">
+                                                <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Reference Number (e.g. 0123456789)"
+                                                    value={signUpReference}
+                                                    onChange={(e) => setSignUpReference(e.target.value)}
+                                                    className="h-11 pl-10"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Address (Optional)
+                                            </label>
+                                            <div className="relative">
+                                                <MapPin className="absolute left-3 top-2 w-5 h-5 text-gray-400" />
+                                                <textarea
+                                                    placeholder="Enter your address"
+                                                    value={signUpAddress}
+                                                    onChange={(e) => setSignUpAddress(e.target.value)}
+                                                    className="w-full min-h-[80px] pl-10 pr-3 py-2 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Shop Name (Optional)
+                                            </label>
+                                            <div className="relative">
+                                                <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Enter shop name"
+                                                    value={signUpShopName}
+                                                    onChange={(e) => setSignUpShopName(e.target.value)}
+                                                    className="h-11 pl-10"
+                                                />
+                                            </div>
                                         </div>
 
                                         <div>
