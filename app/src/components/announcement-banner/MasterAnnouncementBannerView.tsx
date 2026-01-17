@@ -1,21 +1,18 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/components/ui/use-toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStorageUrl } from '@/lib/utils'
 import {
-    Layout,
     Save,
     Image as ImageIcon,
     Info,
@@ -24,7 +21,13 @@ import {
     Megaphone,
     Eye,
     EyeOff,
-    Bell
+    Plus,
+    Trash2,
+    ArrowUp,
+    ArrowDown,
+    Settings2,
+    LayoutGrid,
+    Layers
 } from 'lucide-react'
 
 interface BannerItem {
@@ -34,22 +37,33 @@ interface BannerItem {
     expires_at: string
     page?: 'home' | 'rewards' | 'products' | 'profile'
     is_active?: boolean
-    placement?: 'top' | 'bottom' // Per-item placement override (preferred) or section grouping
+    placement?: 'top' | 'bottom'
 }
 
-// Grouped structure for UI, but flat array in DB is easier unless we change schema
-// Let's assume we keep the flat array but filter by placement in UI
+interface PageBannerSettings {
+    topTemplate: 'grid' | 'carousel'
+    bottomTemplate: 'grid' | 'carousel'
+    topAutoSlide?: boolean
+    topSlideInterval?: number
+    bottomAutoSlide?: boolean
+    bottomSlideInterval?: number
+}
 
 interface BannerConfig {
     enabled: boolean
     template: 'grid' | 'carousel'
     items: BannerItem[]
-    // Remove global placement or keep as default
-    // placement: 'top' | 'bottom' 
+    placement?: 'top' | 'bottom'
     autoSlide?: boolean
     slideInterval?: number
     showDots?: boolean
     showProgress?: boolean
+    pageSettings?: {
+        home?: PageBannerSettings
+        rewards?: PageBannerSettings
+        products?: PageBannerSettings
+        profile?: PageBannerSettings
+    }
 }
 
 interface MasterBannerConfig {
@@ -74,6 +88,22 @@ interface UserProfile {
     }
 }
 
+const defaultPageSettings: PageBannerSettings = {
+    topTemplate: 'carousel',
+    bottomTemplate: 'grid',
+    topAutoSlide: true,
+    topSlideInterval: 5,
+    bottomAutoSlide: false,
+    bottomSlideInterval: 5
+}
+
+const pageLabels = {
+    home: { name: 'Home', icon: '🏠' },
+    rewards: { name: 'Rewards', icon: '🎁' },
+    products: { name: 'Products', icon: '📦' },
+    profile: { name: 'Profile', icon: '👤' }
+}
+
 export default function MasterAnnouncementBannerView({ userProfile }: { userProfile: UserProfile }) {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -81,9 +111,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
     const [masterConfig, setMasterConfig] = useState<MasterBannerConfig | null>(null)
     const [activeBannerTab, setActiveBannerTab] = useState<'home' | 'rewards' | 'products' | 'profile'>('home')
     const { toast } = useToast()
-    const supabase = createClient()
 
-    // Load master banner config
     useEffect(() => {
         loadMasterConfig()
     }, [])
@@ -95,7 +123,16 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
             const data = await res.json()
 
             if (data.success) {
-                setMasterConfig(data.data)
+                const config = data.data
+                if (!config.banner_config.pageSettings) {
+                    config.banner_config.pageSettings = {
+                        home: { ...defaultPageSettings },
+                        rewards: { ...defaultPageSettings },
+                        products: { ...defaultPageSettings },
+                        profile: { ...defaultPageSettings }
+                    }
+                }
+                setMasterConfig(config)
             } else {
                 toast({
                     title: "Error",
@@ -118,7 +155,6 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
     const handleImageUpload = async (file: File, onSuccess: (url: string) => void) => {
         try {
             setUploadingImage(true)
-
             const formData = new FormData()
             formData.append('file', file)
 
@@ -134,10 +170,9 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
             }
 
             onSuccess(data.url)
-
             toast({
                 title: "Image uploaded",
-                description: "Banner image has been processed (16:9) and uploaded successfully",
+                description: "Banner image has been processed and uploaded successfully",
             })
         } catch (error: any) {
             console.error('Error uploading image:', error)
@@ -162,8 +197,6 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     banner_config: masterConfig.banner_config,
-                    // Always set is_active to true when saving - if user is saving a config, they want it active
-                    // The banner_config.enabled field controls whether banners actually display
                     is_active: true
                 })
             })
@@ -171,10 +204,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
             const data = await res.json()
 
             if (data.success) {
-                setMasterConfig({
-                    ...data.data,
-                    is_new: false
-                })
+                setMasterConfig({ ...data.data, is_new: false })
                 toast({
                     title: "Saved",
                     description: "Master announcement banner configuration has been saved",
@@ -209,6 +239,57 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
         })
     }
 
+    const getPageSettings = (page: 'home' | 'rewards' | 'products' | 'profile'): PageBannerSettings => {
+        return masterConfig?.banner_config.pageSettings?.[page] || defaultPageSettings
+    }
+
+    const updatePageSettings = (page: 'home' | 'rewards' | 'products' | 'profile', updates: Partial<PageBannerSettings>) => {
+        if (!masterConfig) return
+        const currentSettings = getPageSettings(page)
+        setMasterConfig({
+            ...masterConfig,
+            banner_config: {
+                ...masterConfig.banner_config,
+                pageSettings: {
+                    ...masterConfig.banner_config.pageSettings,
+                    [page]: {
+                        ...currentSettings,
+                        ...updates
+                    }
+                }
+            }
+        })
+    }
+
+    const addBanner = (placement: 'top' | 'bottom') => {
+        if (!masterConfig) return
+        const newItems = [...masterConfig.banner_config.items]
+        newItems.push({
+            id: crypto.randomUUID(),
+            image_url: '',
+            link_to: 'rewards',
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            page: activeBannerTab,
+            placement,
+            is_active: true
+        })
+        updateConfig({ items: newItems })
+    }
+
+    const removeBanner = (id: string) => {
+        if (!masterConfig) return
+        const newItems = masterConfig.banner_config.items.filter(i => i.id !== id)
+        updateConfig({ items: newItems })
+    }
+
+    const updateBannerItem = (id: string, updates: Partial<BannerItem>) => {
+        if (!masterConfig) return
+        const newItems = masterConfig.banner_config.items.map(item =>
+            item.id === id ? { ...item, ...updates } : item
+        )
+        updateConfig({ items: newItems })
+    }
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -225,13 +306,228 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
         )
     }
 
-    const currentPageItems = masterConfig.banner_config.items.filter(
-        item => (item.page || 'home') === activeBannerTab
+    const BannerCard = ({ item }: { item: BannerItem }) => {
+        const isActive = item.is_active !== false
+
+        return (
+            <div className={`group relative bg-white rounded-xl border-2 transition-all duration-200 ${
+                isActive ? 'border-gray-200 hover:border-blue-300 hover:shadow-md' : 'border-gray-300 opacity-60'
+            }`}>
+                <div className="relative aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 rounded-t-xl overflow-hidden">
+                    {item.image_url ? (
+                        <Image
+                            src={getStorageUrl(item.image_url) || item.image_url}
+                            alt="Banner preview"
+                            fill
+                            className="object-cover"
+                        />
+                    ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                            <ImageIcon className="w-12 h-12 mb-2" />
+                            <span className="text-sm">No image</span>
+                        </div>
+                    )}
+                    
+                    <div className="absolute top-2 left-2">
+                        <Badge className={isActive ? 'bg-green-500' : 'bg-gray-500'}>
+                            {isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                    </div>
+
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                            size="icon"
+                            variant="secondary"
+                            className="h-8 w-8 bg-white/90 hover:bg-white"
+                            onClick={() => updateBannerItem(item.id, { is_active: !isActive })}
+                        >
+                            {isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                        <Button
+                            size="icon"
+                            variant="destructive"
+                            className="h-8 w-8"
+                            onClick={() => removeBanner(item.id)}
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="p-4 space-y-3">
+                    <div className="flex gap-2">
+                        <Input
+                            value={item.image_url}
+                            onChange={(e) => updateBannerItem(item.id, { image_url: e.target.value })}
+                            placeholder="Image URL or upload"
+                            className="text-sm"
+                        />
+                        <div className="relative">
+                            <input
+                                type="file"
+                                id={`banner-upload-${item.id}`}
+                                className="hidden"
+                                accept="image/*"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (file) {
+                                        handleImageUpload(file, (url) => {
+                                            updateBannerItem(item.id, { image_url: url })
+                                        })
+                                    }
+                                    e.target.value = ''
+                                }}
+                            />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={uploadingImage}
+                                onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
+                            >
+                                {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload'}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                        <Select
+                            value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
+                            onValueChange={(value: string) => {
+                                updateBannerItem(item.id, { link_to: value === 'external' ? '' : value })
+                            }}
+                        >
+                            <SelectTrigger className="text-sm">
+                                <SelectValue placeholder="Link to..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="rewards">Rewards</SelectItem>
+                                <SelectItem value="products">Products</SelectItem>
+                                <SelectItem value="contact-us">Contact Us</SelectItem>
+                                <SelectItem value="no-link">No Link</SelectItem>
+                                <SelectItem value="external">External URL</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Input
+                            type="date"
+                            value={item.expires_at?.split('T')[0] || ''}
+                            onChange={(e) => updateBannerItem(item.id, { expires_at: e.target.value })}
+                            className="text-sm"
+                        />
+                    </div>
+
+                    {!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) && (
+                        <Input
+                            value={item.link_to}
+                            onChange={(e) => updateBannerItem(item.id, { link_to: e.target.value })}
+                            placeholder="https://example.com"
+                            className="text-sm"
+                        />
+                    )}
+                </div>
+            </div>
+        )
+    }
+
+    const BannerSection = ({ title, placement, items, template, autoSlide, slideInterval }: {
+        title: string
+        placement: 'top' | 'bottom'
+        items: BannerItem[]
+        template: 'grid' | 'carousel'
+        autoSlide?: boolean
+        slideInterval?: number
+    }) => (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between bg-gradient-to-r from-gray-50 to-white p-4 rounded-xl border">
+                <div className="flex items-center gap-3">
+                    {placement === 'top' ? (
+                        <ArrowUp className="w-5 h-5 text-blue-600" />
+                    ) : (
+                        <ArrowDown className="w-5 h-5 text-purple-600" />
+                    )}
+                    <div>
+                        <h3 className="font-semibold text-gray-900">{title}</h3>
+                        <p className="text-xs text-gray-500">{items.length} banner{items.length !== 1 ? 's' : ''}</p>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 bg-white rounded-lg border p-1">
+                        <Button
+                            size="sm"
+                            variant={template === 'carousel' ? 'default' : 'ghost'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => updatePageSettings(activeBannerTab, {
+                                [placement === 'top' ? 'topTemplate' : 'bottomTemplate']: 'carousel'
+                            })}
+                        >
+                            <Layers className="w-3 h-3 mr-1" />
+                            Slider
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant={template === 'grid' ? 'default' : 'ghost'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => updatePageSettings(activeBannerTab, {
+                                [placement === 'top' ? 'topTemplate' : 'bottomTemplate']: 'grid'
+                            })}
+                        >
+                            <LayoutGrid className="w-3 h-3 mr-1" />
+                            Stacked
+                        </Button>
+                    </div>
+
+                    {template === 'carousel' && (
+                        <div className="flex items-center gap-2 text-sm">
+                            <Switch
+                                checked={autoSlide !== false}
+                                onCheckedChange={(checked) => updatePageSettings(activeBannerTab, {
+                                    [placement === 'top' ? 'topAutoSlide' : 'bottomAutoSlide']: checked
+                                })}
+                            />
+                            <span className="text-gray-600">Auto</span>
+                            {autoSlide !== false && (
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={30}
+                                    value={slideInterval || 5}
+                                    onChange={(e) => updatePageSettings(activeBannerTab, {
+                                        [placement === 'top' ? 'topSlideInterval' : 'bottomSlideInterval']: parseInt(e.target.value) || 5
+                                    })}
+                                    className="w-14 h-7 text-xs"
+                                />
+                            )}
+                        </div>
+                    )}
+
+                    <Button size="sm" onClick={() => addBanner(placement)}>
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add
+                    </Button>
+                </div>
+            </div>
+
+            {items.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <ImageIcon className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-500 mb-3">No {placement} banners yet</p>
+                    <Button variant="outline" onClick={() => addBanner(placement)}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add First Banner
+                    </Button>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {items.map(item => (
+                        <BannerCard key={item.id} item={item} />
+                    ))}
+                </div>
+            )}
+        </div>
     )
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
+        <div className="space-y-6 max-w-7xl mx-auto">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -239,10 +535,10 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                         Master Announcement Banner
                     </h1>
                     <p className="text-gray-600 mt-1">
-                        Configure default announcement banners for all journeys
+                        Configure default banners for all consumer journeys
                     </p>
                 </div>
-                <Button onClick={handleSave} disabled={saving}>
+                <Button onClick={handleSave} disabled={saving} size="lg">
                     {saving ? (
                         <>
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -257,494 +553,136 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                 </Button>
             </div>
 
-            {/* Info Alert */}
             <Alert className="bg-blue-50 border-blue-200">
                 <Info className="w-4 h-4 text-blue-600" />
                 <AlertDescription className="text-blue-800">
-                    <strong>How it works:</strong> This master banner configuration will be used as the default for all consumer journeys.
-                    Individual journeys can override this by configuring their own banner. If a journey doesn't have its own banner configured,
-                    this master banner will be displayed to consumers.
+                    <strong>How it works:</strong> Configure banners for each page. Each section (Top/Bottom) can use Slider or Stacked display mode.
+                    Individual journeys can override these settings with their own banners.
                 </AlertDescription>
             </Alert>
 
-            {/* Main Config Card */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Layout className="w-5 h-5" />
-                        Banner Configuration
-                    </CardTitle>
-                    <CardDescription>
-                        Configure the default announcement banners that will appear across all journey pages
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Enable Toggle */}
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="space-y-0.5">
-                            <Label className="text-base font-medium">Enable Master Banner</Label>
-                            <p className="text-sm text-gray-600">
-                                When enabled, these banners will show on journeys that don't have their own banner configured
-                            </p>
+                <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className={`p-3 rounded-xl ${masterConfig.banner_config.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                {masterConfig.banner_config.enabled ? (
+                                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                                ) : (
+                                    <EyeOff className="w-6 h-6 text-gray-400" />
+                                )}
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-lg">Master Banner System</h3>
+                                <p className="text-sm text-gray-600">
+                                    {masterConfig.banner_config.enabled 
+                                        ? 'Banners will display on consumer journeys without custom banners'
+                                        : 'No banners will be displayed by default'}
+                                </p>
+                            </div>
                         </div>
                         <Switch
                             checked={masterConfig.banner_config.enabled}
                             onCheckedChange={(checked) => updateConfig({ enabled: checked })}
                         />
                     </div>
-
-                    {masterConfig.banner_config.enabled && (
-                        <>
-                            {/* Template Selection */}
-                            <div className="space-y-2">
-                                <Label>Banner Display Template</Label>
-                                <Select
-                                    value={masterConfig.banner_config.template}
-                                    onValueChange={(value: 'grid' | 'carousel') => updateConfig({ template: value })}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="grid">Grid (Stacked)</SelectItem>
-                                        <SelectItem value="carousel">Carousel (Slider)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-gray-500">
-                                    Grid shows banners stacked vertically. Carousel allows horizontal scrolling.
-                                </p>
-                            </div>
-
-                            {/* Placement Setting */}
-                            <div className="space-y-2">
-                                <Label>Banner Placement</Label>
-                                <Select
-                                    value={masterConfig.banner_config.placement || 'top'}
-                                    onValueChange={(value: 'top' | 'bottom') => updateConfig({ placement: value })}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="top">Top (Before Content)</SelectItem>
-                                        <SelectItem value="bottom">Bottom (After Content)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-gray-500">
-                                    Choose whether to display the banner at the top or bottom of the page content.
-                                </p>
-                            </div>
-
-                            {/* Carousel Settings */}
-                            {masterConfig.banner_config.template === 'carousel' && (
-                                <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                    <h4 className="font-medium text-sm text-gray-900">Slider Configuration</h4>
-                                    
-                                    <div className="flex items-center justify-between">
-                                        <div className="space-y-0.5">
-                                            <Label className="text-sm">Auto-play Slideshow</Label>
-                                            <p className="text-xs text-gray-500">Automatically advance slides</p>
-                                        </div>
-                                        <Switch
-                                            checked={masterConfig.banner_config.autoSlide !== false}
-                                            onCheckedChange={(checked) => updateConfig({ autoSlide: checked })}
-                                        />
-                                    </div>
-
-                                    {(masterConfig.banner_config.autoSlide !== false) && (
-                                        <div className="space-y-2">
-                                            <Label className="text-sm">Slide Duration (Seconds)</Label>
-                                            <div className="flex items-center gap-2">
-                                                <Input
-                                                    type="number"
-                                                    min={1}
-                                                    max={60}
-                                                    value={masterConfig.banner_config.slideInterval || 5}
-                                                    onChange={(e) => updateConfig({ slideInterval: parseInt(e.target.value) || 5 })}
-                                                    className="w-24"
-                                                />
-                                                <span className="text-sm text-gray-500">seconds</span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="flex items-center justify-between">
-                                        <div className="space-y-0.5">
-                                            <Label className="text-sm">Show Dots Navigation</Label>
-                                            <p className="text-xs text-gray-500">Show indicators for each slide</p>
-                                        </div>
-                                        <Switch
-                                            checked={masterConfig.banner_config.showDots !== false}
-                                            onCheckedChange={(checked) => updateConfig({ showDots: checked })}
-                                        />
-                                    </div>
-
-                                    <div className="flex items-center justify-between">
-                                        <div className="space-y-0.5">
-                                            <Label className="text-sm">Show Progress Bar</Label>
-                                            <p className="text-xs text-gray-500">Show timer progress between slides</p>
-                                        </div>
-                                        <Switch
-                                            checked={masterConfig.banner_config.showProgress !== false}
-                                            onCheckedChange={(checked) => updateConfig({ showProgress: checked })}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Page Tabs */}
-                            <div className="space-y-4 p-4 border border-gray-200 rounded-lg">
-                                <div className="space-y-2">
-                                    <Label>Banner Page</Label>
-                                    <p className="text-sm text-gray-600">
-                                        Configure banners for each page of the consumer app
-                                    </p>
-                                    <Tabs
-                                        value={activeBannerTab}
-                                        onValueChange={(value) => setActiveBannerTab(value as typeof activeBannerTab)}
-                                        className="w-full"
-                                    >
-                                        <TabsList className="grid w-full grid-cols-4">
-                                            <TabsTrigger value="home" className="relative">
-                                                Home
-                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
-                                                    activeBannerTab === 'home' ? 'bg-green-500' : 'bg-gray-400'
-                                                }`}>
-                                                    {masterConfig.banner_config.items.filter(i => (i.page || 'home') === 'home').length}
-                                                </span>
-                                            </TabsTrigger>
-                                            <TabsTrigger value="rewards" className="relative">
-                                                Rewards
-                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
-                                                    activeBannerTab === 'rewards' ? 'bg-green-500' : 'bg-gray-400'
-                                                }`}>
-                                                    {masterConfig.banner_config.items.filter(i => i.page === 'rewards').length}
-                                                </span>
-                                            </TabsTrigger>
-                                            <TabsTrigger value="products" className="relative">
-                                                Product
-                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
-                                                    activeBannerTab === 'products' ? 'bg-green-500' : 'bg-gray-400'
-                                                }`}>
-                                                    {masterConfig.banner_config.items.filter(i => i.page === 'products').length}
-                                                </span>
-                                            </TabsTrigger>
-                                            <TabsTrigger value="profile" className="relative">
-                                                Profile
-                                                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 text-xs font-semibold rounded-full text-white ${
-                                                    activeBannerTab === 'profile' ? 'bg-green-500' : 'bg-gray-400'
-                                                }`}>
-                                                    {masterConfig.banner_config.items.filter(i => i.page === 'profile').length}
-                                                </span>
-                                            </TabsTrigger>
-                                        </TabsList>
-                                    </Tabs>
-                                </div>
-
-                                {/* Banner Items for Current Page */}
-                                <div className="space-y-6 mt-4">
-                                    {/* Action Buttons */}
-                                    <div className="flex justify-end gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                                const newItems = [...masterConfig.banner_config.items]
-                                                newItems.push({
-                                                    id: crypto.randomUUID(),
-                                                    image_url: '',
-                                                    link_to: 'rewards',
-                                                    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                                                    page: activeBannerTab,
-                                                    placement: 'top', // Default place to top
-                                                    is_active: true
-                                                })
-                                                updateConfig({ items: newItems })
-                                            }}
-                                        >
-                                            <ImageIcon className="w-4 h-4 mr-2" />
-                                            Add Top Banner
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                                const newItems = [...masterConfig.banner_config.items]
-                                                newItems.push({
-                                                    id: crypto.randomUUID(),
-                                                    image_url: '',
-                                                    link_to: 'rewards',
-                                                    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                                                    page: activeBannerTab,
-                                                    placement: 'bottom', // Default place to bottom
-                                                    is_active: true
-                                                })
-                                                updateConfig({ items: newItems })
-                                            }}
-                                        >
-                                            <ImageIcon className="w-4 h-4 mr-2" />
-                                            Add Bottom Banner
-                                        </Button>
-                                    </div>
-
-                                    {/* Group Items by Placement */}
-                                    {['top', 'bottom'].map((placement) => {
-                                        const placementItems = currentPageItems.filter(item => 
-                                            (item.placement || masterConfig.banner_config.placement || 'top') === placement
-                                        );
-
-                                        return (
-                                            <div key={placement} className="space-y-4">
-                                                <div className="flex items-center gap-2 pb-2 border-b">
-                                                    <Badge variant={placement === 'top' ? 'default' : 'secondary'}>
-                                                        {placement === 'top' ? 'Top Banners (Before Content)' : 'Bottom Banners (After Content)'}
-                                                    </Badge>
-                                                    <span className="text-xs text-gray-500">{placementItems.length} items</span>
-                                                </div>
-
-                                                {placementItems.length === 0 ? (
-                                                    <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
-                                                        <p className="text-sm">No {placement} banners configured for {activeBannerTab}</p>
-                                                    </div>
-                                                ) : (
-                                                    placementItems.map((item) => {
-                                                        const actualIndex = masterConfig.banner_config.items.findIndex(i => i.id === item.id)
-                                                        const isActive = item.is_active !== false 
-                                                        return (
-                                                            <div
-                                                                key={item.id}
-                                                                className={`p-4 rounded-lg border space-y-3 relative ${
-                                                                    isActive 
-                                                                        ? 'bg-gray-50 border-gray-200' 
-                                                                        : 'bg-gray-100 border-gray-300 opacity-60'
-                                                                }`}
-                                                            >
-                                                                {/* Action buttons row */}
-                                                                <div className="absolute top-2 right-2 flex items-center gap-1">
-                                                                     {/* Move Placement Button */}
-                                                                    <Select
-                                                                        value={item.placement || 'top'}
-                                                                        onValueChange={(val: 'top' | 'bottom') => {
-                                                                             const newItems = [...masterConfig.banner_config.items];
-                                                                             newItems[actualIndex].placement = val;
-                                                                             updateConfig({ items: newItems });
-                                                                        }}
-                                                                    >
-                                                                        <SelectTrigger className="h-8 w-[100px] text-xs">
-                                                                            <SelectValue />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="top">Move to Top</SelectItem>
-                                                                            <SelectItem value="bottom">Move to Bottom</SelectItem>
-                                                                        </SelectContent>
-                                                                    </Select>
-
-                                                                    {/* Active/Inactive Toggle */}
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className={`${
-                                                                            isActive 
-                                                                                ? 'text-green-600 hover:text-green-700 hover:bg-green-50' 
-                                                                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                                                                        }`}
-                                                                        onClick={() => {
-                                                                            const newItems = [...masterConfig.banner_config.items]
-                                                                            newItems[actualIndex].is_active = !isActive
-                                                                            updateConfig({ items: newItems })
-                                                                        }}
-                                                                        title={isActive ? "Click to deactivate" : "Click to activate"}
-                                                                    >
-                                                                        {isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                                                                    </Button>
-                                                                    {/* Remove button */}
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                                        onClick={() => {
-                                                                            const newItems = masterConfig.banner_config.items.filter(i => i.id !== item.id)
-                                                                            updateConfig({ items: newItems })
-                                                                        }}
-                                                                    >
-                                                                        Remove
-                                                                    </Button>
-                                                                </div>
-
-                                                                {/* Status indicator */}
-                                                                {!isActive && (
-                                                                    <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200">
-                                                                        <EyeOff className="w-4 h-4" />
-                                                                        <span>This banner is inactive and will not be shown to consumers</span>
-                                                                    </div>
-                                                                )}
-
-                                                                <div className="space-y-2">
-                                                                    <Label>Image URL</Label>
-                                                                    <div className="flex gap-2">
-                                                                        <Input
-                                                                            value={item.image_url}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...masterConfig.banner_config.items]
-                                                                                newItems[actualIndex].image_url = e.target.value
-                                                                                updateConfig({ items: newItems })
-                                                                            }}
-                                                                            placeholder="https://example.com/banner.jpg"
-                                                                        />
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type="file"
-                                                                                id={`banner-upload-${item.id}`}
-                                                                                className="hidden"
-                                                                                accept="image/*"
-                                                                                onChange={(e) => {
-                                                                                    const file = e.target.files?.[0]
-                                                                                    if (file) {
-                                                                                        const itemId = item.id // Capture item ID to avoid stale closure
-                                                                                        handleImageUpload(file, (url) => {
-                                                                                            setMasterConfig(prevConfig => {
-                                                                                                if (!prevConfig) return prevConfig
-                                                                                                const newItems = [...prevConfig.banner_config.items]
-                                                                                                const idx = newItems.findIndex(i => i.id === itemId)
-                                                                                                if (idx !== -1) {
-                                                                                                    newItems[idx].image_url = url
-                                                                                                }
-                                                                                                return {
-                                                                                                    ...prevConfig,
-                                                                                                    banner_config: {
-                                                                                                        ...prevConfig.banner_config,
-                                                                                                        items: newItems
-                                                                                                    }
-                                                                                                }
-                                                                                            })
-                                                                                        })
-                                                                                    }
-                                                                                    // Reset the input value to allow re-uploading same file
-                                                                                    e.target.value = ''
-                                                                                }}
-                                                                            />
-                                                                            <Button
-                                                                                variant="outline"
-                                                                                disabled={uploadingImage}
-                                                                                onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
-                                                                            >
-                                                                                {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload'}
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-                                                                    {item.image_url && (
-                                                                        <div className="space-y-2">
-                                                                            <p className="text-xs text-gray-500">Preview (Auto-resized to 16:9):</p>
-                                                                            <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                                                                                <Image
-                                                                                    src={getStorageUrl(item.image_url) || item.image_url}
-                                                                                    alt="Banner preview"
-                                                                                    fill
-                                                                                    className="object-cover"
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-
-                                                                <div className="grid grid-cols-2 gap-4">
-                                                                    <div className="space-y-2">
-                                                                        <Label>Link Destination</Label>
-                                                                        <Select
-                                                                            value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
-                                                                            onValueChange={(value: string) => {
-                                                                                const newItems = [...masterConfig.banner_config.items]
-                                                                                if (value === 'external') {
-                                                                                    newItems[actualIndex].link_to = ''
-                                                                                } else {
-                                                                                    newItems[actualIndex].link_to = value
-                                                                                }
-                                                                                updateConfig({ items: newItems })
-                                                                            }}
-                                                                        >
-                                                                            <SelectTrigger>
-                                                                                <SelectValue />
-                                                                            </SelectTrigger>
-                                                                            <SelectContent>
-                                                                                <SelectItem value="rewards">Rewards Page</SelectItem>
-                                                                                <SelectItem value="products">Products Page</SelectItem>
-                                                                                <SelectItem value="contact-us">Contact Us</SelectItem>
-                                                                                <SelectItem value="no-link">No Link (Tap to zoom)</SelectItem>
-                                                                                <SelectItem value="external">External URL</SelectItem>
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </div>
-
-                                                                    <div className="space-y-2">
-                                                                        <Label>Expires At</Label>
-                                                                        <Input
-                                                                            type="date"
-                                                                            value={item.expires_at?.split('T')[0] || ''}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...masterConfig.banner_config.items]
-                                                                                newItems[actualIndex].expires_at = e.target.value
-                                                                                updateConfig({ items: newItems })
-                                                                            }}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-
-                                                                {!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) && item.link_to !== '' && (
-                                                                    <div className="space-y-2">
-                                                                        <Label>External URL</Label>
-                                                                        <Input
-                                                                            value={item.link_to}
-                                                                            onChange={(e) => {
-                                                                                const newItems = [...masterConfig.banner_config.items]
-                                                                                newItems[actualIndex].link_to = e.target.value
-                                                                                updateConfig({ items: newItems })
-                                                                            }}
-                                                                            placeholder="https://example.com"
-                                                                        />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )
-                                                    })
-                                                )}
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-                        </>
-                    )}
                 </CardContent>
             </Card>
 
-            {/* Status Card */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Configuration Status</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
+            {masterConfig.banner_config.enabled && (
+                <Card>
+                    <CardHeader className="pb-0">
+                        <CardTitle className="flex items-center gap-2">
+                            <Settings2 className="w-5 h-5" />
+                            Banner Pages
+                        </CardTitle>
+                        <CardDescription>
+                            Select a page to configure its banners
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                        <Tabs value={activeBannerTab} onValueChange={(v) => setActiveBannerTab(v as typeof activeBannerTab)}>
+                            <TabsList className="grid w-full grid-cols-4 h-auto p-1">
+                                {(['home', 'rewards', 'products', 'profile'] as const).map((page) => {
+                                    const pageItems = masterConfig.banner_config.items.filter(i => (i.page || 'home') === page)
+                                    const activeCount = pageItems.filter(i => i.is_active !== false).length
+                                    return (
+                                        <TabsTrigger
+                                            key={page}
+                                            value={page}
+                                            className="flex flex-col gap-1 py-3 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                                        >
+                                            <span className="text-lg">{pageLabels[page].icon}</span>
+                                            <span className="font-medium">{pageLabels[page].name}</span>
+                                            <div className="flex gap-1">
+                                                <Badge variant="secondary" className="text-xs px-1.5">
+                                                    {activeCount}/{pageItems.length}
+                                                </Badge>
+                                            </div>
+                                        </TabsTrigger>
+                                    )
+                                })}
+                            </TabsList>
+
+                            {(['home', 'rewards', 'products', 'profile'] as const).map((page) => (
+                                <TabsContent key={page} value={page} className="mt-6 space-y-8">
+                                    <BannerSection
+                                        title="Top Banners (Before Content)"
+                                        placement="top"
+                                        items={masterConfig.banner_config.items.filter(i => 
+                                            (i.page || 'home') === page && i.placement !== 'bottom'
+                                        )}
+                                        template={getPageSettings(page).topTemplate}
+                                        autoSlide={getPageSettings(page).topAutoSlide}
+                                        slideInterval={getPageSettings(page).topSlideInterval}
+                                    />
+
+                                    <BannerSection
+                                        title="Bottom Banners (After Content)"
+                                        placement="bottom"
+                                        items={masterConfig.banner_config.items.filter(i => 
+                                            (i.page || 'home') === page && i.placement === 'bottom'
+                                        )}
+                                        template={getPageSettings(page).bottomTemplate}
+                                        autoSlide={getPageSettings(page).bottomAutoSlide}
+                                        slideInterval={getPageSettings(page).bottomSlideInterval}
+                                    />
+                                </TabsContent>
+                            ))}
+                        </Tabs>
+                    </CardContent>
+                </Card>
+            )}
+
+            <Card className="bg-gradient-to-r from-gray-50 to-white">
+                <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-6">
+                            <div className="text-center">
+                                <div className="text-3xl font-bold text-blue-600">{masterConfig.banner_config.items.length}</div>
+                                <div className="text-xs text-gray-500">Total Banners</div>
+                            </div>
+                            <div className="h-10 w-px bg-gray-200" />
+                            {(['home', 'rewards', 'products', 'profile'] as const).map((page) => {
+                                const count = masterConfig.banner_config.items.filter(i => (i.page || 'home') === page).length
+                                return (
+                                    <div key={page} className="text-center">
+                                        <div className="text-xl font-semibold text-gray-700">{count}</div>
+                                        <div className="text-xs text-gray-500">{pageLabels[page].name}</div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        <Badge className={masterConfig.banner_config.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
                             {masterConfig.banner_config.enabled ? (
-                                <Badge className="bg-green-100 text-green-800">
+                                <>
                                     <CheckCircle2 className="w-3 h-3 mr-1" />
-                                    Enabled
-                                </Badge>
+                                    System Enabled
+                                </>
                             ) : (
-                                <Badge variant="secondary">
-                                    Disabled
-                                </Badge>
+                                'System Disabled'
                             )}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                            Total banners: <strong>{masterConfig.banner_config.items.length}</strong>
-                        </div>
-                        <div className="text-sm text-gray-600">
-                            • Home: {masterConfig.banner_config.items.filter(i => (i.page || 'home') === 'home').length}
-                            • Rewards: {masterConfig.banner_config.items.filter(i => i.page === 'rewards').length}
-                            • Products: {masterConfig.banner_config.items.filter(i => i.page === 'products').length}
-                            • Profile: {masterConfig.banner_config.items.filter(i => i.page === 'profile').length}
-                        </div>
+                        </Badge>
                     </div>
                 </CardContent>
             </Card>
