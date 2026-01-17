@@ -597,116 +597,119 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                                                                 id={`banner-upload-${item.id}`}
                                                                                 className="hidden"
                                                                                 accept="image/*"
-                                                                    onChange={(e) => {
-                                                                        const file = e.target.files?.[0]
-                                                                        if (file) {
-                                                                            const itemId = item.id // Capture item ID to avoid stale closure
-                                                                            handleImageUpload(file, (url) => {
-                                                                                setMasterConfig(prevConfig => {
-                                                                                    if (!prevConfig) return prevConfig
-                                                                                    const newItems = [...prevConfig.banner_config.items]
-                                                                                    const idx = newItems.findIndex(i => i.id === itemId)
-                                                                                    if (idx !== -1) {
-                                                                                        newItems[idx].image_url = url
+                                                                                onChange={(e) => {
+                                                                                    const file = e.target.files?.[0]
+                                                                                    if (file) {
+                                                                                        const itemId = item.id // Capture item ID to avoid stale closure
+                                                                                        handleImageUpload(file, (url) => {
+                                                                                            setMasterConfig(prevConfig => {
+                                                                                                if (!prevConfig) return prevConfig
+                                                                                                const newItems = [...prevConfig.banner_config.items]
+                                                                                                const idx = newItems.findIndex(i => i.id === itemId)
+                                                                                                if (idx !== -1) {
+                                                                                                    newItems[idx].image_url = url
+                                                                                                }
+                                                                                                return {
+                                                                                                    ...prevConfig,
+                                                                                                    banner_config: {
+                                                                                                        ...prevConfig.banner_config,
+                                                                                                        items: newItems
+                                                                                                    }
+                                                                                                }
+                                                                                            })
+                                                                                        })
                                                                                     }
-                                                                                    return {
-                                                                                        ...prevConfig,
-                                                                                        banner_config: {
-                                                                                            ...prevConfig.banner_config,
-                                                                                            items: newItems
-                                                                                        }
-                                                                                    }
-                                                                                })
-                                                                            })
-                                                                        }
-                                                                        // Reset the input value to allow re-uploading same file
-                                                                        e.target.value = ''
-                                                                    }}
-                                                                />
-                                                                <Button
-                                                                    variant="outline"
-                                                                    disabled={uploadingImage}
-                                                                    onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
-                                                                >
-                                                                    {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload'}
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                        {item.image_url && (
-                                                            <div className="space-y-2">
-                                                                <p className="text-xs text-gray-500">Preview (Auto-resized to 16:9):</p>
-                                                                <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                                                                    <Image
-                                                                        src={getStorageUrl(item.image_url) || item.image_url}
-                                                                        alt="Banner preview"
-                                                                        fill
-                                                                        className="object-cover"
-                                                                    />
+                                                                                    // Reset the input value to allow re-uploading same file
+                                                                                    e.target.value = ''
+                                                                                }}
+                                                                            />
+                                                                            <Button
+                                                                                variant="outline"
+                                                                                disabled={uploadingImage}
+                                                                                onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
+                                                                            >
+                                                                                {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload'}
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                    {item.image_url && (
+                                                                        <div className="space-y-2">
+                                                                            <p className="text-xs text-gray-500">Preview (Auto-resized to 16:9):</p>
+                                                                            <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                                                                                <Image
+                                                                                    src={getStorageUrl(item.image_url) || item.image_url}
+                                                                                    alt="Banner preview"
+                                                                                    fill
+                                                                                    className="object-cover"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
+
+                                                                <div className="grid grid-cols-2 gap-4">
+                                                                    <div className="space-y-2">
+                                                                        <Label>Link Destination</Label>
+                                                                        <Select
+                                                                            value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
+                                                                            onValueChange={(value: string) => {
+                                                                                const newItems = [...masterConfig.banner_config.items]
+                                                                                if (value === 'external') {
+                                                                                    newItems[actualIndex].link_to = ''
+                                                                                } else {
+                                                                                    newItems[actualIndex].link_to = value
+                                                                                }
+                                                                                updateConfig({ items: newItems })
+                                                                            }}
+                                                                        >
+                                                                            <SelectTrigger>
+                                                                                <SelectValue />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="rewards">Rewards Page</SelectItem>
+                                                                                <SelectItem value="products">Products Page</SelectItem>
+                                                                                <SelectItem value="contact-us">Contact Us</SelectItem>
+                                                                                <SelectItem value="no-link">No Link (Tap to zoom)</SelectItem>
+                                                                                <SelectItem value="external">External URL</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
+
+                                                                    <div className="space-y-2">
+                                                                        <Label>Expires At</Label>
+                                                                        <Input
+                                                                            type="date"
+                                                                            value={item.expires_at?.split('T')[0] || ''}
+                                                                            onChange={(e) => {
+                                                                                const newItems = [...masterConfig.banner_config.items]
+                                                                                newItems[actualIndex].expires_at = e.target.value
+                                                                                updateConfig({ items: newItems })
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+
+                                                                {!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) && item.link_to !== '' && (
+                                                                    <div className="space-y-2">
+                                                                        <Label>External URL</Label>
+                                                                        <Input
+                                                                            value={item.link_to}
+                                                                            onChange={(e) => {
+                                                                                const newItems = [...masterConfig.banner_config.items]
+                                                                                newItems[actualIndex].link_to = e.target.value
+                                                                                updateConfig({ items: newItems })
+                                                                            }}
+                                                                            placeholder="https://example.com"
+                                                                        />
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="space-y-2">
-                                                            <Label>Link Destination</Label>
-                                                            <Select
-                                                                value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
-                                                                onValueChange={(value: string) => {
-                                                                    const newItems = [...masterConfig.banner_config.items]
-                                                                    if (value === 'external') {
-                                                                        newItems[actualIndex].link_to = ''
-                                                                    } else {
-                                                                        newItems[actualIndex].link_to = value
-                                                                    }
-                                                                    updateConfig({ items: newItems })
-                                                                }}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="rewards">Rewards Page</SelectItem>
-                                                                    <SelectItem value="products">Products Page</SelectItem>
-                                                                    <SelectItem value="contact-us">Contact Us</SelectItem>
-                                                                    <SelectItem value="no-link">No Link (Tap to zoom)</SelectItem>
-                                                                    <SelectItem value="external">External URL</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-
-                                                        <div className="space-y-2">
-                                                            <Label>Expires At</Label>
-                                                            <Input
-                                                                type="date"
-                                                                value={item.expires_at?.split('T')[0] || ''}
-                                                                onChange={(e) => {
-                                                                    const newItems = [...masterConfig.banner_config.items]
-                                                                    newItems[actualIndex].expires_at = e.target.value
-                                                                    updateConfig({ items: newItems })
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    {!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) && item.link_to !== '' && (
-                                                        <div className="space-y-2">
-                                                            <Label>External URL</Label>
-                                                            <Input
-                                                                value={item.link_to}
-                                                                onChange={(e) => {
-                                                                    const newItems = [...masterConfig.banner_config.items]
-                                                                    newItems[actualIndex].link_to = e.target.value
-                                                                    updateConfig({ items: newItems })
-                                                                }}
-                                                                placeholder="https://example.com"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )
-                                        })
-                                    )}
+                                                        )
+                                                    })
+                                                )}
+                                            </div>
+                                        )
+                                    })}
                                 </div>
                             </div>
                         </>
