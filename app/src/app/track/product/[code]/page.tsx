@@ -237,6 +237,16 @@ async function getJourneyData(code: string) {
       }
     }
 
+    // Check if master gifts exist to auto-enable redemption (override config if needed)
+    // This ensures Master Redeem gifts are always accessible even if journey config is outdated
+    const { count: masterGiftsCount } = await supabase
+      .from('redeem_gifts')
+      .select('id', { count: 'exact', head: true })
+      .eq('redeem_type', 'master')
+      .eq('is_active', true)
+
+    const hasMasterGifts = (masterGiftsCount || 0) > 0
+
     return {
       success: true,
       data: {
@@ -254,7 +264,7 @@ async function getJourneyData(code: string) {
           button_color: journeyConfig.button_color,
           points_enabled: journeyConfig.points_enabled,
           lucky_draw_enabled: journeyConfig.lucky_draw_enabled,
-          redemption_enabled: journeyConfig.redemption_enabled,
+          redemption_enabled: journeyConfig.redemption_enabled || hasMasterGifts,
           enable_scratch_card_game: (journeyConfig as any).enable_scratch_card_game,
           scratch_card_require_otp: (journeyConfig as any).scratch_card_require_otp,
           require_security_code: (journeyConfig as any).require_security_code || false,

@@ -46,12 +46,19 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch active redeem gifts for this order
-    const { data: gifts, error } = await supabase
+    // Fetch active redeem gifts (both order-specific and master gifts)
+    let query = supabase
       .from('redeem_gifts')
       .select('*')
-      .eq('order_id', qrCodeData.order_id)
-      .eq('is_active', true)
+      .eq('is_active', true);
+
+    if (qrCodeData.order_id) {
+       query = query.or(`order_id.eq.${qrCodeData.order_id},redeem_type.eq.master`);
+    } else {
+       query = query.eq('redeem_type', 'master');
+    }
+
+    const { data: gifts, error } = await query;
 
     if (error) {
       console.error('Error fetching redeem gifts:', error)
