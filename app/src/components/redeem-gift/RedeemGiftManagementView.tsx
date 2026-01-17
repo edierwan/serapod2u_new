@@ -512,20 +512,53 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
 
         try {
             setLoading(true);
-            const { error } = await supabase
+            
+            // Try soft delete first (update is_active to false)
+            // If the schema supports deleted_at, ideally we'd use that, but is_active=false is safer for constraints
+            const { error: updateError } = await supabase
                 .from('redeem_gifts')
-                .delete()
+                .update({ is_active: false })
                 .eq('id', giftId);
 
-            if (error) throw error;
+            if (updateError) {
+                // If update fails, try hard delete but catch FK errors
+                console.warn('Soft delete failed, trying hard delete', updateError);
+                const { error: deleteError } = await supabase
+                    .from('redeem_gifts')
+                    .delete()
+                    .eq('id', giftId);
+                    
+                if (deleteError) throw deleteError;
+            }
+
             showAlert('success', 'Gift deleted successfully');
 
-            if (selectedOrder) {
+            // Refresh the list - important for checking if last master gift was removed
+            if (redeemScope === 'master') {
+                await fetchGifts();
+            } else if (selectedOrder) {
                 await fetchGifts(selectedOrder.id);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error deleting gift:', error);
-            showAlert('error', 'Failed to delete gift');
+            // Check for foreign key violation
+            if (error.code === '23503') {
+                 showAlert('error', 'Cannot delete gift because it has already been redeemed. We have archived it instead.');
+                 // Try to archive it if hard delete failed due to FK
+                 await supabase
+                    .from('redeem_gifts')
+                    .update({ is_active: false })
+                    .eq('id', giftId);
+                 
+                 // Refresh
+                 if (redeemScope === 'master') {
+                     await fetchGifts();
+                 } else if (selectedOrder) {
+                     await fetchGifts(selectedOrder.id);
+                 }
+            } else {
+                showAlert('error', 'Failed to delete gift: ' + (error.message || 'Unknown error'));
+            }
         } finally {
             setLoading(false);
         }
