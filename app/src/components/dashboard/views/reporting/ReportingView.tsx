@@ -268,14 +268,14 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
         try {
             // Fetch GL summary data
             const { data: journals } = await supabase
-                .from('gl_journals')
+                .from('gl_journals' as any)
                 .select('*')
                 .eq('status', 'POSTED')
                 .order('posting_date', { ascending: false })
                 .limit(100)
 
             const { data: accounts } = await supabase
-                .from('gl_accounts')
+                .from('gl_accounts' as any)
                 .select('*')
                 .eq('is_active', true)
 
