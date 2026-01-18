@@ -170,7 +170,15 @@ export async function PUT(request: NextRequest) {
     }
 
     // Validate account IDs exist and belong to company (if provided)
-    const accountIds = Object.values(updateData).filter(v => v && typeof v === 'string' && v !== user.id)
+    // Filter out values that are not account IDs (like posting_mode or updated_by)
+    const accountIds = Object.entries(updateData)
+      .filter(([k, v]) => 
+        v && 
+        typeof v === 'string' && 
+        v !== user.id && 
+        k !== 'posting_mode'
+      )
+      .map(([, v]) => v)
 
     if (accountIds.length > 0) {
       const { data: validAccounts, error: validationError } = await supabase

@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
         chart_of_accounts: true,
         journals_view: true, // Now active in Phase 2
         posting: true,       // Now active in Phase 2
-        reports: false       // Coming in Phase 3
+        reports: true        // Phase 3 active
       }
     })
 
