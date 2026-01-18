@@ -10,26 +10,35 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate')
     const distributorId = searchParams.get('distributorId')
     
+    console.log('[Reporting API] Request params:', { startDate, endDate, distributorId })
+    
     const supabase = await createClient()
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+    console.log('[Reporting API] Auth result:', { userId: user?.id, email: user?.email, authError: authError?.message })
+    
     if (authError || !user) {
+      console.log('[Reporting API] Unauthorized - no user')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get organization_id
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('users')
       .select('organization_id, role_code, roles(role_level)')
       .eq('id', user.id)
       .single()
 
+    console.log('[Reporting API] Profile result:', { profile, profileError: profileError?.message })
+
     if (!profile) {
+      console.log('[Reporting API] Profile not found for user:', user.id)
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     const isSuperAdmin = profile.roles?.role_level === 1
+    console.log('[Reporting API] User role:', { role_code: profile.role_code, role_level: profile.roles?.role_level, isSuperAdmin })
 
     // ==========================================
     // FETCH DATA FROM ACTUAL POPULATED TABLES
@@ -83,8 +92,14 @@ export async function GET(request: Request) {
 
     const { data: orders, error: ordersError } = await ordersQuery
 
+    console.log('[Reporting API] Orders query result:', { 
+      orderCount: orders?.length || 0, 
+      ordersError: ordersError?.message,
+      firstOrder: orders?.[0] ? { id: orders[0].id, status: orders[0].status } : null
+    })
+
     if (ordersError) {
-      console.error('Orders fetch error:', ordersError)
+      console.error('[Reporting API] Orders fetch error:', ordersError)
       return NextResponse.json({ error: ordersError.message }, { status: 500 })
     }
 
