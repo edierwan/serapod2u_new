@@ -184,6 +184,7 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
 export default function ReportingView({ userProfile }: ReportingViewProps) {
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<any>(null)
+    const [error, setError] = useState<string | null>(null)
     const [dateRange, setDateRange] = useState('last30')
     const [distributors, setDistributors] = useState<any[]>([])
     const [selectedDistributor, setSelectedDistributor] = useState<string>('all')
@@ -241,6 +242,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
     const fetchData = async () => {
         setLoading(true)
+        setError(null)
         try {
             const params = new URLSearchParams({
                 startDate: dateParams.startDate,
@@ -251,14 +253,48 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                 params.append('distributorId', selectedDistributor)
             }
 
-            const res = await fetch(`/api/reporting/stats?${params}`)
+            console.log('[ReportingView] Fetching stats with params:', { 
+                startDate: dateParams.startDate, 
+                endDate: dateParams.endDate,
+                distributor: selectedDistributor 
+            })
+
+            const res = await fetch(`/api/reporting/stats?${params}`, {
+                credentials: 'include', // Ensure cookies are sent with the request
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
             const json = await res.json()
 
-            if (res.ok) {
-                setData(json)
+            console.log('[ReportingView] API response:', { 
+                status: res.status, 
+                ok: res.ok,
+                hasData: !!json,
+                summary: json?.summary,
+                error: json?.error,
+                rawJson: JSON.stringify(json).substring(0, 500) // First 500 chars of raw response
+            })
+
+            if (!res.ok) {
+                const errorMsg = json?.error || `API error: ${res.status}`
+                console.error('[ReportingView] API returned error:', errorMsg)
+                setError(errorMsg)
+                return
             }
-        } catch (error) {
-            console.error('Error fetching reporting data', error)
+
+            if (json) {
+                setData(json)
+                // Log successful data load
+                console.log('[ReportingView] Data loaded successfully:', {
+                    totalOrders: json.summary?.totalOrders,
+                    totalUnits: json.summary?.totalUnits,
+                    totalRevenue: json.summary?.totalRevenue
+                })
+            }
+        } catch (error: any) {
+            console.error('[ReportingView] Error fetching reporting data:', error)
+            setError(error.message || 'Failed to fetch reporting data')
         } finally {
             setLoading(false)
         }
@@ -417,6 +453,23 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                         </Button>
                     </div>
                 </div>
+
+                {/* Error Banner */}
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <AlertCircle className="w-5 h-5 text-red-500" />
+                            <div>
+                                <p className="font-medium text-red-800">Unable to load reporting data</p>
+                                <p className="text-sm text-red-600">{error}</p>
+                            </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={fetchData} className="border-red-300 text-red-700 hover:bg-red-100">
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Retry
+                        </Button>
+                    </div>
+                )}
 
                 {/* Tab Navigation */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

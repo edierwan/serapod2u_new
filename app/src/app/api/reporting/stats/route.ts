@@ -303,6 +303,14 @@ export async function GET(request: Request) {
       }
     }
 
+    // Final log before returning
+    console.log('[Reporting API] Returning response:', {
+      summary: response.summary,
+      trendItems: response.trend.length,
+      productMixItems: response.productMix.length,
+      distributorItems: response.distributorPerformance.length
+    })
+
     return NextResponse.json(response)
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
