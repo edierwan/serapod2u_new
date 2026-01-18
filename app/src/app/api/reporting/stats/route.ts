@@ -10,6 +10,12 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate')
     const distributorId = searchParams.get('distributorId')
     
+    // Debug: Log environment info
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    console.log('[Reporting API] Environment:', { 
+      supabaseUrl: supabaseUrl?.substring(8, 40), // Extract project ID part
+      nodeEnv: process.env.NODE_ENV 
+    })
     console.log('[Reporting API] Request params:', { startDate, endDate, distributorId })
     
     const supabase = await createClient()

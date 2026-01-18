@@ -9,6 +9,11 @@ export async function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+  // Log environment for debugging (only in development or when debugging)
+  if (process.env.NODE_ENV !== 'production' || process.env.DEBUG_SUPABASE) {
+    console.log('[Supabase Server] URL:', supabaseUrl?.substring(0, 30) + '...')
+  }
+
   // Validate environment variables are present
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error(
