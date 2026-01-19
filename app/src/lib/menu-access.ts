@@ -91,14 +91,21 @@ export function hasMenuAccess(
     }
   }
 
-  // Check for required permission
-  if (access.requiredPermission && checkPermission) {
-    if (!checkPermission(access.requiredPermission)) {
-      return false
+  // Check for required permission - if permission check passes, grant access immediately
+  if (access.requiredPermission) {
+    if (checkPermission) {
+      const hasRequiredPerm = checkPermission(access.requiredPermission)
+      console.log('[hasMenuAccess] Checking permission:', access.requiredPermission, '=', hasRequiredPerm)
+      if (hasRequiredPerm) {
+        // Permission granted - skip other checks
+        return true
+      }
     }
+    // If requiredPermission is set but checkPermission is not provided or returns false,
+    // fall through to other checks (for backward compatibility)
   }
 
-  // Check role-based access (if not already granted via email)
+  // Check role-based access (if not already granted via email or permission)
   if (access.allowedRoles && access.allowedRoles.length > 0) {
     if (!access.allowedRoles.includes(userRoleCode)) {
       return false
