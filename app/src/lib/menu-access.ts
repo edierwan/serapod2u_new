@@ -94,20 +94,28 @@ export function hasMenuAccess(
   // Check for required permission - if permission check passes, grant access immediately
   // If permission check fails, DENY access (don't fall through to other checks)
   if (access.requiredPermission) {
+    console.log('[hasMenuAccess] Required permission check:', {
+      permission: access.requiredPermission,
+      hasCheckFunction: !!checkPermission,
+      userEmail: userProfile.email,
+      userLevel: userProfile.roles?.role_level
+    })
     if (checkPermission) {
       const hasRequiredPerm = checkPermission(access.requiredPermission)
-      console.log('[hasMenuAccess] Checking permission:', access.requiredPermission, '=', hasRequiredPerm)
+      console.log('[hasMenuAccess] Permission result:', access.requiredPermission, '=', hasRequiredPerm)
       if (hasRequiredPerm) {
         // Permission granted - skip other checks
+        console.log('[hasMenuAccess] ✓ Access GRANTED via permission:', access.requiredPermission)
         return true
       } else {
         // Permission explicitly denied - do not allow access
+        console.log('[hasMenuAccess] ✗ Access DENIED - permission missing:', access.requiredPermission)
         return false
       }
     } else {
       // checkPermission function not provided but requiredPermission is set
       // Deny access by default for safety
-      console.log('[hasMenuAccess] No checkPermission function provided, denying access for:', access.requiredPermission)
+      console.log('[hasMenuAccess] ✗ No checkPermission function provided, denying access for:', access.requiredPermission)
       return false
     }
   }
@@ -157,8 +165,15 @@ export function filterMenuItems(
   userProfile: any,
   checkPermission?: (permission: string) => boolean
 ): MenuItem[] {
+  console.log('[filterMenuItems] Filtering', menuItems.length, 'items for user:', userProfile?.email, 'level:', userProfile?.roles?.role_level)
   return menuItems
-    .filter(item => hasMenuAccess(userProfile, item.access, checkPermission))
+    .filter(item => {
+      const hasAccess = hasMenuAccess(userProfile, item.access, checkPermission)
+      if (item.id === 'users') {
+        console.log('[filterMenuItems] User Management access check:', hasAccess, 'for item:', item.id)
+      }
+      return hasAccess
+    })
     .map(item => {
       // Filter submenu items if they exist
       if (item.submenu && item.submenu.length > 0) {
