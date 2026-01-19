@@ -86,7 +86,6 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
         }
 
         console.log('[usePermissions] Loading permissions for roleLevel:', roleLevel)
-        }
 
         try {
             // Try to load permissions from database
