@@ -469,7 +469,7 @@ const secondaryItems: MenuItem[] = [
 ]
 
 export default function Sidebar({ userProfile, currentView, onViewChange }: SidebarProps) {
-  const { hasPermission } = usePermissions(userProfile?.roles?.role_level)
+  const { hasPermission, loading: permissionsLoading, permissions } = usePermissions(userProfile?.roles?.role_level)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
@@ -713,11 +713,11 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
     }
 
     return items
-  }, [userProfile, qrTrackingVisibility, hasPermission])
+  }, [userProfile, qrTrackingVisibility, hasPermission, permissionsLoading, permissions])
 
   const filteredSecondaryItems = useMemo(() =>
     filterMenuItems(secondaryItems, userProfile, hasPermission),
-    [userProfile, hasPermission]
+    [userProfile, hasPermission, permissionsLoading, permissions]
   )
 
   const handleSignOut = async (e?: React.MouseEvent) => {

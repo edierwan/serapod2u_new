@@ -168,7 +168,10 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
         // Super admin (level 1) always has all permissions
         if (roleLevel === 1) return true
 
-        return permissions[permissionId] === true
+        // Check if permission exists in the loaded permissions
+        const result = permissions[permissionId] === true
+        console.log('[hasPermission]', permissionId, '=', result, 'from permissions:', Object.keys(permissions).length > 0 ? 'loaded' : 'empty')
+        return result
     }, [permissions, roleLevel])
 
     return {
