@@ -674,6 +674,13 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
 
   // Filter menu items based on user role and organization
   const filteredNavigationItems = useMemo(() => {
+    // Don't filter items while permissions are loading - this prevents premature filtering
+    if (permissionsLoading) {
+      console.log('[Sidebar] Permissions still loading, showing empty menus temporarily')
+      return []
+    }
+
+    console.log('[Sidebar] Filtering navigation items with permissions:', Object.keys(permissions).length, 'permissions loaded')
     let items = filterMenuItems(navigationItems, userProfile, hasPermission)
 
     // Filter QR Tracking submenus based on visibility settings
@@ -715,8 +722,15 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
     return items
   }, [userProfile, qrTrackingVisibility, hasPermission, permissionsLoading, permissions])
 
-  const filteredSecondaryItems = useMemo(() =>
-    filterMenuItems(secondaryItems, userProfile, hasPermission),
+  const filteredSecondaryItems = useMemo(() => {
+    // Don't filter items while permissions are loading
+    if (permissionsLoading) {
+      console.log('[Sidebar] Permissions still loading for secondary items')
+      return []
+    }
+    
+    return filterMenuItems(secondaryItems, userProfile, hasPermission)
+  },
     [userProfile, hasPermission, permissionsLoading, permissions]
   )
 
