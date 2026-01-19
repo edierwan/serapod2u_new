@@ -7,6 +7,7 @@ export interface MenuAccessRule {
   minRoleLevel?: number  // Minimum role level required (lower number = higher access)
   maxRoleLevel?: number  // Maximum role level allowed
   allowedEmails?: string[]  // Specific email addresses that can access this menu
+  requiredPermission?: string // Permission required to access this menu
 }
 
 export interface MenuItem {
@@ -69,7 +70,8 @@ export function hasMenuAccess(
       role_level: number
     }
   },
-  access?: MenuAccessRule
+  access?: MenuAccessRule,
+  checkPermission?: (permission: string) => boolean
 ): boolean {
   // No access rules means accessible to all
   if (!access) return true
@@ -86,6 +88,13 @@ export function hasMenuAccess(
   if (access.allowedEmails && access.allowedEmails.length > 0) {
     if (userEmail && access.allowedEmails.includes(userEmail)) {
       return true
+    }
+  }
+
+  // Check for required permission
+  if (access.requiredPermission && checkPermission) {
+    if (!checkPermission(access.requiredPermission)) {
+      return false
     }
   }
 
@@ -131,22 +140,23 @@ export function hasMenuAccess(
  */
 export function filterMenuItems(
   menuItems: MenuItem[],
-  userProfile: any
+  userProfile: any,
+  checkPermission?: (permission: string) => boolean
 ): MenuItem[] {
   return menuItems
-    .filter(item => hasMenuAccess(userProfile, item.access))
+    .filter(item => hasMenuAccess(userProfile, item.access, checkPermission))
     .map(item => {
       // Filter submenu items if they exist
       if (item.submenu && item.submenu.length > 0) {
         const filteredSubmenu = item.submenu
-          .filter(subItem => hasMenuAccess(userProfile, subItem.access))
+          .filter(subItem => hasMenuAccess(userProfile, subItem.access, checkPermission))
           .map(subItem => {
             // Filter nested submenu items if they exist
             if (subItem.nestedSubmenu && subItem.nestedSubmenu.length > 0) {
               return {
                 ...subItem,
                 nestedSubmenu: subItem.nestedSubmenu.filter(nestedItem =>
-                  hasMenuAccess(userProfile, nestedItem.access)
+                  hasMenuAccess(userProfile, nestedItem.access, checkPermission)
                 )
               }
             }

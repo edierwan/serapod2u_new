@@ -306,6 +306,27 @@ export default function UserManagementNew({
   const handleBulkDelete = async () => {
     if (selectedUsers.size === 0) return;
 
+    // Validate levels before proceeding
+    const currentUserLevel = userProfile.roles?.role_level || 999;
+    const ids = Array.from(selectedUsers);
+    
+    // Check if any selected user has higher privileges (lower role level number)
+    // Note: lower role_level = higher privilege (e.g. 1 is Super Admin)
+    const usersToDelete = users.filter(u => ids.includes(u.id));
+    const unauthorized = usersToDelete.filter(u => {
+        const level = (u as any).roles?.role_level || 999;
+        return level < currentUserLevel;
+    });
+
+    if (unauthorized.length > 0) {
+        toast({
+            title: "Permission Denied",
+            description: `You cannot delete ${unauthorized.length} users because they have higher privileges than you.`,
+            variant: "destructive"
+        });
+        return;
+    }
+
     const confirmed = confirm(
       `Are you sure you want to delete ${selectedUsers.size} user${selectedUsers.size > 1 ? "s" : ""}?\n\nThis will:\n• Remove users from database\n• Delete from Supabase Auth\n• Remove all related data\n\nThis action cannot be undone.`,
     );
@@ -433,9 +454,31 @@ export default function UserManagementNew({
   ) => {
     try {
       setIsSaving(true);
+      const currentUserLevel = userProfile.roles?.role_level || 999;
+
+      // Validate Role Level permissions
+      if (userData.role_code) {
+        const targetRole = roles.find(r => r.role_code === userData.role_code);
+        if (targetRole && targetRole.role_level < currentUserLevel) {
+          throw new Error("You cannot assign a role level higher than your own.");
+        }
+      }
 
       if (editingUser) {
         // UPDATE existing user
+        
+        // Check if allow to edit this user
+        // We need to look up the level of the user being edited.
+        // The editingUser object comes from state, let's see if it has the nested role info
+        // or check against the roles list
+        const targetUserRoleCode = editingUser.role_code;
+        const targetUserRole = roles.find(r => r.role_code === targetUserRoleCode);
+        const targetUserLevel = targetUserRole?.role_level || 999;
+
+        if (targetUserLevel < currentUserLevel) {
+           throw new Error("You cannot edit a user with a higher role level than your own.");
+        }
+
         let updateData: any = {
           full_name: userData.full_name,
           phone: userData.phone,
@@ -764,6 +807,15 @@ export default function UserManagementNew({
     try {
       setIsSaving(true);
 
+      const currentUserLevel = userProfile.roles?.role_level || 999;
+      const targetUser = users.find(u => u.id === userId);
+      // Access nested roles safely
+      const targetUserLevel = (targetUser as any)?.roles?.role_level || 999;
+
+      if (targetUserLevel < currentUserLevel) {
+        throw new Error("You cannot modify a user with a higher role level than your own.");
+      }
+
       const { error } = await (supabase as any)
         .from("users")
         .update({ is_active: !currentStatus })
@@ -793,6 +845,20 @@ export default function UserManagementNew({
   };
 
   const handleDeleteUser = async (userId: string, userName: string) => {
+    // Check permission before confirm
+    const currentUserLevel = userProfile.roles?.role_level || 999;
+    const targetUser = users.find(u => u.id === userId);
+    const targetUserLevel = (targetUser as any)?.roles?.role_level || 999;
+    
+    if (targetUserLevel < currentUserLevel) {
+      toast({
+         title: "Permission Denied",
+         description: "You cannot delete a user with a higher role level than your own.",
+         variant: "destructive"
+      });
+      return;
+    }
+
     if (
       !confirm(
         `Are you sure you want to delete user "${userName}"?\n\nThis will:\n• Remove user from database\n• Delete from Supabase Auth\n• Remove all related data\n\nThis action cannot be undone.`,

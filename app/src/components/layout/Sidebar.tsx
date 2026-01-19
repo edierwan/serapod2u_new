@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { signOut } from '@/app/actions/auth'
 import { Button } from '@/components/ui/button'
 import { filterMenuItems, type MenuItem } from '@/lib/menu-access'
+import { usePermissions } from '@/hooks/usePermissions'
 import { getStorageUrl } from '@/lib/utils'
 import {
   Package,
@@ -449,7 +450,7 @@ const secondaryItems: MenuItem[] = [
     access: {
       // Admin roles only - up to distributor admin level, NOT for manufacturers
       allowedOrgTypes: ['HQ', 'DIST'],
-      maxRoleLevel: 30
+      requiredPermission: 'view_users'
     }
   },
 
@@ -468,6 +469,7 @@ const secondaryItems: MenuItem[] = [
 ]
 
 export default function Sidebar({ userProfile, currentView, onViewChange }: SidebarProps) {
+  const { hasPermission } = usePermissions(userProfile?.roles?.role_level)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
@@ -672,7 +674,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
 
   // Filter menu items based on user role and organization
   const filteredNavigationItems = useMemo(() => {
-    let items = filterMenuItems(navigationItems, userProfile)
+    let items = filterMenuItems(navigationItems, userProfile, hasPermission)
 
     // Filter QR Tracking submenus based on visibility settings
     items = items.map(item => {
@@ -711,11 +713,11 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
     }
 
     return items
-  }, [userProfile, qrTrackingVisibility])
+  }, [userProfile, qrTrackingVisibility, hasPermission])
 
   const filteredSecondaryItems = useMemo(() =>
-    filterMenuItems(secondaryItems, userProfile),
-    [userProfile]
+    filterMenuItems(secondaryItems, userProfile, hasPermission),
+    [userProfile, hasPermission]
   )
 
   const handleSignOut = async (e?: React.MouseEvent) => {

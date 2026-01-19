@@ -49,6 +49,7 @@ const DEFAULT_PERMISSIONS: Record<number, string[]> = {
         'view_qr_tracking', 'scan_qr', 'manage_journeys', 'view_scan_history',
         'view_warehouse', 'receive_goods', 'ship_goods', 'view_receiving_value',
         'view_organizations',
+        'view_users', 'create_users', 'edit_users',
         'view_settings',
     ],
     40: [
