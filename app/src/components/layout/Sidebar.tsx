@@ -448,8 +448,8 @@ const secondaryItems: MenuItem[] = [
     icon: Users,
     description: 'User management',
     access: {
-      // Admin roles only - up to distributor admin level, NOT for manufacturers
-      allowedOrgTypes: ['HQ', 'DIST'],
+      // Allow access if user has permission, regardless of org type (permission system handles scope)
+      // Removed allowedOrgTypes to fallback to permission-based check as primary
       requiredPermission: 'view_users'
     }
   },

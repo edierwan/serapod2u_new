@@ -901,7 +901,8 @@ export default function UserManagementNew({
         // Search filter
         const matchesSearch =
           user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.email.toLowerCase().includes(searchQuery.toLowerCase());
+          user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          user.phone?.includes(searchQuery);
 
         // Role filter
         const matchesRole = !roleFilter || user.role_code === roleFilter;
