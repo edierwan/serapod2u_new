@@ -92,6 +92,7 @@ export function hasMenuAccess(
   }
 
   // Check for required permission - if permission check passes, grant access immediately
+  // If permission check fails, DENY access (don't fall through to other checks)
   if (access.requiredPermission) {
     if (checkPermission) {
       const hasRequiredPerm = checkPermission(access.requiredPermission)
@@ -99,10 +100,16 @@ export function hasMenuAccess(
       if (hasRequiredPerm) {
         // Permission granted - skip other checks
         return true
+      } else {
+        // Permission explicitly denied - do not allow access
+        return false
       }
+    } else {
+      // checkPermission function not provided but requiredPermission is set
+      // Deny access by default for safety
+      console.log('[hasMenuAccess] No checkPermission function provided, denying access for:', access.requiredPermission)
+      return false
     }
-    // If requiredPermission is set but checkPermission is not provided or returns false,
-    // fall through to other checks (for backward compatibility)
   }
 
   // Check role-based access (if not already granted via email or permission)

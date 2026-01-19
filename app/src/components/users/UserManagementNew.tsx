@@ -165,9 +165,10 @@ export default function UserManagementNew({
     try {
       setLoading(true);
 
-      // Super Admin and HQ Admin can see all users, others see only their org
-      const isPowerUser = userProfile?.roles?.role_level <= 20;
+      // Get current user's role level - users can only see same level and below (higher numbers)
       const currentUserLevel = userProfile?.roles?.role_level || 999;
+      // Super Admin and HQ Admin can see all users, others see filtered by level
+      const isPowerUser = currentUserLevel <= 20;
 
       // Fetch all users using pagination to overcome Supabase 1000 row limit
       const allUsers: any[] = [];
@@ -191,7 +192,7 @@ export default function UserManagementNew({
           .order("created_at", { ascending: false })
           .range(offset, offset + PAGE_SIZE - 1);
 
-        // Filter by organization only for non-power users
+        // Filter by organization for non-power users
         if (!isPowerUser) {
           query = query.eq("organization_id", userProfile.organization_id);
         }
@@ -214,9 +215,12 @@ export default function UserManagementNew({
 
       // Filter users based on role level visibility
       // Users can only see other users with role_level >= their own role_level
-      // (Lower number means higher rank, so they can see equal or lower rank)
+      // (Higher number = lower privilege, e.g., Level 40 can see Level 40, 50, 60 but not 1, 10, 20, 30)
       const visibleUsers = (data || []).filter((u: any) => {
         const userRoleLevel = u.roles?.role_level || 999;
+        // Power users (level <= 20) can see all users
+        if (currentUserLevel <= 20) return true;
+        // Others can only see users at same level or below (higher number)
         return userRoleLevel >= currentUserLevel;
       });
 
@@ -225,7 +229,8 @@ export default function UserManagementNew({
         visibleUsers.length,
         "users (filtered from",
         data?.length,
-        ")",
+        ") for level",
+        currentUserLevel,
       );
       setUsers(visibleUsers as User[]);
     } catch (error) {
