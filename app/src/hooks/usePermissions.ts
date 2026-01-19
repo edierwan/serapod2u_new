@@ -79,25 +79,13 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
 
     const loadPermissions = useCallback(async () => {
         if (!isReady || roleLevel === undefined) {
-            // Use default permissions based on level if not ready
-            if (roleLevel !== undefined) {
-                const defaults = DEFAULT_PERMISSIONS[roleLevel] || DEFAULT_PERMISSIONS[50]
-                const perms: RolePermissions = {}
-
-                if (defaults.includes('*')) {
-                    // Super admin - all permissions
-                    Object.keys(DEFAULT_PERMISSIONS).forEach(level => {
-                        DEFAULT_PERMISSIONS[Number(level)].forEach(p => {
-                            if (p !== '*') perms[p] = true
-                        })
-                    })
-                } else {
-                    defaults.forEach(p => perms[p] = true)
-                }
-                setPermissions(perms)
-            }
-            setLoading(false)
+            // Keep loading true while waiting for supabase to be ready
+            // This prevents rendering with stale/default permissions
+            console.log('[usePermissions] Waiting for supabase ready. isReady:', isReady, 'roleLevel:', roleLevel)
             return
+        }
+
+        console.log('[usePermissions] Loading permissions for roleLevel:', roleLevel)
         }
 
         try {
@@ -168,11 +156,17 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
         // Super admin (level 1) always has all permissions
         if (roleLevel === 1) return true
 
+        // If still loading, return false (menu will re-render when loaded)
+        if (loading) {
+            console.log('[hasPermission] Still loading, returning false for:', permissionId)
+            return false
+        }
+
         // Check if permission exists in the loaded permissions
         const result = permissions[permissionId] === true
-        console.log('[hasPermission]', permissionId, '=', result, 'from permissions:', Object.keys(permissions).length > 0 ? 'loaded' : 'empty')
+        console.log('[hasPermission]', permissionId, '=', result, 'permissions keys:', Object.keys(permissions))
         return result
-    }, [permissions, roleLevel])
+    }, [permissions, roleLevel, loading])
 
     return {
         hasPermission,
