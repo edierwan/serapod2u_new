@@ -91,70 +91,62 @@ export function hasMenuAccess(
     }
   }
 
-  // Check for required permission - if permission check passes, grant access immediately
-  // If permission check fails, DENY access (don't fall through to other checks)
+  // 1. Permission Check
+  // Only enforce if requiredPermission is set
+  let permOk = true
   if (access.requiredPermission) {
-    console.log('[hasMenuAccess] Required permission check:', {
-      permission: access.requiredPermission,
-      hasCheckFunction: !!checkPermission,
-      userEmail: userProfile.email,
-      userLevel: userProfile.roles?.role_level
-    })
+    console.log('[hasMenuAccess] Checking required permission:', access.requiredPermission)
     if (checkPermission) {
-      const hasRequiredPerm = checkPermission(access.requiredPermission)
-      console.log('[hasMenuAccess] Permission result:', access.requiredPermission, '=', hasRequiredPerm)
-      if (hasRequiredPerm) {
-        // Permission granted - skip other checks
-        console.log('[hasMenuAccess] ✓ Access GRANTED via permission:', access.requiredPermission)
-        return true
-      } else {
-        // Permission explicitly denied - do not allow access
-        console.log('[hasMenuAccess] ✗ Access DENIED - permission missing:', access.requiredPermission)
-        return false
-      }
+      permOk = checkPermission(access.requiredPermission)
+      console.log('[hasMenuAccess] Permission result:', access.requiredPermission, '=', permOk)
     } else {
-      // checkPermission function not provided but requiredPermission is set
-      // Deny access by default for safety
-      console.log('[hasMenuAccess] ✗ No checkPermission function provided, denying access for:', access.requiredPermission)
-      return false
+      // If permission required but no check function, deny
+      console.log('[hasMenuAccess] ✗ No checkPermission function, denying:', access.requiredPermission)
+      permOk = false
     }
   }
 
-  // Check role-based access (if not already granted via email or permission)
-  if (access.allowedRoles && access.allowedRoles.length > 0) {
-    if (!access.allowedRoles.includes(userRoleCode)) {
-      return false
-    }
-  }
-
-  // Check organization type access
+  // 2. Organization Check
+  // Only enforce if allowedOrgTypes is set
+  let orgOk = true
   if (access.allowedOrgTypes && access.allowedOrgTypes.length > 0) {
-    // For independent users, check if 'INDEPENDENT' is in allowed types
-    // Independent users can access menus that allow 'INDEPENDENT' or 'SHOP' org types
     if (isIndependentUser) {
-      if (!access.allowedOrgTypes.includes('INDEPENDENT') && !access.allowedOrgTypes.includes('SHOP')) {
-        return false
-      }
-    } else if (!access.allowedOrgTypes.includes(userOrgType)) {
-      return false
+      orgOk = access.allowedOrgTypes.includes('INDEPENDENT') || access.allowedOrgTypes.includes('SHOP')
+    } else {
+      orgOk = access.allowedOrgTypes.includes(userOrgType)
     }
   }
 
-  // Check minimum role level (lower number = higher privilege)
+  // 3. Role Code Check
+  // Only enforce if allowedRoles is set
+  let roleCodeOk = true
+  if (access.allowedRoles && access.allowedRoles.length > 0) {
+    roleCodeOk = access.allowedRoles.includes(userRoleCode)
+  }
+
+  // 4. Role Level Check
+  // Only enforce if limits are set
+  let levelOk = true
   if (access.minRoleLevel !== undefined) {
-    if (userRoleLevel < access.minRoleLevel) {
-      return false
-    }
+    if (userRoleLevel < access.minRoleLevel) levelOk = false
   }
-
-  // Check maximum role level
   if (access.maxRoleLevel !== undefined) {
-    if (userRoleLevel > access.maxRoleLevel) {
-      return false
-    }
+    if (userRoleLevel > access.maxRoleLevel) levelOk = false
   }
 
-  return true
+  const isVisible = permOk && orgOk && roleCodeOk && levelOk
+  
+  // Debug log for troubleshooting access denials
+  if (!isVisible && access.requiredPermission === 'view_users') {
+      console.log('[hasMenuAccess] Denied user view_users access. Status:', {
+          permOk, orgOk, roleCodeOk, levelOk,
+          userRoleLevel,
+          userOrgType,
+          requiredPermission: access.requiredPermission
+      })
+  }
+
+  return isVisible
 }
 
 /**
