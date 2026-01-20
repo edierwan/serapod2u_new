@@ -7,8 +7,8 @@ export const maxDuration = 300 // 5 minutes max
 // ============================================================================
 // CONFIGURATION - Optimized for large batches (1500+ master codes)
 // ============================================================================
-const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '5000', 10) // Increased for better throughput
-const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '1000', 10) // Larger batches for fewer DB calls
+const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '500', 10) // Lowered to 500
+const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '500', 10) // Lowered to 500 for better stability
 const MAX_RUNTIME_MS = parseInt(process.env.MAX_RUNTIME_PER_RUN_MS || '270000', 10) // 4.5 minutes default
 const STALE_THRESHOLD_MS = 120 * 1000 // 2 minutes - more tolerance for large batches
 const HEARTBEAT_INTERVAL = 1 // Update heartbeat every chunk (more frequent for large batches)
