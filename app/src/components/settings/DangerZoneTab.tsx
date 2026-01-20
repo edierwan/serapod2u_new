@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   AlertTriangle, 
   Trash2, 
@@ -16,7 +17,9 @@ import {
   Upload,
   AlertCircle,
   Shield,
-  Loader2
+  Loader2,
+  Code,
+  FileCode
 } from 'lucide-react'
 import {
   AlertDialog,
@@ -27,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import CleanupTab from './CleanupTab'
 
 interface DangerZoneTabProps {
   userProfile: {
@@ -47,6 +51,9 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
 
   // Only Super Admin can access (role_level = 1)
   const isSuperAdmin = userProfile.roles.role_level === 1
+  
+  // Internal tab state
+  const [activeSubTab, setActiveSubTab] = useState<'data' | 'cleanup'>('data')
   
   // State for Transaction Deletion
   const [transactionConfirmText, setTransactionConfirmText] = useState('')
@@ -338,39 +345,54 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Warning Banner */}
-      <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <h3 className="text-lg font-bold text-red-900">Danger Zone</h3>
-            <p className="text-sm text-red-700 mt-1">
-              These actions are <strong>irreversible</strong> and will permanently delete data.
-              Only Super Administrators can perform these operations.
-            </p>
-            <p className="text-sm text-red-700 mt-2">
-              <strong>⚠️ Always export a backup before deleting data!</strong>
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Sub-navigation Tabs */}
+      <Tabs value={activeSubTab} onValueChange={(v) => setActiveSubTab(v as 'data' | 'cleanup')} className="w-full">
+        <TabsList className="grid grid-cols-2 w-full max-w-md bg-gray-100/80">
+          <TabsTrigger value="data" className="flex items-center gap-2 data-[state=active]:bg-white">
+            <Database className="w-4 h-4" />
+            Data Operations
+          </TabsTrigger>
+          <TabsTrigger value="cleanup" className="flex items-center gap-2 data-[state=active]:bg-white">
+            <FileCode className="w-4 h-4" />
+            Code Cleanup
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Backup & Restore Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Export Backup */}
-        <Card className="border-blue-200">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Download className="w-5 h-5 text-blue-600" />
-              <CardTitle>Export Data Backup</CardTitle>
+        {/* Data Operations Tab */}
+        <TabsContent value="data" className="mt-6 space-y-6">
+          {/* Warning Banner */}
+          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-lg font-bold text-red-900">Danger Zone</h3>
+                <p className="text-sm text-red-700 mt-1">
+                  These actions are <strong>irreversible</strong> and will permanently delete data.
+                  Only Super Administrators can perform these operations.
+                </p>
+                <p className="text-sm text-red-700 mt-2">
+                  <strong>⚠️ Always export a backup before deleting data!</strong>
+                </p>
+              </div>
             </div>
-            <CardDescription>
-              Download a complete backup of all system data
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 h-40 overflow-y-auto">
+          </div>
+
+          {/* Backup & Restore Section */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Export Backup */}
+            <Card className="border-blue-200">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Download className="w-5 h-5 text-blue-600" />
+                  <CardTitle>Export Data Backup</CardTitle>
+                </div>
+                <CardDescription>
+                  Download a complete backup of all system data
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 h-40 overflow-y-auto">
                 <h4 className="font-semibold text-blue-900 mb-2">Backup includes:</h4>
                 <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
                   <li>All transaction records</li>
@@ -783,6 +805,13 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
           </div>
         </AlertDialogContent>
       </AlertDialog>
+        </TabsContent>
+
+        {/* Code Cleanup Tab */}
+        <TabsContent value="cleanup" className="mt-6">
+          <CleanupTab userProfile={userProfile} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

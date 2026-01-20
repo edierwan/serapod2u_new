@@ -396,23 +396,36 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         }
       }
 
-      // Poll for completion
+      // Poll for completion with improved retry logic for large batches
       let isReceiving = true
       let pollCount = 0
       let lastProgress = 0
       let stuckCount = 0
+      const MAX_STUCK_POLLS = 60 // Allow up to ~10 minutes of no progress before warning (was 30)
+      const WORKER_TIMEOUT_MS = 12000 // Give worker more time (12s instead of 8s)
+      const POLL_INTERVAL_MS = 3000 // 3s between polls (instead of 2s) to reduce load
 
       while (isReceiving) {
         // Trigger worker explicitly to ensure it runs
-        const workerPromise = fetch('/api/cron/warehouse-receiving-worker').catch(e => console.error('Worker trigger failed:', e))
+        // Use multiple retries for worker trigger
+        let workerTriggered = false
+        for (let retry = 0; retry < 3 && !workerTriggered; retry++) {
+          try {
+            const workerPromise = fetch('/api/cron/warehouse-receiving-worker')
+            await Promise.race([
+              workerPromise,
+              new Promise(resolve => setTimeout(resolve, WORKER_TIMEOUT_MS))
+            ])
+            workerTriggered = true
+          } catch (e) {
+            console.error(`Worker trigger failed (attempt ${retry + 1}/3):`, e)
+            if (retry < 2) {
+              await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+          }
+        }
 
-        // Wait for worker or timeout (don't block forever)
-        await Promise.race([
-          workerPromise,
-          new Promise(resolve => setTimeout(resolve, 8000)) // 8s timeout - give worker more time
-        ])
-
-        await new Promise(resolve => setTimeout(resolve, 2000)) // 2s pause between polls
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
 
         const order = orders.find(o => o.id === selectedOrder)
         await fetchBatchProgress(currentBatch.batch_id, order)
@@ -441,12 +454,14 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
           return // Exit without throwing
         }
 
-        // Check for stuck progress (no change for 30 polls = ~5 min)
+        // Check for stuck progress (no change for MAX_STUCK_POLLS = ~10 min for large batches)
         const currentProgress = checkBatch?.receiving_progress || 0
         if (currentProgress === lastProgress) {
           stuckCount++
-          if (stuckCount > 30) {
-            console.warn('Progress appears stuck, worker may need attention')
+          if (stuckCount > MAX_STUCK_POLLS) {
+            console.warn(`Progress appears stuck after ${stuckCount} polls. Current: ${currentProgress}`)
+            // Auto-trigger worker again
+            fetch('/api/cron/warehouse-receiving-worker').catch(e => console.warn('Auto-retry worker trigger:', e))
           }
         } else {
           stuckCount = 0
@@ -454,8 +469,8 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         }
 
         pollCount++
-        if (pollCount % 10 === 0) {
-          console.log(`🔄 Poll ${pollCount}: progress=${currentProgress}, status=${checkBatch?.receiving_status}`)
+        if (pollCount % 5 === 0) {
+          console.log(`🔄 Poll ${pollCount}: progress=${currentProgress}, status=${checkBatch?.receiving_status}, stuck=${stuckCount}`)
         }
       }
 

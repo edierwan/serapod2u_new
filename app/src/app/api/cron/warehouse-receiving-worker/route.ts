@@ -5,14 +5,16 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes max
 
 // ============================================================================
-// CONFIGURATION - Balanced for throughput and reliability
+// CONFIGURATION - Optimized for large batches (1500+ master codes)
 // ============================================================================
-const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '2000', 10) // Balanced chunk size
-const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '200', 10) // Smaller to avoid statement timeout
+const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '1000', 10) // Reduced for stability with large batches
+const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '100', 10) // Smaller to avoid statement timeout
 const MAX_RUNTIME_MS = parseInt(process.env.MAX_RUNTIME_PER_RUN_MS || '270000', 10) // 4.5 minutes default
-const STALE_THRESHOLD_MS = 60 * 1000 // 1 minute - faster takeover of stale workers
-const HEARTBEAT_INTERVAL = 2 // Update heartbeat every 2 chunks (more frequent)
-const CANCEL_CHECK_INTERVAL = 5 // Check for cancellation every 5 chunks
+const STALE_THRESHOLD_MS = 90 * 1000 // 1.5 minutes - more tolerance for large batches
+const HEARTBEAT_INTERVAL = 1 // Update heartbeat every chunk (more frequent for large batches)
+const CANCEL_CHECK_INTERVAL = 3 // Check for cancellation every 3 chunks
+const MAX_RETRIES = 3 // Maximum retries for transient errors
+const RETRY_DELAY_MS = 1000 // Base delay between retries (exponential backoff)
 
 // Generate short unique worker ID
 function generateWorkerId(): string {
@@ -168,7 +170,7 @@ export async function GET(request: NextRequest) {
       
       consecutiveZeroChunks = 0
       
-      // Update this chunk using sub-batches to avoid URL length limits
+      // Update this chunk using sub-batches with retry logic
       const chunkIds = uniqueCodes.map(c => c.id)
       let updateError: any = null
       let updatedInChunk = 0
@@ -176,16 +178,44 @@ export async function GET(request: NextRequest) {
       for (let i = 0; i < chunkIds.length; i += IN_CLAUSE_SIZE) {
         const batchIds = chunkIds.slice(i, i + IN_CLAUSE_SIZE)
         
-        const { error } = await supabase
-          .from('qr_codes')
-          .update({ status: 'received_warehouse' })
-          .in('id', batchIds)
+        // Retry logic with exponential backoff
+        let lastError: any = null
+        let success = false
         
-        if (error) {
+        for (let retry = 0; retry < MAX_RETRIES && !success; retry++) {
+          if (retry > 0) {
+            const delay = RETRY_DELAY_MS * Math.pow(2, retry - 1)
+            console.log(`  🔄 [${workerId}] Retry ${retry}/${MAX_RETRIES} after ${delay}ms delay...`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+          }
+          
+          const { error } = await supabase
+            .from('qr_codes')
+            .update({ status: 'received_warehouse' })
+            .in('id', batchIds)
+          
+          if (!error) {
+            success = true
+            break
+          }
+          
+          lastError = error
+          
           // Check if it's a statement timeout - this is recoverable
           if (error.code === '57014' || error.message?.includes('timeout')) {
-            console.warn(`  ⚠️ [${workerId}] Statement timeout at offset ${i}, will retry in next run`)
-            // Update heartbeat with current progress and yield to next worker
+            console.warn(`  ⚠️ [${workerId}] Statement timeout at offset ${i} (retry ${retry + 1}/${MAX_RETRIES})`)
+            // Continue to retry
+            continue
+          }
+          
+          // For non-timeout errors, don't retry
+          break
+        }
+        
+        if (!success && lastError) {
+          // If still failing after retries on timeout, yield for next run
+          if (lastError.code === '57014' || lastError.message?.includes('timeout')) {
+            console.warn(`  ⚠️ [${workerId}] Statement timeout persists after ${MAX_RETRIES} retries, yielding for next run`)
             await updateHeartbeat(supabase, batch.id, workerId, totalProcessed + updatedInChunk)
             return NextResponse.json({ 
               message: 'Statement timeout, yielding for retry',
@@ -195,11 +225,17 @@ export async function GET(request: NextRequest) {
             })
           }
           
-          console.error(`  ❌ Update error at offset ${i}:`, JSON.stringify(error, null, 2))
-          updateError = error
+          console.error(`  ❌ Update error at offset ${i}:`, JSON.stringify(lastError, null, 2))
+          updateError = lastError
           break
         }
+        
         updatedInChunk += batchIds.length
+        
+        // Update heartbeat more frequently during large batch processing
+        if (updatedInChunk % (IN_CLAUSE_SIZE * 5) === 0) {
+          await updateHeartbeat(supabase, batch.id, workerId, totalProcessed + updatedInChunk)
+        }
       }
 
       if (updateError) {

@@ -46,6 +46,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [ruleName, setRuleName] = useState<string>('Default Point Collection Rule')
   const [expiresAfterDays, setExpiresAfterDays] = useState<number | null>(null)
   const [allowManualAdjustment, setAllowManualAdjustment] = useState<boolean>(true)
+  const [migrationMultiplier, setMigrationMultiplier] = useState<number | null>(null)
   
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
@@ -96,6 +97,9 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           if (settings.point_value_rm !== undefined) {
             setPointValueRM(settings.point_value_rm)
           }
+          if (settings.migration_multiplier !== undefined) {
+            setMigrationMultiplier(settings.migration_multiplier)
+          }
         }
       } catch (error: any) {
         console.error('Error fetching rules:', error)
@@ -134,7 +138,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       const currentSettings = (orgData?.settings as any) || {}
       const newSettings = {
         ...currentSettings,
-        point_value_rm: pointValueRM
+        point_value_rm: pointValueRM,
+        migration_multiplier: migrationMultiplier
       }
 
       const { error: settingsError } = await supabase
@@ -361,6 +366,39 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                 Internal reference value for budget estimation.
               </p>
             </div>
+          </div>
+
+          {/* Migration Point Multiplier - New Section */}
+          <div className="space-y-2 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <Label htmlFor="migrationMultiplier" className="text-base font-semibold flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-amber-600" />
+              Migration Point Multiplier (Optional)
+            </Label>
+            <div className="flex items-center gap-4">
+              <div className="relative flex-1 max-w-xs">
+                <Input
+                  id="migrationMultiplier"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={migrationMultiplier || ''}
+                  onChange={(e) => setMigrationMultiplier(e.target.value ? parseInt(e.target.value) : null)}
+                  className="text-lg font-semibold"
+                  placeholder="None (no multiplier)"
+                />
+              </div>
+              <div className="text-sm text-muted-foreground">
+                times multiplier
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              When set, imported points during migration will be multiplied by this value.
+            </p>
+            {migrationMultiplier && migrationMultiplier > 1 && (
+              <div className="text-sm font-medium text-amber-700 bg-amber-100 p-2 rounded border border-amber-200 mt-2">
+                <strong>Example:</strong> If user has 100 points in file, they will receive {100 * migrationMultiplier} points after migration.
+              </div>
+            )}
           </div>
 
           {/* Rule Name */}

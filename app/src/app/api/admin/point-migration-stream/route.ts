@@ -236,7 +236,8 @@ async function processRowOptimized(
     passwordMode: string,
     defaultPassword: string,
     userCache: UserCache,
-    balanceCache: Map<string, number>
+    balanceCache: Map<string, number>,
+    migrationMultiplier: number | null = null
 ): Promise<any> {
     // Validate all fields first
     const validationError = validateRow(row, passwordMode);
@@ -331,7 +332,14 @@ async function processRowOptimized(
     // Use cached balance
     const realCurrentBalance = balanceCache.get(user.id) || 0;
     const lastMigrationValue = user.last_migration_point_value || 0;
-    const newMigrationValue = row.points;
+    const rawPointsFromFile = row.points;
+    
+    // Apply migration multiplier if configured
+    const multipliedPoints = migrationMultiplier && migrationMultiplier > 0 
+        ? rawPointsFromFile * migrationMultiplier 
+        : rawPointsFromFile;
+    
+    const newMigrationValue = multipliedPoints;
     const delta = newMigrationValue - lastMigrationValue;
 
     // Prepare updates
@@ -360,6 +368,8 @@ async function processRowOptimized(
         realCurrentBalance,
         newMigrationValue,
         lastMigrationValue,
+        rawPointsFromFile,
+        multiplierApplied: migrationMultiplier || 1,
         updates,
         row,
         isNewUser,
@@ -394,6 +404,24 @@ export async function POST(request: NextRequest) {
                 const supabase = await createServerClient();
                 const { data: { user } } = await supabase.auth.getUser();
                 const createdBy = user?.id;
+
+                // Fetch migration multiplier from the user's organization settings
+                let migrationMultiplier: number | null = null;
+                if (user?.id) {
+                    const { data: userProfile } = await supabaseAdmin
+                        .from('users')
+                        .select('organization_id, organizations(settings)')
+                        .eq('id', user.id)
+                        .single();
+                    
+                    if (userProfile?.organizations) {
+                        const settings = (userProfile.organizations as any)?.settings;
+                        if (settings?.migration_multiplier && Number(settings.migration_multiplier) > 0) {
+                            migrationMultiplier = Number(settings.migration_multiplier);
+                            console.log(`📊 Migration multiplier configured: ${migrationMultiplier}x`);
+                        }
+                    }
+                }
 
                 const formData = await request.formData();
                 const file = formData.get("file") as File;
@@ -520,7 +548,8 @@ export async function POST(request: NextRequest) {
                                 passwordMode,
                                 defaultPassword,
                                 userCache,
-                                balanceCache
+                                balanceCache,
+                                migrationMultiplier
                             );
                             return { success: true, result };
                         } catch (err: any) {
@@ -565,7 +594,9 @@ export async function POST(request: NextRequest) {
                             transaction_type: "MIGRATION",
                             points_amount: r.delta,
                             balance_after: r.realCurrentBalance + r.delta,
-                            description: `Migration: ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`,
+                            description: r.multiplierApplied > 1 
+                                ? `Migration: ${r.rawPointsFromFile} × ${r.multiplierApplied} = ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`
+                                : `Migration: ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`,
                             transaction_date: new Date().toISOString(),
                             created_by: createdBy || null
                         }));
@@ -593,7 +624,9 @@ export async function POST(request: NextRequest) {
 
                     // Add successful results
                     for (const r of processedRows) {
-                        let message = `Delta: ${r.delta}`;
+                        let message = r.multiplierApplied > 1 
+                            ? `Delta: ${r.delta} (${r.rawPointsFromFile} × ${r.multiplierApplied})`
+                            : `Delta: ${r.delta}`;
 
                         // Add context about user status
                         if (r.isNewUser) {
@@ -610,7 +643,7 @@ export async function POST(request: NextRequest) {
                             phone: r.row.phone,
                             email: r.row.email,
                             location: r.row.location,
-                            points: r.row.points,
+                            points: r.multiplierApplied > 1 ? r.newMigrationValue : r.row.points,
                             password: r.row.password,
                             status: "Success",
                             message: message,
