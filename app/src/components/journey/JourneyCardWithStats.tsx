@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -193,7 +194,16 @@ export default function JourneyCardWithStats({
                         {/* Use display order_no (new format) in title when available */}
                         <CardTitle className="text-lg">
                             {journey.order_info?.order_no 
-                                ? `Journey for ${journey.order_info.order_no}`
+                                ? (
+                                    <span>
+                                        Journey for <Link 
+                                            href={`/dashboard?view=view-order&order_id=${journey.order_info.order_id}`}
+                                            className="hover:underline text-primary hover:text-primary/80"
+                                        >
+                                            {journey.order_info.order_no}
+                                        </Link>
+                                    </span>
+                                )
                                 : journey.name}
                         </CardTitle>
                         {journey.order_info && (

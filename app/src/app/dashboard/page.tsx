@@ -94,6 +94,7 @@ export default async function DashboardPage({
       userProfile={transformedUserProfile} 
       initialView={resolvedSearchParams?.view as string}
       initialOrderId={resolvedSearchParams?.order_id as string}
+      initialTargetId={resolvedSearchParams?.id as string}
     />
   )
 }

@@ -28,9 +28,10 @@ interface UserProfile {
 interface ViewOrderDetailsViewProps {
   userProfile: UserProfile
   onViewChange?: (view: string) => void
+  orderId?: string
 }
 
-export default function ViewOrderDetailsView({ userProfile, onViewChange }: ViewOrderDetailsViewProps) {
+export default function ViewOrderDetailsView({ userProfile, onViewChange, orderId }: ViewOrderDetailsViewProps) {
   const [orderData, setOrderData] = useState<any>(null)
   const [journeyData, setJourneyData] = useState<any>(null)
   const [qrStats, setQrStats] = useState<any>(null)
@@ -41,11 +42,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange }: View
   const { toast } = useToast()
 
   useEffect(() => {
-    const orderId = sessionStorage.getItem('viewOrderId')
-    if (orderId) {
-      loadOrderData(orderId)
-      loadJourneyData(orderId)
-      loadQRStats(orderId)
+    const idToLoad = orderId || sessionStorage.getItem('viewOrderId')
+    if (idToLoad) {
+      loadOrderData(idToLoad)
+      loadJourneyData(idToLoad)
+      loadQRStats(idToLoad)
     } else {
       toast({
         title: 'Error',

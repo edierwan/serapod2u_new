@@ -1,4 +1,5 @@
 import { useState } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -197,7 +198,11 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                             {startIndex + index + 1}
                           </td>
                           <td className="px-4 py-4">
-                            <div className="font-medium">{user.consumer_name}</div>
+                            <div className="font-medium">
+                              <Link href={`/dashboard?view=user-profile&id=${user.user_id}`} className="text-primary hover:underline">
+                                {user.consumer_name}
+                              </Link>
+                            </div>
                             <div className="text-xs text-muted-foreground">{user.consumer_phone}</div>
                             <div className="text-xs text-muted-foreground">{user.consumer_email}</div>
                           </td>

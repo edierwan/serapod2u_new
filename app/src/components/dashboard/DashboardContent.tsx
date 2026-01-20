@@ -48,6 +48,7 @@ import RedeemGiftManagementView from '@/components/redeem-gift/RedeemGiftManagem
 import JourneyBuilderV2 from '@/components/journey/JourneyBuilderV2'
 import ScratchCardGameView from '@/components/dashboard/views/consumer-engagement/ScratchCardGameView'
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
+import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 
 interface UserProfile {
   id: string
@@ -82,9 +83,10 @@ interface DashboardContentProps {
   userProfile: UserProfile
   initialView?: string
   initialOrderId?: string
+  initialTargetId?: string
 }
 
-export default function DashboardContent({ userProfile, initialView, initialOrderId }: DashboardContentProps) {
+export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId }: DashboardContentProps) {
   const router = useRouter()
 
   // Check for stored view from sessionStorage (set by EngagementShell when navigating from other pages)
@@ -110,6 +112,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     // Don't clear product selection for product edit/view flows
     if (view !== 'edit-product' && view !== 'view-product') {
       sessionStorage.removeItem('selectedProductId')
+    }
+    
+    // Clear order selection when leaving order views
+    if (view !== 'view-order' && view !== 'track-order') {
+      sessionStorage.removeItem('viewOrderId')
     }
 
     if (view === 'point-catalog') {
@@ -147,7 +154,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'create-order':
         return <CreateOrderView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'view-order':
-        return <ViewOrderDetailsView userProfile={userProfile} onViewChange={handleViewChange} />
+        return <ViewOrderDetailsView userProfile={userProfile} onViewChange={handleViewChange} orderId={initialOrderId} />
       case 'track-order':
         return <TrackOrderView userProfile={userProfile} onViewChange={handleViewChange} />
 
@@ -233,6 +240,14 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <MyProfileViewNew userProfile={userProfile} />
       case 'users':
         return <UsersView userProfile={userProfile} />
+      case 'user-profile':
+        return (
+          <UserProfileWrapper 
+            targetUserId={initialTargetId || userProfile.id} 
+            currentUserProfile={userProfile}
+            onBack={() => handleViewChange('users')}
+          />
+        )
 
       case 'reporting':
         return <ReportingView userProfile={userProfile} />
