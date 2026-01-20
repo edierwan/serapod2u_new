@@ -216,10 +216,17 @@ export default function UserManagementNew({
       const data = allUsers;
 
       // Filter users based on role level visibility
-      // Users can only see other users with role_level >= their own role_level
-      // (Higher number = lower privilege, e.g., Level 40 can see Level 40, 50, 60 but not 1, 10, 20, 30)
+      console.log(`[UserManagement] Current User Level: ${currentUserLevel}, isPowerUser: ${isPowerUser}`)
+      console.log(`[UserManagement] Query URL params approximated:`, !isPowerUser ? `or=(organization_id.eq.${userProfile.organization_id},organization_id.is.null)` : 'ALL')
+
       const visibleUsers = (data || []).filter((u: any) => {
         const userRoleLevel = u.roles?.role_level || 999;
+        
+        // Debug visibility logic
+        // if (u.email.includes('indep') || u.role_code === 'USER') {
+        //   console.log(`Checking visibility for ${u.email}: Level ${userRoleLevel} vs My Level ${currentUserLevel}`)
+        // }
+
         // Power users (level <= 20) can see all users
         if (currentUserLevel <= 20) return true;
         // Others can only see users at same level or below (higher number)
