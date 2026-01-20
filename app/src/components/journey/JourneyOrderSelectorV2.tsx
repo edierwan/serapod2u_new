@@ -96,23 +96,46 @@ export default function JourneyOrderSelectorV2({
                     if (batchIds.length > 0) {
                         // 2. Check master codes which have valid status
                         // "received_warehouse" means it has arrived at warehouse and is ready for journey creation
+                        // Use RPC to get DISTINCT batch_ids to avoid Supabase's default 1000 row limit
+                        // which could miss some orders if one order has many master codes
                         const { data: validMasters, error: masterError } = await supabase
-                            .from('qr_master_codes')
-                            .select('batch_id')
-                            .in('batch_id', batchIds)
-                            .in('status', ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed'])
+                            .rpc('get_valid_batch_ids_for_journey', {
+                                p_batch_ids: batchIds,
+                                p_valid_statuses: ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed']
+                            })
 
-                        if (masterError) throw masterError;
+                        if (masterError) {
+                            // Fallback to direct query if RPC doesn't exist
+                            console.warn('[JourneyOrderSelector] RPC not available, falling back to direct query:', masterError)
+                            const { data: fallbackMasters, error: fallbackError } = await supabase
+                                .from('qr_master_codes')
+                                .select('batch_id')
+                                .in('batch_id', batchIds)
+                                .in('status', ['received_warehouse', 'shipped_distributor', 'shipped_retailer', 'sold', 'consumed'])
+                                .limit(10000) // Increase limit to ensure we get all unique batch_ids
 
-                        // 3. Map back to orders
-                        const validOrderSet = new Set<string>();
-                        validMasters?.forEach(m => {
-                            const orderId = batchToOrderId.get(m.batch_id);
-                            if (orderId) validOrderSet.add(orderId);
-                        });
+                            if (fallbackError) throw fallbackError;
 
-                        ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
-                        console.log(`[JourneyOrderSelector] Filtered orders: ${orders.length} -> ${ordersWithValidStatus.length} valid status`)
+                            // 3. Map back to orders
+                            const validOrderSet = new Set<string>();
+                            fallbackMasters?.forEach(m => {
+                                const orderId = batchToOrderId.get(m.batch_id);
+                                if (orderId) validOrderSet.add(orderId);
+                            });
+
+                            ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
+                            console.log(`[JourneyOrderSelector] Filtered orders (fallback): ${orders.length} -> ${ordersWithValidStatus.length} valid status`)
+                        } else {
+                            // 3. Map back to orders using RPC result
+                            const validOrderSet = new Set<string>();
+                            (validMasters as { batch_id: string }[] || []).forEach(m => {
+                                const orderId = batchToOrderId.get(m.batch_id);
+                                if (orderId) validOrderSet.add(orderId);
+                            });
+
+                            ordersWithValidStatus = orders?.filter(o => validOrderSet.has(o.id)) || []
+                            console.log(`[JourneyOrderSelector] Filtered orders: ${orders.length} -> ${ordersWithValidStatus.length} valid status`)
+                        }
                     } else {
                         ordersWithValidStatus = []
                     }
