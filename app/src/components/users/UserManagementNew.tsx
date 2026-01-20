@@ -194,7 +194,9 @@ export default function UserManagementNew({
 
         // Filter by organization for non-power users
         if (!isPowerUser) {
-          query = query.eq("organization_id", userProfile.organization_id);
+           // Allow users to see their own organization AND independent users (null organization)
+           // This is important for HQ/Managers (Level 40) managing independent consumers (Level 50)
+           query = query.or(`organization_id.eq.${userProfile.organization_id},organization_id.is.null`);
         }
 
         const { data, error, count } = await query;
