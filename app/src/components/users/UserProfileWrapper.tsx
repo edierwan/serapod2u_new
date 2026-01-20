@@ -99,7 +99,7 @@ export default function UserProfileWrapper({ targetUserId, currentUserProfile, o
                 </div>
             </div>
         )}
-        <MyProfileViewNew userProfile={profile} />
+        <MyProfileViewNew userProfile={profile} key={profile.id} />
     </div>
   )
 }

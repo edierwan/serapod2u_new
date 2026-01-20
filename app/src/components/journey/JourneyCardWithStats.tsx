@@ -208,9 +208,6 @@ export default function JourneyCardWithStats({
                         </CardTitle>
                         {journey.order_info && (
                             <div className="mt-1">
-                                <CardDescription>
-                                    Order: {journey.order_info.order_no}
-                                </CardDescription>
                                 {journey.order_info.legacy_order_no && journey.order_info.legacy_order_no !== journey.order_info.order_no && (
                                     <p className="text-[10px] text-gray-400 mt-0.5">Legacy: {journey.order_info.legacy_order_no}</p>
                                 )}

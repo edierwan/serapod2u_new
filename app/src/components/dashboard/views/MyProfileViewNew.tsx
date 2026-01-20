@@ -125,15 +125,21 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const loadUserProfile = async () => {
     try {
       setIsLoading(true)
-      const { data: { user } } = await supabase.auth.getUser()
+      
+      let targetUserId = initialProfile?.id
 
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "Not authenticated",
-          variant: "destructive",
-        })
-        return
+      // If no initial profile or ID, fall back to current session user
+      if (!targetUserId) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast({
+            title: "Error",
+            description: "Not authenticated",
+            variant: "destructive",
+          })
+          return
+        }
+        targetUserId = user.id
       }
 
       // Fetch complete user profile with related data
@@ -156,7 +162,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             short_name
           )
         `)
-        .eq('id', user.id)
+        .eq('id', targetUserId)
         .single()
 
       if (error) throw error

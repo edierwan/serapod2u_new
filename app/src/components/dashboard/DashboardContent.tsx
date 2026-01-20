@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/layout/Sidebar'
 import ProductsView from '@/components/products/ProductsView'
@@ -102,6 +102,13 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   }
 
   const [currentView, setCurrentView] = useState(getInitialView)
+
+  // Sync state with URL params when they change
+  useEffect(() => {
+    if (initialView) {
+      setCurrentView(initialView)
+    }
+  }, [initialView])
 
   const handleViewChange = (view: string) => {
     // Don't clear org selection for edit/view flows
