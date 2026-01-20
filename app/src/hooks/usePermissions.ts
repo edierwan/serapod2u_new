@@ -127,16 +127,6 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
                         }
                     })
                     console.log('[usePermissions] Valid permissions set:', validPerms)
-                    
-                    // Unit check: Ensure Level 40 has view_users (Debug/Fix)
-                    if (roleLevel === 40) {
-                        if (!validPerms['view_users']) {
-                            console.warn('[usePermissions] Level 40 user missing view_users permission from DB. Injecting it.')
-                            validPerms['view_users'] = true
-                        } else {
-                            console.log('[usePermissions] Level 40 user correctly has view_users.')
-                        }
-                    }
 
                     setPermissions(validPerms)
                 } else {
