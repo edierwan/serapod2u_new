@@ -21,6 +21,9 @@ interface ConsumerUser {
   total_collected_system: number
   total_collected_manual: number
   total_migration: number
+  total_redundancy?: number
+  total_other?: number
+  other_types?: string
   total_redeemed: number
   transaction_count: number
   last_transaction_date: string | null
@@ -185,6 +188,7 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                         <SortableHeader label="Collected (System)" sortKey="total_collected_system" />
                         <SortableHeader label="Collected (Manual)" sortKey="total_collected_manual" />
                         <SortableHeader label="Migration Points" sortKey="total_migration" />
+                        <SortableHeader label="Other Points" sortKey="total_other" />
                         <SortableHeader label="Total Redeemed" sortKey="total_redeemed" />
                         <SortableHeader label="Transactions" sortKey="transaction_count" />
                         <SortableHeader label="Last Activity" sortKey="last_transaction_date" />
@@ -236,6 +240,12 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                             <div className="text-xs text-muted-foreground">
                               {user.last_migration_by_name ? `by ${user.last_migration_by_name}` : 'via migration'}
                             </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="text-gray-600">
+                              {(user.total_other || 0) > 0 ? '+' : ''}{formatNumber(user.total_other || 0)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">{user.other_types || '-'}</div>
                           </td>
                           <td className="px-4 py-4">
                             <div className="text-orange-600">

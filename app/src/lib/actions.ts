@@ -102,6 +102,13 @@ export async function updateUserWithAuth(userId: string, userData: {
   phone?: string
   is_active?: boolean
   avatar_url?: string
+  location?: string
+  shop_name?: string
+  address?: string
+  referral_phone?: string
+  bank_id?: string
+  bank_account_number?: string
+  bank_account_holder_name?: string
 }, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()

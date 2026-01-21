@@ -19,6 +19,7 @@ import ChangePasswordCard from '@/components/profile/ChangePasswordCard'
 import { updateUserWithAuth } from '@/lib/actions'
 import { normalizePhone, validatePhoneNumber, getStorageUrl, type PhoneValidationResult } from '@/lib/utils'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface UserProfile {
   id: string
@@ -26,6 +27,7 @@ interface UserProfile {
   full_name: string | null
   phone: string | null
   address: string | null
+  location: string | null
   shop_name: string | null
   role_code: string
   organization_id: string
@@ -65,6 +67,12 @@ interface MsiaBank {
   is_active: boolean
 }
 
+const MALAYSIA_STATES = [
+  "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan", 
+  "Pahang", "Penang", "Perak", "Perlis", "Sabah", "Sarawak", 
+  "Selangor", "Terengganu", "Kuala Lumpur", "Labuan", "Putrajaya"
+]
+
 interface MyProfileViewNewProps {
   userProfile: UserProfile
 }
@@ -81,6 +89,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     full_name: '',
     phone: '',
     address: '',
+    location: '',
     shop_name: '',
     bank_id: '',
     bank_account_number: '',
@@ -187,6 +196,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           full_name: transformedProfile.full_name || '',
           phone: transformedProfile.phone || '',
           address: transformedProfile.address || '',
+          location: transformedProfile.location || '',
           shop_name: transformedProfile.shop_name || '',
           bank_id: transformedProfile.bank_id || '',
           bank_account_number: transformedProfile.bank_account_number || '',
@@ -492,6 +502,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         full_name: formData.full_name?.trim() || null,
         phone: formData.phone?.trim() || null,
         address: formData.address?.trim() || null,
+        location: formData.location || null,
         shop_name: formData.shop_name?.trim() || null,
         referral_phone: formData.referral_phone?.trim() || null,
         updated_at: new Date().toISOString()
@@ -937,6 +948,26 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     <p className="text-xs text-gray-500 mt-1">{formData.address.length}/255 characters</p>
                   </div>
 
+                  <div>
+                    <Label className="text-sm font-medium">Location</Label>
+                    <Select
+                      value={formData.location}
+                      onValueChange={(value) => setFormData({ ...formData, location: value })}
+                      disabled={isSaving}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select your state" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MALAYSIA_STATES.map((state) => (
+                          <SelectItem key={state} value={state}>
+                            {state}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {(!userProfile.organizations || !userProfile.organizations.org_name) && (
                     <div>
                       <Label htmlFor="shop_name" className="text-sm font-medium">Shop Name</Label>
@@ -1061,6 +1092,26 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                       </div>
                       <p className="text-base font-medium text-gray-900 mt-1">
                         {userProfile.address || (
+                          <span className="text-gray-400 italic">Not set</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 text-gray-700">
+                    <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-gray-500 font-medium">Location</p>
+                        <button
+                          onClick={() => setIsEditing(true)}
+                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                        >
+                          [Edit]
+                        </button>
+                      </div>
+                      <p className="text-base font-medium text-gray-900 mt-1">
+                        {userProfile.location || (
                           <span className="text-gray-400 italic">Not set</span>
                         )}
                       </p>
