@@ -1,78 +1,93 @@
--- Fix sequence out-of-sync issues for BOTH orders and documents tables
--- This ensures that the doc_sequences table reflects the true maximum used number across the system
+-- Fix sequence out-of-sync issues for ALL documents and orders
+-- This script scans the actual tables to find the true maximum used numbers 
+-- and ensures the doc_sequences table is initialized correctly to avoid collisions.
 
 DO $$
 DECLARE
     r RECORD;
-    v_cursor REFCURSOR;
     v_year integer := 2026;
     v_year_short text := '26';
-    v_prefix text;
-    v_max_seq_orders integer := 0;
-    v_max_seq_docs integer := 0;
-    v_true_max_seq integer := 0;
-    v_current_next_seq integer;
+    v_seq integer;
     v_updated_count integer := 0;
+    v_inserted_count integer := 0;
 BEGIN
-    RAISE NOTICE 'Starting full sequence repair for year %...', v_year;
+    RAISE NOTICE 'Starting comprehensive sequence repair for year %...', v_year;
 
-    -- Iterate over each company and doc_type currently tracked in doc_sequences
-    -- We basically iterate all possible prefixes detected in the sequence table to be safe
-    -- Or better, we define the known prefixes we care about
-    
+    -- =========================================================================
+    -- 1. Scan DOCUMENTS table for all prefixes in use
+    -- =========================================================================
     FOR r IN 
-        SELECT DISTINCT company_id, doc_type
-        FROM doc_sequences
-        WHERE year = v_year
+        SELECT 
+            company_id, 
+            SUBSTRING(display_doc_no FROM '^([A-Z]+)' || v_year_short) as prefix,
+            MAX(SUBSTRING(display_doc_no FROM LENGTH(SUBSTRING(display_doc_no FROM '^([A-Z]+)' || v_year_short)) + 3 FOR 6)::integer) as max_seq
+        FROM documents 
+        WHERE display_doc_no ~ ('^[A-Z]+' || v_year_short || '\d{6}$')
+        GROUP BY company_id, SUBSTRING(display_doc_no FROM '^([A-Z]+)' || v_year_short)
     LOOP
-        v_prefix := r.doc_type;
-        
-        -- 1. Check MAX in ORDERS table (Only relevant for SO/ORD typically, but good to check all)
-        SELECT MAX(SUBSTRING(display_doc_no FROM LENGTH(v_prefix) + 3 FOR 6)::integer)
-        INTO v_max_seq_orders
-        FROM orders
-        WHERE company_id = r.company_id
-        AND display_doc_no LIKE v_prefix || v_year_short || '%'
-        AND display_doc_no ~ ('^' || v_prefix || v_year_short || '\d{6}$');
-        
-        -- 2. Check MAX in DOCUMENTS table (Relevant for PO, INV, DO, etc, and also SO if stored there)
-        SELECT MAX(SUBSTRING(display_doc_no FROM LENGTH(v_prefix) + 3 FOR 6)::integer)
-        INTO v_max_seq_docs
-        FROM documents
-        WHERE company_id = r.company_id
-        AND display_doc_no LIKE v_prefix || v_year_short || '%'
-        AND display_doc_no ~ ('^' || v_prefix || v_year_short || '\d{6}$');
-        
-        -- 3. Determine True Max
-        v_true_max_seq := GREATEST(COALESCE(v_max_seq_orders, 0), COALESCE(v_max_seq_docs, 0));
-        
-        IF v_true_max_seq > 0 THEN
-            -- Get current sequence value
-            SELECT next_seq INTO v_current_next_seq
-            FROM doc_sequences
-            WHERE company_id = r.company_id AND doc_type = r.doc_type AND year = v_year;
-            
-            -- Update if lag detected
-            -- If max used is 5, next should be 6. 
-            -- If current next is 5, it will generate 5 -> Collision!
-            -- So we update if next_seq <= max_used
-            
-            IF v_current_next_seq <= v_true_max_seq THEN
+        IF r.prefix IS NOT NULL AND r.max_seq IS NOT NULL THEN
+            -- Check if sequence exists
+            IF EXISTS (SELECT 1 FROM doc_sequences WHERE company_id = r.company_id AND doc_type = r.prefix AND year = v_year) THEN
+                -- Update existing
                 UPDATE doc_sequences
-                SET next_seq = v_true_max_seq + 1,
+                SET next_seq = GREATEST(next_seq, r.max_seq + 1),
                     last_used_at = NOW(),
                     updated_at = NOW()
-                WHERE company_id = r.company_id 
-                AND doc_type = r.doc_type 
-                AND year = v_year;
+                WHERE company_id = r.company_id AND doc_type = r.prefix AND year = v_year 
+                AND next_seq <= r.max_seq; -- Only update if lag detected
                 
-                v_updated_count := v_updated_count + 1;
-                RAISE NOTICE 'FIXED: Company % Type %: Max used %, Sequence bumped to %', r.company_id, v_prefix, v_true_max_seq, v_true_max_seq + 1;
+                IF FOUND THEN
+                    v_updated_count := v_updated_count + 1;
+                    RAISE NOTICE 'Updated sequence for Company % Prefix % to % (found max % in documents)', r.company_id, r.prefix, r.max_seq + 1, r.max_seq;
+                END IF;
             ELSE
-                RAISE NOTICE 'OK: Company % Type %: Max used %, Sequence is %', r.company_id, v_prefix, v_true_max_seq, v_current_next_seq;
+                -- Insert missing sequence
+                INSERT INTO doc_sequences (company_id, doc_type, year, next_seq, last_used_at)
+                VALUES (r.company_id, r.prefix, v_year, r.max_seq + 1, NOW());
+                
+                v_inserted_count := v_inserted_count + 1;
+                RAISE NOTICE 'Initialized sequence for Company % Prefix % to % (found max % in documents)', r.company_id, r.prefix, r.max_seq + 1, r.max_seq;
             END IF;
         END IF;
     END LOOP;
 
-    RAISE NOTICE 'Repair completed. Updated % sequences.', v_updated_count;
+    -- =========================================================================
+    -- 2. Scan ORDERS table for all prefixes in use
+    -- =========================================================================
+    FOR r IN 
+        SELECT 
+            company_id, 
+            SUBSTRING(display_doc_no FROM '^([A-Z]+)' || v_year_short) as prefix,
+            MAX(SUBSTRING(display_doc_no FROM LENGTH(SUBSTRING(display_doc_no FROM '^([A-Z]+)' || v_year_short)) + 3 FOR 6)::integer) as max_seq
+        FROM orders 
+        WHERE display_doc_no ~ ('^[A-Z]+' || v_year_short || '\d{6}$')
+        GROUP BY company_id, SUBSTRING(display_doc_no FROM '^([A-Z]+)' || v_year_short)
+    LOOP
+        IF r.prefix IS NOT NULL AND r.max_seq IS NOT NULL THEN
+            -- Check if sequence exists
+            IF EXISTS (SELECT 1 FROM doc_sequences WHERE company_id = r.company_id AND doc_type = r.prefix AND year = v_year) THEN
+                -- Update existing
+                UPDATE doc_sequences
+                SET next_seq = GREATEST(next_seq, r.max_seq + 1),
+                    last_used_at = NOW(),
+                    updated_at = NOW()
+                WHERE company_id = r.company_id AND doc_type = r.prefix AND year = v_year 
+                AND next_seq <= r.max_seq;
+                
+                IF FOUND THEN
+                    v_updated_count := v_updated_count + 1;
+                    RAISE NOTICE 'Updated sequence for Company % Prefix % to % (found max % in orders)', r.company_id, r.prefix, r.max_seq + 1, r.max_seq;
+                END IF;
+            ELSE
+                -- Insert missing sequence
+                INSERT INTO doc_sequences (company_id, doc_type, year, next_seq, last_used_at)
+                VALUES (r.company_id, r.prefix, v_year, r.max_seq + 1, NOW());
+                
+                v_inserted_count := v_inserted_count + 1;
+                RAISE NOTICE 'Initialized sequence for Company % Prefix % to % (found max % in orders)', r.company_id, r.prefix, r.max_seq + 1, r.max_seq;
+            END IF;
+        END IF;
+    END LOOP;
+
+    RAISE NOTICE 'Repair completed. Updated % sequences, Initialized % new sequences.', v_updated_count, v_inserted_count;
 END $$;
