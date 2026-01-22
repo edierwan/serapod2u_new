@@ -2980,23 +2980,46 @@ export default function PremiumLoyaltyTemplate({
         // Filter items by page (defaults to 'home' if page is not set)
         const pageItems = allItems.filter((item: any) => (item.page || 'home') === location)
 
-        if (pageItems.length === 0) return null
+        // Filter items by placement (defaults to 'top' if placement is not set)
+        const placementItems = pageItems.filter((item: any) => (item.placement || 'top') === currentPlacement)
 
-        // Check placement from master banner config
-        const configuredPlacement = masterBannerConfig?.placement || config.banner_config?.placement || 'top'
-        if (configuredPlacement !== currentPlacement) return null
+        if (placementItems.length === 0) return null
 
-        const template = masterBannerConfig?.template || config.banner_config?.template || 'grid'
+        // Determine settings based on placement and location
+        let template: 'grid' | 'carousel' = 'grid'
+        let autoSlide = false
+        let slideInterval = 5
+        let showDots = true
+        let showProgress = false
+        
+        // Use page-specific settings from master banner config if available
+        if (masterBannerConfig?.pageSettings?.[location]) {
+            const settings = masterBannerConfig.pageSettings[location]
+            if (currentPlacement === 'top') {
+                template = settings.topTemplate || 'carousel'
+                autoSlide = settings.topAutoSlide ?? true
+                slideInterval = settings.topSlideInterval ?? 5
+            } else {
+                template = settings.bottomTemplate || 'grid'
+                autoSlide = settings.bottomAutoSlide ?? false
+                slideInterval = settings.bottomSlideInterval ?? 5
+            }
+        } else {
+            // Fallback for legacy configuration
+            template = masterBannerConfig?.template || config.banner_config?.template || 'grid'
+            autoSlide = masterBannerConfig?.autoSlide ?? true
+            slideInterval = masterBannerConfig?.slideInterval ?? 5
+        }
 
         return (
             <div className={`px-4 ${currentPlacement === 'top' ? 'mt-6 mb-4' : 'mt-4 mb-6'}`}>
                 <AnnouncementBanner
-                    items={pageItems as any[]}
+                    items={placementItems as any[]}
                     template={template}
-                    autoSlide={masterBannerConfig?.autoSlide}
-                    slideInterval={masterBannerConfig?.slideInterval}
-                    showDots={masterBannerConfig?.showDots}
-                    showProgress={masterBannerConfig?.showProgress}
+                    autoSlide={autoSlide}
+                    slideInterval={slideInterval}
+                    showDots={showDots}
+                    showProgress={showProgress}
                     onItemClick={(item) => {
                         if (item.link_to === 'rewards') setActiveTab('rewards')
                         else if (item.link_to === 'products') setActiveTab('products')
