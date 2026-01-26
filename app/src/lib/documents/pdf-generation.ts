@@ -140,19 +140,27 @@ export async function generatePdfForOrderDocument(
     throw new Error(orderError?.message || 'Order not found')
   }
 
+  // Determine which organization's settings control the template
+  // PO / Payment Advice -> Buyer's settings
+  // SO / Invoice / DO / Receipt -> Seller's settings
+  let settingOrgId = orderData.buyer_org_id
+  if (['sales_order', 'invoice', 'delivery_order', 'receipt', 'payment_request'].includes(type) && orderData.seller_org_id) {
+    settingOrgId = orderData.seller_org_id
+  }
+
   // Fetch organization's document template setting
   let documentTemplate: DocumentTemplateType = 'detailed' // Default to current detailed format
   try {
-    const { data: hqOrgData } = await supabase
+    const { data: orgSettingsData } = await supabase
       .from('organizations')
       .select('settings')
-      .eq('id', orderData.buyer_org_id)
+      .eq('id', settingOrgId)
       .single()
 
-    if (hqOrgData?.settings) {
-      const settings = typeof hqOrgData.settings === 'string'
-        ? JSON.parse(hqOrgData.settings)
-        : hqOrgData.settings
+    if (orgSettingsData?.settings) {
+      const settings = typeof orgSettingsData.settings === 'string'
+        ? JSON.parse(orgSettingsData.settings)
+        : orgSettingsData.settings
       if (settings.document_template) {
         documentTemplate = settings.document_template as DocumentTemplateType
       }
@@ -188,6 +196,30 @@ export async function generatePdfForOrderDocument(
     console.warn('Could not fetch buyer signature:', sigErr)
   }
 
+  // Fetch Issuer Organization Signature (for Sales Order/Invoice "Issued by" section)
+  // For SO/Invoice/DO/Receipt/Payment Request, the issuer is the Seller.
+  // For PO/Payment Advice, the issuer is the Buyer.
+  let issuerSignatureImage: string | null = null
+  let issuerOrgId = orderData.buyer_org_id // Default to Buyer (PO/Payment Advice)
+
+  if (['sales_order', 'invoice', 'delivery_order', 'receipt', 'payment_request'].includes(type) && orderData.seller_org_id) {
+    issuerOrgId = orderData.seller_org_id
+  }
+
+  try {
+    const { data: issuerOrg } = await supabase
+      .from('organizations')
+      .select('signature_url')
+      .eq('id', issuerOrgId)
+      .single()
+
+    if (issuerOrg?.signature_url) {
+      issuerSignatureImage = await fetchImageAsDataUrl(issuerOrg.signature_url)
+    }
+  } catch (issuerSigErr) {
+    console.warn('Could not fetch issuer signature:', issuerSigErr)
+  }
+
   // Fetch creator (User Level) signature - the person who created the order
   let creatorSignatureImage: string | null = null
   if (orderData.created_by) {
@@ -211,6 +243,7 @@ export async function generatePdfForOrderDocument(
     ...orderData,
     buyer_logo_image: buyerLogoImage,
     buyer_signature_image: buyerSignatureImage,
+    issuer_signature_image: issuerSignatureImage,
     creator_signature_image: creatorSignatureImage
   }
 

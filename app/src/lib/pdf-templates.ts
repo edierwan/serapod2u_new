@@ -61,6 +61,7 @@ export interface TemplateOrderData {
   // Dynamic image data (fetched and converted to base64)
   buyer_logo_image?: string | null
   buyer_signature_image?: string | null
+  issuer_signature_image?: string | null
   creator_signature_image?: string | null  // User Level signature
 }
 
@@ -447,22 +448,29 @@ export class ClassicTemplate {
     this.doc.setTextColor(0, 0, 0)
     this.doc.text('Issued by:', this.margin, footerY)
 
+    // Determine Issuer Name
+    const isSellerIssued = ['SO', 'INVOICE', 'DO', 'RECEIPT', 'PAYMENT_REQUEST'].includes(documentData.doc_type)
+    const issuerName = isSellerIssued ? orderData.seller_org.org_name : orderData.buyer_org.org_name
+
     // Organization Stamp - Use dynamic signature image if available (reduced 50% - half size)
     const stampX = this.margin + 14
     const stampY = footerY + 14
     const stampSize = 16  // Reduced to half size (50% smaller)
+    
+    // Prefer issuer_signature_image if provided (new logic), fallback to buyer_signature_image only for legacy PO support
+    const signatureImage = orderData.issuer_signature_image || (isSellerIssued ? null : orderData.buyer_signature_image)
 
-    if (orderData.buyer_signature_image) {
+    if (signatureImage) {
       try {
-        this.doc.addImage(orderData.buyer_signature_image, 'PNG', stampX - stampSize / 2, stampY - stampSize / 2, stampSize, stampSize)
+        this.doc.addImage(signatureImage, 'PNG', stampX - stampSize / 2, stampY - stampSize / 2, stampSize, stampSize)
       } catch (e) {
         console.error('Error adding organization stamp:', e)
         // Fallback to simulated stamp
-        this.drawDefaultStamp(stampX, stampY, orderData.buyer_org.org_name, stampSize / 2)
+        this.drawDefaultStamp(stampX, stampY, issuerName, stampSize / 2)
       }
     } else {
       // Fallback: simulated stamp (half size)
-      this.drawDefaultStamp(stampX, stampY, orderData.buyer_org.org_name, stampSize / 2)
+      this.drawDefaultStamp(stampX, stampY, issuerName, stampSize / 2)
     }
 
     // Created by (Center) - Always show "User Level" as per requirement

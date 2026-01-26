@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt } from 'lucide-react'
+import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt, Clock, FileCheck, CreditCard, CheckCircle2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
@@ -38,6 +38,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const [loading, setLoading] = useState(true)
   const [documentsDialogOpen, setDocumentsDialogOpen] = useState(false)
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
+  const [activeDocTab, setActiveDocTab] = useState<'so' | 'do' | 'invoice' | 'payment' | 'receipt'>('so')
+  const [documents, setDocuments] = useState<any>({})
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -47,6 +49,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       loadOrderData(idToLoad)
       loadJourneyData(idToLoad)
       loadQRStats(idToLoad)
+      loadDocuments(idToLoad)
     } else {
       toast({
         title: 'Error',
@@ -280,6 +283,52 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     }
   }
 
+  async function loadDocuments(orderId: string) {
+    try {
+      const { data: docs, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+
+      // Organize documents by type
+      const docsByType: any = {
+        so: null,
+        do: null,
+        invoice: null,
+        payment: null,
+        receipt: null
+      }
+
+      if (docs) {
+        for (const doc of docs) {
+          switch (doc.doc_type) {
+            case 'SO':
+              if (!docsByType.so) docsByType.so = doc
+              break
+            case 'DO':
+              if (!docsByType.do) docsByType.do = doc
+              break
+            case 'INVOICE':
+              if (!docsByType.invoice) docsByType.invoice = doc
+              break
+            case 'PAYMENT':
+              if (!docsByType.payment) docsByType.payment = doc
+              break
+            case 'RECEIPT':
+              if (!docsByType.receipt) docsByType.receipt = doc
+              break
+          }
+        }
+      }
+
+      setDocuments(docsByType)
+    } catch (error: any) {
+      console.error('Error loading documents:', error?.message || 'Unknown error', error)
+    }
+
   const handleBack = () => {
     sessionStorage.removeItem('viewOrderId')
     if (onViewChange) {
@@ -319,7 +368,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   // Logic to swap display for Sales Orders (SO) vs Purchase Orders (PO)
   // For PO: Header is Buyer (Issuer), Section is Supplier
   // For SO: Header is Seller (Issuer), Section is Customer
-  const isSalesOrder = orderData.order_type === 'SO' || orderData.order_no?.startsWith('SO')
+  // Check display_doc_no first (new format like SO26000044), then fall back to order_no and order_type
+  const isSalesOrder = (orderData.display_doc_no || orderData.order_no)?.startsWith('SO') || orderData.order_type === 'SO'
   const headerOrg = isSalesOrder ? orderData.seller_org : orderData.buyer_org
   const otherOrg = isSalesOrder ? orderData.buyer_org : orderData.seller_org
   const otherOrgLabel = isSalesOrder ? 'Customer:' : 'Supplier:'
@@ -610,6 +660,211 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Document Workflow Tabs - Arrow Style */}
+      <div className="bg-white shadow-lg px-8 md:px-12 py-6 print:hidden">
+        <div className="flex items-center">
+          {/* Sales Order Tab */}
+          <button
+            onClick={() => documents.so ? setActiveDocTab('so') : null}
+            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
+              activeDocTab === 'so'
+                ? 'bg-amber-400 text-white'
+                : documents.so
+                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+            style={{
+              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
+              marginLeft: '-12px',
+              paddingLeft: '24px'
+            }}
+            disabled={!documents.so}
+          >
+            <FileText className="w-4 h-4" />
+            Sales Order
+          </button>
+
+          {/* Delivery Order Tab */}
+          <button
+            onClick={() => documents.do ? setActiveDocTab('do') : null}
+            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
+              activeDocTab === 'do'
+                ? 'bg-purple-500 text-white'
+                : documents.do
+                  ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+            style={{
+              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
+              marginLeft: '-12px',
+              paddingLeft: '24px'
+            }}
+            disabled={!documents.do}
+          >
+            <Package className="w-4 h-4" />
+            Delivery Order
+          </button>
+
+          {/* Invoice Tab */}
+          <button
+            onClick={() => documents.invoice ? setActiveDocTab('invoice') : null}
+            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
+              activeDocTab === 'invoice'
+                ? 'bg-cyan-500 text-white'
+                : documents.invoice
+                  ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+            style={{
+              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
+              marginLeft: '-12px',
+              paddingLeft: '24px'
+            }}
+            disabled={!documents.invoice}
+          >
+            <FileCheck className="w-4 h-4" />
+            Invoice
+          </button>
+
+          {/* Payment Tab */}
+          <button
+            onClick={() => documents.payment ? setActiveDocTab('payment') : null}
+            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
+              activeDocTab === 'payment'
+                ? 'bg-blue-500 text-white'
+                : documents.payment
+                  ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+            style={{
+              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
+              marginLeft: '-12px',
+              paddingLeft: '24px'
+            }}
+            disabled={!documents.payment}
+          >
+            <CreditCard className="w-4 h-4" />
+            Payment
+          </button>
+
+          {/* Receipt Tab */}
+          <button
+            onClick={() => documents.receipt ? setActiveDocTab('receipt') : null}
+            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
+              activeDocTab === 'receipt'
+                ? 'bg-gray-600 text-white'
+                : documents.receipt
+                  ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+            style={{
+              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
+              marginLeft: '-12px',
+              paddingLeft: '24px'
+            }}
+            disabled={!documents.receipt}
+          >
+            <Receipt className="w-4 h-4" />
+            Receipt
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        <div className="mt-6 border-t border-gray-200 pt-6">
+          {activeDocTab === 'so' && documents.so && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">Sales Order Details</h3>
+                <Badge className={documents.so.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                  {documents.so.status?.toUpperCase()}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.so.display_doc_no || documents.so.doc_no}</span></div>
+                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.so.created_at).toLocaleDateString('en-MY')}</span></div>
+              </div>
+            </div>
+          )}
+
+          {activeDocTab === 'do' && documents.do && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">Delivery Order Details</h3>
+                <Badge className={documents.do.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                  {documents.do.status?.toUpperCase()}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.do.display_doc_no || documents.do.doc_no}</span></div>
+                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.do.created_at).toLocaleDateString('en-MY')}</span></div>
+              </div>
+            </div>
+          )}
+
+          {activeDocTab === 'invoice' && documents.invoice && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">Invoice Details</h3>
+                <Badge className={documents.invoice.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                  {documents.invoice.status?.toUpperCase()}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.invoice.display_doc_no || documents.invoice.doc_no}</span></div>
+                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.invoice.created_at).toLocaleDateString('en-MY')}</span></div>
+              </div>
+            </div>
+          )}
+
+          {activeDocTab === 'payment' && documents.payment && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">Payment Details</h3>
+                <Badge className={documents.payment.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                  {documents.payment.status?.toUpperCase()}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.payment.display_doc_no || documents.payment.doc_no}</span></div>
+                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.payment.created_at).toLocaleDateString('en-MY')}</span></div>
+              </div>
+            </div>
+          )}
+
+          {activeDocTab === 'receipt' && documents.receipt && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">Receipt Details</h3>
+                <Badge className={documents.receipt.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                  {documents.receipt.status?.toUpperCase()}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.receipt.display_doc_no || documents.receipt.doc_no}</span></div>
+                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.receipt.created_at).toLocaleDateString('en-MY')}</span></div>
+              </div>
+            </div>
+          )}
+
+          {/* No document selected or not created message */}
+          {activeDocTab === 'so' && !documents.so && (
+            <p className="text-gray-500 text-sm">Sales Order not yet created</p>
+          )}
+          {activeDocTab === 'do' && !documents.do && (
+            <p className="text-gray-500 text-sm">Delivery Order not yet created</p>
+          )}
+          {activeDocTab === 'invoice' && !documents.invoice && (
+            <p className="text-gray-500 text-sm">Invoice not yet created</p>
+          )}
+          {activeDocTab === 'payment' && !documents.payment && (
+            <p className="text-gray-500 text-sm">Payment not yet created</p>
+          )}
+          {activeDocTab === 'receipt' && !documents.receipt && (
+            <p className="text-gray-500 text-sm">Receipt not yet created</p>
+          )}
         </div>
       </div>
 
