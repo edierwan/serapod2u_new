@@ -328,6 +328,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     } catch (error: any) {
       console.error('Error loading documents:', error?.message || 'Unknown error', error)
     }
+  }
 
   const handleBack = () => {
     sessionStorage.removeItem('viewOrderId')
