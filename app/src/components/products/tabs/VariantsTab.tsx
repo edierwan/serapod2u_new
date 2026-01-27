@@ -193,10 +193,28 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       // @ts-ignore
       const { animationFile: _, ...dbDataClean } = dbData
       
-      const dataToSave = {
-        ...dbDataClean,
-        image_url: imageUrl,
-        animation_url: animationUrl
+      // Only include animation_url if it has a value (column may not exist yet)
+      const dataToSave: Record<string, any> = {
+        product_id: dbDataClean.product_id,
+        variant_code: dbDataClean.variant_code,
+        variant_name: dbDataClean.variant_name,
+        attributes: dbDataClean.attributes || {},
+        barcode: dbDataClean.barcode || null,
+        manufacturer_sku: dbDataClean.manufacturer_sku || null,
+        manual_sku: dbDataClean.manual_sku || null,
+        base_cost: dbDataClean.base_cost,
+        suggested_retail_price: dbDataClean.suggested_retail_price,
+        retailer_price: dbDataClean.retailer_price,
+        distributor_price: dbDataClean.distributor_price,
+        other_price: dbDataClean.other_price,
+        is_active: dbDataClean.is_active,
+        is_default: dbDataClean.is_default,
+        image_url: imageUrl
+      }
+      
+      // Only add animation_url if we have one (graceful handling if column doesn't exist)
+      if (animationUrl) {
+        dataToSave.animation_url = animationUrl
       }
 
       if (editingVariant) {
