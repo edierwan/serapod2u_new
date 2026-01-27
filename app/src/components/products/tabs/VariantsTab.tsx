@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2, Package, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, Package, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import VariantDialog from '../dialogs/VariantDialog'
 import { getStorageUrl } from '@/lib/utils'
 import { compressVariantImage, formatFileSize } from '@/lib/utils/imageCompression'
@@ -52,6 +52,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   const [isSaving, setIsSaving] = useState(false)
   const [sortColumn, setSortColumn] = useState<string>('variant_name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(20)
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -281,6 +283,11 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     return matchesSearch && matchesProduct && variant.is_active
   })
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, selectedProduct])
+
   const handleSort = (column: string) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
@@ -310,6 +317,13 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     })
     return sorted
   }
+
+  // Pagination calculations
+  const totalItems = getSortedVariants().length
+  const totalPages = Math.ceil(totalItems / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedVariants = getSortedVariants().slice(startIndex, endIndex)
 
   const renderSortIcon = (column: string) => {
     if (sortColumn !== column) {
@@ -429,10 +443,10 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             </TableRow>
           </TableHeader>
           <TableBody>
-            {getSortedVariants().length > 0 ? (
-              getSortedVariants().map((variant, index) => (
+            {paginatedVariants.length > 0 ? (
+              paginatedVariants.map((variant, index) => (
                 <TableRow key={variant.id} className="hover:bg-gray-50">
-                  <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
+                  <TableCell className="text-center text-sm text-gray-500 font-medium">{startIndex + index + 1}</TableCell>
                   <TableCell>
                     <Avatar className="w-10 h-10 rounded-lg">
                       {variant.image_url ? (
@@ -494,8 +508,62 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         </Table>
       </div>
 
-      <div className="text-xs text-gray-600">
-        Showing {getSortedVariants().length} of {variants.filter(v => v.is_active).length} variants
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-gray-600">
+          Showing {totalItems > 0 ? startIndex + 1 : 0} - {Math.min(endIndex, totalItems)} of {totalItems} variants
+        </div>
+        
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="h-8"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number
+                if (totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i
+                } else {
+                  pageNum = currentPage - 2 + i
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className="h-8 w-8 p-0"
+                  >
+                    {pageNum}
+                  </Button>
+                )
+              })}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="h-8"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

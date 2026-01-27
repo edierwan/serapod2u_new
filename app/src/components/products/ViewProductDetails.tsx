@@ -94,7 +94,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             suggested_retail_price,
             base_cost,
             is_active,
-            image_url
+            image_url,
+            animation_url
           )
         `)
         .eq('id', productId)
@@ -754,9 +755,24 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                     </Button>
                   </div>
 
-                  {/* Image Section */}
+                  {/* Image/Animation Section */}
                   <div className="relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
-                    {variant.image_url ? (
+                    {variant.animation_url ? (
+                      <div className="w-full h-full relative">
+                        <video
+                          src={getStorageUrl(variant.animation_url) || variant.animation_url}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          muted
+                          loop
+                          autoPlay
+                          playsInline
+                        />
+                        {/* Animation indicator */}
+                        <div className="absolute top-2 right-2 bg-black/40 rounded-full p-1.5 backdrop-blur-sm">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                        </div>
+                      </div>
+                    ) : variant.image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={getStorageUrl(variant.image_url) || variant.image_url}

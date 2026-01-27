@@ -488,6 +488,7 @@ export default function PremiumLoyaltyTemplate({
     const [luckyDrawQrUsed, setLuckyDrawQrUsed] = useState(false) // Track if QR already used for lucky draw
     const [checkingQrStatus, setCheckingQrStatus] = useState(true) // Start true to show loading
     const [selectedAnimation, setSelectedAnimation] = useState<string | null>(null)
+    const [selectedVariantForDetail, setSelectedVariantForDetail] = useState<any>(null)
 
     // Control visibility of Free Gifts section in Rewards tab
     const [showFreeGifts, setShowFreeGifts] = useState(false)
@@ -4655,13 +4656,15 @@ export default function PremiumLoyaltyTemplate({
 
                         <div className="grid grid-cols-2 gap-3">
                             {selectedProduct.variants?.map((variant) => (
-                                <div key={variant.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
+                                <div 
+                                    key={variant.id} 
+                                    className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full cursor-pointer active:scale-[0.98] transition-transform"
+                                    onClick={() => setSelectedVariantForDetail({ ...variant, product: selectedProduct })}
+                                >
                                     <div className="aspect-square relative bg-gray-50">
                                         <VariantMedia 
                                             variant={variant} 
-                                            onClick={(v) => {
-                                                if(v.animation_url) setSelectedAnimation(v.animation_url)
-                                            }} 
+                                            onClick={(v) => setSelectedVariantForDetail({ ...v, product: selectedProduct })} 
                                         />
                                     </div>
                                     <div className="p-3 flex flex-col flex-1">
@@ -6204,6 +6207,132 @@ export default function PremiumLoyaltyTemplate({
                 </DialogContent>
             </Dialog>
 
+            {/* Variant Detail Modal (like Shopee product page) */}
+            <Dialog open={!!selectedVariantForDetail} onOpenChange={(open) => !open && setSelectedVariantForDetail(null)}>
+                <DialogContent className="sm:max-w-lg p-0 overflow-hidden bg-white border-none max-w-[95vw] max-h-[90vh] rounded-2xl">
+                    <DialogTitle className="sr-only">{selectedVariantForDetail?.variant_name || 'Variant Details'}</DialogTitle>
+                    {selectedVariantForDetail && (
+                        <div className="flex flex-col h-full max-h-[90vh]">
+                            {/* Close button */}
+                            <button 
+                                onClick={() => setSelectedVariantForDetail(null)}
+                                className="absolute top-3 right-3 z-50 bg-black/40 rounded-full p-2 text-white hover:bg-black/60 transition-colors"
+                            >
+                                <X className="w-5 h-5"/>
+                            </button>
+                            
+                            {/* Media Section */}
+                            <div className="relative w-full aspect-square bg-gray-100">
+                                {selectedVariantForDetail.animation_url ? (
+                                    <video 
+                                        src={getStorageUrl(selectedVariantForDetail.animation_url)} 
+                                        className="w-full h-full object-contain bg-black" 
+                                        controls 
+                                        autoPlay 
+                                        playsInline
+                                    />
+                                ) : selectedVariantForDetail.image_url ? (
+                                    <Image
+                                        src={getStorageUrl(selectedVariantForDetail.image_url) || selectedVariantForDetail.image_url}
+                                        alt={selectedVariantForDetail.variant_name}
+                                        fill
+                                        className="object-contain"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <Package className="w-16 h-16 text-gray-300" />
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Content Section */}
+                            <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+                                {/* Price */}
+                                {!selectedVariantForDetail.product?.hide_price && (
+                                    <div className="flex items-baseline gap-2">
+                                        {selectedVariantForDetail.other_price && selectedVariantForDetail.other_price > 0 ? (
+                                            <>
+                                                <span className="text-2xl font-bold" style={{ color: config.primary_color }}>
+                                                    RM {selectedVariantForDetail.other_price.toFixed(2)}
+                                                </span>
+                                                {selectedVariantForDetail.suggested_retail_price && (
+                                                    <>
+                                                        <span className="text-sm text-gray-400 line-through">
+                                                            RM {selectedVariantForDetail.suggested_retail_price.toFixed(2)}
+                                                        </span>
+                                                        <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">
+                                                            -{Math.round(((selectedVariantForDetail.suggested_retail_price - selectedVariantForDetail.other_price) / selectedVariantForDetail.suggested_retail_price) * 100)}%
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </>
+                                        ) : selectedVariantForDetail.suggested_retail_price ? (
+                                            <span className="text-2xl font-bold" style={{ color: config.primary_color }}>
+                                                RM {selectedVariantForDetail.suggested_retail_price.toFixed(2)}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                )}
+                                
+                                {/* Product & Variant Name */}
+                                <div>
+                                    <h2 className="text-lg font-bold text-gray-900 leading-tight">
+                                        {selectedVariantForDetail.product?.product_name}
+                                    </h2>
+                                    <p className="text-sm text-gray-600 mt-1">{selectedVariantForDetail.variant_name}</p>
+                                </div>
+                                
+                                {/* Description */}
+                                {selectedVariantForDetail.product?.product_description && (
+                                    <p className="text-sm text-gray-500">
+                                        {selectedVariantForDetail.product.product_description}
+                                    </p>
+                                )}
+                            </div>
+                            
+                            {/* Action Buttons - Fixed at bottom */}
+                            <div className="border-t border-gray-100 p-4 bg-white">
+                                <div className="flex gap-3">
+                                    {/* Chat Now */}
+                                    <button
+                                        onClick={() => {
+                                            // Store variant info for pre-filling chat
+                                            const price = selectedVariantForDetail.other_price || selectedVariantForDetail.suggested_retail_price
+                                            const subject = `Enquiry: ${selectedVariantForDetail.product?.product_name} - ${selectedVariantForDetail.variant_name}${price ? ` (RM ${price.toFixed(2)})` : ''}`
+                                            sessionStorage.setItem('prefill_chat_subject', subject)
+                                            setSelectedVariantForDetail(null)
+                                            setShowFeedbackModal(true)
+                                        }}
+                                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all"
+                                        style={{ borderColor: config.primary_color, color: config.primary_color }}
+                                    >
+                                        <MessageSquare className="w-5 h-5" />
+                                        Chat Now
+                                    </button>
+                                    
+                                    {/* Buy Now */}
+                                    <button
+                                        onClick={() => {
+                                            // Store variant info for pre-filling chat as an order inquiry
+                                            const price = selectedVariantForDetail.other_price || selectedVariantForDetail.suggested_retail_price
+                                            const subject = `Order: ${selectedVariantForDetail.product?.product_name} - ${selectedVariantForDetail.variant_name}${price ? ` (RM ${price.toFixed(2)})` : ''}`
+                                            sessionStorage.setItem('prefill_chat_subject', subject)
+                                            setSelectedVariantForDetail(null)
+                                            setShowFeedbackModal(true)
+                                        }}
+                                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-white transition-all"
+                                        style={{ backgroundColor: config.primary_color }}
+                                    >
+                                        <ShoppingBag className="w-5 h-5" />
+                                        Buy Now
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
             {/* Redeem Confirmation Modal */}
             {showRedeemConfirm && selectedReward && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -6515,7 +6644,10 @@ export default function PremiumLoyaltyTemplate({
                         className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <SupportChatWidgetV2 onClose={() => setShowFeedbackModal(false)} />
+                        <SupportChatWidgetV2 
+                            onClose={() => setShowFeedbackModal(false)} 
+                            themeColor={config.primary_color}
+                        />
                     </div>
                 </div>
             )}

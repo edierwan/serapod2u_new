@@ -61,13 +61,34 @@ const STATUS_CONFIG = {
     spam: { label: 'Spam', color: 'bg-red-100 text-red-700', icon: AlertCircle }
 }
 
+interface SupportChatWidgetProps {
+    onClose: () => void
+    themeColor?: string
+    prefillSubject?: string
+}
+
 // Main Component
-export function SupportChatWidgetV2({ onClose }: { onClose: () => void }) {
+export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSubject }: SupportChatWidgetProps) {
     const [view, setView] = useState<'inbox' | 'new-chat' | 'thread'>('inbox')
     const [conversations, setConversations] = useState<Conversation[]>([])
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
     const [loading, setLoading] = useState(false)
     const [totalUnread, setTotalUnread] = useState(0)
+    const [initialSubject, setInitialSubject] = useState('')
+    
+    // Check for prefill from sessionStorage on mount
+    useEffect(() => {
+        const storedSubject = sessionStorage.getItem('prefill_chat_subject')
+        if (storedSubject) {
+            setInitialSubject(storedSubject)
+            sessionStorage.removeItem('prefill_chat_subject')
+            // Auto-navigate to new chat view
+            setView('new-chat')
+        } else if (prefillSubject) {
+            setInitialSubject(prefillSubject)
+            setView('new-chat')
+        }
+    }, [prefillSubject])
     
     // Fetch conversations
     const fetchConversations = useCallback(async () => {
@@ -119,6 +140,7 @@ export function SupportChatWidgetV2({ onClose }: { onClose: () => void }) {
     }
 
     const handleNewConversation = async (conversationId: string) => {
+        setInitialSubject('') // Clear after use
         await fetchConversations()
         const conv = conversations.find(c => c.id === conversationId)
         if (conv) {
@@ -129,16 +151,29 @@ export function SupportChatWidgetV2({ onClose }: { onClose: () => void }) {
         }
     }
 
+    // Adjust color for hover state
+    const adjustColorBrightness = (hex: string, percent: number) => {
+        const num = parseInt(hex.replace('#', ''), 16)
+        const amt = Math.round(2.55 * percent)
+        const R = (num >> 16) + amt
+        const G = (num >> 8 & 0x00FF) + amt
+        const B = (num & 0x0000FF) + amt
+        return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 + (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 + (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1)
+    }
+
     return (
         <div className="flex flex-col h-full bg-gray-50">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 bg-blue-600 text-white sticky top-0 z-10 shadow-md">
+            <div 
+                className="flex items-center justify-between p-4 text-white sticky top-0 z-10 shadow-md"
+                style={{ backgroundColor: themeColor }}
+            >
                 <div className="flex items-center gap-3">
                     <Button 
                         variant="ghost" 
                         size="icon" 
                         onClick={view === 'inbox' ? onClose : handleBack}
-                        className="text-white hover:bg-blue-700 -ml-2"
+                        className="text-white hover:bg-white/20 -ml-2"
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </Button>
@@ -149,7 +184,7 @@ export function SupportChatWidgetV2({ onClose }: { onClose: () => void }) {
                              activeConversation?.subject || 'Chat'}
                         </h2>
                         {view === 'thread' && activeConversation && (
-                            <p className="text-xs text-blue-100">{activeConversation.case_number}</p>
+                            <p className="text-xs text-white/70">{activeConversation.case_number}</p>
                         )}
                     </div>
                 </div>
@@ -170,12 +205,15 @@ export function SupportChatWidgetV2({ onClose }: { onClose: () => void }) {
                         onNewChat={() => setView('new-chat')}
                         onDelete={handleDelete}
                         onRefresh={fetchConversations}
+                        themeColor={themeColor}
                     />
                 )}
                 {view === 'new-chat' && (
                     <NewChatView 
                         onCancel={() => setView('inbox')}
                         onSuccess={handleNewConversation}
+                        initialSubject={initialSubject}
+                        themeColor={themeColor}
                     />
                 )}
                 {view === 'thread' && activeConversation && (
@@ -196,7 +234,8 @@ function InboxView({
     onConversationClick, 
     onNewChat, 
     onDelete,
-    onRefresh 
+    onRefresh,
+    themeColor = '#2563eb'
 }: { 
     conversations: Conversation[]
     loading: boolean
@@ -204,6 +243,7 @@ function InboxView({
     onNewChat: () => void
     onDelete: (id: string) => void
     onRefresh: () => void
+    themeColor?: string
 }) {
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
     const [deleting, setDeleting] = useState(false)
@@ -353,7 +393,8 @@ function InboxView({
             <div className="absolute bottom-4 left-0 right-0 px-4">
                 <Button 
                     onClick={onNewChat} 
-                    className="w-full shadow-lg rounded-full h-14 text-base font-medium bg-blue-600 hover:bg-blue-700"
+                    className="w-full shadow-lg rounded-full h-14 text-base font-medium text-white"
+                    style={{ backgroundColor: themeColor }}
                 >
                     <Plus className="w-5 h-5 mr-2" /> Start New Conversation
                 </Button>
@@ -365,19 +406,30 @@ function InboxView({
 // New Chat View
 function NewChatView({ 
     onCancel, 
-    onSuccess 
+    onSuccess,
+    initialSubject = '',
+    themeColor = '#2563eb'
 }: { 
     onCancel: () => void
-    onSuccess: (conversationId: string) => void 
+    onSuccess: (conversationId: string) => void
+    initialSubject?: string
+    themeColor?: string 
 }) {
     const supabase = createClient()
-    const [subject, setSubject] = useState('')
+    const [subject, setSubject] = useState(initialSubject)
     const [message, setMessage] = useState('')
     const [loading, setLoading] = useState(false)
     const [attachments, setAttachments] = useState<any[]>([])
     const [uploading, setUploading] = useState(false)
     const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    
+    // Set initial subject when prop changes
+    useEffect(() => {
+        if (initialSubject) {
+            setSubject(initialSubject)
+        }
+    }, [initialSubject])
 
     // Image compression
     const compressImage = async (file: File, maxWidth: number = 1200, quality: number = 0.8): Promise<{ blob: Blob; originalSize: number; compressedSize: number }> => {
@@ -635,7 +687,8 @@ function NewChatView({
                 <Button 
                     type="submit" 
                     disabled={!subject.trim() || !message.trim() || loading}
-                    className="w-full h-14 text-base font-medium bg-blue-600 hover:bg-blue-700 rounded-xl"
+                    className="w-full h-14 text-base font-medium rounded-xl text-white"
+                    style={{ backgroundColor: themeColor }}
                 >
                     {loading ? (
                         <>
