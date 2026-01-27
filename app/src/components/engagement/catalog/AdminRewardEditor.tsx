@@ -1120,25 +1120,6 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                   </div>
                 </div>
 
-                {/* Display Duration Setting */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="displayDuration">Media Display Duration (seconds)</Label>
-                    <Input
-                      id="displayDuration"
-                      type="number"
-                      min={1}
-                      max={30}
-                      value={form.displayDuration}
-                      onChange={(event) => updateForm("displayDuration", event.target.value)}
-                      placeholder="3"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      How long each image/video displays before rotating (1-30 seconds)
-                    </p>
-                  </div>
-                </div>
-
                 <div>
                   <Label htmlFor="description">Description</Label>
                   <Textarea

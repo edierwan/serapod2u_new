@@ -897,7 +897,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             <MessageSquare className="h-4 w-4" /> User Feedback
           </TabsTrigger>
           <TabsTrigger value="settings" className="gap-2">
-            <Settings className="h-4 w-4" /> Point Settings
+            <Settings className="h-4 w-4" /> Settings
           </TabsTrigger>
         </TabsList>
 

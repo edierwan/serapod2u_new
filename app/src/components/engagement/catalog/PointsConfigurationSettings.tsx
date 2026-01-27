@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Settings, 
   Save, 
@@ -18,7 +19,8 @@ import {
   TrendingUp,
   Calendar,
   Info,
-  Banknote
+  Banknote,
+  PlayCircle
 } from 'lucide-react'
 import { Database } from '@/types/database'
 
@@ -47,6 +49,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [expiresAfterDays, setExpiresAfterDays] = useState<number | null>(null)
   const [allowManualAdjustment, setAllowManualAdjustment] = useState<boolean>(true)
   const [migrationMultiplier, setMigrationMultiplier] = useState<number | null>(null)
+  const [mediaDisplayDuration, setMediaDisplayDuration] = useState<number>(3)
+  
+  // Sub-tab state
+  const [settingsTab, setSettingsTab] = useState<'points' | 'media'>('points')
   
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
@@ -100,6 +106,9 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           if (settings.migration_multiplier !== undefined) {
             setMigrationMultiplier(settings.migration_multiplier)
           }
+          if (settings.media_display_duration !== undefined) {
+            setMediaDisplayDuration(settings.media_display_duration)
+          }
         }
       } catch (error: any) {
         console.error('Error fetching rules:', error)
@@ -139,7 +148,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       const newSettings = {
         ...currentSettings,
         point_value_rm: pointValueRM,
-        migration_multiplier: migrationMultiplier
+        migration_multiplier: migrationMultiplier,
+        media_display_duration: mediaDisplayDuration
       }
 
       const { error: settingsError } = await supabase
@@ -269,10 +279,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       <div>
         <h2 className="text-2xl font-semibold flex items-center gap-2">
           <Settings className="h-6 w-6 text-primary" />
-          Point Collection Settings
+          Settings
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure how many points shops collect per QR scan. Changes apply immediately to all new point collections.
+          Configure point collection and media display settings for your organization.
         </p>
       </div>
 
@@ -287,6 +297,22 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Sub-tabs */}
+      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media')}>
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="points" className="gap-2">
+            <Coins className="h-4 w-4" />
+            Point Collection
+          </TabsTrigger>
+          <TabsTrigger value="media" className="gap-2">
+            <PlayCircle className="h-4 w-4" />
+            Media Display
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Point Collection Settings Tab */}
+        <TabsContent value="points" className="space-y-6 mt-6">
 
       {/* Main Configuration Card */}
       <Card className="border-primary/20">
@@ -570,6 +596,97 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* Media Display Settings Tab */}
+        <TabsContent value="media" className="space-y-6 mt-6">
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PlayCircle className="h-5 w-5 text-primary" />
+                Media Display Duration
+              </CardTitle>
+              <CardDescription>
+                Configure how long each image is displayed in reward carousels before automatically advancing to the next
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="mediaDisplayDuration" className="text-base font-semibold">
+                  Display Duration (Seconds) <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex items-center gap-4">
+                  <div className="relative flex-1 max-w-xs">
+                    <PlayCircle className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="mediaDisplayDuration"
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={mediaDisplayDuration}
+                      onChange={(e) => setMediaDisplayDuration(parseInt(e.target.value) || 3)}
+                      className="pl-10 text-lg font-semibold"
+                      placeholder="3"
+                    />
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    seconds per image
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Recommended: 3-5 seconds. This applies to all reward image carousels.
+                </p>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Button 
+                  onClick={handleSave} 
+                  disabled={saving || mediaDisplayDuration < 1}
+                  className="gap-2"
+                  size="lg"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Save Media Settings
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Changes will apply to all reward displays
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Info Card */}
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-blue-100 p-2">
+                  <Info className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium text-blue-900">How Media Display Works</p>
+                  <ul className="space-y-1 text-blue-800/80">
+                    <li>• Rewards can have a video animation and multiple images</li>
+                    <li>• When viewing a reward, the video plays first (if present)</li>
+                    <li>• After the video, images cycle automatically at the set duration</li>
+                    <li>• Users can also swipe manually to navigate images</li>
+                    <li>• This setting applies globally to all rewards</li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
