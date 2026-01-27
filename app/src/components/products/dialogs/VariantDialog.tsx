@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { X, Loader2, Upload, Image as ImageIcon } from 'lucide-react'
+import { X, Loader2, Upload, Image as ImageIcon, Plus, Star } from 'lucide-react'
 import { getStorageUrl } from '@/lib/utils'
 
 // Image compression utility for variant images
@@ -95,7 +95,15 @@ interface Variant {
   is_active: boolean
   is_default: boolean
   image_url?: string | null
+  additional_images?: string[] | null
   animation_url?: string | null
+}
+
+interface ImageItem {
+  id: string
+  file?: File
+  url: string
+  isDefault?: boolean
 }
 
 interface VariantDialogProps {
@@ -130,12 +138,12 @@ export default function VariantDialog({
     is_active: true,
     is_default: false,
     image_url: null,
+    additional_images: [],
     animation_url: null
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [images, setImages] = useState<ImageItem[]>([])
   const [animationPreview, setAnimationPreview] = useState<string | null>(null)
   const [animationFile, setAnimationFile] = useState<File | null>(null)
 
@@ -157,9 +165,32 @@ export default function VariantDialog({
           is_active: variant.is_active,
           is_default: variant.is_default,
           image_url: variant.image_url || null,
+          additional_images: variant.additional_images || [],
           animation_url: variant.animation_url || null
         })
-        setImagePreview(getStorageUrl(variant.image_url) || null)
+        
+        // Load existing images
+        const loadedImages: ImageItem[] = []
+        const additionalImages = variant.additional_images || []
+        
+        // If we have additional_images, use them
+        if (additionalImages.length > 0) {
+          additionalImages.forEach((url, index) => {
+            loadedImages.push({
+              id: `loaded-${index}`,
+              url: getStorageUrl(url) || url,
+              isDefault: index === 0
+            })
+          })
+        } else if (variant.image_url) {
+          // Fallback to single image_url
+          loadedImages.push({
+            id: 'loaded-primary',
+            url: getStorageUrl(variant.image_url) || variant.image_url,
+            isDefault: true
+          })
+        }
+        setImages(loadedImages)
         setAnimationPreview(getStorageUrl(variant.animation_url) || null)
       } else {
         setFormData({
@@ -177,13 +208,13 @@ export default function VariantDialog({
           is_active: true,
           is_default: false,
           image_url: null,
+          additional_images: [],
           animation_url: null
         })
-        setImagePreview(null)
+        setImages([])
         setAnimationPreview(null)
       }
       setErrors({})
-      setImageFile(null)
       setAnimationFile(null)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -246,37 +277,51 @@ export default function VariantDialog({
 
   const handleSubmit = () => {
     if (validate()) {
+      // Get image files to upload
+      const imageFiles = images.filter(img => img.file).map(img => img.file!)
+      const existingImageUrls = images.filter(img => !img.file).map(img => img.url)
+      const defaultImageIndex = images.findIndex(img => img.isDefault)
+      
       onSave({
         ...formData,
         variant_code: generateVariantCode(),
-        imageFile: imageFile, // Pass the image file to parent for upload
+        imageFiles: imageFiles, // Pass multiple image files
+        existingImageUrls: existingImageUrls, // Keep existing images
+        defaultImageIndex: defaultImageIndex >= 0 ? defaultImageIndex : 0,
         animationFile: animationFile // Pass the animation file
       } as any)
     }
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const remainingSlots = 5 - images.length
+    if (remainingSlots <= 0) {
+      setErrors(prev => ({ ...prev, image: 'Maximum 5 images allowed' }))
+      return
+    }
+
+    const filesToAdd = Array.from(files).slice(0, remainingSlots)
+    
+    for (const file of filesToAdd) {
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        setErrors(prev => ({ ...prev, image: 'Please select a valid image file' }))
-        return
+        setErrors(prev => ({ ...prev, image: 'Please select valid image files' }))
+        continue
       }
 
       // Check for AVIF format - not supported by Supabase Storage
       if (file.type === 'image/avif') {
         setErrors(prev => ({ ...prev, image: 'AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.' }))
-        if (e.target) {
-          e.target.value = ''
-        }
-        return
+        continue
       }
 
       // Validate file size (max 5MB before compression)
       if (file.size > 5 * 1024 * 1024) {
         setErrors(prev => ({ ...prev, image: 'Image size must be less than 5MB' }))
-        return
+        continue
       }
 
       try {
@@ -284,26 +329,48 @@ export default function VariantDialog({
         console.log('🖼️ Compressing variant image...')
         const compressedFile = await compressImage(file)
         
-        setImageFile(compressedFile)
-        setErrors(prev => ({ ...prev, image: '' }))
-
         // Create preview
         const reader = new FileReader()
         reader.onloadend = () => {
-          setImagePreview(reader.result as string)
+          const newImage: ImageItem = {
+            id: `new-${Date.now()}-${Math.random()}`,
+            file: compressedFile,
+            url: reader.result as string,
+            isDefault: images.length === 0 // First image is default
+          }
+          setImages(prev => [...prev, newImage])
         }
         reader.readAsDataURL(compressedFile)
+        
+        setErrors(prev => ({ ...prev, image: '' }))
       } catch (error) {
         console.error('Image compression failed:', error)
         setErrors(prev => ({ ...prev, image: 'Image compression failed. Please try a different image.' }))
       }
     }
+    
+    // Reset input
+    if (e.target) {
+      e.target.value = ''
+    }
   }
 
-  const handleRemoveImage = () => {
-    setImageFile(null)
-    setImagePreview(null)
-    setFormData(prev => ({ ...prev, image_url: null }))
+  const handleRemoveImage = (imageId: string) => {
+    setImages(prev => {
+      const filtered = prev.filter(img => img.id !== imageId)
+      // If we removed the default, make the first one default
+      if (filtered.length > 0 && !filtered.some(img => img.isDefault)) {
+        filtered[0].isDefault = true
+      }
+      return filtered
+    })
+  }
+
+  const handleSetDefaultImage = (imageId: string) => {
+    setImages(prev => prev.map(img => ({
+      ...img,
+      isDefault: img.id === imageId
+    })))
   }
 
   const handleAnimationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -363,59 +430,76 @@ export default function VariantDialog({
         </div>
 
         <div className="p-6 space-y-4">
-          {/* Variant Image Upload */}
+          {/* Variant Images Upload - Up to 5 images */}
           <div className="space-y-2">
-            <Label>Variant Image</Label>
-            <div className="flex items-center gap-4">
-              <Avatar className="w-20 h-20 rounded-lg border-2 border-gray-200">
-                {imagePreview ? (
-                  <AvatarImage 
-                    src={imagePreview} 
-                    alt={`${formData.variant_name || 'Variant'} image`}
-                    className="object-cover"
-                  />
-                ) : (
-                  <AvatarFallback className="rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 text-gray-400">
-                    <ImageIcon className="w-8 h-8" />
-                  </AvatarFallback>
-                )}
-              </Avatar>
-              <div className="flex-1">
-                <div className="flex gap-2">
-                  <Button
+            <Label>Variant Images (Up to 5)</Label>
+            <div className="space-y-3">
+              {/* Image Grid */}
+              <div className="flex flex-wrap gap-3">
+                {images.map((image, index) => (
+                  <div key={image.id} className="relative group">
+                    <div className={`w-20 h-20 rounded-lg border-2 overflow-hidden ${image.isDefault ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200'}`}>
+                      <img 
+                        src={image.url} 
+                        alt={`Variant image ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    {/* Overlay with actions */}
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
+                      {!image.isDefault && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefaultImage(image.id)}
+                          className="p-1.5 bg-white/90 rounded-full hover:bg-white text-primary"
+                          title="Set as default"
+                        >
+                          <Star className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(image.id)}
+                        className="p-1.5 bg-white/90 rounded-full hover:bg-white text-red-600"
+                        title="Remove image"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {/* Default badge */}
+                    {image.isDefault && (
+                      <div className="absolute -top-1 -right-1 bg-primary text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                        Default
+                      </div>
+                    )}
+                  </div>
+                ))}
+                
+                {/* Add Image Button */}
+                {images.length < 5 && (
+                  <button
                     type="button"
-                    variant="outline"
-                    size="sm"
                     onClick={() => document.getElementById('variant-image-upload')?.click()}
-                    className="flex items-center gap-2"
+                    className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-primary"
                   >
-                    <Upload className="w-4 h-4" />
-                    {imagePreview ? 'Change Image' : 'Upload Image'}
-                  </Button>
-                  {imagePreview && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRemoveImage}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-                <input
-                  id="variant-image-upload"
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                  onChange={handleImageChange}
-                  className="hidden"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  PNG, JPG, GIF up to 5MB. Auto-compresses to ~5KB. Recommended: 400x400px
-                </p>
-                {errors.image && <p className="text-xs text-red-500 mt-1">{errors.image}</p>}
+                    <Plus className="w-5 h-5" />
+                    <span className="text-[10px]">Add</span>
+                  </button>
+                )}
               </div>
+              
+              <input
+                id="variant-image-upload"
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                onChange={handleImageChange}
+                multiple
+                className="hidden"
+              />
+              <p className="text-xs text-gray-500">
+                PNG, JPG, GIF up to 5MB each. Auto-compresses. First image is default. {images.length}/5 images
+              </p>
+              {errors.image && <p className="text-xs text-red-500">{errors.image}</p>}
             </div>
           </div>
 

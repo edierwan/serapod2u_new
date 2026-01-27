@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { getStorageUrl } from '@/lib/utils'
 import ImageUpload from '@/components/ui/image-upload'
 import { compressProductImage, formatFileSize } from '@/lib/utils/imageCompression'
+import VariantDialog from '@/components/products/dialogs/VariantDialog'
 import { 
   ArrowLeft,
   Package,
@@ -18,7 +19,8 @@ import {
   Tag,
   Info,
   AlertCircle,
-  Upload
+  Upload,
+  Plus
 } from 'lucide-react'
 
 interface ViewProductDetailsProps {
@@ -35,6 +37,9 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
   const [deletingVariant, setDeletingVariant] = useState<string | null>(null)
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
+  const [showVariantDialog, setShowVariantDialog] = useState(false)
+  const [editingVariant, setEditingVariant] = useState<any>(null)
+  const [savingVariant, setSavingVariant] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -141,9 +146,108 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
   }
 
   const handleEditVariant = (variant: any) => {
-    // Store the variant ID to be edited, then navigate to edit-product view
-    sessionStorage.setItem('editVariantId', variant.id)
-    onViewChange?.('edit-product')
+    // Open variant dialog with the variant data for editing
+    setEditingVariant(variant)
+    setShowVariantDialog(true)
+  }
+
+  const handleAddVariant = () => {
+    // Open variant dialog for creating new variant
+    setEditingVariant(null)
+    setShowVariantDialog(true)
+  }
+
+  const handleSaveVariant = async (variantData: any) => {
+    if (!product) return
+    
+    setSavingVariant(true)
+    try {
+      const isEditing = !!editingVariant
+      
+      // Handle image uploads
+      let imageUrl = variantData.image_url
+      if (variantData.imageFiles && variantData.imageFiles.length > 0) {
+        // Upload the first (or default) image
+        const defaultFile = variantData.imageFiles[variantData.defaultImageIndex || 0]
+        const fileName = `${Date.now()}-${defaultFile.name}`
+        const filePath = `product-variants/${product.id}/${fileName}`
+        
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, defaultFile, { upsert: true })
+        
+        if (uploadError) throw uploadError
+        imageUrl = filePath
+      }
+      
+      // Handle animation upload
+      let animationUrl = variantData.animation_url
+      if (variantData.animationFile) {
+        const animationFileName = `${Date.now()}-animation-${variantData.animationFile.name}`
+        const animationFilePath = `product-variants/${product.id}/${animationFileName}`
+        
+        const { error: animUploadError } = await supabase.storage
+          .from('avatars')
+          .upload(animationFilePath, variantData.animationFile, { upsert: true })
+        
+        if (animUploadError) throw animUploadError
+        animationUrl = animationFilePath
+      }
+      
+      const variantPayload = {
+        variant_name: variantData.variant_name,
+        variant_code: variantData.variant_code,
+        manufacturer_sku: variantData.manufacturer_sku,
+        barcode: variantData.barcode,
+        suggested_retail_price: variantData.suggested_retail_price || 0,
+        base_cost: variantData.base_cost || 0,
+        is_active: variantData.is_active,
+        image_url: imageUrl,
+        animation_url: animationUrl,
+        product_id: product.id
+      }
+      
+      if (isEditing) {
+        // Update existing variant
+        const { error } = await supabase
+          .from('product_variants')
+          .update(variantPayload)
+          .eq('id', editingVariant.id)
+        
+        if (error) throw error
+        
+        toast({
+          title: 'Variant Updated',
+          description: `"${variantData.variant_name}" has been updated successfully.`
+        })
+      } else {
+        // Create new variant
+        const { error } = await supabase
+          .from('product_variants')
+          .insert(variantPayload)
+        
+        if (error) throw error
+        
+        toast({
+          title: 'Variant Created',
+          description: `"${variantData.variant_name}" has been created successfully.`
+        })
+      }
+      
+      // Refresh product details
+      await fetchProductDetails()
+      setShowVariantDialog(false)
+      setEditingVariant(null)
+    } catch (error) {
+      console.error('Error saving variant:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to save variant',
+        variant: 'destructive'
+      })
+    } finally {
+      setSavingVariant(false)
+    }
   }
 
   const handleDelete = async () => {
@@ -598,7 +702,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                     <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">
                       {product.product_images.length} image{product.product_images.length > 1 ? 's' : ''}
                     </p>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
+                    <div className="flex gap-3 overflow-x-auto pb-2">
                       {product.product_images.map((img: any) => (
                         <div key={img.id} className="relative group flex-shrink-0">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -609,15 +713,22 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                               setSelectedImageUrl(img.image_url)
                               handleSetPrimaryImage(img.id)
                             }}
-                            className={`w-14 h-14 object-cover rounded-lg cursor-pointer transition-all duration-200 ${
+                            className={`w-20 h-20 object-cover rounded-lg cursor-pointer transition-all duration-200 ${
                               (selectedImageUrl === img.image_url || (!selectedImageUrl && img.is_primary)) 
-                                ? 'ring-2 ring-blue-500 ring-offset-1' 
-                                : 'border border-gray-200 hover:border-blue-300 opacity-70 hover:opacity-100'
+                                ? 'ring-2 ring-blue-500 ring-offset-2' 
+                                : 'border-2 border-gray-200 hover:border-blue-300 opacity-80 hover:opacity-100'
                             }`}
                           />
+                          {/* Primary badge */}
+                          {img.is_primary && (
+                            <div className="absolute -top-1 -left-1 bg-blue-500 text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-sm">
+                              Primary
+                            </div>
+                          )}
+                          {/* Delete button */}
                           <button
                             type="button"
-                            className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="absolute -top-1.5 -right-1.5 h-6 w-6 flex items-center justify-center rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-600 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
@@ -626,7 +737,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                             disabled={deletingImageId === img.id || product.product_images.length === 1}
                             title={product.product_images.length === 1 ? "Cannot delete the last image" : "Delete image"}
                           >
-                            <Trash2 className="h-2.5 w-2.5" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       ))}
@@ -723,14 +834,27 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       </div>
 
       {/* Variants */}
-      {product.product_variants && product.product_variants.length > 0 && (
+      {product.product_variants && product.product_variants.length > 0 ? (
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Tag className="w-4 h-4 text-blue-600" />
-              Product Variants ({product.product_variants.length})
-            </CardTitle>
-            <CardDescription className="text-xs">Different variants of this product</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Tag className="w-4 h-4 text-blue-600" />
+                  Product Variants ({product.product_variants.length})
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">Different variants of this product</CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1.5"
+                onClick={handleAddVariant}
+              >
+                <Plus className="w-4 h-4" />
+                Add Variant
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -844,7 +968,47 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             </div>
           </CardContent>
         </Card>
+      ) : (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Tag className="w-4 h-4 text-blue-600" />
+                  Product Variants
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">No variants yet</CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1.5"
+                onClick={handleAddVariant}
+              >
+                <Plus className="w-4 h-4" />
+                Add Variant
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="text-center py-8 text-gray-500 text-sm">
+              <Tag className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+              <p>No variants have been added yet.</p>
+              <p className="text-xs text-gray-400 mt-1">Click "Add Variant" to create one.</p>
+            </div>
+          </CardContent>
+        </Card>
       )}
+
+      {/* Variant Dialog */}
+      <VariantDialog
+        open={showVariantDialog}
+        onOpenChange={setShowVariantDialog}
+        variant={editingVariant}
+        products={product ? [{ id: product.id, product_name: product.product_name }] : []}
+        onSave={handleSaveVariant}
+        isSaving={savingVariant}
+      />
     </div>
   )
 }
