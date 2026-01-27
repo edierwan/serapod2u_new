@@ -95,6 +95,7 @@ interface Variant {
   is_active: boolean
   is_default: boolean
   image_url?: string | null
+  animation_url?: string | null
 }
 
 interface VariantDialogProps {
@@ -128,12 +129,16 @@ export default function VariantDialog({
     other_price: null,
     is_active: true,
     is_default: false,
-    image_url: null
+    image_url: null,
+    animation_url: null
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [animationPreview, setAnimationPreview] = useState<string | null>(null)
+  const [animationFile, setAnimationFile] = useState<File | null>(null)
+
   useEffect(() => {
     if (open) {
       if (variant) {
@@ -151,9 +156,11 @@ export default function VariantDialog({
           other_price: variant.other_price,
           is_active: variant.is_active,
           is_default: variant.is_default,
-          image_url: variant.image_url || null
+          image_url: variant.image_url || null,
+          animation_url: variant.animation_url || null
         })
         setImagePreview(getStorageUrl(variant.image_url) || null)
+        setAnimationPreview(getStorageUrl(variant.animation_url) || null)
       } else {
         setFormData({
           product_id: products.length > 0 ? products[0].id : '',
@@ -169,12 +176,15 @@ export default function VariantDialog({
           other_price: null,
           is_active: true,
           is_default: false,
-          image_url: null
+          image_url: null,
+          animation_url: null
         })
         setImagePreview(null)
+        setAnimationPreview(null)
       }
       setErrors({})
       setImageFile(null)
+      setAnimationFile(null)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -239,7 +249,8 @@ export default function VariantDialog({
       onSave({
         ...formData,
         variant_code: generateVariantCode(),
-        imageFile: imageFile // Pass the image file to parent for upload
+        imageFile: imageFile, // Pass the image file to parent for upload
+        animationFile: animationFile // Pass the animation file
       } as any)
     }
   }
@@ -293,6 +304,35 @@ export default function VariantDialog({
     setImageFile(null)
     setImagePreview(null)
     setFormData(prev => ({ ...prev, image_url: null }))
+  }
+
+  const handleAnimationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (!file.type.startsWith('video/')) {
+        setErrors(prev => ({ ...prev, animation: 'Please select a valid video file' }))
+        return
+      }
+      
+      // Validate file size (max 10MB for animation) (User asked for max 8 sec animation, typically small, but lets allow 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, animation: 'Animation size must be less than 10MB' }))
+        return
+      }
+
+      setAnimationFile(file)
+      setErrors(prev => ({ ...prev, animation: '' }))
+
+      // Create preview
+      const url = URL.createObjectURL(file)
+      setAnimationPreview(url)
+    }
+  }
+
+  const handleRemoveAnimation = () => {
+    setAnimationFile(null)
+    setAnimationPreview(null)
+    setFormData(prev => ({ ...prev, animation_url: null }))
   }
 
   const getVariantInitials = (name: string) => {
@@ -375,6 +415,64 @@ export default function VariantDialog({
                   PNG, JPG, GIF up to 5MB. Auto-compresses to ~5KB. Recommended: 400x400px
                 </p>
                 {errors.image && <p className="text-xs text-red-500 mt-1">{errors.image}</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Variant Animation (Optional)</Label>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-lg border-2 border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
+                {animationPreview ? (
+                  <video 
+                    src={animationPreview} 
+                    className="w-full h-full object-cover"
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                  />
+                ) : (
+                  <div className="text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById('variant-animation-upload')?.click()}
+                    className="flex items-center gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {animationPreview ? 'Change Animation' : 'Upload Animation'}
+                  </Button>
+                  {animationPreview && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRemoveAnimation}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+                <input
+                  id="variant-animation-upload"
+                  type="file"
+                  accept="video/mp4,video/webm"
+                  onChange={handleAnimationChange}
+                  className="hidden"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  MP4, WebM up to 10MB. Max 8 seconds recommended.
+                </p>
+                {errors.animation && <p className="text-xs text-red-500 mt-1">{errors.animation}</p>}
               </div>
             </div>
           </div>

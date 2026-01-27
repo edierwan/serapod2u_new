@@ -105,7 +105,8 @@ export async function generatePdfForOrderDocument(
         country_code,
         contact_name,
         contact_phone,
-        contact_email
+        contact_email,
+        logo_url
       ),
       warehouse_org:organizations!orders_warehouse_org_id_fkey(
         org_name,
@@ -141,10 +142,13 @@ export async function generatePdfForOrderDocument(
   }
 
   // Determine which organization's settings control the template
-  // PO / Payment Advice -> Buyer's settings
-  // SO / Invoice / DO / Receipt -> Seller's settings
+  // Logic: Use the ISSUER'S settings.
+  // - Purchase Orders, Payment Advice: Buyer (buyer_org_id)
+  // - Sales Orders, Invoices, Delivery Orders, Receipts_issued_by_seller: Seller (seller_org_id)
   let settingOrgId = orderData.buyer_org_id
-  if (['sales_order', 'invoice', 'delivery_order', 'receipt', 'payment_request'].includes(type) && orderData.seller_org_id) {
+
+  const sellerIssuedTypes: DocumentGenerateType[] = ['sales_order', 'delivery_order', 'invoice', 'receipt', 'payment_request']
+  if (sellerIssuedTypes.includes(type)) {
     settingOrgId = orderData.seller_org_id
   }
 
@@ -165,6 +169,7 @@ export async function generatePdfForOrderDocument(
         documentTemplate = settings.document_template as DocumentTemplateType
       }
     }
+    console.log(`📄 Using document template: ${documentTemplate} (from org: ${settingOrgId})`)
   } catch (e) {
     console.warn('Could not fetch document template setting, using default:', e)
   }
@@ -194,6 +199,16 @@ export async function generatePdfForOrderDocument(
     }
   } catch (sigErr) {
     console.warn('Could not fetch buyer signature:', sigErr)
+  }
+
+  // Fetch seller logo image (for Classic template)
+  let sellerLogoImage: string | null = null
+  try {
+    if (orderData.seller_org?.logo_url) {
+      sellerLogoImage = await fetchImageAsDataUrl(orderData.seller_org.logo_url)
+    }
+  } catch (logoErr) {
+    console.warn('Could not fetch seller logo:', logoErr)
   }
 
   // Fetch Issuer Organization Signature (for Sales Order/Invoice "Issued by" section)
@@ -242,6 +257,7 @@ export async function generatePdfForOrderDocument(
   let enrichedOrderData = {
     ...orderData,
     buyer_logo_image: buyerLogoImage,
+    seller_logo_image: sellerLogoImage,
     buyer_signature_image: buyerSignatureImage,
     issuer_signature_image: issuerSignatureImage,
     creator_signature_image: creatorSignatureImage

@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt, Clock, FileCheck, CreditCard, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Package, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt, Clock, FileCheck, CreditCard, CheckCircle2, Download } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
@@ -38,7 +38,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const [loading, setLoading] = useState(true)
   const [documentsDialogOpen, setDocumentsDialogOpen] = useState(false)
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
-  const [activeDocTab, setActiveDocTab] = useState<'so' | 'do' | 'invoice' | 'payment' | 'receipt'>('so')
+  const [activeDocTab, setActiveDocTab] = useState<'so' | 'do' | 'invoice' | 'payment' | 'receipt' | 'po' | 'deposit_invoice' | 'deposit_payment' | 'balance_request' | 'balance_payment'>('so')
   const [documents, setDocuments] = useState<any>({})
   const supabase = createClient()
   const { toast } = useToast()
@@ -60,6 +60,14 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Update active tab based on order type when order data is loaded
+  useEffect(() => {
+    if (orderData) {
+      const isSO = (orderData.display_doc_no || orderData.order_no)?.startsWith('SO') || orderData.order_type === 'SO'
+      setActiveDocTab(isSO ? 'so' : 'po')
+    }
+  }, [orderData])
 
   async function loadOrderData(orderId: string) {
     try {
@@ -294,16 +302,27 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       if (error) throw error
 
       // Organize documents by type
+      // SO workflow: SO -> DO -> Invoice -> Payment -> Receipt
+      // PO workflow: PO -> Deposit Invoice -> Deposit Payment -> Balance Request -> Balance Payment -> Receipt
       const docsByType: any = {
+        // SO workflow
         so: null,
         do: null,
         invoice: null,
         payment: null,
-        receipt: null
+        receipt: null,
+        // PO workflow
+        po: null,
+        deposit_invoice: null,
+        deposit_payment: null,
+        balance_request: null,
+        balance_payment: null
       }
 
       if (docs) {
         for (const doc of docs) {
+          const payload = doc.payload || {}
+          
           switch (doc.doc_type) {
             case 'SO':
               if (!docsByType.so) docsByType.so = doc
@@ -311,11 +330,28 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             case 'DO':
               if (!docsByType.do) docsByType.do = doc
               break
+            case 'PO':
+              if (!docsByType.po) docsByType.po = doc
+              break
             case 'INVOICE':
-              if (!docsByType.invoice) docsByType.invoice = doc
+              // Check if it's a deposit invoice (30%) or balance invoice
+              if (payload.is_deposit_invoice || payload.invoice_stage === 'deposit' || payload.payment_percentage <= 50) {
+                if (!docsByType.deposit_invoice) docsByType.deposit_invoice = doc
+              } else {
+                if (!docsByType.invoice) docsByType.invoice = doc
+              }
               break
             case 'PAYMENT':
-              if (!docsByType.payment) docsByType.payment = doc
+              // Check if it's a deposit payment or balance payment
+              if (payload.is_deposit_payment || payload.payment_stage === 'deposit' || payload.stage === 'deposit' || (payload.payment_percentage && payload.payment_percentage <= 50)) {
+                if (!docsByType.deposit_payment) docsByType.deposit_payment = doc
+              } else {
+                if (!docsByType.balance_payment) docsByType.balance_payment = doc
+                if (!docsByType.payment) docsByType.payment = doc
+              }
+              break
+            case 'PAYMENT_REQUEST':
+              if (!docsByType.balance_request) docsByType.balance_request = doc
               break
             case 'RECEIPT':
               if (!docsByType.receipt) docsByType.receipt = doc
@@ -465,7 +501,381 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         </div>
       </div>
 
-      {/* Document Container */}
+      {/* Document Workflow Tabs - Arrow Style - Below Action Bar */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 print:hidden">
+        {isSalesOrder ? (
+          /* SO Workflow Tabs: Sales Order -> Delivery Order -> Invoice -> Payment -> Receipt */
+          <div className="flex items-center">
+            <button
+              onClick={() => documents.so ? setActiveDocTab('so') : null}
+              className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors rounded-l-lg ${
+                activeDocTab === 'so'
+                  ? 'bg-amber-500 text-white'
+                  : documents.so
+                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.so}
+            >
+              <FileText className="w-4 h-4" />
+              Sales Order
+            </button>
+
+            <button
+              onClick={() => documents.do ? setActiveDocTab('do') : null}
+              className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
+                activeDocTab === 'do'
+                  ? 'bg-purple-500 text-white'
+                  : documents.do
+                    ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.do}
+            >
+              <Package className="w-4 h-4" />
+              Delivery Order
+            </button>
+
+            <button
+              onClick={() => documents.invoice ? setActiveDocTab('invoice') : null}
+              className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
+                activeDocTab === 'invoice'
+                  ? 'bg-cyan-500 text-white'
+                  : documents.invoice
+                    ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.invoice}
+            >
+              <FileCheck className="w-4 h-4" />
+              Invoice
+            </button>
+
+            <button
+              onClick={() => documents.payment ? setActiveDocTab('payment') : null}
+              className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
+                activeDocTab === 'payment'
+                  ? 'bg-blue-500 text-white'
+                  : documents.payment
+                    ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.payment}
+            >
+              <CreditCard className="w-4 h-4" />
+              Payment
+            </button>
+
+            <button
+              onClick={() => documents.receipt ? setActiveDocTab('receipt') : null}
+              className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 rounded-r-lg ${
+                activeDocTab === 'receipt'
+                  ? 'bg-gray-600 text-white'
+                  : documents.receipt
+                    ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.receipt}
+            >
+              <Receipt className="w-4 h-4" />
+              Receipt
+            </button>
+          </div>
+        ) : (
+          /* PO Workflow Tabs: Purchase Order -> Deposit Invoice -> Deposit Payment -> Balance Request -> Balance Payment -> Receipt */
+          <div className="flex items-center">
+            <button
+              onClick={() => documents.po ? setActiveDocTab('po') : null}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors rounded-l-lg ${
+                activeDocTab === 'po'
+                  ? 'bg-amber-500 text-white'
+                  : documents.po
+                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.po}
+            >
+              <FileText className="w-4 h-4" />
+              Purchase Order
+            </button>
+
+            <button
+              onClick={() => documents.deposit_invoice ? setActiveDocTab('deposit_invoice') : null}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
+                activeDocTab === 'deposit_invoice'
+                  ? 'bg-purple-500 text-white'
+                  : documents.deposit_invoice
+                    ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.deposit_invoice}
+            >
+              <FileCheck className="w-4 h-4" />
+              Deposit Invoice
+            </button>
+
+            <button
+              onClick={() => documents.deposit_payment ? setActiveDocTab('deposit_payment') : null}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
+                activeDocTab === 'deposit_payment'
+                  ? 'bg-cyan-500 text-white'
+                  : documents.deposit_payment
+                    ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.deposit_payment}
+            >
+              <CreditCard className="w-4 h-4" />
+              Deposit Payment
+            </button>
+
+            <button
+              onClick={() => documents.balance_request ? setActiveDocTab('balance_request') : null}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
+                activeDocTab === 'balance_request'
+                  ? 'bg-orange-500 text-white'
+                  : documents.balance_request
+                    ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.balance_request}
+            >
+              <FileText className="w-4 h-4" />
+              Balance Request
+            </button>
+
+            <button
+              onClick={() => documents.balance_payment ? setActiveDocTab('balance_payment') : null}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
+                activeDocTab === 'balance_payment'
+                  ? 'bg-blue-500 text-white'
+                  : documents.balance_payment
+                    ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.balance_payment}
+            >
+              <CreditCard className="w-4 h-4" />
+              Balance Payment
+            </button>
+
+            <button
+              onClick={() => documents.receipt ? setActiveDocTab('receipt') : null}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 rounded-r-lg ${
+                activeDocTab === 'receipt'
+                  ? 'bg-gray-600 text-white'
+                  : documents.receipt
+                    ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              disabled={!documents.receipt}
+            >
+              <Receipt className="w-4 h-4" />
+              Receipt
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Tab Content - Document Preview Section */}
+      {(() => {
+        // Determine which document to show based on active tab
+        const getActiveDocument = () => {
+          switch (activeDocTab) {
+            case 'so': return documents.so
+            case 'do': return documents.do
+            case 'invoice': return documents.invoice
+            case 'payment': return documents.payment
+            case 'receipt': return documents.receipt
+            case 'po': return documents.po
+            case 'deposit_invoice': return documents.deposit_invoice
+            case 'deposit_payment': return documents.deposit_payment
+            case 'balance_request': return documents.balance_request
+            case 'balance_payment': return documents.balance_payment
+            default: return null
+          }
+        }
+        
+        const activeDocument = getActiveDocument()
+        
+        // Get tab label for display
+        const getTabLabel = () => {
+          switch (activeDocTab) {
+            case 'so': return 'Sales Order'
+            case 'do': return 'Delivery Order'
+            case 'invoice': return 'Invoice'
+            case 'payment': return 'Payment'
+            case 'receipt': return 'Receipt'
+            case 'po': return 'Purchase Order'
+            case 'deposit_invoice': return 'Deposit Invoice (30%)'
+            case 'deposit_payment': return 'Deposit Payment (30%)'
+            case 'balance_request': return 'Balance Payment Request (70%)'
+            case 'balance_payment': return 'Balance Payment (70%)'
+            default: return 'Document'
+          }
+        }
+        
+        // Get doc type for download
+        const getDocType = () => {
+          switch (activeDocTab) {
+            case 'so': return 'SO'
+            case 'do': return 'DO'
+            case 'invoice': return 'INVOICE'
+            case 'payment': return 'PAYMENT'
+            case 'receipt': return 'RECEIPT'
+            case 'po': return 'PO'
+            case 'deposit_invoice': return 'INVOICE'
+            case 'deposit_payment': return 'PAYMENT'
+            case 'balance_request': return 'PAYMENT_REQUEST'
+            case 'balance_payment': return 'PAYMENT'
+            default: return 'ORDER'
+          }
+        }
+        
+        // Get status badge color
+        const getStatusColor = (status: string) => {
+          switch (status?.toLowerCase()) {
+            case 'acknowledged':
+            case 'completed':
+            case 'approved':
+              return 'bg-green-100 text-green-800'
+            case 'pending':
+              return 'bg-yellow-100 text-yellow-800'
+            case 'rejected':
+              return 'bg-red-100 text-red-800'
+            default:
+              return 'bg-gray-100 text-gray-800'
+          }
+        }
+        
+        // Check if we should show the static order view (for SO or PO - the main document)
+        const showStaticOrderView = (isSalesOrder && activeDocTab === 'so') || (!isSalesOrder && activeDocTab === 'po')
+        
+        if (showStaticOrderView) {
+          // Show the full order document (existing code will render below)
+          return null
+        }
+        
+        // Show document details panel for other tabs
+        return (
+          <div className="bg-white shadow-lg p-6 md:p-8 mb-4 print:hidden">
+            {activeDocument ? (
+              <div className="space-y-4">
+                {/* Document Header */}
+                <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">{getTabLabel()} Details</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Document No: <span className="font-medium text-gray-900">{activeDocument.display_doc_no || activeDocument.doc_no}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(activeDocument.status)}`}>
+                      {activeDocument.status?.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Document Info Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500 block">Created</span>
+                    <span className="font-medium text-gray-900">
+                      {new Date(activeDocument.created_at).toLocaleDateString('en-MY', { 
+                        day: '2-digit', 
+                        month: 'long', 
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                  {activeDocument.acknowledged_at && (
+                    <div>
+                      <span className="text-gray-500 block">Acknowledged</span>
+                      <span className="font-medium text-gray-900">
+                        {new Date(activeDocument.acknowledged_at).toLocaleDateString('en-MY', { 
+                          day: '2-digit', 
+                          month: 'long', 
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {activeDocument.payload?.payment_percentage && (
+                    <div>
+                      <span className="text-gray-500 block">Payment %</span>
+                      <span className="font-medium text-gray-900">{activeDocument.payload.payment_percentage}%</span>
+                    </div>
+                  )}
+                  {activeDocument.payload?.amount && (
+                    <div>
+                      <span className="text-gray-500 block">Amount</span>
+                      <span className="font-medium text-gray-900">RM {Number(activeDocument.payload.amount).toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Download Button */}
+                <div className="pt-4 border-t border-gray-200">
+                  <Button 
+                    onClick={async () => {
+                      try {
+                        const docType = getDocType()
+                        let apiType = docType.toLowerCase()
+                        if (apiType === 'so') apiType = 'sales_order'
+                        else if (apiType === 'do') apiType = 'delivery_order'
+                        else if (apiType === 'po') apiType = 'purchase_order'
+                        else if (apiType === 'payment_request') apiType = 'payment_request'
+                        
+                        const params = new URLSearchParams({
+                          orderId: orderData.id,
+                          type: apiType,
+                          documentId: activeDocument.id,
+                          nocache: 'true'
+                        })
+                        
+                        const response = await fetch(`/api/documents/generate?${params.toString()}`)
+                        if (!response.ok) throw new Error('Failed to generate PDF')
+                        
+                        const blob = await response.blob()
+                        const url = window.URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${orderData.display_doc_no || orderData.order_no}-${docType}.pdf`
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        window.URL.revokeObjectURL(url)
+                        
+                        toast({ title: '✅ Downloaded', description: `${getTabLabel()} downloaded successfully` })
+                      } catch (err) {
+                        console.error('Download error:', err)
+                        toast({ title: 'Download Failed', description: 'Failed to download document', variant: 'destructive' })
+                      }
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download {getTabLabel()} PDF
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                <p className="text-gray-500 font-medium">{getTabLabel()} Not Yet Created</p>
+                <p className="text-sm text-gray-400 mt-1">This document will be available once it is generated in the workflow.</p>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Document Container - Only show for SO or PO main tabs */}
+      {((isSalesOrder && activeDocTab === 'so') || (!isSalesOrder && activeDocTab === 'po')) && (
       <div className="bg-white shadow-lg p-8 md:p-12 print:shadow-none print:p-8 print:w-full">
 
         {/* Header Section - 3 Columns in 1 Row */}
@@ -663,211 +1073,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           </div>
         </div>
       </div>
-
-      {/* Document Workflow Tabs - Arrow Style */}
-      <div className="bg-white shadow-lg px-8 md:px-12 py-6 print:hidden">
-        <div className="flex items-center">
-          {/* Sales Order Tab */}
-          <button
-            onClick={() => documents.so ? setActiveDocTab('so') : null}
-            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
-              activeDocTab === 'so'
-                ? 'bg-amber-400 text-white'
-                : documents.so
-                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            }`}
-            style={{
-              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
-              marginLeft: '-12px',
-              paddingLeft: '24px'
-            }}
-            disabled={!documents.so}
-          >
-            <FileText className="w-4 h-4" />
-            Sales Order
-          </button>
-
-          {/* Delivery Order Tab */}
-          <button
-            onClick={() => documents.do ? setActiveDocTab('do') : null}
-            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
-              activeDocTab === 'do'
-                ? 'bg-purple-500 text-white'
-                : documents.do
-                  ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            }`}
-            style={{
-              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
-              marginLeft: '-12px',
-              paddingLeft: '24px'
-            }}
-            disabled={!documents.do}
-          >
-            <Package className="w-4 h-4" />
-            Delivery Order
-          </button>
-
-          {/* Invoice Tab */}
-          <button
-            onClick={() => documents.invoice ? setActiveDocTab('invoice') : null}
-            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
-              activeDocTab === 'invoice'
-                ? 'bg-cyan-500 text-white'
-                : documents.invoice
-                  ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            }`}
-            style={{
-              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
-              marginLeft: '-12px',
-              paddingLeft: '24px'
-            }}
-            disabled={!documents.invoice}
-          >
-            <FileCheck className="w-4 h-4" />
-            Invoice
-          </button>
-
-          {/* Payment Tab */}
-          <button
-            onClick={() => documents.payment ? setActiveDocTab('payment') : null}
-            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
-              activeDocTab === 'payment'
-                ? 'bg-blue-500 text-white'
-                : documents.payment
-                  ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            }`}
-            style={{
-              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
-              marginLeft: '-12px',
-              paddingLeft: '24px'
-            }}
-            disabled={!documents.payment}
-          >
-            <CreditCard className="w-4 h-4" />
-            Payment
-          </button>
-
-          {/* Receipt Tab */}
-          <button
-            onClick={() => documents.receipt ? setActiveDocTab('receipt') : null}
-            className={`relative flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
-              activeDocTab === 'receipt'
-                ? 'bg-gray-600 text-white'
-                : documents.receipt
-                  ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            }`}
-            style={{
-              clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)',
-              marginLeft: '-12px',
-              paddingLeft: '24px'
-            }}
-            disabled={!documents.receipt}
-          >
-            <Receipt className="w-4 h-4" />
-            Receipt
-          </button>
-        </div>
-
-        {/* Tab Content */}
-        <div className="mt-6 border-t border-gray-200 pt-6">
-          {activeDocTab === 'so' && documents.so && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Sales Order Details</h3>
-                <Badge className={documents.so.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {documents.so.status?.toUpperCase()}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.so.display_doc_no || documents.so.doc_no}</span></div>
-                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.so.created_at).toLocaleDateString('en-MY')}</span></div>
-              </div>
-            </div>
-          )}
-
-          {activeDocTab === 'do' && documents.do && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Delivery Order Details</h3>
-                <Badge className={documents.do.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {documents.do.status?.toUpperCase()}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.do.display_doc_no || documents.do.doc_no}</span></div>
-                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.do.created_at).toLocaleDateString('en-MY')}</span></div>
-              </div>
-            </div>
-          )}
-
-          {activeDocTab === 'invoice' && documents.invoice && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Invoice Details</h3>
-                <Badge className={documents.invoice.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {documents.invoice.status?.toUpperCase()}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.invoice.display_doc_no || documents.invoice.doc_no}</span></div>
-                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.invoice.created_at).toLocaleDateString('en-MY')}</span></div>
-              </div>
-            </div>
-          )}
-
-          {activeDocTab === 'payment' && documents.payment && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Payment Details</h3>
-                <Badge className={documents.payment.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {documents.payment.status?.toUpperCase()}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.payment.display_doc_no || documents.payment.doc_no}</span></div>
-                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.payment.created_at).toLocaleDateString('en-MY')}</span></div>
-              </div>
-            </div>
-          )}
-
-          {activeDocTab === 'receipt' && documents.receipt && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Receipt Details</h3>
-                <Badge className={documents.receipt.status === 'acknowledged' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {documents.receipt.status?.toUpperCase()}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-500">Document No:</span> <span className="font-medium">{documents.receipt.display_doc_no || documents.receipt.doc_no}</span></div>
-                <div><span className="text-gray-500">Created:</span> <span className="font-medium">{new Date(documents.receipt.created_at).toLocaleDateString('en-MY')}</span></div>
-              </div>
-            </div>
-          )}
-
-          {/* No document selected or not created message */}
-          {activeDocTab === 'so' && !documents.so && (
-            <p className="text-gray-500 text-sm">Sales Order not yet created</p>
-          )}
-          {activeDocTab === 'do' && !documents.do && (
-            <p className="text-gray-500 text-sm">Delivery Order not yet created</p>
-          )}
-          {activeDocTab === 'invoice' && !documents.invoice && (
-            <p className="text-gray-500 text-sm">Invoice not yet created</p>
-          )}
-          {activeDocTab === 'payment' && !documents.payment && (
-            <p className="text-gray-500 text-sm">Payment not yet created</p>
-          )}
-          {activeDocTab === 'receipt' && !documents.receipt && (
-            <p className="text-gray-500 text-sm">Receipt not yet created</p>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Order Documents Dialog */}
       {orderData && (

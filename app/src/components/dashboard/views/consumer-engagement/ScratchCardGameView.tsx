@@ -65,52 +65,71 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
     }, [selectedOrder, activeTab])
 
     const fetchOrders = async () => {
-        setLoadingOrders(true)
-        console.log('Fetching orders for org:', userProfile.organization_id)
-
-        // 1. Fetch orders - use buyer_org_id or seller_org_id to find orders for this organization
-        const { data: orders, error: ordersError } = await supabase
-            .from('orders')
-            .select('id, order_no, display_doc_no')
-            .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
-            .order('created_at', { ascending: false })
-
-        if (ordersError) {
-            console.error('Error fetching orders:', ordersError)
-            toast({
-                title: "Error",
-                description: "Failed to load orders",
-                variant: "destructive",
-            })
+        if (!userProfile?.organization_id) {
+            console.log('No organization ID available yet')
             setLoadingOrders(false)
             return
         }
 
-        // 2. Fetch journey links separately to avoid join issues/RLS complexity
-        const orderIds = orders.map(o => o.id)
-        const { data: links, error: linksError } = await supabase
-            .from('journey_order_links')
-            .select('order_id, journey_config_id')
-            .in('order_id', orderIds)
+        setLoadingOrders(true)
+        console.log('Fetching orders for org:', userProfile.organization_id)
 
-        if (linksError) {
-            console.error('Error fetching links:', linksError)
-            // Don't fail completely, just assume no links
+        try {
+            // 1. Fetch orders - use buyer_org_id or seller_org_id to find orders for this organization
+            const { data: orders, error: ordersError } = await supabase
+                .from('orders')
+                .select('id, order_no, display_doc_no')
+                .or(`buyer_org_id.eq.${userProfile.organization_id},seller_org_id.eq.${userProfile.organization_id}`)
+                .order('created_at', { ascending: false })
+
+            if (ordersError) {
+                console.error('Error fetching orders:', ordersError)
+                toast({
+                    title: "Error",
+                    description: "Failed to load orders",
+                    variant: "destructive",
+                })
+                return
+            }
+
+            // 2. Fetch journey links separately to avoid join issues/RLS complexity
+            const orderIds = orders.map(o => o.id)
+            if (orderIds.length > 0) {
+                const { data: links, error: linksError } = await supabase
+                    .from('journey_order_links')
+                    .select('order_id, journey_config_id')
+                    .in('order_id', orderIds)
+
+                if (linksError) {
+                    console.error('Error fetching links:', linksError)
+                    // Don't fail completely, just assume no links
+                }
+
+                // 3. Map links to orders
+                const linkMap = new Map(links?.map(l => [l.order_id, l.journey_config_id]) || [])
+
+                const formattedOrders = orders.map((order: any) => ({
+                    id: order.id,
+                    order_no: order.display_doc_no || order.order_no,  // Use display_doc_no when available
+                    legacy_order_no: order.order_no,  // Keep original order_no as legacy
+                    journey_config_id: linkMap.get(order.id)
+                }))
+
+                console.log('Formatted orders:', formattedOrders)
+                setOrders(formattedOrders)
+            } else {
+                setOrders([])
+            }
+        } catch (error) {
+            console.error('Unexpected error fetching orders:', error)
+            toast({
+                title: "Error",
+                description: "An unexpected error occurred",
+                variant: "destructive",
+            })
+        } finally {
+            setLoadingOrders(false)
         }
-
-        // 3. Map links to orders
-        const linkMap = new Map(links?.map(l => [l.order_id, l.journey_config_id]) || [])
-
-        const formattedOrders = orders.map((order: any) => ({
-            id: order.id,
-            order_no: order.display_doc_no || order.order_no,  // Use display_doc_no when available
-            legacy_order_no: order.order_no,  // Keep original order_no as legacy
-            journey_config_id: linkMap.get(order.id)
-        }))
-
-        console.log('Formatted orders:', formattedOrders)
-        setOrders(formattedOrders)
-        setLoadingOrders(false)
     }
 
     const checkGameStatuses = async () => {

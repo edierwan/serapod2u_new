@@ -60,6 +60,7 @@ export interface TemplateOrderData {
   }>
   // Dynamic image data (fetched and converted to base64)
   buyer_logo_image?: string | null
+  seller_logo_image?: string | null
   buyer_signature_image?: string | null
   issuer_signature_image?: string | null
   creator_signature_image?: string | null  // User Level signature
@@ -164,19 +165,24 @@ export class ClassicTemplate {
     })
 
     // --- Left Column Content (Logo + Info) ---
-    const orgName = orderData.buyer_org.org_name.toUpperCase()
-    const buyerAddress = [
-      orderData.buyer_org.address,
-      orderData.buyer_org.address_line2,
-      [orderData.buyer_org.city, orderData.buyer_org.postal_code].filter(Boolean).join(', '),
-      orderData.buyer_org.state,
-      orderData.buyer_org.contact_email
+    // Determine Issuer (Header Party) based on document title
+    const isBuyerIssuer = ['PURCHASE ORDER', 'PURCHASE_ORDER', 'PO', 'PAYMENT ADVICE', 'PAYMENT', 'ORDER'].some(t => docTitle.toUpperCase().includes(t))
+    const headerOrg = isBuyerIssuer ? orderData.buyer_org : orderData.seller_org
+    const headerLogo = isBuyerIssuer ? orderData.buyer_logo_image : orderData.seller_logo_image
+
+    const orgName = headerOrg.org_name.toUpperCase()
+    const orgAddress = [
+      headerOrg.address,
+      headerOrg.address_line2,
+      [headerOrg.city, headerOrg.postal_code].filter(Boolean).join(', '),
+      headerOrg.state,
+      headerOrg.contact_email
     ].filter(Boolean)
 
     // Calculate Text Block Height
     const nameHeight = 4
     const addrLineHeight = 3.5
-    const textBlockHeight = nameHeight + (buyerAddress.length * addrLineHeight)
+    const textBlockHeight = nameHeight + (orgAddress.length * addrLineHeight)
 
     // Logo Dimensions & Positioning
     const logoMaxHeight = 22 // ~64px (100% bigger)
@@ -185,9 +191,9 @@ export class ClassicTemplate {
     const logoX = this.margin
     let logoY = y + 2 // Default top align if no image
 
-    if (orderData.buyer_logo_image) {
+    if (headerLogo) {
       try {
-        const props = this.doc.getImageProperties(orderData.buyer_logo_image)
+        const props = this.doc.getImageProperties(headerLogo)
         const ratio = props.width / props.height
         logoH = Math.min(logoMaxHeight, props.height * 0.264583) // Convert px to mm if needed, but max is 22mm
         logoH = logoMaxHeight
@@ -197,7 +203,7 @@ export class ClassicTemplate {
         // Ensure we don't go above y
         logoY = y + Math.max(0, (textBlockHeight - logoH) / 2)
 
-        this.doc.addImage(orderData.buyer_logo_image, 'PNG', logoX, logoY, logoW, logoH)
+        this.doc.addImage(headerLogo, 'PNG', logoX, logoY, logoW, logoH)
       } catch (e) {
         console.error('Error adding buyer logo:', e)
         this.doc.setDrawColor(200, 200, 200)
@@ -225,7 +231,7 @@ export class ClassicTemplate {
     this.doc.setFont('helvetica', 'normal')
     this.doc.setTextColor(100, 100, 100)
 
-    buyerAddress.forEach(line => {
+    orgAddress.forEach(line => {
       if (line) {
         this.doc.text(line, textX, currentTextY)
         currentTextY += addrLineHeight

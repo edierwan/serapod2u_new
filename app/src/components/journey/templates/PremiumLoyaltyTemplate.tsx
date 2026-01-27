@@ -230,6 +230,64 @@ interface PremiumLoyaltyTemplateProps {
     productInfo?: ProductInfo
 }
 
+// Variant Media Component for Animations
+const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) => void }) => {
+    const videoRef = useRef<HTMLVideoElement>(null)
+    
+    useEffect(() => {
+        if (variant.animation_url && videoRef.current) {
+            const video = videoRef.current
+            video.muted = true
+            // Auto play for 5 sec without sound
+            const playPromise = video.play()
+            if (playPromise !== undefined) {
+                playPromise.catch(() => {})
+            }
+            
+            const timer = setTimeout(() => {
+                video.pause()
+            }, 5000)
+            
+            return () => clearTimeout(timer)
+        }
+    }, [variant.animation_url])
+
+    if (variant.animation_url) {
+        return (
+            <div className="w-full h-full relative cursor-pointer" onClick={() => onClick(variant)}>
+                 <video 
+                    ref={videoRef}
+                    src={getStorageUrl(variant.animation_url)}
+                    className="w-full h-full object-cover"
+                    muted
+                    loop
+                    playsInline
+                 />
+                 <div className="absolute top-2 right-2 bg-black/40 rounded-full p-1.5 backdrop-blur-sm shadow-sm z-10">
+                     <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                 </div>
+            </div>
+        )
+    }
+
+    if (variant.image_url) {
+        return (
+             <Image
+                src={getStorageUrl(variant.image_url) || variant.image_url}
+                alt={variant.variant_name}
+                fill
+                className="object-cover"
+            />
+        )
+    }
+
+    return (
+        <div className="w-full h-full flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22v-10"/></svg>
+        </div>
+    )
+}
+
 export default function PremiumLoyaltyTemplate({
     config,
     qrCode,
@@ -429,6 +487,7 @@ export default function PremiumLoyaltyTemplate({
     const [luckyDrawEntered, setLuckyDrawEntered] = useState(false)
     const [luckyDrawQrUsed, setLuckyDrawQrUsed] = useState(false) // Track if QR already used for lucky draw
     const [checkingQrStatus, setCheckingQrStatus] = useState(true) // Start true to show loading
+    const [selectedAnimation, setSelectedAnimation] = useState<string | null>(null)
 
     // Control visibility of Free Gifts section in Rewards tab
     const [showFreeGifts, setShowFreeGifts] = useState(false)
@@ -4590,18 +4649,12 @@ export default function PremiumLoyaltyTemplate({
                             {selectedProduct.variants?.map((variant) => (
                                 <div key={variant.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
                                     <div className="aspect-square relative bg-gray-50">
-                                        {variant.image_url ? (
-                                            <Image
-                                                src={getStorageUrl(variant.image_url) || variant.image_url}
-                                                alt={variant.variant_name}
-                                                fill
-                                                className="object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center">
-                                                <Package className="w-8 h-8 text-gray-300" />
-                                            </div>
-                                        )}
+                                        <VariantMedia 
+                                            variant={variant} 
+                                            onClick={(v) => {
+                                                if(v.animation_url) setSelectedAnimation(v.animation_url)
+                                            }} 
+                                        />
                                     </div>
                                     <div className="p-3 flex flex-col flex-1">
                                         <div className="font-medium text-gray-900 text-sm mb-1 flex-1">
@@ -6119,6 +6172,29 @@ export default function PremiumLoyaltyTemplate({
                     setShowPointsAnimation(true)
                 }}
             />
+
+            {/* Variant Animation Modal */}
+            <Dialog open={!!selectedAnimation} onOpenChange={(open) => !open && setSelectedAnimation(null)}>
+                <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black border-none max-w-[90vw] md:max-w-[500px]">
+                     <div className="relative w-full h-full flex items-center justify-center">
+                        <button 
+                            onClick={() => setSelectedAnimation(null)}
+                            className="absolute top-2 right-2 z-50 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition-colors"
+                        >
+                            <X className="w-5 h-5"/>
+                        </button>
+                        {selectedAnimation && (
+                            <video 
+                                src={getStorageUrl(selectedAnimation)} 
+                                className="w-full h-auto aspect-video max-h-[80vh] object-contain bg-black" 
+                                controls 
+                                autoPlay 
+                                playsInline
+                            />
+                        )}
+                     </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Redeem Confirmation Modal */}
             {showRedeemConfirm && selectedReward && (

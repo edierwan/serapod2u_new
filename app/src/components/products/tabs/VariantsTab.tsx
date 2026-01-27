@@ -126,6 +126,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       setIsSaving(true)
       
       let imageUrl = variantData.image_url || null
+      let animationUrl = variantData.animation_url || null
 
       // Handle image upload if there's a new image file
       if (variantData.imageFile) {
@@ -161,11 +162,41 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         imageUrl = `${publicUrl}?v=${Date.now()}`
       }
 
-      // Remove imageFile from data before saving to database
+      // Handle animation upload
+      // @ts-ignore
+      if (variantData.animationFile) {
+        // @ts-ignore
+        const file = variantData.animationFile
+        const fileExt = file.name.split('.').pop()
+        const fileName = `variant-anim-${Date.now()}.${fileExt}`
+        const filePath = `${fileName}`
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, file, {
+            contentType: file.type,
+            cacheControl: '3600',
+            upsert: false
+          })
+
+        if (uploadError) throw uploadError
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(uploadData.path)
+
+        animationUrl = `${publicUrl}?v=${Date.now()}`
+      }
+
+      // Remove files from data before saving to database
       const { imageFile, ...dbData } = variantData
+      // @ts-ignore
+      const { animationFile: _, ...dbDataClean } = dbData
+      
       const dataToSave = {
-        ...dbData,
-        image_url: imageUrl
+        ...dbDataClean,
+        image_url: imageUrl,
+        animation_url: animationUrl
       }
 
       if (editingVariant) {

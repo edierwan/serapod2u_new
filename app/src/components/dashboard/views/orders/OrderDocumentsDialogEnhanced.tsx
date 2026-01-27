@@ -493,7 +493,8 @@ export default function OrderDocumentsDialogEnhanced({
 
       const params = new URLSearchParams({
         orderId,
-        type: apiType
+        type: apiType,
+        nocache: 'true' // Always regenerate to respect latest template settings
       })
 
       if (documentId) {

@@ -35,6 +35,7 @@ import {
     Palette
 } from 'lucide-react'
 import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
+import AnnouncementBannerConfigurator from './AnnouncementBannerConfigurator'
 
 const PRODUCT_CONSUMER_READY_STATUSES = ['shipped_distributor', 'activated', 'redeemed'] as const
 const MASTER_CONSUMER_READY_STATUSES = ['shipped_distributor', 'opened'] as const
@@ -177,7 +178,14 @@ interface JourneyConfig {
             expires_at: string
             page?: 'home' | 'rewards' | 'products' | 'profile' // new: which page to show this banner
             is_active?: boolean // whether this banner is active (defaults to true)
+            placement?: 'top' | 'bottom'
         }>
+        pageSettings?: {
+            home?: any
+            rewards?: any
+            products?: any
+            profile?: any
+        }
     }
 }
 
@@ -216,7 +224,7 @@ export default function JourneyDesignerV2({
     const [previewMetrics, setPreviewMetrics] = useState({ top: 104, maxHeight: 640 })
     const { toast } = useToast()
     const [activationTrigger, setActivationTrigger] = useState<'shipped_distributor' | 'received_warehouse'>('shipped_distributor')
-    const [activeBannerTab, setActiveBannerTab] = useState<'home' | 'rewards' | 'products' | 'profile'>('home')
+
     const [selectedColorThemeIndex, setSelectedColorThemeIndex] = useState(0)
 
     // Find initial theme index based on primary color
@@ -1559,240 +1567,14 @@ export default function JourneyDesignerV2({
                             </div>
 
                             {config.banner_config?.enabled && (
-                                <div className="space-y-4 p-4 border border-gray-200 rounded-lg">
-                                    <div className="space-y-2">
-                                        <Label>Banner Page</Label>
-                                        <Tabs value={activeBannerTab} onValueChange={(value) => setActiveBannerTab(value as 'home' | 'rewards' | 'products' | 'profile')} className="w-full">
-                                            <TabsList className="grid w-full grid-cols-4">
-                                                <TabsTrigger value="home">Home</TabsTrigger>
-                                                <TabsTrigger value="rewards">Rewards</TabsTrigger>
-                                                <TabsTrigger value="products">Product</TabsTrigger>
-                                                <TabsTrigger value="profile">Profile</TabsTrigger>
-                                            </TabsList>
-                                        </Tabs>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label>Banner Template</Label>
-                                        <Select
-                                            value={config.banner_config.template}
-                                            onValueChange={(value: 'grid' | 'carousel') => setConfig({
-                                                ...config,
-                                                banner_config: {
-                                                    ...config.banner_config!,
-                                                    template: value
-                                                }
-                                            })}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="grid">Grid (Side by Side)</SelectItem>
-                                                <SelectItem value="carousel">Carousel (Slider)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <Label>Banner Items for {activeBannerTab.charAt(0).toUpperCase() + activeBannerTab.slice(1)} Page</Label>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => {
-                                                    const newItems = [...(config.banner_config?.items || [])]
-                                                    newItems.push({
-                                                        id: crypto.randomUUID(),
-                                                        image_url: '',
-                                                        link_to: 'rewards',
-                                                        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                                                        page: activeBannerTab
-                                                    })
-                                                    setConfig({
-                                                        ...config,
-                                                        banner_config: {
-                                                            ...config.banner_config!,
-                                                            items: newItems
-                                                        }
-                                                    })
-                                                }}
-                                            >
-                                                Add Banner Item
-                                            </Button>
-                                        </div>
-
-                                        {config.banner_config.items.filter(item => (item.page || 'home') === activeBannerTab).map((item) => {
-                                            const actualIndex = config.banner_config!.items.findIndex(i => i.id === item.id)
-                                            return (
-                                                <div key={item.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 relative">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="absolute top-2 right-2 text-red-500 hover:text-red-700"
-                                                        onClick={() => {
-                                                            const newItems = config.banner_config!.items.filter(i => i.id !== item.id)
-                                                            setConfig({
-                                                                ...config,
-                                                                banner_config: {
-                                                                    ...config.banner_config!,
-                                                                    items: newItems
-                                                                }
-                                                            })
-                                                        }}
-                                                    >
-                                                        Remove
-                                                    </Button>
-
-                                                    <div className="space-y-2">
-                                                        <Label>Image URL</Label>
-                                                        <div className="flex gap-2">
-                                                            <Input
-                                                                value={item.image_url}
-                                                                onChange={(e) => {
-                                                                    const newItems = [...config.banner_config!.items]
-                                                                    newItems[actualIndex].image_url = e.target.value
-                                                                    setConfig({
-                                                                        ...config,
-                                                                        banner_config: {
-                                                                            ...config.banner_config!,
-                                                                            items: newItems
-                                                                        }
-                                                                    })
-                                                                }}
-                                                                placeholder="https://example.com/banner.jpg"
-                                                            />
-                                                            <div className="relative">
-                                                                <input
-                                                                    type="file"
-                                                                    id={`banner-upload-${item.id}`}
-                                                                    className="hidden"
-                                                                    accept="image/*"
-                                                                    onChange={(e) => {
-                                                                        const file = e.target.files?.[0]
-                                                                        if (file) {
-                                                                            const itemId = item.id // Capture item ID
-                                                                            handleImageUpload(file, (url) => {
-                                                                                setConfig(prevConfig => {
-                                                                                    const newItems = [...(prevConfig.banner_config?.items || [])]
-                                                                                    const idx = newItems.findIndex(i => i.id === itemId)
-                                                                                    if (idx !== -1) {
-                                                                                        newItems[idx].image_url = url
-                                                                                    }
-                                                                                    return {
-                                                                                        ...prevConfig,
-                                                                                        banner_config: {
-                                                                                            ...prevConfig.banner_config!,
-                                                                                            items: newItems
-                                                                                        }
-                                                                                    }
-                                                                                })
-                                                                            }, { isBanner: true })
-                                                                        }
-                                                                        // Reset the input value to allow re-uploading same file
-                                                                        e.target.value = ''
-                                                                    }}
-                                                                />
-                                                                <Button
-                                                                    variant="outline"
-                                                                    disabled={uploadingImage}
-                                                                    onClick={() => document.getElementById(`banner-upload-${item.id}`)?.click()}
-                                                                >
-                                                                    {uploadingImage ? 'Uploading...' : 'Upload'}
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                        {item.image_url && (
-                                                            <div className="space-y-2">
-                                                                <p className="text-xs text-gray-500">Preview (actual mobile size):</p>
-                                                                <div className="relative w-full bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                                                                    <Image
-                                                                        src={getStorageUrl(item.image_url) || item.image_url}
-                                                                        alt="Banner preview"
-                                                                        fill
-                                                                        className="object-cover"
-                                                                    />
-                                                                </div>
-                                                                <p className="text-[10px] text-gray-400">16:9 aspect ratio • Optimized for mobile</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="space-y-2">
-                                                            <Label>Link Destination</Label>
-                                                            <Select
-                                                                value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
-                                                                onValueChange={(value: string) => {
-                                                                    const newItems = [...config.banner_config!.items]
-                                                                    if (value === 'external') {
-                                                                        newItems[actualIndex].link_to = ''
-                                                                    } else {
-                                                                        newItems[actualIndex].link_to = value
-                                                                    }
-                                                                    setConfig({
-                                                                        ...config,
-                                                                        banner_config: {
-                                                                            ...config.banner_config!,
-                                                                            items: newItems
-                                                                        }
-                                                                    })
-                                                                }}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="rewards">Rewards Page</SelectItem>
-                                                                    <SelectItem value="products">Product Page</SelectItem>
-                                                                    <SelectItem value="contact-us">Contact Us</SelectItem>
-                                                                    <SelectItem value="no-link">No Link</SelectItem>
-                                                                    <SelectItem value="external">Link</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            {(!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to)) && (
-                                                                <div className="mt-2">
-                                                                    <Input
-                                                                        value={item.link_to}
-                                                                        onChange={(e) => {
-                                                                            const newItems = [...config.banner_config!.items]
-                                                                            newItems[actualIndex].link_to = e.target.value
-                                                                            setConfig({
-                                                                                ...config,
-                                                                                banner_config: {
-                                                                                    ...config.banner_config!,
-                                                                                    items: newItems
-                                                                                }
-                                                                            })
-                                                                        }}
-                                                                        placeholder="https://example.com"
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <Label>Expiration Date</Label>
-                                                            <Input
-                                                                type="date"
-                                                                value={item.expires_at}
-                                                                onChange={(e) => {
-                                                                    const newItems = [...config.banner_config!.items]
-                                                                    newItems[actualIndex].expires_at = e.target.value
-                                                                    setConfig({
-                                                                        ...config,
-                                                                        banner_config: {
-                                                                            ...config.banner_config!,
-                                                                            items: newItems
-                                                                        }
-                                                                    })
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )
+                                <div className="mt-4">
+                                    <AnnouncementBannerConfigurator
+                                        config={config.banner_config as any}
+                                        onChange={(newBannerConfig) => setConfig({
+                                            ...config,
+                                            banner_config: newBannerConfig
                                         })}
-                                    </div>
+                                    />
                                 </div>
                             )}
                         </CardContent>
