@@ -511,9 +511,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors rounded-l-lg ${
                 activeDocTab === 'so'
                   ? 'bg-amber-500 text-white'
-                  : documents.so
-                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.so?.status === 'acknowledged' || documents.so?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.so
+                      ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <FileText className="w-4 h-4" />
@@ -525,9 +527,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'do'
                   ? 'bg-purple-500 text-white'
-                  : documents.do
-                    ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.do?.status === 'acknowledged' || documents.do?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.do
+                      ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <Package className="w-4 h-4" />
@@ -539,9 +543,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'invoice'
                   ? 'bg-cyan-500 text-white'
-                  : documents.invoice
-                    ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.invoice?.status === 'acknowledged' || documents.invoice?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.invoice
+                      ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <FileCheck className="w-4 h-4" />
@@ -553,9 +559,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'payment'
                   ? 'bg-blue-500 text-white'
-                  : documents.payment
-                    ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.payment?.status === 'acknowledged' || documents.payment?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.payment
+                      ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <CreditCard className="w-4 h-4" />
@@ -567,9 +575,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 rounded-r-lg ${
                 activeDocTab === 'receipt'
                   ? 'bg-gray-600 text-white'
-                  : documents.receipt
-                    ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.receipt?.status === 'acknowledged' || documents.receipt?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.receipt
+                      ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <Receipt className="w-4 h-4" />
@@ -584,9 +594,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors rounded-l-lg ${
                 activeDocTab === 'po'
                   ? 'bg-amber-500 text-white'
-                  : documents.po
-                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.po?.status === 'acknowledged' || documents.po?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.po
+                      ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <FileText className="w-4 h-4" />
@@ -598,9 +610,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'deposit_invoice'
                   ? 'bg-purple-500 text-white'
-                  : documents.deposit_invoice
-                    ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.deposit_invoice?.status === 'acknowledged' || documents.deposit_invoice?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.deposit_invoice
+                      ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <FileCheck className="w-4 h-4" />
@@ -612,9 +626,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'deposit_payment'
                   ? 'bg-cyan-500 text-white'
-                  : documents.deposit_payment
-                    ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.deposit_payment?.status === 'acknowledged' || documents.deposit_payment?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.deposit_payment
+                      ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <CreditCard className="w-4 h-4" />
@@ -626,9 +642,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'balance_request'
                   ? 'bg-orange-500 text-white'
-                  : documents.balance_request
-                    ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.balance_request?.status === 'acknowledged' || documents.balance_request?.status === 'completed' || documents.balance_request?.status === 'approved'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.balance_request
+                      ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <FileText className="w-4 h-4" />
@@ -640,9 +658,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'balance_payment'
                   ? 'bg-blue-500 text-white'
-                  : documents.balance_payment
-                    ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.balance_payment?.status === 'acknowledged' || documents.balance_payment?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.balance_payment
+                      ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <CreditCard className="w-4 h-4" />
@@ -654,9 +674,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 rounded-r-lg ${
                 activeDocTab === 'receipt'
                   ? 'bg-gray-600 text-white'
-                  : documents.receipt
-                    ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  : documents.receipt?.status === 'acknowledged' || documents.receipt?.status === 'completed'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : documents.receipt
+                      ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               <Receipt className="w-4 h-4" />
@@ -745,246 +767,283 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           return null
         }
         
-        // Show document details panel for other tabs
-        return (
-          <div className="bg-white shadow-lg p-6 md:p-8 mb-4 print:hidden">
-            {activeDocument ? (
-              <div className="space-y-4">
-                {/* Document Header */}
-                <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{getTabLabel()} Details</h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Document No: <span className="font-medium text-gray-900">{activeDocument.display_doc_no || activeDocument.doc_no}</span>
+        // For other tabs, show full document page when document exists, or "Not Created" message
+        // Get document title based on tab
+        const getDocumentTitle = () => {
+          switch (activeDocTab) {
+            case 'do': return 'DELIVERY ORDER'
+            case 'invoice': return 'INVOICE'
+            case 'payment': return 'PAYMENT ADVICE'
+            case 'receipt': return 'RECEIPT'
+            case 'deposit_invoice': return 'DEPOSIT INVOICE (30%)'
+            case 'deposit_payment': return 'DEPOSIT PAYMENT (30%)'
+            case 'balance_request': return 'BALANCE PAYMENT REQUEST (70%)'
+            case 'balance_payment': return 'BALANCE PAYMENT (70%)'
+            default: return 'DOCUMENT'
+          }
+        }
+        
+        // Get document number label
+        const getDocNoLabel = () => {
+          switch (activeDocTab) {
+            case 'do': return 'DO#:'
+            case 'invoice': 
+            case 'deposit_invoice': return 'INV#:'
+            case 'payment':
+            case 'deposit_payment':
+            case 'balance_payment': return 'PV#:'
+            case 'balance_request': return 'BR#:'
+            case 'receipt': return 'RC#:'
+            default: return 'Doc#:'
+          }
+        }
+        
+        // If document exists, show the full document page
+        if (activeDocument) {
+          return (
+            <div className="bg-white shadow-lg p-8 md:p-12 print:shadow-none print:p-8 print:w-full">
+              {/* Header Section - 3 Columns in 1 Row */}
+              <div className="flex justify-between items-start mb-12 print:mb-6 gap-8">
+                {/* Left: Company Logo */}
+                <div className="flex-shrink-0">
+                  {headerOrg?.logo_url ? (
+                    <img
+                      src={headerOrg.logo_url}
+                      alt={headerOrg.org_name}
+                      className="h-60 object-contain"
+                    />
+                  ) : (
+                    <h1 className="text-2xl font-bold tracking-tight">serapod<span className="text-blue-600">2u</span></h1>
+                  )}
+                </div>
+
+                {/* Center: Headquarters Detail */}
+                <div className="flex-1">
+                  <h2 className="font-bold text-gray-900 uppercase mb-2 text-sm tracking-wide">
+                    {headerOrg?.org_name}
+                  </h2>
+                  <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
+                    <p className="whitespace-pre-line">{headerOrg?.address || 'No address provided'}</p>
+                    {headerOrg?.phone && <p>Phone: {headerOrg.phone}</p>}
+                    {headerOrg?.email && <p>Email: {headerOrg.email}</p>}
+                  </div>
+                </div>
+
+                {/* Right: Document Detail */}
+                <div className="flex-shrink-0 text-right">
+                  <h1 className="text-xl font-light text-gray-900 mb-4 uppercase tracking-wider">{getDocumentTitle()}</h1>
+                  <div className="text-xs space-y-2">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">{getDocNoLabel()}</span>
+                      <span className="font-medium text-gray-900">{activeDocument.display_doc_no || activeDocument.doc_no}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">Order#:</span>
+                      <span className="font-medium text-gray-900">{orderData.display_doc_no || orderData.order_no}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">Date:</span>
+                      <span className="font-medium text-gray-900">{new Date(activeDocument.created_at).toLocaleDateString('en-MY')}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">By:</span>
+                      <span className="font-medium text-gray-900">{orderData.created_by_user?.full_name || 'User Level'}</span>
+                    </div>
+                    {activeDocument.payload?.payment_percentage && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-gray-500">Payment:</span>
+                        <span className="font-medium text-gray-900">{activeDocument.payload.payment_percentage}%</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Supplier & Status Section */}
+              <div className="flex justify-between items-start mb-12 print:mb-6 border-t border-gray-100 pt-8 print:pt-4">
+                {/* Supplier Info */}
+                <div className="w-1/2">
+                  <h3 className="font-bold text-gray-900 mb-3 text-sm">{otherOrgLabel}</h3>
+                  <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
+                    <p className="font-bold text-gray-800 uppercase mb-1">{otherOrg?.org_name}</p>
+                    <p className="uppercase">{otherOrg?.contact_person || ''}</p>
+                    <p className="whitespace-pre-line max-w-xs">{otherOrg?.address || 'No address provided'}</p>
+                    <p>{otherOrg?.email}</p>
+                  </div>
+                </div>
+
+                {/* Status Box */}
+                <div className="w-48">
+                  <div className="border border-gray-200 p-4 text-center rounded-sm">
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Status</p>
+                    <p className={`text-xl font-bold uppercase ${
+                      activeDocument.status === 'acknowledged' || activeDocument.status === 'completed' || activeDocument.status === 'approved'
+                        ? 'text-green-600'
+                        : activeDocument.status === 'pending'
+                          ? 'text-yellow-600'
+                          : 'text-gray-600'
+                    }`}>
+                      {activeDocument.status?.toUpperCase()}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(activeDocument.status)}`}>
-                      {activeDocument.status?.toUpperCase()}
-                    </span>
-                  </div>
                 </div>
-                
-                {/* Document Info Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              </div>
+
+              {/* Items Table */}
+              <div className="mb-12 print:mb-6">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="py-2 text-left text-xs font-bold text-gray-900 w-12">No</th>
+                      <th className="py-2 text-left text-xs font-bold text-gray-900">Description</th>
+                      <th className="py-2 text-right text-xs font-bold text-gray-900 w-24">Unit</th>
+                      <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Price</th>
+                      <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {orderData.order_items?.map((item: any, index: number) => (
+                      <tr key={item.id} className="break-inside-avoid page-break-inside-avoid">
+                        <td className="py-3 text-xs text-gray-600 align-top pt-4">{index + 1}</td>
+                        <td className="py-3 text-xs text-gray-900 align-top pt-4">
+                          <p className="font-medium text-sm whitespace-nowrap">
+                            {(() => {
+                              const productName = item.product?.product_name?.replace(/\[.*?\]\s*$/, '').trim() || '';
+                              const variantName = item.variant?.variant_name || '';
+                              const bracketMatch = variantName.match(/^(.*?)\s*\[(.*?)\]\s*$/);
+                              if (bracketMatch) {
+                                return `${productName} ${bracketMatch[1].trim()} [ ${bracketMatch[2].trim()} ]`;
+                              }
+                              return `${productName} ${variantName}`;
+                            })()}
+                          </p>
+                        </td>
+                        <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatNumber(item.qty)}</td>
+                        <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>
+                        <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.line_total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-gray-200">
+                      <td colSpan={2} className="py-4"></td>
+                      <td className="py-4 text-right text-xs font-bold text-gray-900">{formatNumber(totalQuantity)}</td>
+                      <td className="py-4 text-right text-xs font-bold text-gray-900">Total</td>
+                      <td className="py-4 text-right text-sm font-bold text-gray-900">
+                        {activeDocument.payload?.amount 
+                          ? formatCurrency(Number(activeDocument.payload.amount))
+                          : formatCurrency(subtotal)
+                        }
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Document Footer with Acknowledgement Info */}
+              <div className="mt-12 pt-8 print:mt-4 print:pt-4 border-t border-gray-100 break-inside-avoid page-break-inside-avoid">
+                <div className="flex justify-between items-start">
                   <div>
-                    <span className="text-gray-500 block">Created</span>
-                    <span className="font-medium text-gray-900">
-                      {new Date(activeDocument.created_at).toLocaleDateString('en-MY', { 
-                        day: '2-digit', 
-                        month: 'long', 
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
+                    <p className="text-[10px] text-gray-400">This is a computer generated document.</p>
+                    {activeDocument.acknowledged_at && (
+                      <p className="text-xs text-green-600 mt-2">
+                        ✓ Acknowledged on {new Date(activeDocument.acknowledged_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
                   </div>
-                  {activeDocument.acknowledged_at && (
-                    <div>
-                      <span className="text-gray-500 block">Acknowledged</span>
-                      <span className="font-medium text-gray-900">
-                        {new Date(activeDocument.acknowledged_at).toLocaleDateString('en-MY', { 
-                          day: '2-digit', 
-                          month: 'long', 
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
-                  )}
-                  {activeDocument.payload?.payment_percentage && (
-                    <div>
-                      <span className="text-gray-500 block">Payment %</span>
-                      <span className="font-medium text-gray-900">{activeDocument.payload.payment_percentage}%</span>
-                    </div>
-                  )}
-                  {activeDocument.payload?.amount && (
-                    <div>
-                      <span className="text-gray-500 block">Amount</span>
-                      <span className="font-medium text-gray-900">RM {Number(activeDocument.payload.amount).toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  )}
+                  <div className="text-center">
+                    <p className="text-xs text-gray-600 mb-2">Created: {new Date(activeDocument.created_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                  </div>
                 </div>
-                
-                {/* Pending Remarks - Show when document exists but is pending */}
-                {activeDocument.status === 'pending' && (() => {
+              </div>
+            </div>
+          )
+        }
+        
+        // Document doesn't exist - show "Not Yet Created" message with remarks
+        return (
+          <div className="bg-white shadow-lg p-6 md:p-8 mb-4 print:hidden">
+            <div className="text-center py-8">
+              <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-500 font-medium">{getTabLabel()} Not Yet Created</p>
+              <p className="text-sm text-gray-400 mt-2">This document will be available once it is generated in the workflow.</p>
+              {/* Show pending remarks based on workflow status */}
+              {(() => {
+                const getAwaitingRemarks = () => {
                   const sellerOrgName = orderData?.seller_org?.org_name || 'manufacturer'
                   const buyerOrgName = orderData?.buyer_org?.org_name || 'buyer'
-                  const docNo = activeDocument.display_doc_no || activeDocument.doc_no
                   
-                  let remarks = ''
-                  switch (activeDocTab) {
-                    case 'po':
-                      remarks = `Awaiting ${sellerOrgName} to upload Proforma Invoice (PI) and acknowledge ${docNo}`
-                      break
-                    case 'so':
-                      remarks = `Awaiting ${buyerOrgName} to acknowledge ${docNo}`
-                      break
-                    case 'do':
-                      remarks = `Awaiting ${buyerOrgName} to acknowledge delivery of ${docNo}`
-                      break
-                    case 'invoice':
-                    case 'deposit_invoice':
-                      remarks = `Awaiting ${buyerOrgName} to upload payment proof and acknowledge ${docNo}`
-                      break
-                    case 'payment':
-                    case 'deposit_payment':
-                      remarks = `Awaiting ${sellerOrgName} to confirm payment received for ${docNo}`
-                      break
-                    case 'balance_request':
-                      remarks = `Awaiting Finance HQ (Serapod) to approve balance payment request ${docNo}`
-                      break
-                    case 'balance_payment':
-                      remarks = `Awaiting ${sellerOrgName} to confirm balance payment received for ${docNo}`
-                      break
-                    case 'receipt':
-                      remarks = `Awaiting ${buyerOrgName} to acknowledge receipt ${docNo}`
-                      break
-                    default:
-                      remarks = `Awaiting processing for ${docNo}`
+                  if (isSalesOrder) {
+                    switch (activeDocTab) {
+                      case 'do':
+                        if (documents.so?.status === 'pending') {
+                          return `Awaiting ${buyerOrgName} to acknowledge Sales Order ${documents.so?.display_doc_no || documents.so?.doc_no || ''}`
+                        }
+                        return `Awaiting ${sellerOrgName} to create and send Delivery Order`
+                      case 'invoice':
+                        if (documents.do?.status === 'pending') {
+                          return `Awaiting ${buyerOrgName} to acknowledge Delivery Order ${documents.do?.display_doc_no || documents.do?.doc_no || ''}`
+                        }
+                        return `Awaiting ${sellerOrgName} to create Invoice after delivery acknowledgement`
+                      case 'payment':
+                        if (documents.invoice?.status === 'pending') {
+                          return `Awaiting ${buyerOrgName} to upload payment proof for Invoice ${documents.invoice?.display_doc_no || documents.invoice?.doc_no || ''}`
+                        }
+                        return `Awaiting Invoice to be created and payment proof uploaded`
+                      case 'receipt':
+                        if (documents.payment?.status === 'pending') {
+                          return `Awaiting ${sellerOrgName} to confirm payment received for ${documents.payment?.display_doc_no || documents.payment?.doc_no || ''}`
+                        }
+                        return `Awaiting payment to be confirmed to generate Receipt`
+                      default:
+                        return null
+                    }
+                  } else {
+                    switch (activeDocTab) {
+                      case 'deposit_invoice':
+                        if (documents.po?.status === 'pending') {
+                          return `Awaiting ${sellerOrgName} to upload Proforma Invoice (PI) and acknowledge PO ${documents.po?.display_doc_no || documents.po?.doc_no || ''}`
+                        }
+                        return `Awaiting ${sellerOrgName} to create Deposit Invoice (30%) after PO acknowledgement`
+                      case 'deposit_payment':
+                        if (documents.deposit_invoice?.status === 'pending') {
+                          return `Awaiting ${buyerOrgName} to upload payment proof for Deposit Invoice ${documents.deposit_invoice?.display_doc_no || documents.deposit_invoice?.doc_no || ''}`
+                        }
+                        return `Awaiting Deposit Invoice to be created and payment proof uploaded`
+                      case 'balance_request':
+                        if (documents.deposit_payment?.status === 'pending') {
+                          return `Awaiting ${sellerOrgName} to confirm payment received for ${documents.deposit_payment?.display_doc_no || documents.deposit_payment?.doc_no || ''}`
+                        }
+                        return `Awaiting Deposit Payment (30%) confirmation to create Balance Payment Request`
+                      case 'balance_payment':
+                        if (documents.balance_request?.status === 'pending') {
+                          return `Awaiting Finance HQ (Serapod) to approve Balance Payment Request ${documents.balance_request?.display_doc_no || documents.balance_request?.doc_no || ''}`
+                        }
+                        return `Awaiting Balance Payment Request (70%) to be approved`
+                      case 'receipt':
+                        if (documents.balance_payment?.status === 'pending') {
+                          return `Awaiting ${sellerOrgName} to confirm balance payment received for ${documents.balance_payment?.display_doc_no || documents.balance_payment?.doc_no || ''}`
+                        }
+                        return `Awaiting Balance Payment (70%) confirmation to generate final Receipt`
+                      default:
+                        return null
+                    }
                   }
-                  
+                }
+                
+                const remarks = getAwaitingRemarks()
+                if (remarks) {
                   return (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
                       <p className="text-sm text-amber-800">
                         <span className="font-semibold">Remarks:</span> {remarks}
                       </p>
                     </div>
                   )
-                })()}
-                
-                {/* Download Button */}
-                <div className="pt-4 border-t border-gray-200">
-                  <Button 
-                    onClick={async () => {
-                      try {
-                        const docType = getDocType()
-                        let apiType = docType.toLowerCase()
-                        if (apiType === 'so') apiType = 'sales_order'
-                        else if (apiType === 'do') apiType = 'delivery_order'
-                        else if (apiType === 'po') apiType = 'purchase_order'
-                        else if (apiType === 'payment_request') apiType = 'payment_request'
-                        
-                        const params = new URLSearchParams({
-                          orderId: orderData.id,
-                          type: apiType,
-                          documentId: activeDocument.id,
-                          nocache: 'true'
-                        })
-                        
-                        const response = await fetch(`/api/documents/generate?${params.toString()}`)
-                        if (!response.ok) throw new Error('Failed to generate PDF')
-                        
-                        const blob = await response.blob()
-                        const url = window.URL.createObjectURL(blob)
-                        const a = document.createElement('a')
-                        a.href = url
-                        a.download = `${orderData.display_doc_no || orderData.order_no}-${docType}.pdf`
-                        document.body.appendChild(a)
-                        a.click()
-                        document.body.removeChild(a)
-                        window.URL.revokeObjectURL(url)
-                        
-                        toast({ title: '✅ Downloaded', description: `${getTabLabel()} downloaded successfully` })
-                      } catch (err) {
-                        console.error('Download error:', err)
-                        toast({ title: 'Download Failed', description: 'Failed to download document', variant: 'destructive' })
-                      }
-                    }}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download {getTabLabel()} PDF
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                <p className="text-gray-500 font-medium">{getTabLabel()} Not Yet Created</p>
-                <p className="text-sm text-gray-400 mt-2">This document will be available once it is generated in the workflow.</p>
-                {/* Show pending remarks based on workflow status */}
-                {(() => {
-                  // Determine the previous document in the workflow to show what's being awaited
-                  const getAwaitingRemarks = () => {
-                    const sellerOrgName = orderData?.seller_org?.org_name || 'manufacturer'
-                    const buyerOrgName = orderData?.buyer_org?.org_name || 'buyer'
-                    
-                    if (isSalesOrder) {
-                      // SO Workflow: SO -> DO -> Invoice -> Payment -> Receipt
-                      switch (activeDocTab) {
-                        case 'do':
-                          if (documents.so?.status === 'pending') {
-                            return `Awaiting ${buyerOrgName} to acknowledge Sales Order ${documents.so?.display_doc_no || documents.so?.doc_no || ''}`
-                          }
-                          return `Awaiting ${sellerOrgName} to create and send Delivery Order`
-                        case 'invoice':
-                          if (documents.do?.status === 'pending') {
-                            return `Awaiting ${buyerOrgName} to acknowledge Delivery Order ${documents.do?.display_doc_no || documents.do?.doc_no || ''}`
-                          }
-                          return `Awaiting ${sellerOrgName} to create Invoice after delivery acknowledgement`
-                        case 'payment':
-                          if (documents.invoice?.status === 'pending') {
-                            return `Awaiting ${buyerOrgName} to upload payment proof for Invoice ${documents.invoice?.display_doc_no || documents.invoice?.doc_no || ''}`
-                          }
-                          return `Awaiting Invoice to be created and payment proof uploaded`
-                        case 'receipt':
-                          if (documents.payment?.status === 'pending') {
-                            return `Awaiting ${sellerOrgName} to confirm payment received for ${documents.payment?.display_doc_no || documents.payment?.doc_no || ''}`
-                          }
-                          return `Awaiting payment to be confirmed to generate Receipt`
-                        default:
-                          return null
-                      }
-                    } else {
-                      // PO Workflow: PO -> Deposit Invoice -> Deposit Payment -> Balance Request -> Balance Payment -> Receipt
-                      switch (activeDocTab) {
-                        case 'deposit_invoice':
-                          if (documents.po?.status === 'pending') {
-                            return `Awaiting ${sellerOrgName} to upload Proforma Invoice (PI) and acknowledge PO ${documents.po?.display_doc_no || documents.po?.doc_no || ''}`
-                          }
-                          return `Awaiting ${sellerOrgName} to create Deposit Invoice (30%) after PO acknowledgement`
-                        case 'deposit_payment':
-                          if (documents.deposit_invoice?.status === 'pending') {
-                            return `Awaiting ${buyerOrgName} to upload payment proof for Deposit Invoice ${documents.deposit_invoice?.display_doc_no || documents.deposit_invoice?.doc_no || ''}`
-                          }
-                          return `Awaiting Deposit Invoice to be created and payment proof uploaded`
-                        case 'balance_request':
-                          if (documents.deposit_payment?.status === 'pending') {
-                            return `Awaiting ${sellerOrgName} to confirm payment received for ${documents.deposit_payment?.display_doc_no || documents.deposit_payment?.doc_no || ''}`
-                          }
-                          return `Awaiting Deposit Payment (30%) confirmation to create Balance Payment Request`
-                        case 'balance_payment':
-                          if (documents.balance_request?.status === 'pending') {
-                            return `Awaiting Finance HQ (Serapod) to approve Balance Payment Request ${documents.balance_request?.display_doc_no || documents.balance_request?.doc_no || ''}`
-                          }
-                          return `Awaiting Balance Payment Request (70%) to be approved`
-                        case 'receipt':
-                          if (documents.balance_payment?.status === 'pending') {
-                            return `Awaiting ${sellerOrgName} to confirm balance payment received for ${documents.balance_payment?.display_doc_no || documents.balance_payment?.doc_no || ''}`
-                          }
-                          return `Awaiting Balance Payment (70%) confirmation to generate final Receipt`
-                        default:
-                          return null
-                      }
-                    }
-                  }
-                  
-                  const remarks = getAwaitingRemarks()
-                  if (remarks) {
-                    return (
-                      <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                        <p className="text-sm text-amber-800">
-                          <span className="font-semibold">Remarks:</span> {remarks}
-                        </p>
-                      </div>
-                    )
-                  }
-                  return null
-                })()}
-              </div>
-            )}
+                }
+                return null
+              })()}
+            </div>
           </div>
         )
       })()}
