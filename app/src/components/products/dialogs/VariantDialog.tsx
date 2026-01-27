@@ -314,9 +314,9 @@ export default function VariantDialog({
         return
       }
       
-      // Validate file size (max 10MB for animation) (User asked for max 8 sec animation, typically small, but lets allow 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, animation: 'Animation size must be less than 10MB' }))
+      // Validate file size (max 50MB for animation)
+      if (file.size > 50 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, animation: 'Animation size must be less than 50MB' }))
         return
       }
 
@@ -470,7 +470,7 @@ export default function VariantDialog({
                   className="hidden"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  MP4, WebM up to 10MB. Max 8 seconds recommended.
+                  MP4, WebM up to 50MB. Max 8 seconds recommended.
                 </p>
                 {errors.animation && <p className="text-xs text-red-500 mt-1">{errors.animation}</p>}
               </div>
