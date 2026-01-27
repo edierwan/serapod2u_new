@@ -243,7 +243,7 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
             const video = videoRef.current
             video.muted = true
             
-            // Try to play when video is ready
+            // Try to play when video is ready - loop continuously
             const handleCanPlay = () => {
                 const playPromise = video.play()
                 if (playPromise !== undefined) {
@@ -255,13 +255,8 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
             
             video.addEventListener('canplay', handleCanPlay)
             
-            // Auto play for 5 sec without sound
-            const timer = setTimeout(() => {
-                video.pause()
-            }, 5000)
-            
+            // No timeout - let it loop continuously
             return () => {
-                clearTimeout(timer)
                 video.removeEventListener('canplay', handleCanPlay)
             }
         }
@@ -3665,7 +3660,16 @@ export default function PremiumLoyaltyTemplate({
                                 rewards.map((reward) => (
                                     <div key={reward.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
                                         <div className="h-28 bg-white flex items-center justify-center relative p-2">
-                                            {reward.item_image_url ? (
+                                            {(reward as any).animation_url ? (
+                                                <video
+                                                    src={getStorageUrl((reward as any).animation_url) || (reward as any).animation_url}
+                                                    className="w-full h-full object-contain"
+                                                    muted
+                                                    loop
+                                                    autoPlay
+                                                    playsInline
+                                                />
+                                            ) : reward.item_image_url ? (
                                                 <Image
                                                     src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
                                                     alt={reward.item_name}
@@ -6216,6 +6220,7 @@ export default function PremiumLoyaltyTemplate({
                                 className="w-full h-auto aspect-video max-h-[80vh] object-contain bg-black" 
                                 controls 
                                 autoPlay 
+                                loop
                                 playsInline
                             />
                         )}
@@ -6245,6 +6250,7 @@ export default function PremiumLoyaltyTemplate({
                                         className="w-full h-full object-contain bg-black" 
                                         controls 
                                         autoPlay 
+                                        loop
                                         playsInline
                                         // Note: Browser autoplay policies may block sound. User can unmute via controls.
                                     />
@@ -6675,9 +6681,17 @@ export default function PremiumLoyaltyTemplate({
                         {selectedRewardForDetail?.item_name || 'Reward Details'}
                     </DialogTitle>
                     {(() => {
+                        const animationUrl = (selectedRewardForDetail as any)?.animation_url
                         const images = (selectedRewardForDetail?.additional_images && selectedRewardForDetail.additional_images.length > 0)
                             ? selectedRewardForDetail.additional_images
                             : [selectedRewardForDetail?.item_image_url].filter(Boolean) as string[]
+                        
+                        // Build media array: animation first (if exists), then images
+                        const mediaItems: { type: 'video' | 'image'; url: string }[] = []
+                        if (animationUrl) {
+                            mediaItems.push({ type: 'video', url: animationUrl })
+                        }
+                        images.forEach(img => mediaItems.push({ type: 'image', url: img }))
 
                         return (
                             <div className="relative h-64 w-full bg-white overflow-hidden">
@@ -6688,45 +6702,73 @@ export default function PremiumLoyaltyTemplate({
                                     <X className="w-5 h-5 text-gray-600" />
                                 </button>
 
-                                {images.length > 0 ? (
+                                {mediaItems.length > 0 ? (
                                     <motion.div
                                         className="flex h-full"
-                                        style={{ width: `${images.length * 100}%` }}
-                                        animate={{ x: `-${currentRewardImageIndex * (100 / images.length)}%` }}
+                                        style={{ width: `${mediaItems.length * 100}%` }}
+                                        animate={{ x: `-${currentRewardImageIndex * (100 / mediaItems.length)}%` }}
                                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        drag={images.length > 1 ? "x" : false}
+                                        drag={mediaItems.length > 1 ? "x" : false}
                                         dragElastic={0.2}
                                         onDragEnd={(e, { offset, velocity }) => {
                                             const swipe = offset.x
                                             const swipeThreshold = 50
 
-                                            if (swipe < -swipeThreshold && currentRewardImageIndex < images.length - 1) {
+                                            if (swipe < -swipeThreshold && currentRewardImageIndex < mediaItems.length - 1) {
                                                 setCurrentRewardImageIndex(currentRewardImageIndex + 1)
                                             } else if (swipe > swipeThreshold && currentRewardImageIndex > 0) {
                                                 setCurrentRewardImageIndex(currentRewardImageIndex - 1)
                                             }
                                         }}
                                     >
-                                        {images.map((img, idx) => (
+                                        {mediaItems.map((media, idx) => (
                                             <div
                                                 key={idx}
                                                 className="relative h-full"
-                                                style={{ width: `${100 / images.length}%` }}
+                                                style={{ width: `${100 / mediaItems.length}%` }}
                                             >
-                                                <Image
-                                                    src={getStorageUrl(img) || img}
-                                                    alt={selectedRewardForDetail?.item_name || 'Reward'}
-                                                    fill
-                                                    className="object-contain p-4"
-                                                    priority={idx === currentRewardImageIndex}
-                                                    draggable={false}
-                                                />
+                                                {media.type === 'video' ? (
+                                                    <video
+                                                        src={getStorageUrl(media.url) || media.url}
+                                                        className="w-full h-full object-contain p-4"
+                                                        controls
+                                                        autoPlay
+                                                        loop
+                                                        playsInline
+                                                    />
+                                                ) : (
+                                                    <Image
+                                                        src={getStorageUrl(media.url) || media.url}
+                                                        alt={selectedRewardForDetail?.item_name || 'Reward'}
+                                                        fill
+                                                        className="object-contain p-4"
+                                                        priority={idx === currentRewardImageIndex}
+                                                        draggable={false}
+                                                    />
+                                                )}
                                             </div>
                                         ))}
                                     </motion.div>
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">
                                         <Gift className="w-20 h-20 text-gray-300" />
+                                    </div>
+                                )}
+                                
+                                {/* Media indicator dots */}
+                                {mediaItems.length > 1 && (
+                                    <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+                                        {mediaItems.map((_, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => setCurrentRewardImageIndex(idx)}
+                                                className={`w-2 h-2 rounded-full transition-colors ${
+                                                    idx === currentRewardImageIndex 
+                                                        ? 'bg-gray-800' 
+                                                        : 'bg-gray-300'
+                                                }`}
+                                            />
+                                        ))}
                                     </div>
                                 )}
                             </div>

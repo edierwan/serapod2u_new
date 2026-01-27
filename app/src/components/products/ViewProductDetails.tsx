@@ -140,6 +140,12 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
     onViewChange?.('edit-product')
   }
 
+  const handleEditVariant = (variant: any) => {
+    // Store the variant ID to be edited, then navigate to edit-product view
+    sessionStorage.setItem('editVariantId', variant.id)
+    onViewChange?.('edit-product')
+  }
+
   const handleDelete = async () => {
     if (!product) return
     
@@ -733,7 +739,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                   key={variant.id} 
                   className="group relative bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all duration-200 overflow-hidden"
                 >
-                  {/* Status Badge & Delete Button */}
+                  {/* Status Badge & Edit/Delete Buttons */}
                   <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
@@ -744,6 +750,15 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                     >
                       {variant.is_active ? 'Active' : 'Inactive'}
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-blue-600 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleEditVariant(variant)}
+                      title="Edit variant"
+                    >
+                      <Edit className="h-3 w-3" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

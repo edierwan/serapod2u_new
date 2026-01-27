@@ -126,6 +126,8 @@ type RewardFormState = {
   validUntil: string
   imageUrl: string
   additionalImages: string[]
+  animationUrl: string
+  displayDuration: string  // Duration in seconds for image/video rotation
   isActive: boolean
   // Point category specific fields
   pointRewardAmount: string
@@ -184,6 +186,8 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     validUntil: "",
     imageUrl: "",
     additionalImages: [],
+    animationUrl: "",
+    displayDuration: "3",  // Default 3 seconds per image/video
     isActive: true,
     // Point category specific fields
     pointRewardAmount: "100",
@@ -198,8 +202,11 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [images, setImages] = useState<ImageItem[]>([])
+  const [animationFile, setAnimationFile] = useState<File | null>(null)
+  const [animationPreview, setAnimationPreview] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const animationInputRef = useRef<HTMLInputElement>(null)
   const [pointValueRM, setPointValueRM] = useState<number>(0)
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
 
@@ -263,6 +270,8 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
           validUntil: data.valid_until ? formatDateForInput(data.valid_until) : "",
           imageUrl: data.item_image_url ?? "",
           additionalImages: (data as any).additional_images ?? [],
+          animationUrl: (data as any).animation_url ?? "",
+          displayDuration: (data as any).display_duration ? (data as any).display_duration.toString() : "3",
           isActive: data.is_active ?? true,
           // Point category specific fields
           pointRewardAmount: (data as any).point_reward_amount ? (data as any).point_reward_amount.toString() : "100",
@@ -273,6 +282,11 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
         setCategory(rewardCategory)
         setRequiresVerification(Boolean(data.max_redemptions_per_consumer && data.max_redemptions_per_consumer <= 1))
         setCodeManuallyEdited(true)
+        
+        // Set animation preview if exists
+        if ((data as any).animation_url) {
+          setAnimationPreview((data as any).animation_url)
+        }
         
         // Initialize images state
         const loadedImages: ImageItem[] = []
@@ -581,6 +595,8 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
       item_description: form.description.trim() ? form.description.trim() : null,
       item_image_url: defaultImageUrl,
       additional_images: finalImages, // Store all images here
+      animation_url: form.animationUrl || null,
+      display_duration: form.displayDuration ? parseInt(form.displayDuration) : 3,
       // For Point category, set points_required to 0 (user doesn't need to spend points)
       points_required: isPointCategory ? 0 : parsedPoints,
       point_offer: isPointCategory ? null : parsedPointOffer,
@@ -997,6 +1013,128 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                     />
                     <p className="text-xs text-muted-foreground">
                         Recommended: 1:1 ratio, max 5MB per image. First image or marked default will be shown in lists.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Animation Video Upload */}
+                <div>
+                  <Label>Reward Animation (Optional)</Label>
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-32 h-32 rounded-lg border border-muted-foreground/20 bg-muted overflow-hidden flex items-center justify-center">
+                        {animationPreview || form.animationUrl ? (
+                          <video 
+                            src={animationPreview || form.animationUrl} 
+                            className="w-full h-full object-cover"
+                            muted
+                            loop
+                            autoPlay
+                            playsInline
+                          />
+                        ) : (
+                          <div className="text-muted-foreground/50">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => animationInputRef.current?.click()}
+                          >
+                            <UploadCloud className="h-4 w-4 mr-2" />
+                            {animationPreview || form.animationUrl ? 'Change Video' : 'Upload Video'}
+                          </Button>
+                          {(animationPreview || form.animationUrl) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setAnimationFile(null)
+                                setAnimationPreview(null)
+                                updateForm('animationUrl', '')
+                              }}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          MP4, WebM up to 50MB. Max 8 seconds recommended.
+                        </p>
+                      </div>
+                    </div>
+                    <input
+                      ref={animationInputRef}
+                      type="file"
+                      accept="video/mp4,video/webm"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          if (file.size > 50 * 1024 * 1024) {
+                            toast({
+                              title: "File too large",
+                              description: "Animation must be less than 50MB",
+                              variant: "destructive"
+                            })
+                            return
+                          }
+                          setAnimationFile(file)
+                          setAnimationPreview(URL.createObjectURL(file))
+                          
+                          // Upload immediately
+                          try {
+                            const fileName = `animation_${Date.now()}_${file.name}`
+                            const filePath = `rewards/${userProfile.organizations.id}/${fileName}`
+                            
+                            const { error: uploadError } = await supabase.storage
+                              .from('product-images')
+                              .upload(filePath, file, { upsert: true })
+                            
+                            if (uploadError) throw uploadError
+                            
+                            const { data: urlData } = supabase.storage
+                              .from('product-images')
+                              .getPublicUrl(filePath)
+                            
+                            updateForm('animationUrl', urlData.publicUrl)
+                            toast({ title: "Animation uploaded" })
+                          } catch (err: any) {
+                            console.error('Animation upload failed:', err)
+                            toast({
+                              title: "Upload failed",
+                              description: err?.message ?? "Failed to upload animation",
+                              variant: "destructive"
+                            })
+                          }
+                        }
+                      }}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Display Duration Setting */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="displayDuration">Media Display Duration (seconds)</Label>
+                    <Input
+                      id="displayDuration"
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={form.displayDuration}
+                      onChange={(event) => updateForm("displayDuration", event.target.value)}
+                      placeholder="3"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      How long each image/video displays before rotating (1-30 seconds)
                     </p>
                   </div>
                 </div>
