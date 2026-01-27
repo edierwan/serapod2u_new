@@ -507,75 +507,70 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           /* SO Workflow Tabs: Sales Order -> Delivery Order -> Invoice -> Payment -> Receipt */
           <div className="flex items-center">
             <button
-              onClick={() => documents.so ? setActiveDocTab('so') : null}
+              onClick={() => setActiveDocTab('so')}
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors rounded-l-lg ${
                 activeDocTab === 'so'
                   ? 'bg-amber-500 text-white'
                   : documents.so
                     ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.so}
             >
               <FileText className="w-4 h-4" />
               Sales Order
             </button>
 
             <button
-              onClick={() => documents.do ? setActiveDocTab('do') : null}
+              onClick={() => setActiveDocTab('do')}
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'do'
                   ? 'bg-purple-500 text-white'
                   : documents.do
                     ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.do}
             >
               <Package className="w-4 h-4" />
               Delivery Order
             </button>
 
             <button
-              onClick={() => documents.invoice ? setActiveDocTab('invoice') : null}
+              onClick={() => setActiveDocTab('invoice')}
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'invoice'
                   ? 'bg-cyan-500 text-white'
                   : documents.invoice
                     ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.invoice}
             >
               <FileCheck className="w-4 h-4" />
               Invoice
             </button>
 
             <button
-              onClick={() => documents.payment ? setActiveDocTab('payment') : null}
+              onClick={() => setActiveDocTab('payment')}
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'payment'
                   ? 'bg-blue-500 text-white'
                   : documents.payment
                     ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.payment}
             >
               <CreditCard className="w-4 h-4" />
               Payment
             </button>
 
             <button
-              onClick={() => documents.receipt ? setActiveDocTab('receipt') : null}
+              onClick={() => setActiveDocTab('receipt')}
               className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-l border-white/30 rounded-r-lg ${
                 activeDocTab === 'receipt'
                   ? 'bg-gray-600 text-white'
                   : documents.receipt
                     ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.receipt}
             >
               <Receipt className="w-4 h-4" />
               Receipt
@@ -585,90 +580,84 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           /* PO Workflow Tabs: Purchase Order -> Deposit Invoice -> Deposit Payment -> Balance Request -> Balance Payment -> Receipt */
           <div className="flex items-center">
             <button
-              onClick={() => documents.po ? setActiveDocTab('po') : null}
+              onClick={() => setActiveDocTab('po')}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors rounded-l-lg ${
                 activeDocTab === 'po'
                   ? 'bg-amber-500 text-white'
                   : documents.po
                     ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.po}
             >
               <FileText className="w-4 h-4" />
               Purchase Order
             </button>
 
             <button
-              onClick={() => documents.deposit_invoice ? setActiveDocTab('deposit_invoice') : null}
+              onClick={() => setActiveDocTab('deposit_invoice')}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'deposit_invoice'
                   ? 'bg-purple-500 text-white'
                   : documents.deposit_invoice
                     ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.deposit_invoice}
             >
               <FileCheck className="w-4 h-4" />
               Deposit Invoice
             </button>
 
             <button
-              onClick={() => documents.deposit_payment ? setActiveDocTab('deposit_payment') : null}
+              onClick={() => setActiveDocTab('deposit_payment')}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'deposit_payment'
                   ? 'bg-cyan-500 text-white'
                   : documents.deposit_payment
                     ? 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.deposit_payment}
             >
               <CreditCard className="w-4 h-4" />
               Deposit Payment
             </button>
 
             <button
-              onClick={() => documents.balance_request ? setActiveDocTab('balance_request') : null}
+              onClick={() => setActiveDocTab('balance_request')}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'balance_request'
                   ? 'bg-orange-500 text-white'
                   : documents.balance_request
                     ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.balance_request}
             >
               <FileText className="w-4 h-4" />
               Balance Request
             </button>
 
             <button
-              onClick={() => documents.balance_payment ? setActiveDocTab('balance_payment') : null}
+              onClick={() => setActiveDocTab('balance_payment')}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 ${
                 activeDocTab === 'balance_payment'
                   ? 'bg-blue-500 text-white'
                   : documents.balance_payment
                     ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.balance_payment}
             >
               <CreditCard className="w-4 h-4" />
               Balance Payment
             </button>
 
             <button
-              onClick={() => documents.receipt ? setActiveDocTab('receipt') : null}
+              onClick={() => setActiveDocTab('receipt')}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-l border-white/30 rounded-r-lg ${
                 activeDocTab === 'receipt'
                   ? 'bg-gray-600 text-white'
                   : documents.receipt
                     ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
-              disabled={!documents.receipt}
             >
               <Receipt className="w-4 h-4" />
               Receipt
@@ -818,6 +807,53 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   )}
                 </div>
                 
+                {/* Pending Remarks - Show when document exists but is pending */}
+                {activeDocument.status === 'pending' && (() => {
+                  const sellerOrgName = orderData?.seller_org?.org_name || 'manufacturer'
+                  const buyerOrgName = orderData?.buyer_org?.org_name || 'buyer'
+                  const docNo = activeDocument.display_doc_no || activeDocument.doc_no
+                  
+                  let remarks = ''
+                  switch (activeDocTab) {
+                    case 'po':
+                      remarks = `Awaiting ${sellerOrgName} to upload Proforma Invoice (PI) and acknowledge ${docNo}`
+                      break
+                    case 'so':
+                      remarks = `Awaiting ${buyerOrgName} to acknowledge ${docNo}`
+                      break
+                    case 'do':
+                      remarks = `Awaiting ${buyerOrgName} to acknowledge delivery of ${docNo}`
+                      break
+                    case 'invoice':
+                    case 'deposit_invoice':
+                      remarks = `Awaiting ${buyerOrgName} to upload payment proof and acknowledge ${docNo}`
+                      break
+                    case 'payment':
+                    case 'deposit_payment':
+                      remarks = `Awaiting ${sellerOrgName} to confirm payment received for ${docNo}`
+                      break
+                    case 'balance_request':
+                      remarks = `Awaiting Finance HQ (Serapod) to approve balance payment request ${docNo}`
+                      break
+                    case 'balance_payment':
+                      remarks = `Awaiting ${sellerOrgName} to confirm balance payment received for ${docNo}`
+                      break
+                    case 'receipt':
+                      remarks = `Awaiting ${buyerOrgName} to acknowledge receipt ${docNo}`
+                      break
+                    default:
+                      remarks = `Awaiting processing for ${docNo}`
+                  }
+                  
+                  return (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-sm text-amber-800">
+                        <span className="font-semibold">Remarks:</span> {remarks}
+                      </p>
+                    </div>
+                  )
+                })()}
+                
                 {/* Download Button */}
                 <div className="pt-4 border-t border-gray-200">
                   <Button 
@@ -867,7 +903,86 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               <div className="text-center py-8">
                 <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
                 <p className="text-gray-500 font-medium">{getTabLabel()} Not Yet Created</p>
-                <p className="text-sm text-gray-400 mt-1">This document will be available once it is generated in the workflow.</p>
+                <p className="text-sm text-gray-400 mt-2">This document will be available once it is generated in the workflow.</p>
+                {/* Show pending remarks based on workflow status */}
+                {(() => {
+                  // Determine the previous document in the workflow to show what's being awaited
+                  const getAwaitingRemarks = () => {
+                    const sellerOrgName = orderData?.seller_org?.org_name || 'manufacturer'
+                    const buyerOrgName = orderData?.buyer_org?.org_name || 'buyer'
+                    
+                    if (isSalesOrder) {
+                      // SO Workflow: SO -> DO -> Invoice -> Payment -> Receipt
+                      switch (activeDocTab) {
+                        case 'do':
+                          if (documents.so?.status === 'pending') {
+                            return `Awaiting ${buyerOrgName} to acknowledge Sales Order ${documents.so?.display_doc_no || documents.so?.doc_no || ''}`
+                          }
+                          return `Awaiting ${sellerOrgName} to create and send Delivery Order`
+                        case 'invoice':
+                          if (documents.do?.status === 'pending') {
+                            return `Awaiting ${buyerOrgName} to acknowledge Delivery Order ${documents.do?.display_doc_no || documents.do?.doc_no || ''}`
+                          }
+                          return `Awaiting ${sellerOrgName} to create Invoice after delivery acknowledgement`
+                        case 'payment':
+                          if (documents.invoice?.status === 'pending') {
+                            return `Awaiting ${buyerOrgName} to upload payment proof for Invoice ${documents.invoice?.display_doc_no || documents.invoice?.doc_no || ''}`
+                          }
+                          return `Awaiting Invoice to be created and payment proof uploaded`
+                        case 'receipt':
+                          if (documents.payment?.status === 'pending') {
+                            return `Awaiting ${sellerOrgName} to confirm payment received for ${documents.payment?.display_doc_no || documents.payment?.doc_no || ''}`
+                          }
+                          return `Awaiting payment to be confirmed to generate Receipt`
+                        default:
+                          return null
+                      }
+                    } else {
+                      // PO Workflow: PO -> Deposit Invoice -> Deposit Payment -> Balance Request -> Balance Payment -> Receipt
+                      switch (activeDocTab) {
+                        case 'deposit_invoice':
+                          if (documents.po?.status === 'pending') {
+                            return `Awaiting ${sellerOrgName} to upload Proforma Invoice (PI) and acknowledge PO ${documents.po?.display_doc_no || documents.po?.doc_no || ''}`
+                          }
+                          return `Awaiting ${sellerOrgName} to create Deposit Invoice (30%) after PO acknowledgement`
+                        case 'deposit_payment':
+                          if (documents.deposit_invoice?.status === 'pending') {
+                            return `Awaiting ${buyerOrgName} to upload payment proof for Deposit Invoice ${documents.deposit_invoice?.display_doc_no || documents.deposit_invoice?.doc_no || ''}`
+                          }
+                          return `Awaiting Deposit Invoice to be created and payment proof uploaded`
+                        case 'balance_request':
+                          if (documents.deposit_payment?.status === 'pending') {
+                            return `Awaiting ${sellerOrgName} to confirm payment received for ${documents.deposit_payment?.display_doc_no || documents.deposit_payment?.doc_no || ''}`
+                          }
+                          return `Awaiting Deposit Payment (30%) confirmation to create Balance Payment Request`
+                        case 'balance_payment':
+                          if (documents.balance_request?.status === 'pending') {
+                            return `Awaiting Finance HQ (Serapod) to approve Balance Payment Request ${documents.balance_request?.display_doc_no || documents.balance_request?.doc_no || ''}`
+                          }
+                          return `Awaiting Balance Payment Request (70%) to be approved`
+                        case 'receipt':
+                          if (documents.balance_payment?.status === 'pending') {
+                            return `Awaiting ${sellerOrgName} to confirm balance payment received for ${documents.balance_payment?.display_doc_no || documents.balance_payment?.doc_no || ''}`
+                          }
+                          return `Awaiting Balance Payment (70%) confirmation to generate final Receipt`
+                        default:
+                          return null
+                      }
+                    }
+                  }
+                  
+                  const remarks = getAwaitingRemarks()
+                  if (remarks) {
+                    return (
+                      <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p className="text-sm text-amber-800">
+                          <span className="font-semibold">Remarks:</span> {remarks}
+                        </p>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
               </div>
             )}
           </div>
