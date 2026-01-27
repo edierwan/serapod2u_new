@@ -115,11 +115,27 @@ export function AnnouncementBanner({
     // Detect scroll to update current slide index
     const handleScroll = () => {
         if (sliderRef.current) {
-            const scrollLeft = sliderRef.current.scrollLeft
-            const width = sliderRef.current.clientWidth * 0.85 // 85% width based on CSS
-            const index = Math.round(scrollLeft / width)
-            if (index !== currentSlide && index >= 0 && index < activeItems.length) {
-                setCurrentSlide(index)
+            const container = sliderRef.current
+            const containerRect = container.getBoundingClientRect()
+            const containerCenter = containerRect.left + containerRect.width / 2
+            
+            let closestIndex = currentSlide
+            let minDistance = Infinity
+            
+            Array.from(container.children).forEach((child, index) => {
+                const item = child as HTMLElement
+                const itemRect = item.getBoundingClientRect()
+                const itemCenter = itemRect.left + itemRect.width / 2
+                const distance = Math.abs(containerCenter - itemCenter)
+                
+                if (distance < minDistance) {
+                    minDistance = distance
+                    closestIndex = index
+                }
+            })
+
+            if (closestIndex !== currentSlide) {
+                setCurrentSlide(closestIndex)
                 // Reset progress on manual scroll
                 setProgress(0)
             }
@@ -133,13 +149,32 @@ export function AnnouncementBanner({
 
     const scrollToSlide = (index: number) => {
         if (sliderRef.current) {
-            const width = sliderRef.current.clientWidth * 0.85
-            sliderRef.current.scrollTo({
-                left: index * width,
-                behavior: 'smooth'
-            })
-            setCurrentSlide(index)
-            setProgress(0)
+            const container = sliderRef.current
+            const items = container.children
+            if (index >= 0 && index < items.length) {
+                const item = items[index] as HTMLElement
+                
+                // Use getBoundingClientRect for robust positioning calculation
+                const itemRect = item.getBoundingClientRect()
+                const containerRect = container.getBoundingClientRect()
+                
+                // Calculate how much we need to scroll to center the item
+                // Current position of item relative to container viewport
+                const currentOffsetFromLeft = itemRect.left - containerRect.left
+                
+                // Where we want the item to be (centered)
+                const desiredOffsetFromLeft = (container.clientWidth - item.offsetWidth) / 2
+                
+                // The difference is how much we need to adjust scroll
+                const delta = currentOffsetFromLeft - desiredOffsetFromLeft
+                
+                container.scrollTo({
+                    left: container.scrollLeft + delta,
+                    behavior: 'smooth'
+                })
+                setCurrentSlide(index)
+                setProgress(0)
+            }
         }
     }
 

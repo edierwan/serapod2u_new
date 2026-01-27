@@ -3032,7 +3032,15 @@ export default function PremiumLoyaltyTemplate({
     const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile', currentPlacement: 'top' | 'bottom' = 'top') => {
         const individualItems = (config.banner_config?.enabled && config.banner_config.items) ? config.banner_config.items : []
         const masterItems = (masterBannerConfig?.enabled && masterBannerConfig.items) ? masterBannerConfig.items : []
-        const allItems = [...individualItems, ...masterItems]
+        
+        // Combine and deduplicate items based on ID
+        const allItemsRaw = [...individualItems, ...masterItems]
+        const seenIds = new Set()
+        const allItems = allItemsRaw.filter((item: any) => {
+            if (seenIds.has(item.id)) return false
+            seenIds.add(item.id)
+            return true
+        })
 
         if (allItems.length === 0) return null
 
