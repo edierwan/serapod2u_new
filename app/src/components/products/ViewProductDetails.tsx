@@ -267,7 +267,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       }
 
       // Update local state instead of refetching
-      setProduct(prev => {
+      setProduct((prev: any) => {
         if (!prev) return prev
         const updatedImages = prev.product_images.filter((img: any) => img.id !== imageId)
         
@@ -399,7 +399,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
 
       // Check inventory (optional - table may not exist)
       console.log('📦 Checking inventory...')
-      const { data: inventory, error: inventoryCheckError } = await supabase
+      const { data: inventory, error: inventoryCheckError } = await (supabase as any)
         .from('inventory')
         .select('id')
         .eq('variant_id', variantId)

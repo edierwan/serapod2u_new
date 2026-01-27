@@ -68,7 +68,8 @@ export async function GET(request: NextRequest) {
           variant_name,
           suggested_retail_price,
           other_price,
-          image_url
+          image_url,
+          animation_url
         )
       `)
       .eq('is_active', true)

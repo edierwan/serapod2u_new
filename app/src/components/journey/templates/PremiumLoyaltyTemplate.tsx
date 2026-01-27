@@ -233,26 +233,41 @@ interface PremiumLoyaltyTemplateProps {
 // Variant Media Component for Animations
 const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) => void }) => {
     const videoRef = useRef<HTMLVideoElement>(null)
+    const [videoError, setVideoError] = useState(false)
     
     useEffect(() => {
+        // Reset error state when animation_url changes
+        setVideoError(false)
+        
         if (variant.animation_url && videoRef.current) {
             const video = videoRef.current
             video.muted = true
-            // Auto play for 5 sec without sound
-            const playPromise = video.play()
-            if (playPromise !== undefined) {
-                playPromise.catch(() => {})
+            
+            // Try to play when video is ready
+            const handleCanPlay = () => {
+                const playPromise = video.play()
+                if (playPromise !== undefined) {
+                    playPromise.catch((err) => {
+                        console.warn('Video autoplay failed:', err)
+                    })
+                }
             }
             
+            video.addEventListener('canplay', handleCanPlay)
+            
+            // Auto play for 5 sec without sound
             const timer = setTimeout(() => {
                 video.pause()
             }, 5000)
             
-            return () => clearTimeout(timer)
+            return () => {
+                clearTimeout(timer)
+                video.removeEventListener('canplay', handleCanPlay)
+            }
         }
     }, [variant.animation_url])
 
-    if (variant.animation_url) {
+    if (variant.animation_url && !videoError) {
         return (
             <div className="w-full h-full relative cursor-pointer" onClick={() => onClick(variant)}>
                  <video 
@@ -262,6 +277,7 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
                     muted
                     loop
                     playsInline
+                    onError={() => setVideoError(true)}
                  />
                  <div className="absolute top-2 right-2 bg-black/40 rounded-full p-1.5 backdrop-blur-sm shadow-sm z-10">
                      <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
@@ -6230,6 +6246,7 @@ export default function PremiumLoyaltyTemplate({
                                         controls 
                                         autoPlay 
                                         playsInline
+                                        // Note: Browser autoplay policies may block sound. User can unmute via controls.
                                     />
                                 ) : selectedVariantForDetail.image_url ? (
                                     <Image
