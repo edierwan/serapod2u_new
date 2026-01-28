@@ -336,9 +336,16 @@ export default function VariantDialog({
             id: `new-${Date.now()}-${Math.random()}`,
             file: compressedFile,
             url: reader.result as string,
-            isDefault: images.length === 0 // First image is default
+            isDefault: false // Will set default properly below
           }
-          setImages(prev => [...prev, newImage])
+          setImages(prev => {
+            const updatedImages = [...prev, newImage]
+            // If this is the first image, make it default
+            if (updatedImages.length === 1) {
+              updatedImages[0].isDefault = true
+            }
+            return updatedImages
+          })
         }
         reader.readAsDataURL(compressedFile)
         

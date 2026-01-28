@@ -164,21 +164,49 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
     try {
       const isEditing = !!editingVariant
       
-      // Handle image uploads
-      let imageUrl = variantData.image_url
-      if (variantData.imageFiles && variantData.imageFiles.length > 0) {
-        // Upload the first (or default) image
-        const defaultFile = variantData.imageFiles[variantData.defaultImageIndex || 0]
-        const fileName = `${Date.now()}-${defaultFile.name}`
-        const filePath = `product-variants/${product.id}/${fileName}`
-        
-        const { error: uploadError } = await supabase.storage
-          .from('avatars')
-          .upload(filePath, defaultFile, { upsert: true })
-        
-        if (uploadError) throw uploadError
-        imageUrl = filePath
+      // Handle image uploads - support multiple images
+      const uploadedImageUrls: string[] = []
+      
+      // First, keep existing images that weren't removed
+      if (variantData.existingImageUrls && variantData.existingImageUrls.length > 0) {
+        // Extract just the path from full URLs if needed
+        variantData.existingImageUrls.forEach((url: string) => {
+          // If URL contains the storage bucket URL, extract the path
+          if (url.includes('/storage/v1/object/public/avatars/')) {
+            const pathMatch = url.match(/\/avatars\/(.+)$/)
+            if (pathMatch) {
+              uploadedImageUrls.push(pathMatch[1])
+            } else {
+              uploadedImageUrls.push(url)
+            }
+          } else {
+            // It's already a path
+            uploadedImageUrls.push(url)
+          }
+        })
       }
+      
+      // Upload new image files
+      if (variantData.imageFiles && variantData.imageFiles.length > 0) {
+        for (const file of variantData.imageFiles) {
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`
+          const filePath = `product-variants/${product.id}/${fileName}`
+          
+          const { error: uploadError } = await supabase.storage
+            .from('avatars')
+            .upload(filePath, file, { upsert: true })
+          
+          if (uploadError) {
+            console.error('Error uploading image:', uploadError)
+            throw uploadError
+          }
+          uploadedImageUrls.push(filePath)
+        }
+      }
+      
+      // Determine default image (first image or specified index)
+      const defaultImageIndex = variantData.defaultImageIndex || 0
+      let imageUrl = uploadedImageUrls.length > 0 ? uploadedImageUrls[defaultImageIndex] || uploadedImageUrls[0] : variantData.image_url
       
       // Handle animation upload
       let animationUrl = variantData.animation_url
@@ -203,6 +231,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         base_cost: variantData.base_cost || 0,
         is_active: variantData.is_active,
         image_url: imageUrl,
+        additional_images: uploadedImageUrls.length > 0 ? uploadedImageUrls : null,
         animation_url: animationUrl,
         product_id: product.id
       }
