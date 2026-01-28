@@ -21,18 +21,24 @@ interface Product {
 interface Variant {
   id: string
   product_id: string
+  variant_code?: string
   variant_name: string
   attributes: Record<string, any>
   barcode: string | null
   manufacturer_sku: string | null
+  manual_sku: string | null
   base_cost: number | null
   suggested_retail_price: number | null
+  retailer_price: number | null
+  distributor_price: number | null
   other_price: number | null
   is_active: boolean
   is_default: boolean
   created_at: string
   product_name?: string
   image_url?: string | null
+  additional_images?: string[]
+  animation_url?: string | null
 }
 
 interface VariantsTabProps {
@@ -73,7 +79,6 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       const { data, error } = await supabase
         .from('products')
         .select('id, product_name')
-        .eq('is_active', true)
         .order('product_name', { ascending: true })
 
       if (error) throw error
@@ -211,12 +216,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         other_price: dbDataClean.other_price,
         is_active: dbDataClean.is_active,
         is_default: dbDataClean.is_default,
-        image_url: imageUrl
-      }
-      
-      // Only add animation_url if we have one (graceful handling if column doesn't exist)
-      if (animationUrl) {
-        dataToSave.animation_url = animationUrl
+        image_url: imageUrl,
+        animation_url: animationUrl
       }
 
       if (editingVariant) {
