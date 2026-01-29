@@ -1107,7 +1107,16 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                               <td className="px-4 py-4">
                                 <div className="flex items-center gap-3">
                                   <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
-                                    {reward.item_image_url ? (
+                                    {(reward as any).animation_url ? (
+                                      <video
+                                        src={getStorageUrl((reward as any).animation_url) || (reward as any).animation_url}
+                                        className="h-full w-full object-cover"
+                                        muted
+                                        loop
+                                        autoPlay
+                                        playsInline
+                                      />
+                                    ) : reward.item_image_url ? (
                                       <Image
                                         src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
                                         alt={reward.item_name}

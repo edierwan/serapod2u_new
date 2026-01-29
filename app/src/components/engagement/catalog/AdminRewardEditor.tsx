@@ -1033,6 +1033,10 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                             autoPlay
                             playsInline
                             controls={false}
+                            onLoadedData={(e) => {
+                              const video = e.currentTarget;
+                              video.play().catch(() => {});
+                            }}
                           />
                         ) : (
                           <div className="text-muted-foreground/50">
