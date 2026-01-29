@@ -1096,7 +1096,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                             const filePath = `rewards/${userProfile.organizations.id}/${fileName}`
                             
                             const { error: uploadError } = await supabase.storage
-                              .from('product-images')
+                              .from('avatars')
                               .upload(filePath, file, { 
                                 upsert: true,
                                 contentType: file.type
@@ -1105,7 +1105,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                             if (uploadError) throw uploadError
                             
                             const { data: urlData } = supabase.storage
-                              .from('product-images')
+                              .from('avatars')
                               .getPublicUrl(filePath)
                             
                             updateForm('animationUrl', urlData.publicUrl)
