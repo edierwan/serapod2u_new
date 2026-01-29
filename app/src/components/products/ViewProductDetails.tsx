@@ -194,7 +194,10 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
           
           const { error: uploadError } = await supabase.storage
             .from('avatars')
-            .upload(filePath, file, { upsert: true })
+            .upload(filePath, file, {
+              contentType: file.type,
+              upsert: true
+            })
           
           if (uploadError) {
             console.error('Error uploading image:', uploadError)
@@ -216,7 +219,10 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         
         const { error: animUploadError } = await supabase.storage
           .from('avatars')
-          .upload(animationFilePath, variantData.animationFile, { upsert: true })
+          .upload(animationFilePath, variantData.animationFile, {
+            contentType: variantData.animationFile.type,
+            upsert: true
+          })
         
         if (animUploadError) throw animUploadError
         animationUrl = animationFilePath
