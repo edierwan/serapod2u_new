@@ -15,6 +15,14 @@ BEGIN
     ELSE
         RAISE NOTICE 'Column animation_url already exists in public.product_variants';
     END IF;
+
+    -- Ensure avatars bucket allows video files and larger sizes
+    UPDATE storage.buckets
+    SET allowed_mime_types = null,
+        file_size_limit = 52428800 -- 50MB
+    WHERE id = 'avatars';
+    
+    RAISE NOTICE 'Updated avatars bucket configuration for video support';
 END $$;
 
 COMMENT ON COLUMN public.product_variants.animation_url IS 'URL to the storage path for the product variant animation (mp4/webm)';
