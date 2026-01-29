@@ -267,11 +267,11 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       await fetchProductDetails()
       setShowVariantDialog(false)
       setEditingVariant(null)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving variant:', error)
       toast({
         title: 'Error',
-        description: 'Failed to save variant',
+        description: error.message || 'Failed to save variant',
         variant: 'destructive'
       })
     } finally {
