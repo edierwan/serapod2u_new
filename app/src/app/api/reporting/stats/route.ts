@@ -59,7 +59,6 @@ export async function GET(request: Request) {
         display_doc_no,
         order_type,
         status,
-        paid_amount,
         created_at,
         updated_at,
         buyer:organizations!orders_buyer_org_id_fkey (

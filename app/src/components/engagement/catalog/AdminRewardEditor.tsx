@@ -1097,7 +1097,10 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                             
                             const { error: uploadError } = await supabase.storage
                               .from('product-images')
-                              .upload(filePath, file, { upsert: true })
+                              .upload(filePath, file, { 
+                                upsert: true,
+                                contentType: file.type
+                              })
                             
                             if (uploadError) throw uploadError
                             
