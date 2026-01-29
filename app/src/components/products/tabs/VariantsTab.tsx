@@ -208,18 +208,25 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       // Remove files from data before saving to database
       const { imageFile, animationFile, imageFiles, existingImageUrls, defaultImageIndex, ...dbDataClean } = variantData as any
       
+      // When editing, fallback to existing product_id if not provided
+      const productId = dbDataClean.product_id || (editingVariant ? editingVariant.product_id : null)
+      const variantName = dbDataClean.variant_name || (editingVariant ? editingVariant.variant_name : null)
+      
       // Validate required fields
-      if (!dbDataClean.product_id) {
-        throw new Error('Product is required')
+      if (!productId) {
+        throw new Error('Product is required. Please select a product from the dropdown.')
       }
-      if (!dbDataClean.variant_name) {
+      if (!variantName) {
         throw new Error('Variant name is required')
       }
       
+      console.log('🎯 Final product_id:', productId)
+      console.log('📝 Final variant_name:', variantName)
+      
       const dataToSave: Record<string, any> = {
-        product_id: dbDataClean.product_id,
+        product_id: productId,
         variant_code: dbDataClean.variant_code,
-        variant_name: dbDataClean.variant_name,
+        variant_name: variantName,
         attributes: dbDataClean.attributes || {},
         barcode: dbDataClean.barcode || null,
         manufacturer_sku: dbDataClean.manufacturer_sku || null,
@@ -270,11 +277,25 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       setDialogOpen(false)
       setEditingVariant(null)
       loadVariants()
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error saving variant:', error)
+      // Extract detailed error message
+      let errorMessage = 'Failed to save variant'
+      if (error?.message) {
+        errorMessage = error.message
+      }
+      if (error?.details) {
+        errorMessage += ': ' + error.details
+      }
+      if (error?.hint) {
+        errorMessage += ' (' + error.hint + ')'
+      }
+      if (error?.code) {
+        console.error('Error code:', error.code)
+      }
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to save variant',
+        description: errorMessage,
         variant: 'destructive'
       })
     } finally {

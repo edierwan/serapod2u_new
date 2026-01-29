@@ -149,10 +149,18 @@ export default function VariantDialog({
 
   useEffect(() => {
     if (open) {
+      console.log('🔄 Dialog opened, products available:', products.length)
+      console.log('📋 Products list:', products.map(p => ({ id: p.id, name: p.product_name })))
+      
       if (variant) {
         console.log('📝 Editing variant:', variant)
-        console.log('🎯 Product ID:', variant.product_id)
-        setFormData({
+        console.log('🎯 Variant Product ID:', variant.product_id)
+        
+        // Check if the product exists in the products list
+        const productExists = products.find(p => p.id === variant.product_id)
+        console.log('✅ Product found in list:', productExists ? productExists.product_name : 'NOT FOUND!')
+        
+        const newFormData = {
           product_id: variant.product_id || '',
           variant_name: variant.variant_name || '',
           attributes: variant.attributes || {},
@@ -169,7 +177,9 @@ export default function VariantDialog({
           image_url: variant.image_url || null,
           additional_images: variant.additional_images || [],
           animation_url: variant.animation_url || null
-        })
+        }
+        console.log('📦 Setting formData:', newFormData)
+        setFormData(newFormData)
         
         // Load existing images
         const loadedImages: ImageItem[] = []
@@ -289,14 +299,19 @@ export default function VariantDialog({
         primaryImageFile = defaultImage.file
       }
       
+      // Ensure product_id is set - use variant's product_id as fallback
+      const finalProductId = formData.product_id || variant?.product_id || ''
+      
       const submitData = {
         ...formData,
+        product_id: finalProductId,
         variant_code: generateVariantCode(),
         imageFile: primaryImageFile,
         animationFile: animationFile
       }
       
       console.log('📦 Submitting data:', submitData)
+      console.log('🎯 Final product_id being submitted:', finalProductId)
       onSave(submitData as any)
     }
   }
@@ -580,8 +595,9 @@ export default function VariantDialog({
             <Label htmlFor="product">Product *</Label>
             <select
               id="product"
-              value={formData.product_id || ''}
+              value={formData.product_id || (variant?.product_id || '')}
               onChange={(e) => {
+                console.log('🔀 Product changed to:', e.target.value)
                 setFormData(prev => ({ ...prev, product_id: e.target.value }))
                 if (errors.product_id) setErrors(prev => ({ ...prev, product_id: '' }))
               }}
