@@ -318,7 +318,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
             // Fetch order payment data
             const { data: orders } = await supabase
                 .from('orders')
-                .select('id, order_no, paid_amount, status, created_at')
+                .select('id, order_no, status, created_at, order_items(line_total)')
                 .in('status', ['approved', 'closed'])
                 .order('created_at', { ascending: false })
                 .limit(50)
@@ -350,8 +350,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
     const financialMetrics = useMemo(() => {
         if (!financialData) return null
 
-        const totalRevenue = financialData.orders?.reduce((sum: number, o: any) => sum + (o.paid_amount || 0), 0) || 0
-        const pendingPayments = financialData.documents?.filter((d: any) => 
+        const totalRevenue = financialData.orders?.reduce((sum: number, o: any) => {
+            const orderTotal = o.order_items?.reduce((itemSum: number, item: any) => itemSum + (item.line_total || 0), 0) || 0
+            return sum + orderTotal
+        }, 0) || 0
+
+        const pendingPayments = financialData.documents?.filter((d: any) =>  
             d.doc_type === 'PAYMENT_REQUEST' && d.status === 'pending'
         ).length || 0
         const completedPayments = financialData.documents?.filter((d: any) => 

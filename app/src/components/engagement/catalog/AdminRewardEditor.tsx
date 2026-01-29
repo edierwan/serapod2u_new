@@ -1025,12 +1025,14 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                       <div className="w-32 h-32 rounded-lg border border-muted-foreground/20 bg-muted overflow-hidden flex items-center justify-center">
                         {animationPreview || form.animationUrl ? (
                           <video 
+                            key={animationPreview || form.animationUrl}
                             src={animationPreview || form.animationUrl} 
                             className="w-full h-full object-cover"
                             muted
                             loop
                             autoPlay
                             playsInline
+                            controls={false}
                           />
                         ) : (
                           <div className="text-muted-foreground/50">

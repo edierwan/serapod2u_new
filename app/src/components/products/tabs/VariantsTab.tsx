@@ -504,18 +504,31 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                 <TableRow key={variant.id} className="hover:bg-gray-50">
                   <TableCell className="text-center text-sm text-gray-500 font-medium">{startIndex + index + 1}</TableCell>
                   <TableCell>
-                    <Avatar className="w-10 h-10 rounded-lg">
-                      {variant.image_url ? (
-                        <AvatarImage 
-                          src={getStorageUrl(variant.image_url) || variant.image_url} 
-                          alt={`${variant.variant_name} image`}
-                          className="object-cover"
+                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center">
+                      {variant.animation_url ? (
+                        <video
+                          src={getStorageUrl(variant.animation_url, 'avatars') || variant.animation_url}
+                          className="w-full h-full object-cover"
+                          muted
+                          loop
+                          autoPlay
+                          playsInline
                         />
-                      ) : null}
-                      <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 text-xs font-semibold">
-                        {getVariantInitials(variant.variant_name)}
-                      </AvatarFallback>
-                    </Avatar>
+                      ) : variant.image_url ? (
+                        <div className="w-full h-full relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img 
+                            src={getStorageUrl(variant.image_url, 'avatars') || variant.image_url} 
+                            alt={`${variant.variant_name} image`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 text-xs font-semibold">
+                          {getVariantInitials(variant.variant_name)}
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm">{variant.variant_name}</TableCell>
                   <TableCell className="text-xs text-gray-600">{variant.product_name}</TableCell>
