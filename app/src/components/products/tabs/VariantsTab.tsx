@@ -426,6 +426,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       </div>
 
       <VariantDialog
+        key={editingVariant?.id || 'new'}
         variant={editingVariant}
         products={products}
         open={dialogOpen}

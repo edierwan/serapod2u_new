@@ -123,24 +123,49 @@ export default function VariantDialog({
   onOpenChange,
   onSave
 }: VariantDialogProps) {
-  const [formData, setFormData] = useState<Partial<Variant>>({
-    product_id: '',
-    variant_name: '',
-    attributes: {},
-    barcode: '',
-    manufacturer_sku: '',
-    manual_sku: '',
-    base_cost: null,
-    suggested_retail_price: null,
-    retailer_price: null,
-    distributor_price: null,
-    other_price: null,
-    is_active: true,
-    is_default: false,
-    image_url: null,
-    additional_images: [],
-    animation_url: null
-  })
+  // Initialize formData based on variant prop
+  const getInitialFormData = (): Partial<Variant> => {
+    if (variant) {
+      return {
+        product_id: variant.product_id || '',
+        variant_name: variant.variant_name || '',
+        attributes: variant.attributes || {},
+        barcode: variant.barcode || '',
+        manufacturer_sku: variant.manufacturer_sku || '',
+        manual_sku: variant.manual_sku || '',
+        base_cost: variant.base_cost,
+        suggested_retail_price: variant.suggested_retail_price,
+        retailer_price: variant.retailer_price,
+        distributor_price: variant.distributor_price,
+        other_price: variant.other_price,
+        is_active: variant.is_active !== false,
+        is_default: variant.is_default || false,
+        image_url: variant.image_url || null,
+        additional_images: variant.additional_images || [],
+        animation_url: variant.animation_url || null
+      }
+    }
+    return {
+      product_id: products.length > 0 ? products[0].id : '',
+      variant_name: '',
+      attributes: {},
+      barcode: '',
+      manufacturer_sku: '',
+      manual_sku: '',
+      base_cost: null,
+      suggested_retail_price: null,
+      retailer_price: null,
+      distributor_price: null,
+      other_price: null,
+      is_active: true,
+      is_default: false,
+      image_url: null,
+      additional_images: [],
+      animation_url: null
+    }
+  }
+
+  const [formData, setFormData] = useState<Partial<Variant>>(getInitialFormData)
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [images, setImages] = useState<ImageItem[]>([])
@@ -236,8 +261,10 @@ export default function VariantDialog({
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
-
-    if (!formData.product_id) {
+    
+    // Check product_id - use variant's product_id as fallback
+    const effectiveProductId = formData.product_id || variant?.product_id
+    if (!effectiveProductId) {
       newErrors.product_id = 'Product is required'
     }
 
