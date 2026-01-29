@@ -223,9 +223,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       console.log('🎯 Final product_id:', productId)
       console.log('📝 Final variant_name:', variantName)
       
+      // Build data to save - exclude variant_code for updates (it's immutable after creation)
       const dataToSave: Record<string, any> = {
-        product_id: productId,
-        variant_code: dbDataClean.variant_code,
         variant_name: variantName,
         attributes: dbDataClean.attributes || {},
         barcode: dbDataClean.barcode || null,
@@ -242,7 +241,14 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         animation_url: animationUrl
       }
       
+      // Only include product_id and variant_code for new variants
+      if (!editingVariant) {
+        dataToSave.product_id = productId
+        dataToSave.variant_code = dbDataClean.variant_code || `VAR-${Date.now().toString().slice(-6)}`
+      }
+      
       console.log('💾 Saving to database:', dataToSave)
+      console.log('📌 Is editing:', !!editingVariant)
 
       if (editingVariant) {
         console.log('✏️ Updating variant:', editingVariant.id)

@@ -318,6 +318,7 @@ export default function VariantDialog({
     if (validate()) {
       console.log('📤 Submitting form data:', formData)
       console.log('🎬 Animation file:', animationFile)
+      console.log('📝 Editing existing variant:', !!variant)
       
       // Get the default image (first image or existing image_url)
       let primaryImageFile: File | undefined = undefined
@@ -329,15 +330,19 @@ export default function VariantDialog({
       // Ensure product_id is set - use variant's product_id as fallback
       const finalProductId = formData.product_id || variant?.product_id || ''
       
+      // When editing, preserve the existing variant_code and barcode
+      // When creating, generate new ones
       const submitData = {
         ...formData,
         product_id: finalProductId,
-        variant_code: generateVariantCode(),
+        variant_code: variant?.variant_code || generateVariantCode(),
+        barcode: variant ? formData.barcode : generateBarcode(),
         imageFile: primaryImageFile,
         animationFile: animationFile
       }
       
       console.log('📦 Submitting data:', submitData)
+      console.log('🔑 Using variant_code:', submitData.variant_code)
       console.log('🎯 Final product_id being submitted:', finalProductId)
       onSave(submitData as any)
     }
