@@ -127,7 +127,7 @@ export default function VariantDialog({
   const getInitialFormData = (): Partial<Variant> => {
     if (variant) {
       return {
-        product_id: variant.product_id || '',
+        product_id: variant.product_id || (products.length === 1 ? products[0].id : ''),
         variant_name: variant.variant_name || '',
         attributes: variant.attributes || {},
         barcode: variant.barcode || '',
@@ -186,7 +186,7 @@ export default function VariantDialog({
         console.log('✅ Product found in list:', productExists ? productExists.product_name : 'NOT FOUND!')
         
         const newFormData = {
-          product_id: variant.product_id || '',
+          product_id: variant.product_id || (products.length === 1 ? products[0].id : ''),
           variant_name: variant.variant_name || '',
           attributes: variant.attributes || {},
           barcode: variant.barcode || '',
