@@ -81,4 +81,7 @@ TO authenticated
 USING (true)
 WITH CHECK (true);
 
-RAISE NOTICE 'Fixed permissions for product_variants and avatars bucket';
+DO $$
+BEGIN
+  RAISE NOTICE 'Fixed permissions for product_variants and avatars bucket';
+END $$;
