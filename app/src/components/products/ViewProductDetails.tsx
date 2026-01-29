@@ -928,7 +928,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                     {variant.animation_url ? (
                       <div className="w-full h-full relative">
                         <video
-                          src={getStorageUrl(variant.animation_url) || variant.animation_url}
+                          src={getStorageUrl(variant.animation_url, 'avatars') || variant.animation_url}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           muted
                           loop
@@ -943,7 +943,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                     ) : variant.image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={getStorageUrl(variant.image_url) || variant.image_url}
+                        src={getStorageUrl(variant.image_url, 'avatars') || variant.image_url}
                         alt={variant.variant_name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />

@@ -215,7 +215,7 @@ export default function VariantDialog({
           additionalImages.forEach((url, index) => {
             loadedImages.push({
               id: `loaded-${index}`,
-              url: getStorageUrl(url) || url,
+              url: getStorageUrl(url, 'avatars') || url,
               isDefault: index === 0
             })
           })
@@ -223,12 +223,12 @@ export default function VariantDialog({
           // Fallback to single image_url
           loadedImages.push({
             id: 'loaded-primary',
-            url: getStorageUrl(variant.image_url) || variant.image_url,
+            url: getStorageUrl(variant.image_url, 'avatars') || variant.image_url,
             isDefault: true
           })
         }
         setImages(loadedImages)
-        setAnimationPreview(getStorageUrl(variant.animation_url) || null)
+        setAnimationPreview(getStorageUrl(variant.animation_url, 'avatars') || null)
       } else {
         setFormData({
           product_id: products.length > 0 ? products[0].id : '',
