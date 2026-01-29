@@ -150,9 +150,11 @@ export default function VariantDialog({
   useEffect(() => {
     if (open) {
       if (variant) {
+        console.log('📝 Editing variant:', variant)
+        console.log('🎯 Product ID:', variant.product_id)
         setFormData({
-          product_id: variant.product_id,
-          variant_name: variant.variant_name,
+          product_id: variant.product_id || '',
+          variant_name: variant.variant_name || '',
           attributes: variant.attributes || {},
           barcode: variant.barcode || '',
           manufacturer_sku: variant.manufacturer_sku || '',
@@ -162,8 +164,8 @@ export default function VariantDialog({
           retailer_price: variant.retailer_price,
           distributor_price: variant.distributor_price,
           other_price: variant.other_price,
-          is_active: variant.is_active,
-          is_default: variant.is_default,
+          is_active: variant.is_active !== false,
+          is_default: variant.is_default || false,
           image_url: variant.image_url || null,
           additional_images: variant.additional_images || [],
           animation_url: variant.animation_url || null
@@ -277,19 +279,25 @@ export default function VariantDialog({
 
   const handleSubmit = () => {
     if (validate()) {
-      // Get image files to upload
-      const imageFiles = images.filter(img => img.file).map(img => img.file!)
-      const existingImageUrls = images.filter(img => !img.file).map(img => img.url)
-      const defaultImageIndex = images.findIndex(img => img.isDefault)
+      console.log('📤 Submitting form data:', formData)
+      console.log('🎬 Animation file:', animationFile)
       
-      onSave({
+      // Get the default image (first image or existing image_url)
+      let primaryImageFile: File | undefined = undefined
+      if (images.length > 0) {
+        const defaultImage = images.find(img => img.isDefault) || images[0]
+        primaryImageFile = defaultImage.file
+      }
+      
+      const submitData = {
         ...formData,
         variant_code: generateVariantCode(),
-        imageFiles: imageFiles, // Pass multiple image files
-        existingImageUrls: existingImageUrls, // Keep existing images
-        defaultImageIndex: defaultImageIndex >= 0 ? defaultImageIndex : 0,
-        animationFile: animationFile // Pass the animation file
-      } as any)
+        imageFile: primaryImageFile,
+        animationFile: animationFile
+      }
+      
+      console.log('📦 Submitting data:', submitData)
+      onSave(submitData as any)
     }
   }
 

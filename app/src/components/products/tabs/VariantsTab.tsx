@@ -128,9 +128,10 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       .slice(0, 2)
   }
 
-  const handleSave = async (variantData: Partial<Variant> & { imageFile?: File }) => {
+  const handleSave = async (variantData: Partial<Variant> & { imageFile?: File; animationFile?: File | null }) => {
     try {
       setIsSaving(true)
+      console.log('💾 Saving variant data:', variantData)
       
       let imageUrl = variantData.image_url || null
       let animationUrl = variantData.animation_url || null
@@ -138,6 +139,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       // Handle image upload if there's a new image file
       if (variantData.imageFile) {
         const file = variantData.imageFile
+        console.log('🖼️ Uploading image file:', file.name)
         
         // Compress the image first
         const compressionResult = await compressVariantImage(file)
@@ -159,7 +161,10 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             upsert: false
           })
 
-        if (uploadError) throw uploadError
+        if (uploadError) {
+          console.error('❌ Image upload failed:', uploadError)
+          throw uploadError
+        }
 
         // Get public URL with cache-busting
         const { data: { publicUrl } } = supabase.storage
@@ -167,13 +172,14 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           .getPublicUrl(uploadData.path)
 
         imageUrl = `${publicUrl}?v=${Date.now()}`
+        console.log('✅ Image uploaded:', imageUrl)
       }
 
       // Handle animation upload
-      // @ts-ignore
       if (variantData.animationFile) {
-        // @ts-ignore
         const file = variantData.animationFile
+        console.log('🎬 Uploading animation file:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2) + 'MB')
+        
         const fileExt = file.name.split('.').pop()
         const fileName = `variant-anim-${Date.now()}.${fileExt}`
         const filePath = `${fileName}`
@@ -186,21 +192,30 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             upsert: false
           })
 
-        if (uploadError) throw uploadError
+        if (uploadError) {
+          console.error('❌ Animation upload failed:', uploadError)
+          throw uploadError
+        }
 
         const { data: { publicUrl } } = supabase.storage
           .from('avatars')
           .getPublicUrl(uploadData.path)
 
         animationUrl = `${publicUrl}?v=${Date.now()}`
+        console.log('✅ Animation uploaded:', animationUrl)
       }
 
       // Remove files from data before saving to database
-      const { imageFile, ...dbData } = variantData
-      // @ts-ignore
-      const { animationFile: _, ...dbDataClean } = dbData
+      const { imageFile, animationFile, imageFiles, existingImageUrls, defaultImageIndex, ...dbDataClean } = variantData as any
       
-      // Only include animation_url if it has a value (column may not exist yet)
+      // Validate required fields
+      if (!dbDataClean.product_id) {
+        throw new Error('Product is required')
+      }
+      if (!dbDataClean.variant_name) {
+        throw new Error('Variant name is required')
+      }
+      
       const dataToSave: Record<string, any> = {
         product_id: dbDataClean.product_id,
         variant_code: dbDataClean.variant_code,
@@ -214,27 +229,39 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         retailer_price: dbDataClean.retailer_price,
         distributor_price: dbDataClean.distributor_price,
         other_price: dbDataClean.other_price,
-        is_active: dbDataClean.is_active,
-        is_default: dbDataClean.is_default,
+        is_active: dbDataClean.is_active !== false,
+        is_default: dbDataClean.is_default || false,
         image_url: imageUrl,
         animation_url: animationUrl
       }
+      
+      console.log('💾 Saving to database:', dataToSave)
 
       if (editingVariant) {
+        console.log('✏️ Updating variant:', editingVariant.id)
         const { error } = await (supabase as any)
           .from('product_variants')
           .update(dataToSave)
           .eq('id', editingVariant.id)
-        if (error) throw error
+        if (error) {
+          console.error('❌ Update error:', error)
+          throw error
+        }
+        console.log('✅ Variant updated successfully')
         toast({
           title: 'Success',
           description: 'Variant updated successfully'
         })
       } else {
+        console.log('➕ Creating new variant')
         const { error } = await (supabase as any)
           .from('product_variants')
           .insert([dataToSave])
-        if (error) throw error
+        if (error) {
+          console.error('❌ Insert error:', error)
+          throw error
+        }
+        console.log('✅ Variant created successfully')
         toast({
           title: 'Success',
           description: 'Variant created successfully'
@@ -244,7 +271,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       setEditingVariant(null)
       loadVariants()
     } catch (error) {
-      console.error('Error saving variant:', error)
+      console.error('❌ Error saving variant:', error)
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to save variant',
