@@ -9,18 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
-import { 
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import NotificationFlowDrawer from './NotificationFlowDrawer'
 import { 
   Save, 
   Bell, 
@@ -658,187 +647,19 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     const currentType = notificationTypes.find(t => t.event_code === currentCode)
 
     if (!currentSetting || !currentType) return null
-    
-    // We update the main state directly for simplicity in this version, 
-    // but typically you'd want a local buffer state and save on "Done".
-    // Or we use Keyed Render.
-    // For now, let's assume direct update via setters is fine as we have a main "Save All" button.
-
-    const updateRecipientConfig = (updates: Partial<typeof currentSetting.recipient_config>) => {
-        const newSettings = new Map(settings)
-        const s = newSettings.get(currentCode)
-        if (s) {
-            s.recipient_config = { ...s.recipient_config, ...updates }
-            setSettings(newSettings)
-        }
-    }
-
-    const updateTemplate = (channel: string, text: string) => {
-        const newSettings = new Map(settings)
-        const s = newSettings.get(currentCode)
-        if (s) {
-            s.templates = { ...s.templates, [channel]: text }
-            setSettings(newSettings)
-        }
-    }
 
     return (
-        <Dialog open={!!editingSetting} onOpenChange={(open) => !open && setEditingSetting(null)}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-xl">
-                        {currentType.event_name}
-                    </DialogTitle>
-                    <DialogDescription>
-                        Configure recipients and message templates for this notification.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <TabsComponent defaultValue="recipients" className="w-full mt-4">
-                    <TabsList2 className="w-full grid grid-cols-2">
-                        <TabsTrigger2 value="recipients" className="gap-2">
-                            <Users className="w-4 h-4" /> Recipients
-                        </TabsTrigger2>
-                        <TabsTrigger2 value="templates" className="gap-2">
-                            <MessageSquare className="w-4 h-4" /> Message Templates
-                        </TabsTrigger2>
-                    </TabsList2>
-
-                    <TabsContent2 value="recipients" className="mt-4 space-y-6">
-                        <div className="space-y-4 border rounded-lg p-4 bg-gray-50/50">
-                            <h4 className="font-medium text-sm text-gray-900">Consumer Settings</h4>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <Checkbox 
-                                    checked={currentSetting.recipient_config?.include_consumer}
-                                    onCheckedChange={(c) => updateRecipientConfig({ include_consumer: c as boolean })}
-                                />
-                                <span className="text-sm">Send to relevant Consumer (User who placed order/scanned QR)</span>
-                            </label>
-                        </div>
-
-                        <div className="space-y-4 border rounded-lg p-4 bg-gray-50/50">
-                            <h4 className="font-medium text-sm text-gray-900">Internal & Organization Recipients</h4>
-                            <RadioGroup 
-                                value={currentSetting.recipient_config?.type || 'roles'}
-                                onValueChange={(val) => updateRecipientConfig({ type: val as any })}
-                                className="space-y-3"
-                            >
-                                <div className="flex items-start gap-2">
-                                    <RadioGroupItem value="roles" id="r-roles" className="mt-1" />
-                                    <div className="space-y-2">
-                                        <Label htmlFor="r-roles" className="font-normal cursor-pointer">Send to specific roles</Label>
-                                        {currentSetting.recipient_config?.type === 'roles' && (
-                                            <div className="ml-2 grid grid-cols-2 gap-2 mt-2 pl-4 border-l-2">
-                                                {['super_admin', 'admin', 'distributor', 'warehouse'].map(role => (
-                                                    <label key={role} className="flex items-center gap-2 cursor-pointer">
-                                                        <Checkbox 
-                                                            checked={currentSetting.recipient_config?.roles?.includes(role)}
-                                                            onCheckedChange={(c) => {
-                                                                const currentRoles = currentSetting.recipient_config?.roles || []
-                                                                const newRoles = c 
-                                                                    ? [...currentRoles, role]
-                                                                    : currentRoles.filter(r => r !== role)
-                                                                updateRecipientConfig({ roles: newRoles })
-                                                            }}
-                                                        />
-                                                        <span className="text-sm capitalize">{role.replace('_', ' ')}</span>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="flex items-start gap-2">
-                                    <RadioGroupItem value="dynamic" id="r-dynamic" className="mt-1" />
-                                    <div className="space-y-2">
-                                        <Label htmlFor="r-dynamic" className="font-normal cursor-pointer">Send to related organization (Dynamic)</Label>
-                                        {currentSetting.recipient_config?.type === 'dynamic' && (
-                                            <div className="ml-2 mt-2 pl-4 border-l-2 space-y-2">
-                                               <p className="text-xs text-gray-500 mb-2">Select which related party receives this notification:</p>
-                                               <RadioGroup 
-                                                    value={currentSetting.recipient_config?.dynamic_target || ''}
-                                                    onValueChange={(val) => updateRecipientConfig({ dynamic_target: val })}
-                                               >
-                                                    <div className="flex items-center space-x-2">
-                                                        <RadioGroupItem value="manufacturer" id="dt-mfg" />
-                                                        <Label htmlFor="dt-mfg" className="text-sm">Manufacturer (Product Owner)</Label>
-                                                    </div>
-                                                    <div className="flex items-center space-x-2">
-                                                        <RadioGroupItem value="distributor" id="dt-dist" />
-                                                        <Label htmlFor="dt-dist" className="text-sm">Distributor (Seller)</Label>
-                                                    </div>
-                                                    <div className="flex items-center space-x-2">
-                                                        <RadioGroupItem value="warehouse" id="dt-wh" />
-                                                        <Label htmlFor="dt-wh" className="text-sm">Warehouse (Fulfillment)</Label>
-                                                    </div>
-                                               </RadioGroup>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </RadioGroup>
-                        </div>
-                    </TabsContent2>
-
-                    <TabsContent2 value="templates" className="mt-4">
-                        <TabsComponent defaultValue={currentSetting.channels_enabled[0] || 'whatsapp'} className="w-full">
-                            <TabsList2 className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-6">
-                                {currentType.available_channels.map(channel => (
-                                    <TabsTrigger2 
-                                        key={channel} 
-                                        value={channel}
-                                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:shadow-none px-4 py-2"
-                                    >
-                                        <span className="capitalize">{channel}</span>
-                                    </TabsTrigger2>
-                                ))}
-                            </TabsList2>
-
-                            {currentType.available_channels.map(channel => (
-                                <TabsContent2 key={channel} value={channel} className="mt-4 space-y-4">
-                                    {!currentSetting.channels_enabled.includes(channel) && (
-                                        <div className="p-3 bg-amber-50 text-amber-800 text-sm rounded border border-amber-200 flex items-center gap-2">
-                                            <AlertCircle className="w-4 h-4" />
-                                            Active this channel in the main checklist to send notifications.
-                                        </div>
-                                    )}
-                                    
-                                    <div className="space-y-2">
-                                        <Label>Message Template</Label>
-                                        <Textarea 
-                                            placeholder={`Enter ${channel} message content...`}
-                                            className="min-h-[150px] font-mono text-sm"
-                                            value={currentSetting.templates?.[channel] || ''}
-                                            onChange={(e) => updateTemplate(channel, e.target.value)}
-                                        />
-                                        <div className="p-3 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100 space-y-1">
-                                            <div className="font-semibold flex items-center gap-1">
-                                                <Info className="w-3 h-3" /> Available Variables:
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <code>{"{{order_no}}"}</code>
-                                                <code>{"{{status}}"}</code>
-                                                <code>{"{{customer_name}}"}</code>
-                                                <code>{"{{amount}}"}</code>
-                                                <code>{"{{link}}"}</code>
-                                                <code>{"{{items_count}}"}</code>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </TabsContent2>
-                            ))}
-                        </TabsComponent>
-                    </TabsContent2>
-                </TabsComponent>
-
-                <DialogFooter className="mt-6 border-t pt-4">
-                    <Button onClick={() => setEditingSetting(null)}>
-                        Done
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        <NotificationFlowDrawer
+            open={!!editingSetting}
+            onOpenChange={(open) => !open && setEditingSetting(null)}
+            setting={currentSetting}
+            type={currentType}
+            onSave={(updatedSetting) => {
+                const newSettings = new Map(settings)
+                newSettings.set(currentCode, updatedSetting)
+                setSettings(newSettings)
+            }}
+        />
     )
   }
 }
