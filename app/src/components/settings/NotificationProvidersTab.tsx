@@ -204,10 +204,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         created_by: userProfile.id
       }
 
+      // Use ID for conflict resolution if it exists (update), otherwise try to match on unique keys (insert/upsert)
       const { error } = await (supabase as any)
         .from('notification_provider_configs')
         .upsert(saveData, {
-          onConflict: 'org_id,channel,provider_name'
+          onConflict: saveData.id ? 'id' : 'org_id,channel,provider_name'
         })
 
       if (error) throw error
