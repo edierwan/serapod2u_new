@@ -9,21 +9,21 @@ import {
     SheetDescription,
     SheetFooter,
 } from "../ui/sheet"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs"
+import { Button } from "../ui/button"
+import { Input } from "../ui/input"
+import { Label } from "../ui/label"
+import { Textarea } from "../ui/textarea"
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Card, CardContent } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "../ui/checkbox"
+import { Card, CardContent } from "../ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
+import { Badge } from "../ui/badge"
 import { 
     GitBranch, Users, MessageSquare, TestTube, History, 
     ArrowRight, CheckCircle2, AlertCircle, Loader2, Play
 } from 'lucide-react'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea } from "../ui/scroll-area"
 
 interface NotificationFlowDrawerProps {
     open: boolean
