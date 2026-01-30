@@ -143,6 +143,16 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
       // Separate by channel
       data?.forEach((config: any) => {
+        let sensitive = {};
+        try {
+            // Try to parse sensitive data if it was stored as JSON string
+            if (config.config_encrypted) { // Using config_encrypted as temp storage for now
+                 sensitive = JSON.parse(config.config_encrypted);
+            }
+        } catch (e) {
+            console.error('Failed to parse sensitive data', e);
+        }
+
         const providerConfig: ProviderConfig = {
           id: config.id,
           org_id: config.org_id,
@@ -155,6 +165,12 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           last_test_at: config.last_test_at,
           last_test_error: config.last_test_error
         }
+
+        // Populate sensitive data state
+        setSensitiveData(prev => ({
+            ...prev,
+            [config.channel]: sensitive
+        }));
 
         switch (config.channel) {
           case 'whatsapp':
