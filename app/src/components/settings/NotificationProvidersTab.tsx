@@ -58,7 +58,8 @@ const PROVIDERS = {
   whatsapp: [
     { value: 'twilio', label: 'Twilio', description: 'Twilio WhatsApp Business API' },
     { value: 'whatsapp_business', label: 'WhatsApp Business API', description: 'Meta WhatsApp Business API (Direct)' },
-    { value: 'messagebird', label: 'MessageBird', description: 'MessageBird Programmable Conversations' }
+    { value: 'messagebird', label: 'MessageBird', description: 'MessageBird Programmable Conversations' },
+    { value: 'baileys', label: 'Baileys (Self-hosted)', description: 'Self-hosted WhatsApp Gateway' }
   ],
   sms: [
     { value: 'twilio', label: 'Twilio SMS', description: 'Twilio Programmable SMS' },
@@ -233,15 +234,36 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     try {
       setSaving(true)
 
-      // In a real implementation, this would call an API endpoint to test the provider
-      // For now, we'll just simulate a test
-      alert(`Testing ${channel} provider: ${config.provider_name}...\n\nThis would normally send a test message to verify the configuration.\n\nIn production, implement:\n- API route: /api/notifications/test\n- Send test message using provider credentials\n- Return success/failure status`)
+      // Get test number if not in config
+      let testNumber = config.config_public.test_number
+      if (!testNumber) {
+         testNumber = window.prompt("Enter a phone number to send the test message to:")
+      }
+
+      const response = await fetch('/api/notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel,
+          provider: config.provider_name,
+          credentials: sensitiveData[channel],
+          config: config.config_public,
+          to: testNumber
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) throw new Error(result.error || 'Test failed')
+
+      alert(`Test successful! Message sent.`)
 
       // Update config with test result
       const updatedConfig = {
         ...config,
-        last_test_status: 'pending',
-        last_test_at: new Date().toISOString()
+        last_test_status: 'success',
+        last_test_at: new Date().toISOString(),
+        last_test_error: undefined
       }
 
       switch (channel) {
@@ -256,21 +278,28 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           break
       }
 
-      // TODO: Implement actual API call to test provider
-      // const response = await fetch('/api/notifications/test', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     channel,
-      //     provider: config.provider_name,
-      //     credentials: sensitiveData[channel],
-      //     config: config.config_public
-      //   })
-      // })
-
     } catch (error: any) {
       console.error(`Error testing ${channel} provider:`, error)
       alert(`Test failed: ${error.message}`)
+      
+      const updatedConfig = {
+        ...config,
+        last_test_status: 'failed',
+        last_test_at: new Date().toISOString(),
+        last_test_error: error.message
+      }
+
+      switch (channel) {
+        case 'whatsapp':
+          setWhatsappConfig(updatedConfig)
+          break
+        case 'sms':
+            setSmsConfig(updatedConfig)
+            break
+        case 'email':
+            setEmailConfig(updatedConfig)
+            break
+      }
     } finally {
       setSaving(false)
     }
@@ -348,6 +377,71 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               </div>
 
               {/* Provider-specific fields */}
+              {whatsappConfig.provider_name === 'baileys' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Gateway Base URL</Label>
+                    <Input
+                      placeholder="https://wa.serapod2u.com"
+                      value={whatsappConfig.config_public.base_url || ''}
+                      onChange={(e) => setWhatsappConfig({
+                        ...whatsappConfig,
+                        config_public: {
+                          ...whatsappConfig.config_public,
+                          base_url: e.target.value
+                        }
+                      })}
+                    />
+                    <p className="text-xs text-gray-500">
+                      The base URL of your hosted Baileys instance (e.g. https://wa.serapod2u.com)
+                    </p>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>API Key</Label>
+                    <div className="relative">
+                      <Input
+                        type={showSecrets['baileys_api_key'] ? 'text' : 'password'}
+                        placeholder="Your Baileys API Key"
+                        value={sensitiveData.whatsapp.api_key || ''}
+                        onChange={(e) => setSensitiveData({
+                          ...sensitiveData,
+                          whatsapp: { ...sensitiveData.whatsapp, api_key: e.target.value }
+                        })}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0"
+                        onClick={() => setShowSecrets({
+                          ...showSecrets,
+                          baileys_api_key: !showSecrets['baileys_api_key']
+                        })}
+                      >
+                        {showSecrets['baileys_api_key'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Test Recipient Number</Label>
+                    <Input
+                      placeholder="+60 12-345 6789"
+                      value={whatsappConfig.config_public.test_number || ''}
+                      onChange={(e) => setWhatsappConfig({
+                        ...whatsappConfig,
+                        config_public: {
+                          ...whatsappConfig.config_public,
+                          test_number: e.target.value
+                        }
+                      })}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Number to receive test messages (required for "Send Test Message")
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {whatsappConfig.provider_name === 'twilio' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
                   <div className="space-y-2 md:col-span-2">
@@ -467,7 +561,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               <div className="flex justify-end gap-3">
                 <Button 
                   variant="outline"
-                  onClick={() => {/* Implement test function */}}
+                  onClick={() => handleTestProvider('whatsapp')}
                   disabled={!whatsappConfig.is_active}
                 >
                   <TestTube className="w-4 h-4 mr-2" />
