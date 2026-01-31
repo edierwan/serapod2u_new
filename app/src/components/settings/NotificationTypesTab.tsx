@@ -316,6 +316,170 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     user: 'User Account Activities'
   }
 
+  // Helper function to render category content
+  const renderCategoryContent = (category: string) => {
+    const types = notificationTypes.filter(t => t.category === category)
+    const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
+    const allEnabled = categorySettings.every(s => s?.enabled)
+    
+    return (
+      <Card className={`border-l-4 ${getCategoryColor(category)}`}>
+        <CardHeader>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 sm:items-center">
+              {getCategoryIcon(category)}
+              <div>
+                <CardTitle className="text-lg">
+                  {categoryLabels[category] || category.toUpperCase()}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Configure which {category} events trigger notifications
+                </CardDescription>
+              </div>
+            </div>
+            
+            {/* Bulk Action Buttons */}
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-nowrap sm:items-center">
+              <Button
+                type="button"
+                variant={allEnabled ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => toggleAllInCategory(category, true)}
+                className="flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Enable All
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => toggleAllInCategory(category, false)}
+                className="flex items-center justify-center gap-2"
+              >
+                <XCircle className="w-4 h-4" />
+                Disable All
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {types.map((type) => {
+            const setting = settings.get(type.event_code)
+            if (!setting) return null
+
+            return (
+              <div 
+                key={type.event_code}
+                className="flex items-start gap-4 p-4 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
+              >
+                {/* Enable/Disable Switch */}
+                <div className="flex items-center pt-1">
+                  <Switch
+                    checked={setting.enabled}
+                    onCheckedChange={(checked) => toggleNotification(type.event_code, checked)}
+                  />
+                </div>
+
+                {/* Notification Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Label className="text-base font-medium text-gray-900">
+                      {type.event_name}
+                    </Label>
+                    {type.is_system && (
+                      <Badge variant="secondary" className="text-xs">
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                        System
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    {type.event_description}
+                  </p>
+
+                  {/* Channel Selection */}
+                  {setting.enabled && (
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-sm font-medium text-gray-700">Channels:</span>
+                      {type.available_channels.map((channel) => (
+                        <label 
+                          key={channel}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={setting.channels_enabled.includes(channel)}
+                            onCheckedChange={(checked) => 
+                              toggleChannel(type.event_code, channel, checked as boolean)
+                            }
+                          />
+                          <span className="text-sm capitalize">{channel}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions and Status */}
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex-shrink-0">
+                    {setting.enabled ? (
+                      <Badge className="bg-green-100 text-green-800 border-green-200">
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-gray-600">
+                        Disabled
+                      </Badge>
+                    )}
+                  </div>
+
+                  {setting.enabled && (
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 h-8"
+                        onClick={() => setEditingSetting(type.event_code)}
+                    >
+                        <Settings className="w-3 h-3 mr-1.5" />
+                        Configure
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Configuration Dialog
+  const renderConfigDialog = () => {
+    if (!editingSetting) return null
+    
+    // Create a local copy of settings to edit
+    const currentCode = editingSetting
+    const currentSetting = settings.get(currentCode)
+    const currentType = notificationTypes.find(t => t.event_code === currentCode)
+
+    if (!currentSetting || !currentType) return null
+
+    return (
+        <NotificationFlowDrawer
+            open={!!editingSetting}
+            onOpenChange={(open) => !open && setEditingSetting(null)}
+            setting={currentSetting}
+            type={currentType}
+            onSave={(updatedSetting) => {
+                const newSettings = new Map(settings)
+                newSettings.set(currentCode, updatedSetting)
+                setSettings(newSettings)
+            }}
+        />
+    )
+  }
+
   if (loading) {
     return (
       <Card>
@@ -491,175 +655,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     </div>
   )
 
-  // Helper function to render category content
-  function renderCategoryContent(category: string) {
-    const types = notificationTypes.filter(t => t.category === category)
-    const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
-    const allEnabled = categorySettings.every(s => s?.enabled)
-    
-    const categoryLabels: Record<string, string> = {
-      order: 'Order Status Changes',
-      document: 'Document Workflow',
-      inventory: 'Inventory & Stock Alerts',
-      qr: 'QR Code & Consumer Activities',
-      user: 'User Account Activities'
-    }
 
-    return (
-      <Card className={`border-l-4 ${getCategoryColor(category)}`}>
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3 sm:items-center">
-              {getCategoryIcon(category)}
-              <div>
-                <CardTitle className="text-lg">
-                  {categoryLabels[category] || category.toUpperCase()}
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Configure which {category} events trigger notifications
-                </CardDescription>
-              </div>
-            </div>
-            
-            {/* Bulk Action Buttons */}
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-nowrap sm:items-center">
-              <Button
-                type="button"
-                variant={allEnabled ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => toggleAllInCategory(category, true)}
-                className="flex items-center justify-center gap-2"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                Enable All
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => toggleAllInCategory(category, false)}
-                className="flex items-center justify-center gap-2"
-              >
-                <XCircle className="w-4 h-4" />
-                Disable All
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {types.map((type) => {
-            const setting = settings.get(type.event_code)
-            if (!setting) return null
 
-            return (
-              <div 
-                key={type.event_code}
-                className="flex items-start gap-4 p-4 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
-              >
-                {/* Enable/Disable Switch */}
-                <div className="flex items-center pt-1">
-                  <Switch
-                    checked={setting.enabled}
-                    onCheckedChange={(checked) => toggleNotification(type.event_code, checked)}
-                  />
-                </div>
 
-                {/* Notification Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Label className="text-base font-medium text-gray-900">
-                      {type.event_name}
-                    </Label>
-                    {type.is_system && (
-                      <Badge variant="secondary" className="text-xs">
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        System
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 mb-3">
-                    {type.event_description}
-                  </p>
-
-                  {/* Channel Selection */}
-                  {setting.enabled && (
-                    <div className="flex items-center gap-4 flex-wrap">
-                      <span className="text-sm font-medium text-gray-700">Channels:</span>
-                      {type.available_channels.map((channel) => (
-                        <label 
-                          key={channel}
-                          className="flex items-center gap-2 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={setting.channels_enabled.includes(channel)}
-                            onCheckedChange={(checked) => 
-                              toggleChannel(type.event_code, channel, checked as boolean)
-                            }
-                          />
-                          <span className="text-sm capitalize">{channel}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions and Status */}
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex-shrink-0">
-                    {setting.enabled ? (
-                      <Badge className="bg-green-100 text-green-800 border-green-200">
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-gray-600">
-                        Disabled
-                      </Badge>
-                    )}
-                  </div>
-
-                  {setting.enabled && (
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 h-8"
-                        onClick={() => setEditingSetting(type.event_code)}
-                    >
-                        <Settings className="w-3 h-3 mr-1.5" />
-                        Configure
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Configuration Dialog
-  const renderConfigDialog = () => {
-    if (!editingSetting) return null
-    
-    // Create a local copy of settings to edit
-    const currentCode = editingSetting
-    const currentSetting = settings.get(currentCode)
-    const currentType = notificationTypes.find(t => t.event_code === currentCode)
-
-    if (!currentSetting || !currentType) return null
-
-    return (
-        <NotificationFlowDrawer
-            open={!!editingSetting}
-            onOpenChange={(open) => !open && setEditingSetting(null)}
-            setting={currentSetting}
-            type={currentType}
-            onSave={(updatedSetting) => {
-                const newSettings = new Map(settings)
-                newSettings.set(currentCode, updatedSetting)
-                setSettings(newSettings)
-            }}
-        />
-    )
-  }
 }
