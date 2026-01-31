@@ -37,7 +37,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
     useEffect(() => {
         let isMounted = true;
         const fetchStats = async () => {
-             // Don't fetch if conditions aren't met
+            // Don't fetch if conditions aren't met
             if (mode === 'segment' && !segmentId) return;
             if (mode === 'specific_users' && (!userIds || userIds.length === 0)) {
                 setStats(null);
@@ -47,7 +47,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
 
             setLoading(true);
             setError(null);
-            
+
             try {
                 const res = await fetch('/api/wa/marketing/audience/resolve', {
                     method: 'POST',
@@ -59,9 +59,9 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
                         user_ids: userIds
                     })
                 });
-                
+
                 if (!res.ok) throw new Error('Failed to resolve audience');
-                
+
                 const data = await res.json();
                 if (isMounted) {
                     setStats(data);
@@ -91,12 +91,12 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
     }
 
     if (loading && !stats) {
-         return (
-             <div className="h-[300px] bg-gray-50 rounded-lg flex flex-col justify-center items-center text-center border border-dashed">
+        return (
+            <div className="h-[300px] bg-gray-50 rounded-lg flex flex-col justify-center items-center text-center border border-dashed">
                 <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
                 <p className="text-sm text-gray-500">Calculating audience size...</p>
-             </div>
-         );
+            </div>
+        );
     }
 
     if (!stats) {
@@ -112,7 +112,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
         <div className="bg-white border rounded-lg shadow-sm overflow-hidden flex flex-col h-full max-h-[500px]">
             <div className="bg-gray-50 p-6 flex flex-col justify-center items-center text-center border-b">
                 {loading && <Loader2 className="w-4 h-4 text-primary animate-spin absolute top-4 right-4" />}
-                
+
                 <div className="bg-white p-4 rounded-full shadow-sm mb-4">
                     <Users className="w-8 h-8 text-primary" />
                 </div>
@@ -127,7 +127,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
                         <span className="text-gray-500">Total Matched</span>
                         <span className="font-bold">{stats.total_matched}</span>
                     </div>
-                     <div className="bg-red-50 p-2 rounded border border-red-100 flex flex-col items-center text-red-700">
+                    <div className="bg-red-50 p-2 rounded border border-red-100 flex flex-col items-center text-red-700">
                         <span className="flex items-center gap-1"><Ban className="w-3 h-3" /> Excluded</span>
                         <span className="font-bold">{stats.excluded_missing_phone + stats.excluded_opt_out}</span>
                     </div>

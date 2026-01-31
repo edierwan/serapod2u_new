@@ -121,7 +121,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     if (view !== 'edit-product' && view !== 'view-product') {
       sessionStorage.removeItem('selectedProductId')
     }
-    
+
     // Clear order selection when leaving order views
     if (view !== 'view-order' && view !== 'track-order') {
       sessionStorage.removeItem('viewOrderId')
@@ -252,8 +252,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <UsersView userProfile={userProfile} />
       case 'user-profile':
         return (
-          <UserProfileWrapper 
-            targetUserId={initialTargetId || userProfile.id} 
+          <UserProfileWrapper
+            targetUserId={initialTargetId || userProfile.id}
             currentUserProfile={userProfile}
             onBack={() => handleViewChange('users')}
           />

@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Users, Edit, Trash2, Copy, Loader2 } from 'lucide-react';
+import { Plus, Users, Edit, Trash2, Copy, Loader2, Save, ArrowLeft } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { AudienceFilters } from './AudienceFilterBuilder';
+import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
+import { AudienceEstimator } from './AudienceEstimator';
 
 type Segment = {
     id: string;
@@ -18,12 +20,33 @@ type Segment = {
     updated_at: string;
 };
 
+type ViewMode = 'list' | 'create' | 'edit';
+
+const defaultFilters: AudienceFilters = {
+    organization_type: 'all',
+    state: 'any',
+    opt_in_only: true,
+    only_valid_whatsapp: true
+};
+
 export function AudienceSegmentsManager() {
     const { toast } = useToast();
-    const router = useRouter();
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+
+    // View mode state
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
+    const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
+
+    // Form data
+    const [formData, setFormData] = useState({
+        name: '',
+        description: '',
+        filters: defaultFilters,
+        estimated_count: 0
+    });
 
     const fetchSegments = async () => {
         setLoading(true);
@@ -46,25 +69,75 @@ export function AudienceSegmentsManager() {
     }, []);
 
     const handleNew = () => {
-        router.push('/loyalty/marketing/segments/create');
+        setEditingSegment(null);
+        setFormData({ name: '', description: '', filters: defaultFilters, estimated_count: 0 });
+        setViewMode('create');
     };
 
     const handleEdit = (seg: Segment) => {
-        router.push(`/loyalty/marketing/segments/${seg.id}`);
+        setEditingSegment(seg);
+        setFormData({
+            name: seg.name,
+            description: seg.description,
+            filters: seg.filters || defaultFilters,
+            estimated_count: seg.estimated_count
+        });
+        setViewMode('edit');
+    };
+
+    const handleCancel = () => {
+        setViewMode('list');
+        setEditingSegment(null);
+        setFormData({ name: '', description: '', filters: defaultFilters, estimated_count: 0 });
+    };
+
+    const handleSave = async () => {
+        if (!formData.name) {
+            toast({ title: 'Error', description: 'Segment name is required', variant: 'destructive' });
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const url = editingSegment
+                ? `/api/wa/marketing/segments/${editingSegment.id}`
+                : '/api/wa/marketing/segments';
+            const method = editingSegment ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            if (res.ok) {
+                toast({ title: 'Success', description: 'Segment saved successfully' });
+                setViewMode('list');
+                setEditingSegment(null);
+                fetchSegments();
+            } else {
+                const d = await res.json();
+                toast({ title: 'Error', description: d.error, variant: 'destructive' });
+            }
+        } catch (error) {
+            toast({ title: 'Error', description: 'Failed to save segment', variant: 'destructive' });
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure you want to delete this segment?')) return;
         setDeletingId(id);
         try {
-             const res = await fetch(`/api/wa/marketing/segments/${id}`, { method: 'DELETE' });
-             if (res.ok) {
-                 toast({ title: 'Deleted', description: 'Segment deleted' });
-                 setSegments(prev => prev.filter(s => s.id !== id));
-             } else {
-                 toast({ title: 'Error', description: 'Failed to delete segment', variant: 'destructive' });
-             }
-        } catch(e) {
+            const res = await fetch(`/api/wa/marketing/segments/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                toast({ title: 'Deleted', description: 'Segment deleted' });
+                setSegments(prev => prev.filter(s => s.id !== id));
+            } else {
+                toast({ title: 'Error', description: 'Failed to delete segment', variant: 'destructive' });
+            }
+        } catch (e) {
             toast({ title: 'Error', description: 'Failed to delete segment', variant: 'destructive' });
         } finally {
             setDeletingId(null);
@@ -73,37 +146,126 @@ export function AudienceSegmentsManager() {
 
     const handleDuplicate = async (seg: Segment) => {
         try {
-             const res = await fetch('/api/wa/marketing/segments', {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({
-                     name: `${seg.name} (Copy)`,
-                     description: seg.description,
-                     filters: seg.filters,
-                     estimated_count: seg.estimated_count
-                 })
-             });
-             if (res.ok) {
-                 toast({ title: 'Success', description: 'Segment duplicated' });
-                 fetchSegments();
-             }
+            const res = await fetch('/api/wa/marketing/segments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: `${seg.name} (Copy)`,
+                    description: seg.description,
+                    filters: seg.filters,
+                    estimated_count: seg.estimated_count
+                })
+            });
+            if (res.ok) {
+                toast({ title: 'Success', description: 'Segment duplicated' });
+                fetchSegments();
+            }
         } catch (e) {
             toast({ title: 'Error', description: 'Failed to duplicate segment', variant: 'destructive' });
         }
     };
 
+    // Render Editor View
+    if (viewMode === 'create' || viewMode === 'edit') {
+        return (
+            <div className="space-y-6">
+                {/* Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                            <Button variant="ghost" size="sm" className="h-6 px-0 hover:bg-transparent" onClick={handleCancel}>
+                                <ArrowLeft className="w-4 h-4 mr-1" /> Back to Segments
+                            </Button>
+                        </div>
+                        <h2 className="text-2xl font-bold tracking-tight text-gray-900">
+                            {viewMode === 'edit' ? 'Edit Audience Segment' : 'Create Audience Segment'}
+                        </h2>
+                        <p className="text-gray-500">
+                            Define filters to target a specific audience for your campaigns.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+                        <Button onClick={handleSave} disabled={saving}>
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                            {viewMode === 'edit' ? 'Update Segment' : 'Save Segment'}
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Left Column: Form & Filters */}
+                    <div className="lg:col-span-2 space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Segment Details</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Segment Name</Label>
+                                    <Input
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="e.g. VIP Customers KL"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Description</Label>
+                                    <Input
+                                        value={formData.description}
+                                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                        placeholder="e.g. High value users in Kedah"
+                                    />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Audience Filters</CardTitle>
+                                <CardDescription>Refine your audience based on their profile and behavior.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <AudienceFilterBuilder
+                                    filters={formData.filters}
+                                    onChange={(f: AudienceFilters) => setFormData({ ...formData, filters: f })}
+                                />
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Right Column: Preview */}
+                    <div className="lg:col-span-1">
+                        <div className="lg:sticky lg:top-6 space-y-4">
+                            <Card className="border-l-4 border-l-primary">
+                                <CardContent className="pt-6">
+                                    <AudienceEstimator
+                                        mode="filters"
+                                        filters={formData.filters}
+                                        onCountChange={(count: number) => setFormData(prev => ({ ...prev, estimated_count: count }))}
+                                    />
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Render List View
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                 <div className="flex gap-4">
-                     <Card className="w-64">
-                         <CardContent className="pt-6">
-                             <div className="text-2xl font-bold">{segments.length}</div>
-                             <p className="text-xs text-secondary-foreground">Saved Segments</p>
-                         </CardContent>
-                     </Card>
-                 </div>
-                 <Button onClick={handleNew}><Plus className="w-4 h-4 mr-2" /> New Segment</Button>
+                <div className="flex gap-4">
+                    <Card className="w-64">
+                        <CardContent className="pt-6">
+                            <div className="text-2xl font-bold">{segments.length}</div>
+                            <p className="text-xs text-secondary-foreground">Saved Segments</p>
+                        </CardContent>
+                    </Card>
+                </div>
+                <Button onClick={handleNew}><Plus className="w-4 h-4 mr-2" /> New Segment</Button>
             </div>
 
             <Card>

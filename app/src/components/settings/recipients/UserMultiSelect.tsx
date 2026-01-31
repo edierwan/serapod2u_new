@@ -34,7 +34,7 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
                 setSelectedUsers([])
                 return
             }
-            
+
             // Avoid refetching if we already have the objects and count matches
             if (selectedUsers.length === selectedUserIds.length && selectedUsers.every(u => selectedUserIds.includes(u.id))) {
                 return
@@ -51,7 +51,7 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
             // Or simplest: Just show the IDs or fetch them. 
             // Use search endpoint with a special param or just rely on search finding them if we pass names?
             // Let's implement a simple hydration fetch.
-            
+
             try {
                 // Fetching users by ID is not strictly in the search API spec but let's see if we can search by ID
                 // Or we can add logic to fetch these.
@@ -72,7 +72,7 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
                 console.error(e)
             }
         }
-        
+
         // fetchSelectedUsers()
         // For now, rely on parent or just show IDs if we can't fetch names easily.
         // Actually, I can update the search API to accept specific IDs!
@@ -102,23 +102,23 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
 
         searchUsers()
     }, [debouncedQuery])
-    
+
     // Attempt to hydrate users via search API if we have IDs but no objects
     // This is a bit hacky but works without new endpoint
     useEffect(() => {
         const hydrate = async () => {
-             if (selectedUserIds.length > 0 && selectedUsers.length === 0) {
-                 // Fetch details for these IDs? 
-                 // If I can't fetch them, I can't show names.
-                 // I will add logic to the route to fetch by IDs.
-                 const params = new URLSearchParams()
-                 selectedUserIds.forEach(id => params.append('ids', id))
-                 const res = await fetch(`/api/users/search?${params.toString()}`)
-                 const data = await res.json()
-                 if(data.users) setSelectedUsers(data.users)
-             } else if (selectedUserIds.length === 0) {
-                 setSelectedUsers([])
-             }
+            if (selectedUserIds.length > 0 && selectedUsers.length === 0) {
+                // Fetch details for these IDs? 
+                // If I can't fetch them, I can't show names.
+                // I will add logic to the route to fetch by IDs.
+                const params = new URLSearchParams()
+                selectedUserIds.forEach(id => params.append('ids', id))
+                const res = await fetch(`/api/users/search?${params.toString()}`)
+                const data = await res.json()
+                if (data.users) setSelectedUsers(data.users)
+            } else if (selectedUserIds.length === 0) {
+                setSelectedUsers([])
+            }
         }
         hydrate()
     }, [selectedUserIds.length]) // Only when count changes significantly
@@ -157,11 +157,11 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
                 {loading && (
                     <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-gray-500" />
                 )}
-                
+
                 {open && results.length > 0 && (
                     <div className="absolute top-full mt-1 w-full bg-white border rounded-md shadow-lg z-50 max-h-[200px] overflow-auto">
                         {results.map(user => (
-                            <div 
+                            <div
                                 key={user.id}
                                 className="p-2 hover:bg-gray-50 cursor-pointer flex justify-between items-center"
                                 onClick={() => handleSelect(user)}
@@ -183,24 +183,24 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
             <div className="flex flex-wrap gap-2">
                 {selectedUsers.map(user => (
                     <div className="group relative" key={user.id} title={`${user.email}${user.phone ? ' | ' + user.phone : ''}`}>
-                    <Badge variant="secondary" className="pl-2 pr-1 py-1 flex items-center gap-1 cursor-help">
-                        <UserIcon className="w-3 h-3 text-gray-500" />
-                        <span>{user.full_name}</span>
-                        <button 
-                            onClick={() => handleRemove(user.id)}
-                            className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
-                        >
-                            <X className="w-3 h-3" />
-                        </button>
-                    </Badge>
+                        <Badge variant="secondary" className="pl-2 pr-1 py-1 flex items-center gap-1 cursor-help">
+                            <UserIcon className="w-3 h-3 text-gray-500" />
+                            <span>{user.full_name}</span>
+                            <button
+                                onClick={() => handleRemove(user.id)}
+                                className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </Badge>
                     </div>
                 ))}
-                 {/* Fallback for IDs that failed hydration */}
-                 {selectedUserIds.filter(id => !selectedUsers.find(u => u.id === id)).map(id => (
+                {/* Fallback for IDs that failed hydration */}
+                {selectedUserIds.filter(id => !selectedUsers.find(u => u.id === id)).map(id => (
                     <Badge key={id} variant="secondary" className="pl-2 pr-1 py-1 flex items-center gap-1">
                         <UserIcon className="w-3 h-3 text-gray-500" />
-                        <span className="font-mono text-xs">{id.substring(0,8)}...</span>
-                        <button 
+                        <span className="font-mono text-xs">{id.substring(0, 8)}...</span>
+                        <button
                             onClick={() => handleRemove(id)}
                             className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
                         >

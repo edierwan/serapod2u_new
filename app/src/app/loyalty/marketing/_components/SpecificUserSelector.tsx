@@ -10,14 +10,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 // Simple debounce implementation
 function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
+    func: T,
+    wait: number
 ): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
+    let timeout: NodeJS.Timeout;
+    return (...args: Parameters<T>) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
 }
 
 interface SpecificUserSelectorProps {
@@ -29,7 +29,7 @@ export function SpecificUserSelector({ selectedUserIds, onSelect }: SpecificUser
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<any[]>([]);
     const [searching, setSearching] = useState(false);
-    
+
     // Maintain a map of selected users details to display them even if not in search results
     // For now we just show IDs or fetch them? Ideally parent manages full objects or we fetch details.
     // Simplifying: We only show details if we have them. 
@@ -37,7 +37,7 @@ export function SpecificUserSelector({ selectedUserIds, onSelect }: SpecificUser
     // To show name in pill, we need the name.
     // I'll assume we can't easily get name for existing IDs without fetching.
     // But this component is valid only for creating new campaign, so we start with empty.
-    
+
     const [selectedUsers, setSelectedUsers] = useState<any[]>([]);
 
     const handleSearch = async (q: string) => {
@@ -108,17 +108,17 @@ export function SpecificUserSelector({ selectedUserIds, onSelect }: SpecificUser
                 <div className="p-2 space-y-1">
                     {searching && <div className="text-xs text-center text-gray-500 py-2">Searching...</div>}
                     {!searching && query.length >= 2 && results.length === 0 && (
-                         <div className="text-xs text-center text-gray-500 py-2">No users found</div>
+                        <div className="text-xs text-center text-gray-500 py-2">No users found</div>
                     )}
-                     {!searching && query.length < 2 && selectedUsers.length === 0 && (
+                    {!searching && query.length < 2 && selectedUsers.length === 0 && (
                         <div className="text-xs text-center text-gray-400 py-8">Type to search users</div>
                     )}
-                    
+
                     {results.map(user => {
                         const isSelected = selectedUserIds.includes(user.id);
                         return (
-                            <div 
-                                key={user.id} 
+                            <div
+                                key={user.id}
                                 className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${isSelected ? 'bg-primary/5 border border-primary/20' : 'hover:bg-gray-100 border border-transparent'}`}
                                 onClick={() => toggleUser(user)}
                             >

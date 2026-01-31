@@ -10,13 +10,13 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
 import NotificationFlowDrawer from './NotificationFlowDrawer'
-import { 
-  Save, 
-  Bell, 
-  ShoppingCart, 
-  FileText, 
-  Package, 
-  QrCode, 
+import {
+  Save,
+  Bell,
+  ShoppingCart,
+  FileText,
+  Package,
+  QrCode,
   UserCheck,
   Loader2,
   CheckCircle2,
@@ -92,9 +92,9 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     if (isReady) {
       loadNotificationTypes()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const loadNotificationTypes = async () => {
@@ -123,7 +123,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
 
       // Create settings map
       const settingsMap = new Map<string, NotificationSetting>()
-      
+
       // Initialize with defaults from types
       types?.forEach((type: NotificationType) => {
         settingsMap.set(type.event_code, {
@@ -209,7 +209,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   const toggleAllInCategory = (category: string, enabled: boolean) => {
     const newSettings = new Map(settings)
     const categoryTypes = notificationTypes.filter(t => t.category === category)
-    
+
     categoryTypes.forEach(type => {
       const setting = newSettings.get(type.event_code)
       if (setting) {
@@ -224,7 +224,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         newSettings.set(type.event_code, setting)
       }
     })
-    
+
     setSettings(newSettings)
   }
 
@@ -252,12 +252,12 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           retry_enabled: true,
           max_retries: 3
         }
-        
+
         // Only include id if it exists (for updates)
         if (setting.id) {
           record.id = setting.id
         }
-        
+
         return record
       })
 
@@ -272,7 +272,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
 
       setSaveStatus('success')
       setTimeout(() => setSaveStatus('idle'), 3000)
-      
+
       // Reload settings to get the new IDs
       await loadNotificationTypes()
     } catch (error: any) {
@@ -328,7 +328,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     const types = notificationTypes.filter(t => t.category === category)
     const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
     const allEnabled = categorySettings.every(s => s?.enabled)
-    
+
     return (
       <Card className={`border-l-4 ${getCategoryColor(category)}`}>
         <CardHeader>
@@ -344,7 +344,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                 </CardDescription>
               </div>
             </div>
-            
+
             {/* Bulk Action Buttons */}
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-nowrap sm:items-center">
               <Button
@@ -376,7 +376,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
             if (!setting) return null
 
             return (
-              <div 
+              <div
                 key={type.event_code}
                 className="flex items-start gap-4 p-4 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
               >
@@ -410,13 +410,13 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                     <div className="flex items-center gap-4 flex-wrap">
                       <span className="text-sm font-medium text-gray-700">Channels:</span>
                       {type.available_channels.map((channel) => (
-                        <label 
+                        <label
                           key={channel}
                           className="flex items-center gap-2 cursor-pointer"
                         >
                           <Checkbox
                             checked={setting.channels_enabled.includes(channel)}
-                            onCheckedChange={(checked) => 
+                            onCheckedChange={(checked) =>
                               toggleChannel(type.event_code, channel, checked as boolean)
                             }
                           />
@@ -442,14 +442,14 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                   </div>
 
                   {setting.enabled && (
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 h-8"
-                        onClick={() => setEditingSetting(type.event_code)}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 h-8"
+                      onClick={() => setEditingSetting(type.event_code)}
                     >
-                        <Settings className="w-3 h-3 mr-1.5" />
-                        Configure
+                      <Settings className="w-3 h-3 mr-1.5" />
+                      Configure
                     </Button>
                   )}
                 </div>
@@ -464,7 +464,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   // Configuration Dialog
   const renderConfigDialog = () => {
     if (!editingSetting) return null
-    
+
     // Create a local copy of settings to edit
     const currentCode = editingSetting
     const currentSetting = settings.get(currentCode)
@@ -473,17 +473,17 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     if (!currentSetting || !currentType) return null
 
     return (
-        <NotificationFlowDrawer
-            open={!!editingSetting}
-            onOpenChange={(open) => !open && setEditingSetting(null)}
-            setting={currentSetting}
-            type={currentType}
-            onSave={(updatedSetting) => {
-                const newSettings = new Map(settings)
-                newSettings.set(currentCode, updatedSetting)
-                setSettings(newSettings)
-            }}
-        />
+      <NotificationFlowDrawer
+        open={!!editingSetting}
+        onOpenChange={(open) => !open && setEditingSetting(null)}
+        setting={currentSetting}
+        type={currentType}
+        onSave={(updatedSetting) => {
+          const newSettings = new Map(settings)
+          newSettings.set(currentCode, updatedSetting)
+          setSettings(newSettings)
+        }}
+      />
     )
   }
 
@@ -513,8 +513,8 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                 Choose which events should trigger notifications and select the delivery channels for each type
               </CardDescription>
             </div>
-            <Button 
-              onClick={handleSaveSettings} 
+            <Button
+              onClick={handleSaveSettings}
               disabled={saving}
               className="flex w-full items-center justify-center gap-2 sm:w-auto"
             >
@@ -577,7 +577,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                 </div>
                 <div className="text-center p-3 bg-white rounded-lg border">
                   <div className="text-2xl font-bold text-green-600">
-                    {Array.from(settings.values()).filter(s => 
+                    {Array.from(settings.values()).filter(s =>
                       s.channels_enabled.includes('whatsapp')
                     ).length}
                   </div>
@@ -585,7 +585,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                 </div>
                 <div className="text-center p-3 bg-white rounded-lg border">
                   <div className="text-2xl font-bold text-purple-600">
-                    {Array.from(settings.values()).filter(s => 
+                    {Array.from(settings.values()).filter(s =>
                       s.channels_enabled.includes('sms')
                     ).length}
                   </div>
@@ -593,7 +593,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                 </div>
                 <div className="text-center p-3 bg-white rounded-lg border">
                   <div className="text-2xl font-bold text-orange-600">
-                    {Array.from(settings.values()).filter(s => 
+                    {Array.from(settings.values()).filter(s =>
                       s.channels_enabled.includes('email')
                     ).length}
                   </div>
@@ -614,7 +614,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
               const types = notificationTypes.filter(t => t.category === categoryKey)
               const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
               const enabledCount = categorySettings.filter(s => s?.enabled).length
-              
+
               return (
                 <Card key={categoryKey} className={`border-l-4 ${getCategoryColor(categoryKey)}`}>
                   <CardHeader className="pb-3">
@@ -657,7 +657,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           {renderCategoryContent('user')}
         </TabsContent2>
       </TabsComponent>
-      
+
       {renderConfigDialog()}
     </div>
   )

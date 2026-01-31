@@ -59,7 +59,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
 
     const handleSave = async () => {
         if (!editData.name || !editData.body) return;
-        
+
         try {
             const res = await fetch('/api/wa/marketing/templates', {
                 method: 'POST',
@@ -107,27 +107,27 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                         <SheetTitle className="text-2xl">{selectedTemplate ? 'Edit Template' : 'Create New Template'}</SheetTitle>
                         <SheetDescription>Design your WhatsApp message template with dynamic variables and preview.</SheetDescription>
                     </SheetHeader>
-                    
+
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 py-2">
                         {/* Editor */}
                         <div className="space-y-6 lg:border-r lg:pr-8">
                             <div className="space-y-2">
                                 <Label className="text-base font-semibold">Template Name</Label>
-                                <Input 
+                                <Input
                                     className="h-10"
                                     placeholder="e.g. Monthly Promo"
-                                    value={editData.name} 
-                                    onChange={e => setEditData({...editData, name: e.target.value})} 
+                                    value={editData.name}
+                                    onChange={e => setEditData({ ...editData, name: e.target.value })}
                                     disabled={selectedTemplate?.is_system}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-base font-semibold">Category</Label>
-                                <Input 
+                                <Input
                                     className="h-10"
                                     placeholder="e.g. Marketing"
-                                    value={editData.category} 
-                                    onChange={e => setEditData({...editData, category: e.target.value})}
+                                    value={editData.category}
+                                    onChange={e => setEditData({ ...editData, category: e.target.value })}
                                     disabled={selectedTemplate?.is_system}
                                 />
                             </div>
@@ -136,11 +136,11 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                     <Label className="text-base font-semibold">Message Body</Label>
                                     <span className="text-xs text-muted-foreground">{editData.body?.length || 0} chars</span>
                                 </div>
-                                <Textarea 
+                                <Textarea
                                     className="h-[300px] font-mono text-sm resize-none bg-gray-50 focus:bg-white transition-colors"
                                     placeholder="Type your message here... Use {variable} for dynamic content."
                                     value={editData.body}
-                                    onChange={e => setEditData({...editData, body: e.target.value})}
+                                    onChange={e => setEditData({ ...editData, body: e.target.value })}
                                     disabled={selectedTemplate?.is_system}
                                 />
                                 <div className="p-3 bg-blue-50 text-blue-800 text-xs rounded-md border border-blue-100 leading-relaxed">
@@ -155,7 +155,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                             <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-[360px] h-[640px] overflow-hidden border-[8px] border-gray-900 relative">
                                 {/* Notch */}
                                 <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-gray-900 rounded-b-xl z-20"></div>
-                                
+
                                 {/* Status Bar */}
                                 <div className="bg-[#075e54] h-20 pt-8 px-4 flex items-center gap-3 shadow-md z-10 relative">
                                     <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 border border-white/20">S</div>
@@ -164,7 +164,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                         <div className="text-[10px] opacity-80">Official Business Account</div>
                                     </div>
                                 </div>
-                                
+
                                 {/* Chat Area */}
                                 <div className="bg-[#e5ddd5] h-full p-4 flex flex-col gap-2 overflow-y-auto pb-20 relative">
                                     <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4a4a4a 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
@@ -180,22 +180,22 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                     </div>
 
                     <SheetFooter className="flex justify-between sm:justify-between">
-                         <div className="flex gap-2">
-                             {onUseTemplate && (
-                                 <Button variant="outline" onClick={() => {
-                                     onUseTemplate(editData as Template);
-                                     setIsEditing(false);
-                                 }}>
-                                     Use this Template
-                                 </Button>
-                             )}
-                         </div>
-                         <div className="flex gap-2">
-                             <Button variant="ghost" onClick={() => setIsEditing(false)}>Cancel</Button>
-                             {!selectedTemplate?.is_system && (
-                                 <Button onClick={handleSave}>Save Template</Button>
-                             )}
-                         </div>
+                        <div className="flex gap-2">
+                            {onUseTemplate && (
+                                <Button variant="outline" onClick={() => {
+                                    onUseTemplate(editData as Template);
+                                    setIsEditing(false);
+                                }}>
+                                    Use this Template
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="ghost" onClick={() => setIsEditing(false)}>Cancel</Button>
+                            {!selectedTemplate?.is_system && (
+                                <Button onClick={handleSave}>Save Template</Button>
+                            )}
+                        </div>
                     </SheetFooter>
                 </SheetContent>
             </Sheet>

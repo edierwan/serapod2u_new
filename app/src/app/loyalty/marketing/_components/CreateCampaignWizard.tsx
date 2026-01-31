@@ -16,7 +16,7 @@ import { format } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AudienceFilterBuilder } from './AudienceFilterBuilder';
+import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
 import { AudienceEstimator } from './AudienceEstimator';
 import { SpecificUserSelector } from './SpecificUserSelector';
 
@@ -31,13 +31,13 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
     const [submitting, setSubmitting] = useState(false);
     const [testing, setTesting] = useState(false);
     const [estimatedRecipients, setEstimatedRecipients] = useState(0);
-    
+
     const [segments, setSegments] = useState<any[]>([]);
 
     const [formData, setFormData] = useState({
         name: '',
         objective: 'Promo',
-        
+
         // Audience
         audienceMode: 'filters' as 'filters' | 'segment' | 'specific_users',
         selectedSegmentId: '',
@@ -45,8 +45,9 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
         filters: {
             organization_type: 'all',
             state: 'any',
-            opt_in_only: true
-        },
+            opt_in_only: true,
+            only_valid_whatsapp: true
+        } as AudienceFilters,
 
         message: '',
         templateId: '',
@@ -105,8 +106,8 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
 
     const handleLaunch = async () => {
         if (!formData.name || !formData.message) {
-             toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" });
-             return;
+            toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" });
+            return;
         }
         setSubmitting(true);
         try {
@@ -129,13 +130,13 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                     quiet_hours_enabled: formData.quietHours
                 })
             });
-            
+
             if (res.ok) {
                 toast({ title: "Success", description: "Campaign created successfully!" });
                 onComplete();
             } else {
-                 const data = await res.json();
-                 toast({ title: "Error", description: data.error, variant: "destructive" });
+                const data = await res.json();
+                toast({ title: "Error", description: data.error, variant: "destructive" });
             }
         } catch (error) {
             toast({ title: "Error", description: "Failed to create campaign", variant: "destructive" });
@@ -178,17 +179,17 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                         <div className="grid md:grid-cols-2 gap-8">
                             <div className="space-y-3">
                                 <Label className="text-base">Campaign Name</Label>
-                                <Input 
+                                <Input
                                     className="h-12 text-lg"
-                                    placeholder="e.g. End of Month Sale" 
-                                    value={formData.name} 
-                                    onChange={e => setFormData({...formData, name: e.target.value})}
+                                    placeholder="e.g. End of Month Sale"
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />
                                 <p className="text-sm text-gray-500">Give your campaign a descriptive name for internal tracking.</p>
                             </div>
                             <div className="space-y-3">
                                 <Label className="text-base">Objective</Label>
-                                <Select value={formData.objective} onValueChange={v => setFormData({...formData, objective: v})}>
+                                <Select value={formData.objective} onValueChange={v => setFormData({ ...formData, objective: v })}>
                                     <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="Promo">Marketing / Promo</SelectItem>
@@ -208,10 +209,10 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                     <div className="grid md:grid-cols-2 gap-8 h-[500px]">
                         <div className="space-y-4 flex flex-col h-full">
                             <h3 className="font-medium">Define Audience</h3>
-                            
+
                             <div className="space-y-2">
                                 <Label>Audience Source</Label>
-                                <Tabs value={formData.audienceMode} onValueChange={(v: any) => setFormData({...formData, audienceMode: v})} className="w-full">
+                                <Tabs value={formData.audienceMode} onValueChange={(v: any) => setFormData({ ...formData, audienceMode: v })} className="w-full">
                                     <TabsList className="grid w-full grid-cols-3">
                                         <TabsTrigger value="filters">Filters</TabsTrigger>
                                         <TabsTrigger value="segment">Saved Segment</TabsTrigger>
@@ -222,18 +223,18 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
 
                             <ScrollArea className="flex-1 pr-4">
                                 {formData.audienceMode === 'filters' && (
-                                     <AudienceFilterBuilder 
-                                        filters={formData.filters} 
-                                        onChange={(f) => setFormData({...formData, filters: f})} 
-                                     />
+                                    <AudienceFilterBuilder
+                                        filters={formData.filters}
+                                        onChange={(f: AudienceFilters) => setFormData({ ...formData, filters: f })}
+                                    />
                                 )}
-                                
+
                                 {formData.audienceMode === 'segment' && (
                                     <div className="space-y-2 pt-2">
                                         <Label>Select Segment</Label>
-                                        <Select 
-                                            value={formData.selectedSegmentId} 
-                                            onValueChange={(v) => setFormData({...formData, selectedSegmentId: v})}
+                                        <Select
+                                            value={formData.selectedSegmentId}
+                                            onValueChange={(v) => setFormData({ ...formData, selectedSegmentId: v })}
                                         >
                                             <SelectTrigger><SelectValue placeholder="Choose a segment..." /></SelectTrigger>
                                             <SelectContent>
@@ -247,9 +248,9 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                                             </SelectContent>
                                         </Select>
                                         {formData.selectedSegmentId && (
-                                             <p className="text-xs text-muted-foreground mt-2">
-                                                 {segments.find((s: any) => s.id === formData.selectedSegmentId)?.description}
-                                             </p>
+                                            <p className="text-xs text-muted-foreground mt-2">
+                                                {segments.find((s: any) => s.id === formData.selectedSegmentId)?.description}
+                                            </p>
                                         )}
                                     </div>
                                 )}
@@ -257,15 +258,15 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                                 {formData.audienceMode === 'specific_users' && (
                                     <SpecificUserSelector
                                         selectedUserIds={formData.selectedUserIds}
-                                        onSelect={(ids) => setFormData({...formData, selectedUserIds: ids})}
+                                        onSelect={(ids) => setFormData({ ...formData, selectedUserIds: ids })}
                                     />
                                 )}
                             </ScrollArea>
                         </div>
-                        
+
                         <div className="h-full">
-                            <AudienceEstimator 
-                                mode={formData.audienceMode} 
+                            <AudienceEstimator
+                                mode={formData.audienceMode}
                                 filters={formData.filters}
                                 segmentId={formData.selectedSegmentId}
                                 userIds={formData.selectedUserIds}
@@ -281,12 +282,12 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                         <div className="flex flex-col gap-4 h-full">
                             <div className="space-y-2">
                                 <Label>Template</Label>
-                                <Select 
-                                    value={formData.templateId} 
+                                <Select
+                                    value={formData.templateId}
                                     onValueChange={(val) => {
                                         const tmpl = mockTemplates.find(t => t.id === val);
                                         setFormData({
-                                            ...formData, 
+                                            ...formData,
                                             templateId: val,
                                             message: tmpl?.body || formData.message
                                         });
@@ -302,11 +303,11 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                             </div>
                             <div className="flex-1 flex flex-col gap-2">
                                 <Label>Message Body</Label>
-                                <Textarea 
-                                    className="flex-1 resize-none font-mono text-sm" 
+                                <Textarea
+                                    className="flex-1 resize-none font-mono text-sm"
                                     placeholder="Type your message here..."
                                     value={formData.message}
-                                    onChange={e => setFormData({...formData, message: e.target.value})}
+                                    onChange={e => setFormData({ ...formData, message: e.target.value })}
                                 />
                             </div>
                             <div className="flex gap-2 flex-wrap">
@@ -319,7 +320,7 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                                 Send Test Message
                             </Button>
                         </div>
-                        
+
                         {/* Preview */}
                         <div className="bg-gray-100 rounded-xl p-4 flex justify-center items-center">
                             <div className="bg-white rounded-lg shadow-lg w-[300px] overflow-hidden border">
@@ -342,7 +343,7 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                 {step === 4 && (
                     <div className="space-y-6">
                         <div className="grid md:grid-cols-2 gap-6">
-                             <div className="space-y-4">
+                            <div className="space-y-4">
                                 <div className="p-4 bg-gray-50 rounded-lg space-y-3">
                                     <h4 className="font-medium text-sm text-gray-900 border-b pb-2">Campaign Summary</h4>
                                     <div className="flex justify-between text-sm">
@@ -365,7 +366,7 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                                         <h4 className="font-medium text-sm">Risk Assessment: {riskLevel}</h4>
                                     </div>
                                     <p className="text-xs text-yellow-700">
-                                        {riskLevel === 'High' 
+                                        {riskLevel === 'High'
                                             ? 'Large audience size. Sending may take several hours due to throttling.'
                                             : 'Standard campaign load. Expected delivery within 1 hour.'}
                                     </p>
@@ -373,20 +374,20 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                             </div>
 
                             <div className="space-y-4">
-                                 <h4 className="font-medium">Schedule</h4>
-                                 <div className="flex gap-4">
-                                     <Button 
+                                <h4 className="font-medium">Schedule</h4>
+                                <div className="flex gap-4">
+                                    <Button
                                         variant={formData.scheduleType === 'now' ? 'default' : 'outline'}
-                                        onClick={() => setFormData({...formData, scheduleType: 'now'})}
+                                        onClick={() => setFormData({ ...formData, scheduleType: 'now' })}
                                         className="flex-1"
                                     >
                                         <Send className="w-4 h-4 mr-2" /> Send Now
                                     </Button>
                                     <Popover>
                                         <PopoverTrigger asChild>
-                                            <Button 
+                                            <Button
                                                 variant={formData.scheduleType === 'schedule' ? 'default' : 'outline'}
-                                                onClick={() => setFormData({...formData, scheduleType: 'schedule'})}
+                                                onClick={() => setFormData({ ...formData, scheduleType: 'schedule' })}
                                                 className="flex-1"
                                             >
                                                 <CalendarIcon className="w-4 h-4 mr-2" /> Schedule
@@ -396,17 +397,17 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                                             <Calendar
                                                 mode="single"
                                                 selected={formData.scheduledDate}
-                                                onSelect={(d) => setFormData({...formData, scheduledDate: d, scheduleType: 'schedule'})}
+                                                onSelect={(d) => setFormData({ ...formData, scheduledDate: d, scheduleType: 'schedule' })}
                                                 initialFocus
                                             />
                                         </PopoverContent>
                                     </Popover>
-                                 </div>
-                                 {formData.scheduleType === 'schedule' && formData.scheduledDate && (
-                                     <p className="text-sm text-center text-primary font-medium">
-                                         Scheduled for {format(formData.scheduledDate, 'PPP')}
-                                     </p>
-                                 )}
+                                </div>
+                                {formData.scheduleType === 'schedule' && formData.scheduledDate && (
+                                    <p className="text-sm text-center text-primary font-medium">
+                                        Scheduled for {format(formData.scheduledDate, 'PPP')}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>
