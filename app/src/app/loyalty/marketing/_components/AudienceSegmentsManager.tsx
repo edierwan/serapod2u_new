@@ -226,55 +226,66 @@ export function AudienceSegmentsManager() {
             </Card>
 
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-                <SheetContent className="w-[1000px] sm:w-[540px] md:w-[800px] overflow-y-auto">
-                    <SheetHeader>
+                <SheetContent className="w-[92vw] sm:w-[520px] lg:w-[640px] 2xl:w-[720px] max-w-none flex flex-col h-full bg-slate-50 p-0 gap-0">
+                    <SheetHeader className="px-6 py-4 bg-white border-b shrink-0">
                         <SheetTitle>{editingSegment ? 'Edit Segment' : 'Create New Segment'}</SheetTitle>
                         <SheetDescription>
                             Define the filters to target a specific audience.
                         </SheetDescription>
                     </SheetHeader>
-                    <div className="py-6 space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Segment Name</Label>
-                                <Input 
-                                    value={formData.name} 
-                                    onChange={e => setFormData({...formData, name: e.target.value})}
-                                    placeholder="e.g. VIP Customers KL" 
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Description</Label>
-                                <Input 
-                                    value={formData.description} 
-                                    onChange={e => setFormData({...formData, description: e.target.value})}
-                                    placeholder="e.g. High value users in KL" 
-                                />
-                            </div>
-                        </div>
+                    
+                    <div className="flex-1 overflow-y-auto px-6 py-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Left Column: Form & Filters */}
+                            <div className="lg:col-span-2 space-y-6">
+                                <div className="space-y-4 bg-white p-4 rounded-lg border shadow-sm">
+                                    <h3 className="font-medium text-sm text-gray-900 mb-2">Segment Details</h3>
+                                    <div className="grid gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Segment Name</Label>
+                                            <Input 
+                                                value={formData.name} 
+                                                onChange={e => setFormData({...formData, name: e.target.value})}
+                                                placeholder="e.g. VIP Customers KL" 
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Description</Label>
+                                            <Input 
+                                                value={formData.description} 
+                                                onChange={e => setFormData({...formData, description: e.target.value})}
+                                                placeholder="e.g. High value users in KL" 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
 
-                        <div className="grid md:grid-cols-2 gap-8 h-[500px]">
-                             <div className="flex flex-col h-full space-y-4">
-                                <h3 className="font-medium text-sm text-gray-500 uppercase tracking-wider">Filters</h3>
-                                <ScrollArea className="flex-1 pr-2">
+                                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                                    <h3 className="font-medium text-sm text-gray-900 mb-4">Audience Filters</h3>
                                     <AudienceFilterBuilder
                                         filters={formData.filters}
                                         onChange={f => setFormData({...formData, filters: f})}
                                     />
-                                </ScrollArea>
-                             </div>
+                                </div>
+                            </div>
                              
-                             <div className="h-full">
-                                <h3 className="font-medium text-sm text-gray-500 uppercase tracking-wider mb-4">Preview</h3>
-                                <AudienceEstimator
-                                    mode="filters"
-                                    filters={formData.filters}
-                                    onCountChange={count => setFormData(prev => ({ ...prev, estimated_count: count }))}
-                                />
-                             </div>
+                            {/* Right Column: Preview */}
+                            <div className="lg:col-span-1">
+                                <div className="lg:sticky lg:top-0 space-y-4">
+                                    <h3 className="font-medium text-sm text-gray-500 uppercase tracking-wider hidden lg:block">Preview</h3>
+                                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                                        <AudienceEstimator
+                                            mode="filters"
+                                            filters={formData.filters}
+                                            onCountChange={count => setFormData(prev => ({ ...prev, estimated_count: count }))}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                     <SheetFooter className="mt-6">
+
+                     <SheetFooter className="px-6 py-4 bg-white border-t shrink-0 flex justify-end gap-2">
                         <Button variant="outline" onClick={() => setIsSheetOpen(false)}>Cancel</Button>
                         <Button onClick={handleSave} disabled={saving}>
                             {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}

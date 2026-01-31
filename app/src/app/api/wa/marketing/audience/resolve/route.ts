@@ -30,14 +30,14 @@ export async function POST(request: NextRequest) {
 
     // Prepare query
     // We need to filter based on organization type, so we need to join organizations
-    // Using !inner to ensure we can filter by org fields, using the named relationship from user schema
+    // Using left join (removing !inner) to include users without organization (End Users)
     let query = supabase.from('users' as any).select(`
       id, 
       full_name, 
       phone, 
       location, 
       organization_id,
-      organizations!fk_users_organization!inner (
+      organizations!fk_users_organization (
         id,
         org_type_code, 
         org_name
@@ -50,12 +50,19 @@ export async function POST(request: NextRequest) {
     } else {
       // Apply Organization Type Filter
       if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
-        // Filter using the nested relationship field
-        query = query.eq('organizations.org_type_code', activeFilters.organization_type);
+        if (activeFilters.organization_type === 'End User') {
+          // End Users defined as those without an organization linked
+          query = query.is('organization_id', null);
+        } else {
+          // Filter using the nested relationship field
+          query = query.eq('organizations.org_type_code', activeFilters.organization_type);
+        }
       }
 
       // Apply Location Filter
       if (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any') {
+         // Using plain eq() because values come from DB. 
+         // If whitespace issues persist, consider using a sanitized column or trimming in DB.
         query = query.eq('location', activeFilters.state);
       }
     }
