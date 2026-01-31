@@ -1,0 +1,9 @@
+{
+  "tenants": [
+    {
+      "id": "serapod2u",
+      "label": "Serapod2u",
+      "api_key": "REPLACE_WITH_REAL_KEY"
+    }
+  ]
+}

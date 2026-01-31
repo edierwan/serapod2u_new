@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescrip
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Plus, Edit, Copy, Send, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Edit, Copy, Send, Loader2, Search, Filter, Sparkles } from 'lucide-react';
 
 type Template = {
     id: string;
@@ -23,6 +24,8 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
     const [loading, setLoading] = useState(true);
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
     // Form state
     const [editData, setEditData] = useState<Partial<Template>>({});
@@ -44,6 +47,34 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
     useEffect(() => {
         fetchTemplates();
     }, []);
+
+    // Get unique categories from templates
+    const categories = useMemo(() => {
+        const cats = new Set(templates.map(t => t.category || 'General'));
+        return ['all', ...Array.from(cats).sort()];
+    }, [templates]);
+
+    // Filter templates based on search and category
+    const filteredTemplates = useMemo(() => {
+        return templates.filter(t => {
+            const matchesSearch = searchQuery === '' || 
+                t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                t.body.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesCategory = selectedCategory === 'all' || t.category === selectedCategory;
+            return matchesSearch && matchesCategory;
+        });
+    }, [templates, searchQuery, selectedCategory]);
+
+    // Group templates by category for display
+    const groupedTemplates = useMemo(() => {
+        const groups: Record<string, Template[]> = {};
+        filteredTemplates.forEach(t => {
+            const cat = t.category || 'General';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(t);
+        });
+        return groups;
+    }, [filteredTemplates]);
 
     const handleEdit = (tmpl: Template) => {
         setSelectedTemplate(tmpl);
@@ -77,29 +108,117 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
 
     if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin inline-block mr-2" /> Loading templates...</div>;
 
+    // Category badge colors
+    const getCategoryColor = (category: string) => {
+        const colors: Record<string, string> = {
+            'Promotional': 'bg-orange-100 text-orange-700 border-orange-200',
+            'Loyalty': 'bg-purple-100 text-purple-700 border-purple-200',
+            'Engagement': 'bg-blue-100 text-blue-700 border-blue-200',
+            'Seasonal': 'bg-green-100 text-green-700 border-green-200',
+            'Informational': 'bg-gray-100 text-gray-700 border-gray-200',
+            'Reactivation': 'bg-red-100 text-red-700 border-red-200',
+            'VIP': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+        };
+        return colors[category] || 'bg-gray-100 text-gray-600 border-gray-200';
+    };
+
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium">Message Templates</h3>
-                <Button onClick={handleCreate}><Plus className="w-4 h-4 mr-2" /> New Template</Button>
+            {/* Header with filters */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h3 className="text-lg font-medium">Message Templates</h3>
+                    <p className="text-sm text-muted-foreground">
+                        {filteredTemplates.length} templates available
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search templates..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-9"
+                        />
+                    </div>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                        <SelectTrigger className="w-[150px]">
+                            <Filter className="h-4 w-4 mr-2" />
+                            <SelectValue placeholder="Category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {categories.map(cat => (
+                                <SelectItem key={cat} value={cat}>
+                                    {cat === 'all' ? 'All Categories' : cat}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button onClick={handleCreate}><Plus className="w-4 h-4 mr-2" /> New</Button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {templates.map(tmpl => (
-                    <Card key={tmpl.id} className="cursor-pointer hover:border-primary transition-colors group" onClick={() => handleEdit(tmpl)}>
-                        <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                                <CardTitle className="text-base">{tmpl.name}</CardTitle>
-                                {tmpl.is_system && <Badge variant="secondary">System</Badge>}
+            {/* System templates notice */}
+            {templates.some(t => t.is_system) && (
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-100">
+                    <div className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-purple-600" />
+                        <span className="font-medium text-purple-800">Ready-Made Templates</span>
+                    </div>
+                    <p className="text-sm text-purple-700 mt-1">
+                        We've prepared professional templates for common marketing scenarios. 
+                        System templates cannot be edited but you can duplicate and customize them.
+                    </p>
+                </div>
+            )}
+
+            {/* Grouped templates */}
+            {Object.keys(groupedTemplates).length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                    No templates found matching your criteria.
+                </div>
+            ) : (
+                <div className="space-y-8">
+                    {Object.entries(groupedTemplates).sort().map(([category, categoryTemplates]) => (
+                        <div key={category}>
+                            <div className="flex items-center gap-2 mb-4">
+                                <Badge className={`${getCategoryColor(category)} border`}>
+                                    {category}
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                    {categoryTemplates.length} template{categoryTemplates.length !== 1 ? 's' : ''}
+                                </span>
                             </div>
-                            <Badge variant="outline" className="font-normal text-xs">{tmpl.category || 'General'}</Badge>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-sm text-gray-500 line-clamp-3 h-[60px]">{tmpl.body}</p>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {categoryTemplates.map(tmpl => (
+                                    <Card 
+                                        key={tmpl.id} 
+                                        className="cursor-pointer hover:border-primary hover:shadow-md transition-all group" 
+                                        onClick={() => handleEdit(tmpl)}
+                                    >
+                                        <CardHeader className="pb-2">
+                                            <div className="flex justify-between items-start">
+                                                <CardTitle className="text-sm font-medium group-hover:text-primary transition-colors">
+                                                    {tmpl.name}
+                                                </CardTitle>
+                                                {tmpl.is_system && (
+                                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                                        System
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-xs text-gray-500 line-clamp-3">{tmpl.body}</p>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             <Sheet open={isEditing} onOpenChange={setIsEditing}>
                 <SheetContent className="w-[100vw] sm:w-[80vw] md:w-[900px] lg:w-[1000px] max-w-[1200px] overflow-y-auto sm:max-w-none">
@@ -123,13 +242,25 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-base font-semibold">Category</Label>
-                                <Input
-                                    className="h-10"
-                                    placeholder="e.g. Marketing"
-                                    value={editData.category}
-                                    onChange={e => setEditData({ ...editData, category: e.target.value })}
+                                <Select 
+                                    value={editData.category || 'General'} 
+                                    onValueChange={(v) => setEditData({ ...editData, category: v })}
                                     disabled={selectedTemplate?.is_system}
-                                />
+                                >
+                                    <SelectTrigger className="h-10">
+                                        <SelectValue placeholder="Select a category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Promotional">Promotional</SelectItem>
+                                        <SelectItem value="Loyalty">Loyalty</SelectItem>
+                                        <SelectItem value="Engagement">Engagement</SelectItem>
+                                        <SelectItem value="Seasonal">Seasonal</SelectItem>
+                                        <SelectItem value="Informational">Informational</SelectItem>
+                                        <SelectItem value="Reactivation">Reactivation</SelectItem>
+                                        <SelectItem value="VIP">VIP</SelectItem>
+                                        <SelectItem value="General">General</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">

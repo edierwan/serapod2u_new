@@ -112,7 +112,8 @@ export async function POST(request: NextRequest) {
             // Only active users
             query = query.eq('is_active', true);
 
-            const { data, error } = await query as any;
+            // Supabase has a default limit of 1000 rows, increase it to fetch all users
+            const { data, error, count } = await query.limit(50000) as any;
 
             if (error) {
                 console.warn('View query failed, falling back to basic query:', error);
@@ -158,7 +159,8 @@ export async function POST(request: NextRequest) {
 
             query = query.eq('is_active', true);
 
-            const { data, error } = await query as any;
+            // Supabase has a default limit of 1000 rows, increase it to fetch all users
+            const { data, error } = await query.limit(50000) as any;
 
             if (error) {
                 console.error('Error fetching users:', error);

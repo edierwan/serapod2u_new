@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { callGateway } from '@/app/api/settings/whatsapp/_utils'
 
 // Normalize phone number for Baileys (Malaysia preferred)
 // Removes non-digits, replaces leading 0 with 60
@@ -38,47 +39,21 @@ export async function POST(request: NextRequest) {
         const normalizedPhone = normalizeBaileysPhone(to)
         const message = 'This is a test message from Serapod2u Notification Settings.'
 
-        // Call Baileys Gateway
-        // POST {base_url}/send
-        // headers: Content-Type: application/json, x-api-key: api_key
-        // body: { to: "<msisdn>", message: "<text>" }
+        // Call Baileys Gateway using centralized utility
+        // Uses legacy endpoints (single-tenant)
         
         try {
-            // Ensure no trailing slash on base_url
-            const url = base_url.replace(/\/$/, '') + '/send'
-            
-            console.log(`Sending Baileys message to ${normalizedPhone} via ${url}`)
-            
-            const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': api_key
-                },
-                body: JSON.stringify({
+            // Use callGateway which handles URL sanitization and legacy endpoint mapping
+            const result = await callGateway(
+                base_url,
+                api_key,
+                'POST',
+                '/messages/send',
+                {
                     to: normalizedPhone,
-                    message: message
-                }),
-                signal: controller.signal
-            })
-            
-            clearTimeout(timeoutId)
-
-            if (!response.ok) {
-                const text = await response.text()
-                throw new Error(`Baileys Gateway Error: ${response.status} ${text}`)
-            }
-            
-            const result = await response.json()
-            
-            // Check specific success flag if server returns one
-            // Requirement: handle response: if ok true => success else failure.
-            if (result.ok === false || result.status === 'error') {
-                 throw new Error(result.message || 'Unknown Baileys error')
-            }
+                    text: message
+                }
+            );
 
             return NextResponse.json({ success: true, message: 'Test message sent successfully via Baileys', data: result })
 

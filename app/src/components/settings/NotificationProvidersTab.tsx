@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,17 @@ import {
   EyeOff,
   TestTube,
   Settings,
-  Shield
+  Shield,
+  Wifi,
+  WifiOff,
+  QrCode,
+  RefreshCw,
+  LogOut,
+  Smartphone,
+  Send,
+  Clock,
+  AlertTriangle,
+  Link2
 } from 'lucide-react'
 
 interface ProviderConfig {
@@ -99,6 +109,30 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     email: {}
   })
 
+  // WhatsApp Gateway Status State
+  const [gatewayStatus, setGatewayStatus] = useState<{
+    configured: boolean;
+    connected: boolean;
+    pairing_state: string;
+    phone_number: string | null;
+    push_name: string | null;
+    last_connected_at: string | null;
+    last_error: string | null;
+  } | null>(null)
+  const [gatewayLoading, setGatewayLoading] = useState(false)
+  const [qrCode, setQrCode] = useState<string | null>(null)
+  const [qrExpiry, setQrExpiry] = useState<number>(0)
+  const [gatewayAction, setGatewayAction] = useState<string | null>(null)
+  const [testNumber, setTestNumber] = useState('')
+  const [testMessage, setTestMessage] = useState('')
+  const [sendingTest, setSendingTest] = useState(false)
+  
+  // Smart polling state
+  const statusPollRef = useRef<NodeJS.Timeout | null>(null)
+  const lastStatusRef = useRef<{data: any, at: number} | null>(null)
+  const [pollInterval, setPollInterval] = useState(5000)
+  const [isGatewayUnreachable, setIsGatewayUnreachable] = useState(false)
+
   useEffect(() => {
     if (isReady) {
       loadProviderConfigs()
@@ -108,6 +142,24 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
+  
+  // Helper to parse complex error objects from gateway
+  const getFriendlyErrorMessage = (errorStr: string | null) => {
+    if (!errorStr) return null;
+    try {
+      // Check if legacy simple string or JSON
+      if (errorStr.startsWith('{')) {
+        const errObj = JSON.parse(errorStr);
+        if (errObj.code === 440) return "Connection dropped (temporary). Auto-reconnecting...";
+        if (errObj.isLoggedOut) return "Logged out. Please reconnect (scan QR).";
+        if (errObj.code === 401) return "Authentication failed. Check API Key.";
+        if (errObj.reason) return errObj.reason;
+      }
+      return errorStr;
+    } catch (e) {
+      return errorStr;
+    }
+  }
 
   const loadEmailUsage = async () => {
     if (!isReady) return
@@ -127,6 +179,241 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       setEmailUsageLoading(false)
     }
   }
+
+  // ============================================
+  // WhatsApp Gateway Control Functions
+  // ============================================
+  
+  const fetchGatewayStatus = useCallback(async () => {
+    if (!whatsappConfig?.provider_name || whatsappConfig.provider_name !== 'baileys') {
+      return
+    }
+    
+    // Don't show global loading on background polls unless it's the very first time
+    if (!lastStatusRef.current) {
+        setGatewayLoading(true)
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+      const response = await fetch('/api/settings/whatsapp/status', {
+        signal: controller.signal
+      })
+      clearTimeout(timeoutId);
+
+      // Network level success
+      if (response.ok) {
+        const data = await response.json()
+        
+        // Cache successful response
+        lastStatusRef.current = { data, at: Date.now() }
+        setGatewayStatus(data)
+        setIsGatewayUnreachable(false)
+        setPollInterval(5000) // Reset to fast polling on success
+
+        // If waiting for QR, fetch QR code
+        if (data.pairing_state === 'waiting_qr') {
+          await fetchQRCode()
+        } else {
+          setQrCode(null)
+        }
+        
+        // Update test number from config if available
+        if (data.phone_number && !testNumber) {
+          setTestNumber(whatsappConfig.config_public.test_number || '')
+        }
+      } else {
+        throw new Error(`HTTP ${response.status}`)
+      }
+    } catch (error) {
+      console.error('Error fetching gateway status:', error)
+      
+      // Handle resilience: Only clear status if cache is stale (>30s)
+      const cached = lastStatusRef.current;
+      const isStale = !cached || (Date.now() - cached.at > 30000);
+      
+      if (isStale) {
+          setIsGatewayUnreachable(true)
+          setGatewayStatus(null) // Only clear if we really lost it
+      } else {
+          setIsGatewayUnreachable(true) // Just warn user, keep showing old data
+      }
+
+      // Backoff polling on error
+      setPollInterval(prev => Math.min(prev * 1.5, 30000))
+    } finally {
+      setGatewayLoading(false)
+    }
+  }, [whatsappConfig?.provider_name, whatsappConfig?.config_public.test_number, testNumber])
+
+  const fetchQRCode = async () => {
+    try {
+      const response = await fetch('/api/settings/whatsapp/qr')
+      const data = await response.json()
+      
+      if (response.ok && data.qr) {
+        // Gateway returns raw QR string - convert to data URL for display
+        // Import qrcode dynamically to avoid SSR issues
+        const QRCode = (await import('qrcode')).default
+        const dataUrl = await QRCode.toDataURL(data.qr, {
+          errorCorrectionLevel: 'M',
+          type: 'image/png',
+          margin: 2,
+          width: 300,
+        })
+        setQrCode(dataUrl)
+        setQrExpiry(data.expires_in_sec || 25)
+      } else {
+        setQrCode(null)
+      }
+    } catch (error) {
+      console.error('Error fetching QR code:', error)
+      setQrCode(null)
+    }
+  }
+
+  const handleGatewayReset = async () => {
+    if (!confirm('This will disconnect the current WhatsApp number and require re-scanning the QR code. Continue?')) {
+      return
+    }
+    
+    try {
+      setGatewayAction('reset')
+      const response = await fetch('/api/settings/whatsapp/reset', {
+        method: 'POST',
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        setGatewayStatus(prev => prev ? { ...prev, pairing_state: 'waiting_qr', connected: false, phone_number: null } : null)
+        await fetchQRCode()
+      } else {
+        alert(`Failed to reset session: ${data.error}`)
+      }
+    } catch (error: any) {
+      alert(`Error: ${error.message}`)
+    } finally {
+      setGatewayAction(null)
+    }
+  }
+
+  const handleGatewayLogout = async () => {
+    if (!confirm('This will disconnect from WhatsApp. Continue?')) {
+      return
+    }
+    
+    try {
+      setGatewayAction('logout')
+      const response = await fetch('/api/settings/whatsapp/logout', {
+        method: 'POST',
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        setGatewayStatus(prev => prev ? { ...prev, connected: false, pairing_state: 'disconnected' } : null)
+        setQrCode(null)
+      } else {
+        alert(`Failed to logout: ${data.error}`)
+      }
+    } catch (error: any) {
+      alert(`Error: ${error.message}`)
+    } finally {
+      setGatewayAction(null)
+    }
+  }
+
+  const handleGatewayReconnect = async () => {
+    try {
+      setGatewayAction('reconnect')
+      const response = await fetch('/api/settings/whatsapp/reconnect', {
+        method: 'POST',
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        await fetchGatewayStatus()
+      } else {
+        alert(`Failed to reconnect: ${data.error}`)
+      }
+    } catch (error: any) {
+      alert(`Error: ${error.message}`)
+    } finally {
+      setGatewayAction(null)
+    }
+  }
+
+  const handleSendTestMessage = async () => {
+    if (!testNumber) {
+      alert('Please enter a recipient number')
+      return
+    }
+    
+    try {
+      setSendingTest(true)
+      const response = await fetch('/api/settings/whatsapp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: testNumber,
+          message: testMessage || undefined,
+        }),
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        alert(`✅ Test message sent successfully to ${data.sent_to}`)
+      } else {
+        alert(`❌ Failed to send: ${data.error}`)
+      }
+    } catch (error: any) {
+      alert(`Error: ${error.message}`)
+    } finally {
+      setSendingTest(false)
+    }
+  }
+
+  // Start/stop polling for gateway status with dynamic interval
+  useEffect(() => {
+    if (whatsappConfig?.provider_name === 'baileys' && whatsappConfig.config_public.base_url) {
+      // Initial fetch
+      fetchGatewayStatus()
+      
+      // Set test number from config
+      if (whatsappConfig.config_public.test_number) {
+        setTestNumber(whatsappConfig.config_public.test_number)
+      }
+      
+      // Dynamic polling
+      const runPoll = () => {
+         fetchGatewayStatus();
+      }
+
+      statusPollRef.current = setInterval(runPoll, pollInterval);
+      
+      return () => {
+        if (statusPollRef.current) {
+          clearInterval(statusPollRef.current)
+        }
+      }
+    }
+  }, [whatsappConfig?.provider_name, whatsappConfig?.config_public.base_url, fetchGatewayStatus, pollInterval])
+
+  // Auto-refresh QR code when it expires
+  useEffect(() => {
+    if (gatewayStatus?.pairing_state === 'waiting_qr' && qrExpiry > 0) {
+      const timer = setTimeout(() => {
+        fetchQRCode()
+      }, qrExpiry * 1000)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [gatewayStatus?.pairing_state, qrExpiry])
 
   const loadProviderConfigs = async () => {
     if (!isReady) return
@@ -202,6 +489,24 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
     try {
       setSaving(true)
+
+      // Auto-sanitize Baileys URL if needed
+      if (channel === 'whatsapp' && config.provider_name === 'baileys' && config.config_public.base_url) {
+        let url = config.config_public.base_url.trim();
+        // Enforce HTTPS
+        if (url.startsWith('http://')) {
+          url = 'https://' + url.substring(7);
+        } else if (!url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        // Remove port 3001
+        url = url.replace(/:3001\/?$/, '');
+        // Remove trailing slash
+        if (url.endsWith('/')) url = url.slice(0, -1);
+        
+        // Update in build object
+        config.config_public.base_url = url;
+      }
 
       // Prepare data for save
       const saveData = {
@@ -324,6 +629,254 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
   const renderWhatsAppConfig = () => (
     <div className="space-y-6">
+      {/* Gateway Connection Status Card - Only for Baileys */}
+      {whatsappConfig?.provider_name === 'baileys' && whatsappConfig.config_public.base_url && (
+        <Card className={`border-2 ${
+          gatewayStatus?.connected 
+            ? 'bg-green-50 border-green-300' 
+            : gatewayStatus?.pairing_state === 'waiting_qr'
+              ? 'bg-yellow-50 border-yellow-300'
+              : 'bg-red-50 border-red-300'
+        }`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {gatewayStatus?.connected ? (
+                  <Wifi className="w-5 h-5 text-green-600" />
+                ) : (
+                  <WifiOff className="w-5 h-5 text-red-600" />
+                )}
+                <span>Gateway Connection Status</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {gatewayLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
+                <Badge variant={gatewayStatus?.connected ? 'default' : 'destructive'} className={
+                  gatewayStatus?.connected 
+                    ? 'bg-green-600' 
+                    : gatewayStatus?.pairing_state === 'waiting_qr'
+                      ? 'bg-yellow-600'
+                      : isGatewayUnreachable
+                        ? 'bg-gray-500'
+                        : ''
+                }>
+                  {isGatewayUnreachable ? 'Unreachable' :
+                   gatewayStatus?.pairing_state === 'connected' ? 'Connected' :
+                   gatewayStatus?.pairing_state === 'waiting_qr' ? 'Waiting for QR Scan' :
+                   gatewayStatus?.pairing_state === 'connecting' ? 'Connecting...' :
+                   gatewayStatus?.pairing_state === 'reconnecting' ? 'Reconnecting...' :
+                   gatewayStatus?.pairing_state === 'gateway_unreachable' ? 'Gateway Unreachable' :
+                   gatewayStatus?.pairing_state === 'not_configured' ? 'Not Configured' :
+                   'Disconnected'}
+                </Badge>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Connected State Info */}
+            {gatewayStatus?.connected && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-white/80 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Smartphone className="w-8 h-8 text-green-600" />
+                  <div>
+                    <p className="text-sm text-gray-500">Connected Number</p>
+                    <p className="font-semibold text-lg">+{gatewayStatus.phone_number}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                    <span className="text-green-700 font-bold text-sm">
+                      {gatewayStatus.push_name?.[0]?.toUpperCase() || 'W'}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">WhatsApp Name</p>
+                    <p className="font-semibold">{gatewayStatus.push_name || 'Unknown'}</p>
+                  </div>
+                </div>
+                {gatewayStatus.last_connected_at && (
+                  <div className="md:col-span-2 flex items-center gap-2 text-sm text-gray-600">
+                    <Clock className="w-4 h-4" />
+                    Connected since: {new Date(gatewayStatus.last_connected_at).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* QR Code Pairing Panel */}
+            {gatewayStatus?.pairing_state === 'waiting_qr' && !isGatewayUnreachable && (
+              <div className="p-6 bg-white rounded-lg border-2 border-dashed border-yellow-400">
+                <div className="text-center space-y-4">
+                  <QrCode className="w-12 h-12 mx-auto text-yellow-600" />
+                  <h3 className="font-semibold text-lg">Scan QR Code to Connect WhatsApp</h3>
+                  
+                  {qrCode ? (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="p-4 bg-white rounded-lg shadow-lg border">
+                        <img 
+                          src={qrCode} 
+                          alt="WhatsApp QR Code" 
+                          className="w-64 h-64 mx-auto"
+                        />
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        QR code refreshes automatically in {qrExpiry} seconds
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="py-8">
+                      <Loader2 className="w-8 h-8 mx-auto animate-spin text-yellow-600" />
+                      <p className="mt-2 text-sm text-gray-500">Loading QR code...</p>
+                    </div>
+                  )}
+                  
+                  <div className="bg-blue-50 rounded-lg p-4 text-left">
+                    <p className="font-medium text-blue-900 mb-2">How to scan:</p>
+                    <ol className="list-decimal list-inside text-sm text-blue-800 space-y-1">
+                      <li>Open WhatsApp on your phone</li>
+                      <li>Tap <strong>Menu</strong> or <strong>Settings</strong></li>
+                      <li>Select <strong>Linked Devices</strong></li>
+                      <li>Tap <strong>Link a Device</strong></li>
+                      <li>Point your phone at this QR code</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Display */}
+            {(gatewayStatus?.last_error || isGatewayUnreachable) && !gatewayStatus?.connected && (
+              <div className={`flex items-start gap-3 p-4 rounded-lg border ${isGatewayUnreachable ? 'bg-orange-50 border-orange-200' : 'bg-red-100 border-red-200'}`}>
+                <AlertTriangle className={`w-5 h-5 mt-0.5 ${isGatewayUnreachable ? 'text-orange-600' : 'text-red-600'}`} />
+                <div>
+                  <p className={`font-medium ${isGatewayUnreachable ? 'text-orange-900' : 'text-red-900'}`}>
+                    {isGatewayUnreachable ? 'Connection Warning' : 'Connection Error'}
+                  </p>
+                  <p className={`text-sm ${isGatewayUnreachable ? 'text-orange-700' : 'text-red-700'}`}>
+                    {isGatewayUnreachable 
+                        ? 'Gateway is currently unreachable. Retrying automatically...' 
+                        : getFriendlyErrorMessage(gatewayStatus?.last_error || '')}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Control Buttons */}
+            <div className="flex flex-wrap gap-3 pt-2">
+              {gatewayStatus?.connected ? (
+                <>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleGatewayReset}
+                    disabled={!!gatewayAction}
+                    className="border-yellow-500 text-yellow-700 hover:bg-yellow-50"
+                  >
+                    {gatewayAction === 'reset' ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    Change WhatsApp Number
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleGatewayLogout}
+                    disabled={!!gatewayAction}
+                    className="border-red-500 text-red-700 hover:bg-red-50"
+                  >
+                    {gatewayAction === 'logout' ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <LogOut className="w-4 h-4 mr-2" />
+                    )}
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {gatewayStatus?.pairing_state !== 'waiting_qr' && (
+                    <Button 
+                      onClick={handleGatewayReset}
+                      disabled={!!gatewayAction}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {gatewayAction === 'reset' ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <QrCode className="w-4 h-4 mr-2" />
+                      )}
+                      Connect WhatsApp
+                    </Button>
+                  )}
+                  <Button 
+                    variant="outline" 
+                    onClick={handleGatewayReconnect}
+                    disabled={!!gatewayAction}
+                  >
+                    {gatewayAction === 'reconnect' ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    Retry Connection
+                  </Button>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Send Test Message Card - Only when connected */}
+      {whatsappConfig?.provider_name === 'baileys' && gatewayStatus?.connected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Send className="w-5 h-5 text-green-600" />
+              Send Test Message
+            </CardTitle>
+            <CardDescription>
+              Verify your WhatsApp connection by sending a test message
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Recipient Number</Label>
+                <Input
+                  placeholder="60192277233"
+                  value={testNumber}
+                  onChange={(e) => setTestNumber(e.target.value)}
+                />
+                <p className="text-xs text-gray-500">
+                  Enter number with country code (e.g., 60192277233 for Malaysia)
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Message (Optional)</Label>
+                <Input
+                  placeholder="Leave empty for default test message"
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button 
+              onClick={handleSendTestMessage}
+              disabled={sendingTest || !testNumber}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {sendingTest ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 mr-2" />
+              )}
+              Send Test Message
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Main Configuration Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -397,7 +950,10 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               {whatsappConfig.provider_name === 'baileys' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
                   <div className="space-y-2 md:col-span-2">
-                    <Label>Gateway Base URL</Label>
+                    <Label className="flex items-center gap-2">
+                      <Link2 className="w-4 h-4" />
+                      Gateway Base URL
+                    </Label>
                     <Input
                       placeholder="https://wa.serapod2u.com"
                       value={whatsappConfig.config_public.base_url || ''}
@@ -410,7 +966,9 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                       })}
                     />
                     <p className="text-xs text-gray-500">
-                      The base URL of your hosted Baileys instance (e.g. https://wa.serapod2u.com)
+                      The secure URL of your gateway. Example: <strong>https://wa.serapod2u.com</strong>.
+                      <br/>
+                      <span className="text-amber-600">Note: Port 3001 is closed. Do not include :3001 in the URL.</span>
                     </p>
                   </div>
                   <div className="space-y-2 md:col-span-2">
@@ -442,7 +1000,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <div className="space-y-2 md:col-span-2">
                     <Label>Test Recipient Number</Label>
                     <Input
-                      placeholder="+60 12-345 6789"
+                      placeholder="60192277233"
                       value={whatsappConfig.config_public.test_number || ''}
                       onChange={(e) => setWhatsappConfig({
                         ...whatsappConfig,
@@ -453,7 +1011,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                       })}
                     />
                     <p className="text-xs text-gray-500">
-                      Number to receive test messages (required for "Send Test Message")
+                      Default number to receive test messages
                     </p>
                   </div>
                 </div>
@@ -576,14 +1134,16 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
               {/* Save Button */}
               <div className="flex justify-end gap-3">
-                <Button 
-                  variant="outline"
-                  onClick={() => handleTestProvider('whatsapp')}
-                  disabled={!whatsappConfig.is_active}
-                >
-                  <TestTube className="w-4 h-4 mr-2" />
-                  Send Test Message
-                </Button>
+                {whatsappConfig.provider_name !== 'baileys' && (
+                  <Button 
+                    variant="outline"
+                    onClick={() => handleTestProvider('whatsapp')}
+                    disabled={!whatsappConfig.is_active}
+                  >
+                    <TestTube className="w-4 h-4 mr-2" />
+                    Send Test Message
+                  </Button>
+                )}
                 <Button onClick={() => handleSaveProvider('whatsapp')} disabled={saving}>
                   {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                   Save Configuration
@@ -599,15 +1159,41 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         <CardHeader>
           <CardTitle className="text-sm">Setup Guide</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p className="font-medium">To configure WhatsApp with Twilio:</p>
-          <ol className="list-decimal list-inside space-y-1 text-gray-700">
-            <li>Sign up for a Twilio account at <a href="https://www.twilio.com" target="_blank" rel="noopener" className="text-blue-600 underline">twilio.com</a></li>
-            <li>Enable WhatsApp in your Twilio console</li>
-            <li>Request a WhatsApp-enabled phone number or use the sandbox</li>
-            <li>Copy your Account SID and Auth Token from the dashboard</li>
-            <li>Enter the credentials above and test the configuration</li>
-          </ol>
+        <CardContent className="space-y-4 text-sm">
+          {whatsappConfig?.provider_name === 'baileys' ? (
+            <>
+              <p className="font-medium">To configure WhatsApp with Baileys (Self-hosted):</p>
+              <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                <li>Deploy the Baileys Gateway on your VPS (PM2 recommended)</li>
+                <li>Configure nginx reverse proxy with SSL (optional but recommended)</li>
+                <li>Set the API key in the gateway environment</li>
+                <li>Enter the Gateway Base URL and API Key above</li>
+                <li>Save the configuration</li>
+                <li>Click "Connect WhatsApp" and scan the QR code</li>
+              </ol>
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                <p className="text-sm font-medium text-yellow-900 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Important Note
+                </p>
+                <p className="text-sm text-yellow-800 mt-1">
+                  The WhatsApp number used will be the one you scan with. Make sure to use a dedicated business number.
+                  You can change the connected number anytime by clicking "Change WhatsApp Number".
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="font-medium">To configure WhatsApp with Twilio:</p>
+              <ol className="list-decimal list-inside space-y-1 text-gray-700">
+                <li>Sign up for a Twilio account at <a href="https://www.twilio.com" target="_blank" rel="noopener" className="text-blue-600 underline">twilio.com</a></li>
+                <li>Enable WhatsApp in your Twilio console</li>
+                <li>Request a WhatsApp-enabled phone number or use the sandbox</li>
+                <li>Copy your Account SID and Auth Token from the dashboard</li>
+                <li>Enter the credentials above and test the configuration</li>
+              </ol>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
