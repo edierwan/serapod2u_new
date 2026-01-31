@@ -36,10 +36,24 @@ export async function GET(request: NextRequest) {
             // Logic based on recipientConfig
             const config = recipientConfig as any
             
-            // 1. Dynamic Manufacturer (Mapped to Seller)
-            if (config.type === 'dynamic' && config.dynamic_target === 'manufacturer') {
-                if (order.seller_org_id) {
-                    // Fetch users of this org
+            // Helper to check if target enabled (supports new 'recipient_targets' and legacy 'type')
+            const isEnabled = (target: string) => {
+                if (config.recipient_targets) {
+                    return !!config.recipient_targets[target]
+                }
+                // Legacy fallback
+                if (target === 'roles') return config.type === 'roles'
+                if (target === 'dynamic_org') return config.type === 'dynamic'
+                if (target === 'users') return config.type === 'users'
+                if (target === 'consumer') return config.include_consumer
+                return false
+            }
+
+            // 1. Dynamic Organization (Manufacturer/Distributor/Warehouse)
+            if (isEnabled('dynamic_org')) {
+                const targetType = config.dynamic_target // e.g. manufacturer
+                
+                if (targetType === 'manufacturer' && order.seller_org_id) {
                     const { data: users } = await supabase
                         .from('users')
                         .select('id, full_name, email, phone')
@@ -53,12 +67,9 @@ export async function GET(request: NextRequest) {
                         type: 'Manufacturer Staff' 
                     })))
                 }
-            }
-            
-            // 2. Dynamic Distributor (Mapped to Buyer)
-            if (config.type === 'dynamic' && config.dynamic_target === 'distributor') {
-                 if (order.buyer_org_id) {
-                    const { data: users } = await supabase
+                
+                if (targetType === 'distributor' && order.buyer_org_id) {
+                     const { data: users } = await supabase
                         .from('users')
                         .select('id, full_name, email, phone')
                         .eq('organization_id', order.buyer_org_id)
@@ -70,14 +81,47 @@ export async function GET(request: NextRequest) {
                         phone: u.phone,
                         type: 'Distributor Staff' 
                     })))
+                }
+            }
+            
+            // 2. Specific Users
+            if (isEnabled('users') && config.recipient_users?.length > 0) {
+                 const { data: users } = await supabase
+                    .from('users')
+                    .select('id, full_name, email, phone')
+                    .in('id', config.recipient_users)
+
+                 if (users) recipients.push(...users.map(u => ({ 
+                    user_id: u.id,
+                    full_name: u.full_name,
+                    email: u.email, 
+                    phone: u.phone,
+                    type: 'Specific User' 
+                 })))
+            }
+
+            // 3. Roles (Best effort attempt if 'role' column exists or ignore for now)
+            if (isEnabled('roles') && config.roles?.length > 0) {
+                 // Trying to query by role if feasible. 
+                 // Assuming 'role_code' column exists on users table based on UI selection
+                 const { data: users, error } = await supabase
+                    .from('users')
+                    .select('id, full_name, email, phone, role_code')
+                    .in('role_code', config.roles)
+                 
+                 if (!error && users) {
+                     recipients.push(...users.map(u => ({
+                         user_id: u.id,
+                         full_name: u.full_name,
+                         email: u.email,
+                         phone: u.phone,
+                         type: `Role: ${u.role_code}`
+                     })))
                  }
             }
 
-            // 3. Consumer
-            if (config.include_consumer && order.consumer) {
-                // Supabase joint result 'consumer' is single object or array depending on relation? 
-                // Using single() on main query, OneToOne on relation?
-                // orders_created_by_fkey is Many-to-One (Many orders, One User). So consumer is single object.
+            // 4. Consumer
+            if ((isEnabled('consumer') || config.include_consumer) && order.consumer) {
                 const consumer = order.consumer as any
                 recipients.push({
                     user_id: consumer.id,
@@ -87,6 +131,13 @@ export async function GET(request: NextRequest) {
                     type: 'Consumer'
                 })
             }
+            
+            // Deduplicate recipients by user_id
+            const uniqueRecipients = Array.from(new Map(recipients.map(item => [item.user_id, item])).values())
+            
+            // Replace recipients array
+            recipients.length = 0
+            recipients.push(...uniqueRecipients)
         }
     }  
     

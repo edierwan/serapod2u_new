@@ -48,12 +48,19 @@ interface NotificationSetting {
   priority: 'low' | 'normal' | 'high' | 'critical'
   templates?: Record<string, string>
   recipient_config?: {
-    type?: 'all' | 'roles' | 'dynamic' | 'custom'
+    type?: string
     roles?: string[]
+    recipient_users?: string[]
     custom_emails?: string
     custom_phones?: string
     dynamic_target?: string // e.g. 'manufacturer', 'distributor'
     include_consumer?: boolean
+    recipient_targets?: {
+      roles?: boolean
+      dynamic_org?: boolean
+      users?: boolean
+      consumer?: boolean
+    }
   }
 }
 

@@ -62,15 +62,37 @@ export default function NotificationFlowDrawer({
     const [loadingLogs, setLoadingLogs] = useState(false)
 
     useEffect(() => {
+        // Init & Migration Logic
+        const existingConfig = setting?.recipient_config || {}
+        
+        // 1. Establish default targets (all false)
+        const targets = {
+             roles: false,
+             dynamic_org: false,
+             users: false,
+             consumer: false
+        }
+        
+        // 2. Migrate old 'type' or 'recipient_mode' to new targets
+        if (existingConfig.type === 'roles') targets.roles = true
+        if (existingConfig.type === 'dynamic') targets.dynamic_org = true
+        if (existingConfig.type === 'users') targets.users = true
+        if (existingConfig.include_consumer) targets.consumer = true
+        
+        // 3. If we already have stored new structure, use it
+        if (existingConfig.recipient_targets) {
+            Object.assign(targets, existingConfig.recipient_targets)
+        }
+
         const safeSetting = {
             ...setting,
             enabled: setting?.enabled ?? false,
             recipient_config: {
-                include_consumer: false,
-                type: 'roles',
+                recipient_targets: targets,
                 roles: [],
                 recipient_users: [], // Ensure this array exists
-                ...setting?.recipient_config
+                dynamic_target: null,
+                ...existingConfig
             },
             channels_enabled: setting?.channels_enabled || [],
             templates: setting?.templates || {}
@@ -246,11 +268,19 @@ export default function NotificationFlowDrawer({
                                         </div>
                                         <div>
                                             <h4 className="font-semibold text-gray-900">Resolve Recipients</h4>
-                                            <p className="text-sm text-gray-500">
-                                                {localSetting.recipient_config?.type === 'dynamic' 
-                                                    ? `Dynamic: ${localSetting.recipient_config.dynamic_target}` 
-                                                    : `Fixed Roles: ${(localSetting.recipient_config?.roles || []).join(', ')}`}
-                                            </p>
+                                            <div className="text-sm text-gray-500 flex flex-col gap-1">
+                                                {localSetting.recipient_config?.recipient_targets?.consumer && <span>• Consumer</span>}
+                                                {localSetting.recipient_config?.recipient_targets?.roles && <span>• Roles: {(localSetting.recipient_config?.roles || []).join(', ')}</span>}
+                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && <span>• Dynamic: {localSetting.recipient_config?.dynamic_target}</span>}
+                                                {localSetting.recipient_config?.recipient_targets?.users && <span>• Specific Users ({localSetting.recipient_config?.recipient_users?.length || 0})</span>}
+                                                
+                                                {(!localSetting.recipient_config?.recipient_targets?.roles && 
+                                                  !localSetting.recipient_config?.recipient_targets?.dynamic_org && 
+                                                  !localSetting.recipient_config?.recipient_targets?.users && 
+                                                  !localSetting.recipient_config?.recipient_targets?.consumer) && (
+                                                    <span>-</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -284,32 +314,101 @@ export default function NotificationFlowDrawer({
 
                             {/* Recipients Configuration */}
                             <TabsContent value="recipients" className="mt-0 space-y-6">
+                                
+                                {/* Recipients Summary Header */}
+                                <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                                     <div className="flex justify-between items-start mb-2">
+                                        <h4 className="text-xs font-semibold uppercase text-blue-900">Recipients Summary</h4>
+                                        
+                                        {(localSetting.recipient_config?.recipient_targets?.consumer || 
+                                          localSetting.recipient_config?.recipient_targets?.roles ||
+                                          localSetting.recipient_config?.recipient_targets?.dynamic_org ||
+                                          localSetting.recipient_config?.recipient_targets?.users) && (
+                                            <Button variant="ghost" size="sm" className="h-4 p-0 text-xs text-blue-600 hover:text-blue-800" onClick={() => {
+                                                 updateRecipientConfig({
+                                                     recipient_targets: { roles: false, dynamic_org: false, users: false, consumer: false },
+                                                     include_consumer: false
+                                                 })
+                                            }}>
+                                                Clear All
+                                            </Button>
+                                        )}
+                                     </div>
+
+                                     <div className="flex flex-wrap gap-2 text-sm">
+                                         {!localSetting.recipient_config?.recipient_targets?.consumer && 
+                                          !localSetting.recipient_config?.recipient_targets?.roles &&
+                                          !localSetting.recipient_config?.recipient_targets?.dynamic_org &&
+                                          !localSetting.recipient_config?.recipient_targets?.users ? (
+                                             <span className="text-gray-400 italic text-xs">No recipients selected</span>
+                                         ) : (
+                                             <>
+                                                {localSetting.recipient_config?.recipient_targets?.consumer && (
+                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">Consumer</Badge>
+                                                )}
+                                                {localSetting.recipient_config?.recipient_targets?.roles && (
+                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
+                                                         Roles: {localSetting.recipient_config?.roles?.length || 0}
+                                                    </Badge>
+                                                )}
+                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && (
+                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
+                                                         Dynamic: {localSetting.recipient_config?.dynamic_target ? 
+                                                            localSetting.recipient_config.dynamic_target.charAt(0).toUpperCase() + localSetting.recipient_config.dynamic_target.slice(1) 
+                                                            : 'None'}
+                                                    </Badge>
+                                                )}
+                                                {localSetting.recipient_config?.recipient_targets?.users && (
+                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
+                                                         Users: {localSetting.recipient_config?.recipient_users?.length || 0}
+                                                    </Badge>
+                                                )}
+                                             </>
+                                         )}
+                                     </div>
+                                </div>
+
                                 {/* Rule Configuration */}
                                 <Card>
                                     <CardContent className="pt-6 space-y-6">
-                                    <h4 className="font-medium text-sm text-gray-900">Consumer Settings</h4>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <Checkbox 
-                                            checked={!!localSetting.recipient_config?.include_consumer}
-                                            onCheckedChange={(c) => updateRecipientConfig({ include_consumer: c as boolean })}
-                                        />
-                                        <span className="text-sm">Send to relevant Consumer</span>
-                                    </label>
+                                    
+                                    <div className="space-y-3">
+                                        <h4 className="font-medium text-sm text-gray-900">Consumer Settings</h4>
+                                        <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
+                                            <Checkbox 
+                                                checked={!!localSetting.recipient_config?.recipient_targets?.consumer}
+                                                onCheckedChange={(c) => updateRecipientConfig({ 
+                                                    recipient_targets: { 
+                                                        ...localSetting.recipient_config.recipient_targets, 
+                                                        consumer: c 
+                                                    },
+                                                    include_consumer: c 
+                                                })}
+                                            />
+                                            <span className="text-sm font-medium">Send to relevant Consumer</span>
+                                        </label>
+                                    </div>
 
-                                    <div className="pt-4 border-t">
-                                        <h4 className="font-medium text-sm text-gray-900 mb-3">Staff & Organization Recipients</h4>
-                                        <RadioGroup 
-                                            value={localSetting.recipient_config?.type || 'roles'}
-                                            onValueChange={(val) => updateRecipientConfig({ type: val as any })}
-                                            className="space-y-4"
-                                        >
-                                            <div className="space-y-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <RadioGroupItem value="roles" id="r-roles" />
-                                                    <Label htmlFor="r-roles">Send to specific roles</Label>
-                                                </div>
-                                                {localSetting.recipient_config?.type === 'roles' && (
-                                                    <div className="ml-6 grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded text-sm">
+                                    <div className="pt-4 border-t space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <h4 className="font-medium text-sm text-gray-900">Staff & Organization Recipients</h4>
+                                            <span className="text-xs text-gray-500">Combine multiple sources</span>
+                                        </div>
+                                        
+                                        <div className="space-y-5">
+                                            {/* Roles */}
+                                            <div className="space-y-3">
+                                                <label className="flex items-center gap-2 font-medium text-sm cursor-pointer">
+                                                    <Checkbox 
+                                                        checked={!!localSetting.recipient_config?.recipient_targets?.roles}
+                                                        onCheckedChange={(c) => updateRecipientConfig({ 
+                                                            recipient_targets: { ...localSetting.recipient_config.recipient_targets, roles: c }
+                                                        })}
+                                                    />
+                                                    Send to specific roles
+                                                </label>
+                                                {localSetting.recipient_config?.recipient_targets?.roles && (
+                                                    <div className="ml-6 grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded text-sm animate-in fade-in slide-in-from-top-1 duration-200">
                                                         {['super_admin', 'admin', 'distributor', 'warehouse'].map(role => (
                                                             <label key={role} className="flex items-center gap-2 cursor-pointer">
                                                                 <Checkbox 
@@ -329,13 +428,19 @@ export default function NotificationFlowDrawer({
                                                 )}
                                             </div>
 
-                                            <div className="space-y-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <RadioGroupItem value="dynamic" id="r-dynamic" />
-                                                    <Label htmlFor="r-dynamic">Dynamic (Related Organization)</Label>
-                                                </div>
-                                                {localSetting.recipient_config?.type === 'dynamic' && (
-                                                    <div className="ml-6 p-3 bg-gray-50 rounded">
+                                            {/* Dynamic */}
+                                            <div className="space-y-3">
+                                                <label className="flex items-center gap-2 font-medium text-sm cursor-pointer">
+                                                    <Checkbox 
+                                                        checked={!!localSetting.recipient_config?.recipient_targets?.dynamic_org}
+                                                        onCheckedChange={(c) => updateRecipientConfig({ 
+                                                            recipient_targets: { ...localSetting.recipient_config.recipient_targets, dynamic_org: c }
+                                                        })}
+                                                    />
+                                                    Dynamic (Related Organization)
+                                                </label>
+                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && (
+                                                    <div className="ml-6 p-3 bg-gray-50 rounded animate-in fade-in slide-in-from-top-1 duration-200">
                                                        <Select 
                                                             value={localSetting.recipient_config?.dynamic_target || ''}
                                                             onValueChange={(val) => updateRecipientConfig({ dynamic_target: val })}
@@ -353,13 +458,19 @@ export default function NotificationFlowDrawer({
                                                 )}
                                             </div>
 
-                                            <div className="space-y-2">
-                                                 <div className="flex items-center space-x-2">
-                                                    <RadioGroupItem value="users" id="r-users" />
-                                                    <Label htmlFor="r-users">Specific Users</Label>
-                                                </div>
-                                                {localSetting.recipient_config?.type === 'users' && (
-                                                    <div className="ml-6 p-3 bg-gray-50 rounded space-y-2">
+                                            {/* Specific Users */}
+                                            <div className="space-y-3">
+                                                 <label className="flex items-center gap-2 font-medium text-sm cursor-pointer">
+                                                    <Checkbox 
+                                                        checked={!!localSetting.recipient_config?.recipient_targets?.users}
+                                                        onCheckedChange={(c) => updateRecipientConfig({ 
+                                                            recipient_targets: { ...localSetting.recipient_config.recipient_targets, users: c }
+                                                        })}
+                                                    />
+                                                    Specific Users
+                                                </label>
+                                                {localSetting.recipient_config?.recipient_targets?.users && (
+                                                    <div className="ml-6 p-3 bg-gray-50 rounded space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
                                                         <Label className="text-xs text-gray-500">Search and select users to receive this notification</Label>
                                                         <UserMultiSelect 
                                                             selectedUserIds={localSetting.recipient_config?.recipient_users || []}
@@ -368,7 +479,7 @@ export default function NotificationFlowDrawer({
                                                     </div>
                                                 )}
                                             </div>
-                                        </RadioGroup>
+                                        </div>
                                     </div>
                                     </CardContent>
                                 </Card>
@@ -392,16 +503,42 @@ export default function NotificationFlowDrawer({
                                     </div>
                                     
                                     {resolvedRecipients.length > 0 && (
-                                        <div className="border rounded-md divide-y max-h-[150px] overflow-y-auto">
-                                            {resolvedRecipients.map((r, i) => (
-                                                <div key={i} className="p-2 text-sm flex justify-between items-center bg-gray-50">
-                                                    <div>
-                                                        <div className="font-medium">{r.full_name}</div>
-                                                        <div className="text-gray-500 text-xs">{r.email || r.phone}</div>
-                                                    </div>
-                                                    <Badge variant="outline">{r.type}</Badge>
+                                        <div className="space-y-3">
+                                            {/* Breakdown Stats */}
+                                            <div className="flex gap-4 text-xs font-medium text-gray-600 bg-gray-100/50 p-2 rounded">
+                                                <span>Total: {resolvedRecipients.length}</span>
+                                                <span>Consumer: {resolvedRecipients.filter(r => r.type === 'Consumer').length}</span>
+                                                <span>Staff: {resolvedRecipients.filter(r => r.type !== 'Consumer').length}</span>
+                                            </div>
+
+                                            {/* Warnings */}
+                                            {resolvedRecipients.some(r => !r.phone && localSetting.channels_enabled.includes('whatsapp')) && (
+                                                <div className="bg-amber-50 text-amber-800 text-xs p-2 rounded border border-amber-200 flex items-center gap-2">
+                                                    <AlertCircle className="w-3 h-3" />
+                                                    <span>{resolvedRecipients.filter(r => !r.phone).length} recipients missing phone (WhatsApp/SMS unavailable)</span>
                                                 </div>
-                                            ))}
+                                            )}
+
+                                            <div className="border rounded-md divide-y max-h-[200px] overflow-y-auto">
+                                                {resolvedRecipients.map((r, i) => (
+                                                    <div key={i} className="p-2 text-sm flex justify-between items-center bg-gray-50 hover:bg-gray-100">
+                                                        <div>
+                                                            <div className="font-medium flex items-center gap-2">
+                                                                {r.full_name}
+                                                                <span className="flex gap-1 ml-1 opacity-70">
+                                                                    {r.phone && <CheckCircle2 className="w-3 h-3 text-green-600" aria-label="Phone OK" />}
+                                                                    {r.email && <CheckCircle2 className="w-3 h-3 text-blue-600" aria-label="Email OK" />}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-gray-500 text-xs flex gap-2">
+                                                                <span>{r.email || '-'}</span>
+                                                                <span className="border-l pl-2">{r.phone || '-'}</span>
+                                                            </div>
+                                                        </div>
+                                                        <Badge variant="outline" className="text-xs opacity-75">{r.type}</Badge>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -423,7 +560,7 @@ export default function NotificationFlowDrawer({
                                         // Simple local mock resolution
                                         const resolvePreview = (tpl: string) => {
                                            const vars: any = {
-                                               order_no: sampleId || 'ORD-2026-001',
+                                               order_no: sampleId || 'ORD26000042',
                                                status: 'APPROVED',
                                                amount: '1,250.00',
                                                customer_name: 'John Doe',
@@ -439,7 +576,8 @@ export default function NotificationFlowDrawer({
                                                user_name: 'Jane Smith',
                                                email: 'jane@example.com',
                                                phone_number: '+60123456789',
-                                               reason: 'Out of stock'
+                                               reason: 'Out of stock',
+                                               approved_at: new Date().toLocaleDateString('en-GB')
                                            }
                                            let res = tpl || ''
                                            Object.keys(vars).forEach(k => {
