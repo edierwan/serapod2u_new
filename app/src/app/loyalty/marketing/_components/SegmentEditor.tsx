@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Save, ArrowLeft, Users } from 'lucide-react';
-import { AudienceFilterBuilder, AudienceFilters } from '../AudienceFilterBuilder';
-import { AudienceEstimator } from '../AudienceEstimator';
+import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
+import { AudienceEstimator } from './AudienceEstimator';
 import { useToast } from "@/components/ui/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -135,10 +135,10 @@ export function SegmentEditor({ initialData, isEditing = false }: SegmentEditorP
                             <CardDescription>Refine your audience based on their profile and behavior.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <AudienceFilterBuilder
-                                filters={formData.filters}
-                                onChange={f => setFormData({...formData, filters: f})}
-                            />
+                                <AudienceFilterBuilder
+                                    filters={formData.filters}
+                                    onChange={(f: AudienceFilters) => setFormData({...formData, filters: f})}
+                                />
                         </CardContent>
                     </Card>
                 </div>
@@ -151,7 +151,7 @@ export function SegmentEditor({ initialData, isEditing = false }: SegmentEditorP
                                 <AudienceEstimator
                                     mode="filters"
                                     filters={formData.filters}
-                                    onCountChange={count => setFormData(prev => ({ ...prev, estimated_count: count }))}
+                                    onCountChange={(count: number) => setFormData(prev => ({ ...prev, estimated_count: count }))}
                                 />
                             </CardContent>
                         </Card>
