@@ -151,50 +151,54 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
     const riskLevel = estimatedRecipients > 5000 ? 'High' : estimatedRecipients > 1000 ? 'Medium' : 'Low';
 
     return (
-        <Card className="max-w-4xl mx-auto border shadow-md">
+        <Card className="w-full border shadow-sm">
             <CardHeader>
-                <div className="flex justify-between items-center mb-4">
-                    <CardTitle>Create New Campaign</CardTitle>
+                <div className="flex justify-between items-center mb-8">
+                    <CardTitle className="text-xl">Create New Campaign</CardTitle>
                     <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
                 </div>
                 {/* Stepper */}
-                <div className="flex justify-between relative">
-                    <div className="absolute top-1/2 w-full h-1 bg-gray-100 -z-10 -translate-y-1/2" />
+                <div className="flex justify-between relative max-w-4xl mx-auto w-full px-4 mb-4">
+                    <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-100 -z-10 -translate-y-1/2" />
                     {steps.map((s) => (
-                        <div key={s.num} className="flex flex-col items-center gap-2 bg-white px-2">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 
-                                ${step >= s.num ? 'bg-primary text-primary-foreground border-primary' : 'bg-white text-gray-400 border-gray-200'}`}>
-                                {step > s.num ? <Check className="w-4 h-4" /> : s.num}
+                        <div key={s.num} className="flex flex-col items-center gap-2 bg-white px-4">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors
+                                ${step >= s.num ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-white text-gray-400 border-gray-200'}`}>
+                                {step > s.num ? <Check className="w-5 h-5" /> : s.num}
                             </div>
-                            <span className={`text-xs ${step >= s.num ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>{s.label}</span>
+                            <span className={`text-xs font-medium uppercase tracking-wider ${step >= s.num ? 'text-gray-900' : 'text-gray-400'}`}>{s.label}</span>
                         </div>
                     ))}
                 </div>
             </CardHeader>
-            <CardContent className="pt-6">
+            <CardContent className="pt-8 min-h-[500px]">
                 {/* Step 1: Objective */}
                 {step === 1 && (
-                    <div className="space-y-6 max-w-lg mx-auto">
-                        <div className="space-y-2">
-                            <Label>Campaign Name</Label>
-                            <Input 
-                                placeholder="e.g. End of Month Sale" 
-                                value={formData.name} 
-                                onChange={e => setFormData({...formData, name: e.target.value})}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Objective</Label>
-                            <Select value={formData.objective} onValueChange={v => setFormData({...formData, objective: v})}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Promo">Marketing / Promo</SelectItem>
-                                    <SelectItem value="Announcement">Announcement</SelectItem>
-                                    <SelectItem value="Loyalty Reminder">Loyalty Reminder</SelectItem>
-                                    <SelectItem value="Winback">User Winback</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">This helps categorize your campaigns in reports.</p>
+                    <div className="max-w-4xl mx-auto space-y-8">
+                        <div className="grid md:grid-cols-2 gap-8">
+                            <div className="space-y-3">
+                                <Label className="text-base">Campaign Name</Label>
+                                <Input 
+                                    className="h-12 text-lg"
+                                    placeholder="e.g. End of Month Sale" 
+                                    value={formData.name} 
+                                    onChange={e => setFormData({...formData, name: e.target.value})}
+                                />
+                                <p className="text-sm text-gray-500">Give your campaign a descriptive name for internal tracking.</p>
+                            </div>
+                            <div className="space-y-3">
+                                <Label className="text-base">Objective</Label>
+                                <Select value={formData.objective} onValueChange={v => setFormData({...formData, objective: v})}>
+                                    <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Promo">Marketing / Promo</SelectItem>
+                                        <SelectItem value="Announcement">Announcement</SelectItem>
+                                        <SelectItem value="Loyalty Reminder">Loyalty Reminder</SelectItem>
+                                        <SelectItem value="Winback">User Winback</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-sm text-gray-500">This helps categorize your campaigns in reports.</p>
+                            </div>
                         </div>
                     </div>
                 )}
