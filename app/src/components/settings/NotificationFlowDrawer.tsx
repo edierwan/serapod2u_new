@@ -24,6 +24,9 @@ import {
     ArrowRight, CheckCircle2, AlertCircle, Loader2, Play
 } from 'lucide-react'
 import { ScrollArea } from "../ui/scroll-area"
+import { UserMultiSelect } from "./recipients/UserMultiSelect"
+import { getTemplatesForEvent, Template } from "@/config/notificationTemplates"
+import { useEffect, useState } from "react";
 
 interface NotificationFlowDrawerProps {
     open: boolean
@@ -60,7 +63,20 @@ export default function NotificationFlowDrawer({
     const [loadingLogs, setLoadingLogs] = useState(false)
 
     useEffect(() => {
-        setLocalSetting(setting)
+        const safeSetting = {
+            ...setting,
+            enabled: setting?.enabled ?? false,
+            recipient_config: {
+                include_consumer: false,
+                type: 'roles',
+                roles: [],
+                recipient_users: [], // Ensure this array exists
+                ...setting?.recipient_config
+            },
+            channels_enabled: setting?.channels_enabled || [],
+            templates: setting?.templates || {}
+        }
+        setLocalSetting(safeSetting)
         setResolvedRecipients([])
         setSampleId('')
         setTestResult(null)
@@ -275,7 +291,7 @@ export default function NotificationFlowDrawer({
                                     <h4 className="font-medium text-sm text-gray-900">Consumer Settings</h4>
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <Checkbox 
-                                            checked={localSetting.recipient_config?.include_consumer}
+                                            checked={!!localSetting.recipient_config?.include_consumer}
                                             onCheckedChange={(c) => updateRecipientConfig({ include_consumer: c as boolean })}
                                         />
                                         <span className="text-sm">Send to relevant Consumer</span>
@@ -298,7 +314,7 @@ export default function NotificationFlowDrawer({
                                                         {['super_admin', 'admin', 'distributor', 'warehouse'].map(role => (
                                                             <label key={role} className="flex items-center gap-2 cursor-pointer">
                                                                 <Checkbox 
-                                                                    checked={localSetting.recipient_config?.roles?.includes(role)}
+                                                                    checked={!!localSetting.recipient_config?.roles?.includes(role)}
                                                                     onCheckedChange={(c) => {
                                                                         const currentRoles = localSetting.recipient_config?.roles || []
                                                                         const newRoles = c 
@@ -334,6 +350,22 @@ export default function NotificationFlowDrawer({
                                                                 <SelectItem value="warehouse">Warehouse</SelectItem>
                                                             </SelectContent>
                                                        </Select>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                 <div className="flex items-center space-x-2">
+                                                    <RadioGroupItem value="users" id="r-users" />
+                                                    <Label htmlFor="r-users">Specific Users</Label>
+                                                </div>
+                                                {localSetting.recipient_config?.type === 'users' && (
+                                                    <div className="ml-6 p-3 bg-gray-50 rounded space-y-2">
+                                                        <Label className="text-xs text-gray-500">Search and select users to receive this notification</Label>
+                                                        <UserMultiSelect 
+                                                            selectedUserIds={localSetting.recipient_config?.recipient_users || []}
+                                                            onSelectionChange={(ids) => updateRecipientConfig({ recipient_users: ids })}
+                                                        />
                                                     </div>
                                                 )}
                                             </div>
@@ -385,27 +417,103 @@ export default function NotificationFlowDrawer({
                                         ))}
                                     </TabsList>
                                     
-                                    {type.available_channels.map((channel: string) => (
-                                        <TabsContent key={channel} value={channel} className="space-y-4 pt-4">
-                                            {!localSetting.channels_enabled.includes(channel) && (
-                                                <div className="p-3 bg-amber-50 text-amber-800 text-xs border border-amber-200">
-                                                    Channel disabled
+                                    {type.available_channels.map((channel: string) => {
+                                        const templatesForChannel = getTemplatesForEvent(type.event_code, channel);
+                                        const currentTemplate = localSetting.templates?.[channel] || '';
+                                        
+                                        // Simple local mock resolution
+                                        const resolvePreview = (tpl: string) => {
+                                           const vars: any = {
+                                               order_no: sampleId || 'ORD-2026-001',
+                                               status: 'APPROVED',
+                                               amount: '1,250.00',
+                                               customer_name: 'John Doe',
+                                               approved_by: 'Admin User',
+                                               order_url: 'https://app.serapod.com/orders/1',
+                                               sku: 'PRD-001',
+                                               product_name: 'Super Pod V2',
+                                               stock_level: '15',
+                                               threshold: '20',
+                                               inventory_url: 'https://app.serapod.com/inventory',
+                                               code: 'ABC-123',
+                                               verify_url: 'https://app.serapod.com/verify/123',
+                                               user_name: 'Jane Smith',
+                                               email: 'jane@example.com',
+                                               phone_number: '+60123456789',
+                                               reason: 'Out of stock'
+                                           }
+                                           let res = tpl || ''
+                                           Object.keys(vars).forEach(k => {
+                                               res = res.replace(new RegExp(`{{${k}}}`, 'g'), vars[k])
+                                           })
+                                           return res
+                                        }
+
+                                        return (
+                                            <TabsContent key={channel} value={channel} className="space-y-4 pt-4">
+                                                {!localSetting.channels_enabled.includes(channel) && (
+                                                    <div className="p-3 bg-amber-50 text-amber-800 text-xs border border-amber-200">
+                                                        Channel disabled
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Template Library */}
+                                                <div className="space-y-2">
+                                                    <Label>Template Library</Label>
+                                                    <Select onValueChange={(val) => {
+                                                        const selected = templatesForChannel.find(t => t.id === val);
+                                                        if (selected) updateTemplate(channel, selected.body);
+                                                    }}>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Choose a template..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {templatesForChannel.length > 0 ? (
+                                                                templatesForChannel.map(t => (
+                                                                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                                                ))
+                                                            ) : (
+                                                                <div className="p-2 text-xs text-gray-500 text-center">No preset templates</div>
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
-                                            )}
-                                            <div className="space-y-2">
-                                                <Label>Message Template</Label>
-                                                <Textarea 
-                                                    placeholder={`Enter ${channel} message content...`}
-                                                    className="min-h-[150px] font-mono text-sm"
-                                                    value={localSetting.templates?.[channel] || ''}
-                                                    onChange={(e) => updateTemplate(channel, e.target.value)}
-                                                />
-                                                <div className="text-xs text-gray-500">
-                                                    Variables: {"{{order_no}}, {{status}}, {{customer_name}}, {{amount}}"}
+
+                                                <div className="space-y-2">
+                                                    <Label>Message Content</Label>
+                                                    <Textarea 
+                                                        placeholder={`Enter ${channel} message content...`}
+                                                        className="min-h-[150px] font-mono text-sm"
+                                                        value={currentTemplate}
+                                                        onChange={(e) => updateTemplate(channel, e.target.value)}
+                                                    />
+                                                    <div className="text-xs text-gray-500">
+                                                        Variables: {"{{order_no}}, {{status}}, {{customer_name}}, {{amount}}"}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </TabsContent>
-                                    ))}
+
+                                                {/* Example Output */}
+                                                <Card className="bg-gray-50/50">
+                                                    <CardContent className="pt-4 pb-4">
+                                                        <Label className="text-xs text-gray-500 uppercase mb-2 block">Example Output</Label>
+                                                        {channel === 'email' ? (
+                                                            <div className="space-y-2 text-sm bg-white p-3 border rounded">
+                                                                <div className="border-b pb-2 mb-2 font-medium">Subject: Notification Subject</div>
+                                                                <pre className="whitespace-pre-wrap font-sans text-gray-700">
+                                                                    {resolvePreview(currentTemplate)}
+                                                                </pre>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="bg-white p-3 border rounded-lg text-sm whitespace-pre-wrap relative">
+                                                                <div className="absolute -left-1 top-3 w-0 h-0 border-t-[6px] border-t-transparent border-r-[8px] border-r-white border-b-[6px] border-b-transparent"></div>
+                                                                {resolvePreview(currentTemplate) || <span className="text-gray-400 italic">No content</span>}
+                                                            </div>
+                                                        )}
+                                                    </CardContent>
+                                                </Card>
+                                            </TabsContent>
+                                        )
+                                    })}
                                 </Tabs>
                             </TabsContent>
 
