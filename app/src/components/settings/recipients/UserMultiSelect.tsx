@@ -1,10 +1,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Search, X, User as UserIcon, Loader2 } from 'lucide-react'
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { useDebounce } from "@/hooks/use-debounce"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Input } from "../../ui/input"
+import { Badge } from "../../ui/badge"
+import { useDebounce } from "../../../hooks/use-debounce"
+import { ScrollArea } from "../../ui/scroll-area"
 
 interface User {
     id: string

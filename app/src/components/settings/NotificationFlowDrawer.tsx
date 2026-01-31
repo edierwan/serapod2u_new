@@ -25,8 +25,7 @@ import {
 } from 'lucide-react'
 import { ScrollArea } from "../ui/scroll-area"
 import { UserMultiSelect } from "./recipients/UserMultiSelect"
-import { getTemplatesForEvent, Template } from "@/config/notificationTemplates"
-import { useEffect, useState } from "react";
+import { getTemplatesForEvent, Template } from "../../config/notificationTemplates"
 
 interface NotificationFlowDrawerProps {
     open: boolean
