@@ -6,8 +6,6 @@ import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-// Dialog component for modals and overlays
-
 const Dialog = DialogPrimitive.Root
 
 const DialogTrigger = DialogPrimitive.Trigger
@@ -114,8 +112,8 @@ export {
   Dialog,
   DialogPortal,
   DialogOverlay,
-  DialogClose,
   DialogTrigger,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogFooter,

@@ -13,6 +13,7 @@ import {
   BarChart3,
   Building2,
   Truck,
+  MessageSquare,
   Users,
   FileText,
   Settings as SettingsIcon,
@@ -225,6 +226,15 @@ const navigationItems: MenuItem[] = [
         id: 'journey-builder',
         label: 'Journey Builder',
         icon: BookOpen,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 30
+        }
+      },
+      {
+        id: 'marketing',
+        label: 'WhatsApp Broadcast',
+        icon: MessageSquare,
         access: {
           allowedOrgTypes: ['HQ'],
           maxRoleLevel: 30

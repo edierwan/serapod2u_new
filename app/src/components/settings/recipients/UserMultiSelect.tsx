@@ -166,11 +166,14 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
                                 className="p-2 hover:bg-gray-50 cursor-pointer flex justify-between items-center"
                                 onClick={() => handleSelect(user)}
                             >
-                                <div>
-                                    <div className="font-medium text-sm">{user.full_name}</div>
-                                    <div className="text-xs text-gray-500">{user.email || user.phone}</div>
+                                <div className="overflow-hidden">
+                                    <div className="font-medium text-sm truncate">{user.full_name || user.email?.split('@')[0]}</div>
+                                    <div className="text-xs text-gray-500 truncate">
+                                        {user.email}
+                                        {user.phone ? <span className="opacity-75"> | {user.phone}</span> : ''}
+                                    </div>
                                 </div>
-                                {selectedUserIds.includes(user.id) && <Badge variant="secondary" className="text-[10px]">Selected</Badge>}
+                                {selectedUserIds.includes(user.id) && <Badge variant="secondary" className="text-[10px] ml-2 shrink-0">Selected</Badge>}
                             </div>
                         ))}
                     </div>
@@ -179,7 +182,8 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
 
             <div className="flex flex-wrap gap-2">
                 {selectedUsers.map(user => (
-                    <Badge key={user.id} variant="secondary" className="pl-2 pr-1 py-1 flex items-center gap-1">
+                    <div className="group relative" key={user.id} title={`${user.email}${user.phone ? ' | ' + user.phone : ''}`}>
+                    <Badge variant="secondary" className="pl-2 pr-1 py-1 flex items-center gap-1 cursor-help">
                         <UserIcon className="w-3 h-3 text-gray-500" />
                         <span>{user.full_name}</span>
                         <button 
@@ -189,6 +193,7 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
                             <X className="w-3 h-3" />
                         </button>
                     </Badge>
+                    </div>
                 ))}
                  {/* Fallback for IDs that failed hydration */}
                  {selectedUserIds.filter(id => !selectedUsers.find(u => u.id === id)).map(id => (
