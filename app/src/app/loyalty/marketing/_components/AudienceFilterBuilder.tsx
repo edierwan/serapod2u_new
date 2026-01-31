@@ -28,11 +28,11 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
             fetch('/api/wa/marketing/audience/states').then(r => r.json())
         ]).then(([orgData, stateData]) => {
             // Ensure "End User" is available if not returned by API
-            const types = new Set(orgData.organization_types || []);
+            const types = new Set<string>((orgData.organization_types as string[]) || []);
             types.add('End User'); 
             setOrgTypes(Array.from(types).sort());
             
-            setStates(stateData.states || []);
+            setStates((stateData.states as string[]) || []);
             setLoading(false);
         }).catch(err => {
             console.error(err);

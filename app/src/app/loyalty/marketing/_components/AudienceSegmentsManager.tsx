@@ -1,18 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Users, Edit, Trash2, Copy, Save, Loader2 } from 'lucide-react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
-import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
-import { AudienceEstimator } from './AudienceEstimator';
+import { Plus, Users, Edit, Trash2, Copy, Loader2 } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { AudienceFilters } from './AudienceFilterBuilder';
 
 type Segment = {
     id: string;
@@ -25,19 +20,9 @@ type Segment = {
 
 export function AudienceSegmentsManager() {
     const { toast } = useToast();
+    const router = useRouter();
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
-    
-    // Segment Editor State
-    const [isSheetOpen, setIsSheetOpen] = useState(false);
-    const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        description: '',
-        filters: { organization_type: 'all', state: 'any', opt_in_only: true } as AudienceFilters,
-        estimated_count: 0
-    });
-    const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const fetchSegments = async () => {
@@ -61,54 +46,11 @@ export function AudienceSegmentsManager() {
     }, []);
 
     const handleNew = () => {
-        setEditingSegment(null);
-        setFormData({ name: '', description: '', filters: { organization_type: 'all', state: 'any', opt_in_only: true }, estimated_count: 0 });
-        setIsSheetOpen(true);
+        router.push('/loyalty/marketing/segments/create');
     };
 
     const handleEdit = (seg: Segment) => {
-        setEditingSegment(seg);
-        setFormData({ 
-            name: seg.name, 
-            description: seg.description, 
-            filters: seg.filters || { organization_type: 'all', state: 'any', opt_in_only: true },
-            estimated_count: seg.estimated_count
-        });
-        setIsSheetOpen(true);
-    };
-
-    const handleSave = async () => {
-        if (!formData.name) {
-             toast({ title: 'Error', description: 'Segment name is required', variant: 'destructive' });
-             return;
-        }
-
-        setSaving(true);
-        try {
-            const url = editingSegment 
-                ? `/api/wa/marketing/segments/${editingSegment.id}` 
-                : '/api/wa/marketing/segments';
-            const method = editingSegment ? 'PUT' : 'POST';
-
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-
-            if (res.ok) {
-                toast({ title: 'Success', description: 'Segment saved successfully' });
-                setIsSheetOpen(false);
-                fetchSegments();
-            } else {
-                 const d = await res.json();
-                 toast({ title: 'Error', description: d.error, variant: 'destructive' });
-            }
-        } catch (error) {
-            toast({ title: 'Error', description: 'Failed to save segment', variant: 'destructive' });
-        } finally {
-            setSaving(false);
-        }
+        router.push(`/loyalty/marketing/segments/${seg.id}`);
     };
 
     const handleDelete = async (id: string) => {
@@ -130,7 +72,6 @@ export function AudienceSegmentsManager() {
     };
 
     const handleDuplicate = async (seg: Segment) => {
-        setSaving(true); 
         try {
              const res = await fetch('/api/wa/marketing/segments', {
                  method: 'POST',
@@ -146,8 +87,8 @@ export function AudienceSegmentsManager() {
                  toast({ title: 'Success', description: 'Segment duplicated' });
                  fetchSegments();
              }
-        } finally {
-            setSaving(false);
+        } catch (e) {
+            toast({ title: 'Error', description: 'Failed to duplicate segment', variant: 'destructive' });
         }
     };
 
@@ -224,76 +165,6 @@ export function AudienceSegmentsManager() {
                     </Table>
                 </CardContent>
             </Card>
-
-            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-                <SheetContent className="w-[92vw] sm:w-[520px] lg:w-[640px] 2xl:w-[720px] max-w-none flex flex-col h-full bg-slate-50 p-0 gap-0">
-                    <SheetHeader className="px-6 py-4 bg-white border-b shrink-0">
-                        <SheetTitle>{editingSegment ? 'Edit Segment' : 'Create New Segment'}</SheetTitle>
-                        <SheetDescription>
-                            Define the filters to target a specific audience.
-                        </SheetDescription>
-                    </SheetHeader>
-                    
-                    <div className="flex-1 overflow-y-auto px-6 py-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Left Column: Form & Filters */}
-                            <div className="lg:col-span-2 space-y-6">
-                                <div className="space-y-4 bg-white p-4 rounded-lg border shadow-sm">
-                                    <h3 className="font-medium text-sm text-gray-900 mb-2">Segment Details</h3>
-                                    <div className="grid gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Segment Name</Label>
-                                            <Input 
-                                                value={formData.name} 
-                                                onChange={e => setFormData({...formData, name: e.target.value})}
-                                                placeholder="e.g. VIP Customers KL" 
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Description</Label>
-                                            <Input 
-                                                value={formData.description} 
-                                                onChange={e => setFormData({...formData, description: e.target.value})}
-                                                placeholder="e.g. High value users in KL" 
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-4 rounded-lg border shadow-sm">
-                                    <h3 className="font-medium text-sm text-gray-900 mb-4">Audience Filters</h3>
-                                    <AudienceFilterBuilder
-                                        filters={formData.filters}
-                                        onChange={f => setFormData({...formData, filters: f})}
-                                    />
-                                </div>
-                            </div>
-                             
-                            {/* Right Column: Preview */}
-                            <div className="lg:col-span-1">
-                                <div className="lg:sticky lg:top-0 space-y-4">
-                                    <h3 className="font-medium text-sm text-gray-500 uppercase tracking-wider hidden lg:block">Preview</h3>
-                                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-                                        <AudienceEstimator
-                                            mode="filters"
-                                            filters={formData.filters}
-                                            onCountChange={count => setFormData(prev => ({ ...prev, estimated_count: count }))}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                     <SheetFooter className="px-6 py-4 bg-white border-t shrink-0 flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setIsSheetOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSave} disabled={saving}>
-                            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                            Save Segment
-                        </Button>
-                    </SheetFooter>
-                </SheetContent>
-            </Sheet>
         </div>
     );
 }
