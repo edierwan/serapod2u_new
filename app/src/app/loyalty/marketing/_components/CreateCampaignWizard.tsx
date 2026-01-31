@@ -1,18 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Send, Save, AlertTriangle, Users, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { Loader2, Send, Save, AlertTriangle, Users, Calendar as CalendarIcon, Clock, Smartphone, ChevronRight, Check } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { AudienceFilterBuilder } from './AudienceFilterBuilder';
+import { AudienceEstimator } from './AudienceEstimator';
+import { SpecificUserSelector } from './SpecificUserSelector';
 
 type WizardProps = {
     onCancel: () => void;
@@ -24,17 +30,37 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
     const [step, setStep] = useState(1);
     const [submitting, setSubmitting] = useState(false);
     const [testing, setTesting] = useState(false);
+    const [estimatedRecipients, setEstimatedRecipients] = useState(0);
     
+    const [segments, setSegments] = useState<any[]>([]);
+
     const [formData, setFormData] = useState({
         name: '',
         objective: 'Promo',
-        userType: 'all',
-        location: 'any',
+        
+        // Audience
+        audienceMode: 'filters' as 'filters' | 'segment' | 'specific_users',
+        selectedSegmentId: '',
+        selectedUserIds: [] as string[],
+        filters: {
+            organization_type: 'all',
+            state: 'any',
+            opt_in_only: true
+        },
+
         message: '',
+        templateId: '',
         scheduleType: 'now',
         scheduledDate: undefined as Date | undefined,
         quietHours: true
     });
+
+    useEffect(() => {
+        fetch('/api/wa/marketing/segments')
+            .then(r => r.json())
+            .then(d => setSegments(Array.isArray(d) ? d : []))
+            .catch(console.error);
+    }, []);
 
     const steps = [
         { num: 1, label: 'Objective' },
@@ -43,6 +69,15 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
         { num: 4, label: 'Review' }
     ];
 
+    const mockTemplates = [
+        { id: '1', name: 'Start from Scratch', body: '' },
+        { id: '2', name: 'Standard Promo', body: 'Hi {name}, huge sale today! {short_link}' },
+        { id: '3', name: 'Points Reminder', body: 'You have {points_balance} points expiring soon.' }
+    ];
+
+    const handleNext = () => setStep(s => Math.min(s + 1, 4));
+    const handleBack = () => setStep(s => Math.max(s - 1, 1));
+
     const handleTestSend = async () => {
         if (!formData.message) {
             toast({ title: "Error", description: "Please enter a message first.", variant: "destructive" });
@@ -50,272 +85,342 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
         }
         setTesting(true);
         try {
-            const res = await fetch('/api/marketing/test-send', {
+            const res = await fetch('/api/wa/marketing/test-send', {
                 method: 'POST',
-                body: JSON.stringify({
-                    message: formData.message,
-                    // In a real app, send to current user's phone.
-                    // Here we let the API determine the phone or just mock it.
-                    phone: '0123456789' 
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: formData.message })
             });
+            const data = await res.json();
             if (res.ok) {
-                toast({ title: "Sent", description: "Test message sent successfully." });
+                toast({ title: "Sent", description: data.sent_to ? `Test message sent to ${data.sent_to}` : "Test message sent" });
             } else {
-                toast({ title: "Error", description: "Failed to send test message.", variant: "destructive" });
+                toast({ title: "Error", description: data.error, variant: "destructive" });
             }
-        } catch (e) {
-            toast({ title: "Error", description: "Network error.", variant: "destructive" });
+        } catch (error) {
+            toast({ title: "Error", description: "Failed to send test message", variant: "destructive" });
         } finally {
             setTesting(false);
         }
     };
 
     const handleLaunch = async () => {
+        if (!formData.name || !formData.message) {
+             toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" });
+             return;
+        }
         setSubmitting(true);
         try {
-            const payload = {
-                name: formData.name,
-                objective: formData.objective,
-                audienceFilters: {
-                    userType: formData.userType,
-                    location: formData.location
-                },
-                messageBody: formData.message,
-                scheduledAt: formData.scheduleType === 'later' ? formData.scheduledDate : null,
-                quietHoursEnabled: formData.quietHours
-            };
-
-            const res = await fetch('/api/marketing/campaigns', {
+            const res = await fetch('/api/wa/marketing/campaigns', {
                 method: 'POST',
-                body: JSON.stringify(payload)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: formData.name,
+                    objective: formData.objective,
+                    audience_filters: {
+                        mode: formData.audienceMode,
+                        filters: formData.filters,
+                        segment_id: formData.selectedSegmentId,
+                        user_ids: formData.selectedUserIds,
+                        estimated_count: estimatedRecipients
+                    },
+                    message_body: formData.message,
+                    template_id: formData.templateId,
+                    scheduled_at: formData.scheduleType === 'schedule' ? formData.scheduledDate : null,
+                    quiet_hours_enabled: formData.quietHours
+                })
             });
             
             if (res.ok) {
                 toast({ title: "Success", description: "Campaign created successfully!" });
                 onComplete();
             } else {
-                const err = await res.json();
-                toast({ title: "Error", description: err.message || "Failed to create campaign", variant: "destructive" });
+                 const data = await res.json();
+                 toast({ title: "Error", description: data.error, variant: "destructive" });
             }
-        } catch (e) {
-            toast({ title: "Error", description: "Network error", variant: "destructive" });
+        } catch (error) {
+            toast({ title: "Error", description: "Failed to create campaign", variant: "destructive" });
         } finally {
             setSubmitting(false);
         }
     };
 
+    const insertVariable = (variable: string) => {
+        setFormData(prev => ({ ...prev, message: prev.message + variable }));
+    };
+
+    const riskLevel = estimatedRecipients > 5000 ? 'High' : estimatedRecipients > 1000 ? 'Medium' : 'Low';
+
     return (
-        <Card className="max-w-4xl mx-auto">
-            <CardHeader className="border-b bg-gray-50/50">
-                <div className="flex justify-between items-center mb-6">
+        <Card className="max-w-4xl mx-auto border shadow-md">
+            <CardHeader>
+                <div className="flex justify-between items-center mb-4">
                     <CardTitle>Create New Campaign</CardTitle>
-                    <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+                    <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
                 </div>
-                
-                <div className="flex justify-between relative px-4">
-                    <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-gray-200 -z-10 -translate-y-1/2 mx-8" />
-                    {steps.map(s => (
-                        <div key={s.num} className="flex flex-col items-center gap-2 bg-gray-50 px-2 box-border">
-                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-colors ${
-                                 step >= s.num ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-500'
-                             }`}>
-                                 {s.num}
-                             </div>
-                             <span className={`text-xs font-medium ${step >= s.num ? 'text-blue-700' : 'text-gray-500'}`}>{s.label}</span>
+                {/* Stepper */}
+                <div className="flex justify-between relative">
+                    <div className="absolute top-1/2 w-full h-1 bg-gray-100 -z-10 -translate-y-1/2" />
+                    {steps.map((s) => (
+                        <div key={s.num} className="flex flex-col items-center gap-2 bg-white px-2">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 
+                                ${step >= s.num ? 'bg-primary text-primary-foreground border-primary' : 'bg-white text-gray-400 border-gray-200'}`}>
+                                {step > s.num ? <Check className="w-4 h-4" /> : s.num}
+                            </div>
+                            <span className={`text-xs ${step >= s.num ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>{s.label}</span>
                         </div>
                     ))}
                 </div>
             </CardHeader>
-            
-            <CardContent className="py-8 min-h-[400px]">
+            <CardContent className="pt-6">
+                {/* Step 1: Objective */}
                 {step === 1 && (
                     <div className="space-y-6 max-w-lg mx-auto">
                         <div className="space-y-2">
                             <Label>Campaign Name</Label>
                             <Input 
-                                placeholder="e.g. Feb 2026 Sale Announcement" 
-                                value={formData.name}
+                                placeholder="e.g. End of Month Sale" 
+                                value={formData.name} 
                                 onChange={e => setFormData({...formData, name: e.target.value})}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label>Campaign Objective</Label>
-                            <Select 
-                                value={formData.objective} 
-                                onValueChange={val => setFormData({...formData, objective: val})}
-                            >
+                            <Label>Objective</Label>
+                            <Select value={formData.objective} onValueChange={v => setFormData({...formData, objective: v})}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="Promo">Promotional Offer</SelectItem>
-                                    <SelectItem value="Announcement">General Announcement</SelectItem>
-                                    <SelectItem value="Winback">Customer Winback</SelectItem>
-                                    <SelectItem value="Event">Event Invitation</SelectItem>
+                                    <SelectItem value="Promo">Marketing / Promo</SelectItem>
+                                    <SelectItem value="Announcement">Announcement</SelectItem>
+                                    <SelectItem value="Loyalty Reminder">Loyalty Reminder</SelectItem>
+                                    <SelectItem value="Winback">User Winback</SelectItem>
                                 </SelectContent>
                             </Select>
+                            <p className="text-xs text-muted-foreground">This helps categorize your campaigns in reports.</p>
                         </div>
                     </div>
                 )}
 
+                {/* Step 2: Audience */}
                 {step === 2 && (
-                    <div className="space-y-6 max-w-lg mx-auto">
-                        <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
-                             <div className="flex items-center gap-2 text-blue-800 font-medium mb-2">
-                                 <Users className="w-4 h-4" /> Audience Estimate
-                             </div>
-                             <div className="text-2xl font-bold text-blue-900">1,248 Recipients</div>
-                             <p className="text-sm text-blue-700 mt-1">Based on current filters.</p>
-                        </div>
+                    <div className="grid md:grid-cols-2 gap-8 h-[500px]">
+                        <div className="space-y-4 flex flex-col h-full">
+                            <h3 className="font-medium">Define Audience</h3>
+                            
+                            <div className="space-y-2">
+                                <Label>Audience Source</Label>
+                                <Tabs value={formData.audienceMode} onValueChange={(v: any) => setFormData({...formData, audienceMode: v})} className="w-full">
+                                    <TabsList className="grid w-full grid-cols-3">
+                                        <TabsTrigger value="filters">Filters</TabsTrigger>
+                                        <TabsTrigger value="segment">Saved Segment</TabsTrigger>
+                                        <TabsTrigger value="specific_users">Manual</TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                            </div>
 
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>User Type</Label>
-                                <Select value={formData.userType} onValueChange={v => setFormData({...formData, userType: v})}>
-                                    <SelectTrigger><SelectValue placeholder="All Users" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Users</SelectItem>
-                                        <SelectItem value="shop">Shops Only</SelectItem>
-                                        <SelectItem value="consumer">End Users Only</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Location</Label>
-                                <Select value={formData.location} onValueChange={v => setFormData({...formData, location: v})}>
-                                    <SelectTrigger><SelectValue placeholder="Any Location" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="any">Any Location</SelectItem>
-                                        <SelectItem value="kl">Kuala Lumpur</SelectItem>
-                                        <SelectItem value="selangor">Selangor</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            <ScrollArea className="flex-1 pr-4">
+                                {formData.audienceMode === 'filters' && (
+                                     <AudienceFilterBuilder 
+                                        filters={formData.filters} 
+                                        onChange={(f) => setFormData({...formData, filters: f})} 
+                                     />
+                                )}
+                                
+                                {formData.audienceMode === 'segment' && (
+                                    <div className="space-y-2 pt-2">
+                                        <Label>Select Segment</Label>
+                                        <Select 
+                                            value={formData.selectedSegmentId} 
+                                            onValueChange={(v) => setFormData({...formData, selectedSegmentId: v})}
+                                        >
+                                            <SelectTrigger><SelectValue placeholder="Choose a segment..." /></SelectTrigger>
+                                            <SelectContent>
+                                                {segments.length === 0 ? (
+                                                    <SelectItem value="none" disabled>No saved segments</SelectItem>
+                                                ) : (
+                                                    segments.map((s: any) => (
+                                                        <SelectItem key={s.id} value={s.id}>{s.name} ({s.estimated_count} users)</SelectItem>
+                                                    ))
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        {formData.selectedSegmentId && (
+                                             <p className="text-xs text-muted-foreground mt-2">
+                                                 {segments.find((s: any) => s.id === formData.selectedSegmentId)?.description}
+                                             </p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {formData.audienceMode === 'specific_users' && (
+                                    <SpecificUserSelector
+                                        selectedUserIds={formData.selectedUserIds}
+                                        onSelect={(ids) => setFormData({...formData, selectedUserIds: ids})}
+                                    />
+                                )}
+                            </ScrollArea>
+                        </div>
+                        
+                        <div className="h-full">
+                            <AudienceEstimator 
+                                mode={formData.audienceMode} 
+                                filters={formData.filters}
+                                segmentId={formData.selectedSegmentId}
+                                userIds={formData.selectedUserIds}
+                                onCountChange={(count) => setEstimatedRecipients(count)}
+                            />
                         </div>
                     </div>
                 )}
 
+                {/* Step 3: Message */}
                 {step === 3 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center">
-                                <Label>Message Content</Label>
-                                <Button variant="link" className="h-auto p-0 text-xs">Load Template</Button>
+                    <div className="grid md:grid-cols-2 gap-8 h-[500px]">
+                        <div className="flex flex-col gap-4 h-full">
+                            <div className="space-y-2">
+                                <Label>Template</Label>
+                                <Select 
+                                    value={formData.templateId} 
+                                    onValueChange={(val) => {
+                                        const tmpl = mockTemplates.find(t => t.id === val);
+                                        setFormData({
+                                            ...formData, 
+                                            templateId: val,
+                                            message: tmpl?.body || formData.message
+                                        });
+                                    }}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {mockTemplates.map(t => (
+                                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            <Textarea 
-                                className="min-h-[250px] font-mono"
-                                placeholder="Hello {name}, ..."
-                                value={formData.message}
-                                onChange={e => setFormData({...formData, message: e.target.value})}
-                            />
-                            <div className="text-xs text-gray-500">
-                                Variables: {'{name}, {city}, {points}'}
+                            <div className="flex-1 flex flex-col gap-2">
+                                <Label>Message Body</Label>
+                                <Textarea 
+                                    className="flex-1 resize-none font-mono text-sm" 
+                                    placeholder="Type your message here..."
+                                    value={formData.message}
+                                    onChange={e => setFormData({...formData, message: e.target.value})}
+                                />
                             </div>
-                            
-                            <div className="bg-amber-50 p-3 rounded text-xs text-amber-800 border border-amber-200 flex gap-2">
-                                <AlertTriangle className="w-4 h-4 shrink-0" />
-                                <div>
-                                    <strong>Compliance Check:</strong> Avoid using ALL CAPS or excessive emojis to prevent blocking.
-                                </div>
+                            <div className="flex gap-2 flex-wrap">
+                                {['{name}', '{city}', '{points_balance}', '{short_link}'].map(v => (
+                                    <Button key={v} variant="secondary" size="sm" className="h-6 px-2 text-xs" onClick={() => insertVariable(v)}>{v}</Button>
+                                ))}
                             </div>
+                            <Button variant="outline" onClick={handleTestSend} disabled={testing}>
+                                {testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                                Send Test Message
+                            </Button>
                         </div>
                         
                         {/* Preview */}
-                        <div className="bg-gray-100 rounded-xl p-4 flex flex-col items-center justify-center">
-                            <div className="w-full max-w-xs bg-[#e5ddd5] rounded-lg shadow-md overflow-hidden min-h-[300px] flex flex-col">
-                                <div className="bg-[#075e54] h-12 w-full flex items-center px-4 text-white text-sm font-medium">
-                                    WhatsApp Preview
+                        <div className="bg-gray-100 rounded-xl p-4 flex justify-center items-center">
+                            <div className="bg-white rounded-lg shadow-lg w-[300px] overflow-hidden border">
+                                <div className="bg-[#075e54] text-white p-3 text-sm font-medium flex items-center gap-2">
+                                    <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+                                    Serapod2u
                                 </div>
-                                <div className="p-4 flex-1">
-                                    <div className="bg-white p-2 rounded-lg rounded-tl-none shadow-sm text-sm max-w-[85%] relative mb-2 break-words whitespace-pre-wrap">
-                                        {formData.message || <span className="text-gray-400 italic">Type your message...</span>}
-                                        <div className="text-[10px] text-gray-400 text-right mt-1">10:42 AM</div>
+                                <div className="bg-[#e5ddd5] h-[350px] p-4 flex flex-col gap-2 overflow-y-auto bg-opacity-30">
+                                    <div className="bg-white p-2 rounded-lg rounded-tl-none shadow-sm text-sm self-start max-w-[90%] whitespace-pre-wrap">
+                                        {formData.message || <span className="text-gray-400 italic">Message preview...</span>}
+                                        <div className="text-[10px] text-gray-400 text-right mt-1">{format(new Date(), 'HH:mm')}</div>
                                     </div>
                                 </div>
                             </div>
-                            <div className="mt-4 w-full max-w-xs">
-                                <Button variant="outline" className="w-full text-xs" onClick={handleTestSend} disabled={testing}>
-                                    {testing ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : <Send className="w-3 h-3 mr-2" />}
-                                    Test Send to My Number
-                                </Button>
-                            </div>
                         </div>
                     </div>
                 )}
-                
+
+                {/* Step 4: Review */}
                 {step === 4 && (
-                    <div className="max-w-lg mx-auto space-y-6">
-                        <div className="space-y-2">
-                            <Label className="text-base font-semibold">Schedule</Label>
-                            <div className="flex items-center gap-4 p-4 border rounded-lg">
-                                <div className="flex items-center gap-2">
-                                    <Switch 
-                                        checked={formData.scheduleType === 'later'} 
-                                        onCheckedChange={c => setFormData({...formData, scheduleType: c ? 'later' : 'now'})}
-                                    />
-                                    <span>Schedule for later</span>
+                    <div className="space-y-6">
+                        <div className="grid md:grid-cols-2 gap-6">
+                             <div className="space-y-4">
+                                <div className="p-4 bg-gray-50 rounded-lg space-y-3">
+                                    <h4 className="font-medium text-sm text-gray-900 border-b pb-2">Campaign Summary</h4>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">Name</span>
+                                        <span className="font-medium">{formData.name}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">Recipients</span>
+                                        <span className="font-medium">{estimatedRecipients.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">Objective</span>
+                                        <Badge variant="outline">{formData.objective}</Badge>
+                                    </div>
                                 </div>
-                                
-                                {formData.scheduleType === 'later' && (
+
+                                <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-100">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <AlertTriangle className={`w-4 h-4 ${riskLevel === 'High' ? 'text-red-500' : 'text-yellow-500'}`} />
+                                        <h4 className="font-medium text-sm">Risk Assessment: {riskLevel}</h4>
+                                    </div>
+                                    <p className="text-xs text-yellow-700">
+                                        {riskLevel === 'High' 
+                                            ? 'Large audience size. Sending may take several hours due to throttling.'
+                                            : 'Standard campaign load. Expected delivery within 1 hour.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                 <h4 className="font-medium">Schedule</h4>
+                                 <div className="flex gap-4">
+                                     <Button 
+                                        variant={formData.scheduleType === 'now' ? 'default' : 'outline'}
+                                        onClick={() => setFormData({...formData, scheduleType: 'now'})}
+                                        className="flex-1"
+                                    >
+                                        <Send className="w-4 h-4 mr-2" /> Send Now
+                                    </Button>
                                     <Popover>
                                         <PopoverTrigger asChild>
-                                            <Button variant="outline" className="w-[200px] justify-start text-left font-normal">
-                                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {formData.scheduledDate ? format(formData.scheduledDate, "PPP") : <span>Pick a date</span>}
+                                            <Button 
+                                                variant={formData.scheduleType === 'schedule' ? 'default' : 'outline'}
+                                                onClick={() => setFormData({...formData, scheduleType: 'schedule'})}
+                                                className="flex-1"
+                                            >
+                                                <CalendarIcon className="w-4 h-4 mr-2" /> Schedule
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
-                                            <Calendar 
-                                                mode="single" 
-                                                selected={formData.scheduledDate} 
-                                                onSelect={(d) => d && setFormData({...formData, scheduledDate: d})} 
-                                                initialFocus 
+                                            <Calendar
+                                                mode="single"
+                                                selected={formData.scheduledDate}
+                                                onSelect={(d) => setFormData({...formData, scheduledDate: d, scheduleType: 'schedule'})}
+                                                initialFocus
                                             />
                                         </PopoverContent>
                                     </Popover>
-                                )}
+                                 </div>
+                                 {formData.scheduleType === 'schedule' && formData.scheduledDate && (
+                                     <p className="text-sm text-center text-primary font-medium">
+                                         Scheduled for {format(formData.scheduledDate, 'PPP')}
+                                     </p>
+                                 )}
                             </div>
                         </div>
-
-                         <div className="bg-green-50 p-4 rounded-lg border border-green-200 space-y-2">
-                            <h4 className="font-semibold text-green-900 flex items-center gap-2">
-                                <Clock className="w-4 h-4" /> Estimated Duration
-                            </h4>
-                            <p className="text-sm text-green-800">
-                                Sending to 1,248 recipients at ~20 msgs/min will take approx <strong>62 minutes</strong>.
-                            </p>
-                            <div className="flex items-center gap-2 mt-2">
-                                <Switch checked={formData.quietHours} onCheckedChange={(c) => setFormData({...formData, quietHours: c})} />
-                                <span className="text-sm text-green-900">Respect Quiet Hours (10PM - 9AM)</span>
-                            </div>
-                         </div>
                     </div>
                 )}
             </CardContent>
-
-            <div className="p-6 border-t bg-gray-50 flex justify-between">
-                <Button 
-                    variant="outline" 
-                    onClick={() => setStep(s => Math.max(1, s - 1))}
-                    disabled={step === 1}
-                >
-                    Back
+            <div className="p-6 border-t bg-gray-50 flex justify-between rounded-b-lg">
+                <Button variant="outline" onClick={step === 1 ? onCancel : handleBack}>
+                    {step === 1 ? 'Cancel' : 'Back'}
                 </Button>
-                
                 {step < 4 ? (
-                     <Button onClick={() => setStep(s => Math.min(4, s + 1))}>
-                        Next Step
-                    </Button>
+                    <Button onClick={handleNext}>Next Step <ChevronRight className="w-4 h-4 ml-2" /></Button>
                 ) : (
-                    <Button 
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={handleLaunch}
-                        disabled={submitting}
-                    >
-                        {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {formData.scheduleType === 'later' ? 'Schedule Campaign' : 'Launch Now'}
+                    <Button onClick={handleLaunch} disabled={submitting}>
+                        {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                        Launch Campaign
                     </Button>
                 )}
             </div>
         </Card>
-    )
+    );
 }
