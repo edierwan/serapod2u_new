@@ -70,9 +70,9 @@ export async function POST(req: NextRequest) {
 
     // 4. Snapshot Recipients (Optional: do this now or at "Launch" time)
     // Doing it now allows reviewing the list.
-    if (recipientList.length > 0) {
+    if (recipientList.length > 0 && campaign) {
         const recipientInserts = recipientList.map(u => ({
-            campaign_id: campaign.id,
+            campaign_id: (campaign as any).id,
             user_id: u.id,
             phone: u.phone,
             status: 'pending'

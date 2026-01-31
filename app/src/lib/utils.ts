@@ -34,3 +34,23 @@ export function getStorageUrl(path: string | null) {
     return `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
 }
 
+export type PhoneValidationResult = {
+    isValid: boolean;
+    formatted?: string;
+    error?: string;
+}
+
+export function validatePhoneNumber(phone: string): PhoneValidationResult {
+  const normalized = normalizePhone(phone);
+  // Basic check: must be digits, length > 9 (601xxxxxxx is at least 10 digits? 60 + 1 + 7 = 10 digits)
+  // Malaysia numbers usually: 60123456789 (11 digits) or 6012345678 (10 digits)
+  if (!/^\d+$/.test(normalized)) {
+      return { isValid: false, error: 'Contains non-numeric characters' };
+  }
+  // Allow slightly wider range for international compatibility if needed, but enforce min length
+  if (normalized.length < 10 || normalized.length > 15) {
+      return { isValid: false, error: 'Invalid length' };
+  }
+  return { isValid: true, formatted: normalized };
+}
+
