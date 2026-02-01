@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStorageUrl } from "@/lib/utils"
-import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
 import {
   Select,
   SelectContent,
@@ -879,7 +878,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback")} className="space-y-6" suppressHydrationWarning>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "consumers" | "settings" | "redemptions")} className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="rewards" className="gap-2">
             <Package className="h-4 w-4" /> Manage Rewards
@@ -892,9 +891,6 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           </TabsTrigger>
           <TabsTrigger value="redemptions" className="gap-2">
             <Gift className="h-4 w-4" /> Redemption History
-          </TabsTrigger>
-          <TabsTrigger value="feedback" className="gap-2">
-            <MessageSquare className="h-4 w-4" /> User Feedback
           </TabsTrigger>
           <TabsTrigger value="settings" className="gap-2">
             <Settings className="h-4 w-4" /> Settings
@@ -1841,25 +1837,6 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </TabsContent>
 
         {/* POINT SETTINGS TAB */}
-        {/* USER FEEDBACK TAB */}
-        <TabsContent value="feedback" className="space-y-4">
-          <Card>
-            <CardHeader className="gap-4 border-b border-border/50 pb-6">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <MessageSquare className="h-4 w-4" /> Support Inbox
-                  </CardTitle>
-                  <CardDescription>Monitor and respond to user support threads and inquiries.</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <AdminSupportInboxV2 />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="settings" className="space-y-4">
           <PointsConfigurationSettings userProfile={userProfile} />
         </TabsContent>

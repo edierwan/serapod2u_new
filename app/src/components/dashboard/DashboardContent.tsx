@@ -50,6 +50,7 @@ import ScratchCardGameView from '@/components/dashboard/views/consumer-engagemen
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
+import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
 
 interface UserProfile {
   id: string
@@ -190,6 +191,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <JourneyBuilderV2 userProfile={userProfile} />
       case 'marketing':
         return <MarketingPage />
+      case 'support-inbox':
+        return <AdminSupportInboxV2 />
       case 'lucky-draw':
         return (
           <LuckyDrawView

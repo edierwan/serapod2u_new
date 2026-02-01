@@ -33,6 +33,7 @@ import {
   Factory,
   BookOpen,
   ShoppingCart,
+  Inbox,
   Plus,
   TrendingUp,
   ListTree,
@@ -235,6 +236,15 @@ const navigationItems: MenuItem[] = [
         id: 'marketing',
         label: 'WhatsApp Broadcast',
         icon: MessageSquare,
+        access: {
+          allowedOrgTypes: ['HQ'],
+          maxRoleLevel: 30
+        }
+      },
+      {
+        id: 'support-inbox',
+        label: 'Support Inbox',
+        icon: Inbox,
         access: {
           allowedOrgTypes: ['HQ'],
           maxRoleLevel: 30
