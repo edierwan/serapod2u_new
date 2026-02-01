@@ -332,8 +332,6 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                    </SelectContent>
-                                </Select>
                             </div>
                             <div className="flex-1 flex flex-col gap-2">
                                 <Label>Message Body</Label>
