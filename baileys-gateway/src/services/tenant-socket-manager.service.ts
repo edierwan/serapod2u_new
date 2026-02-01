@@ -237,12 +237,13 @@ class TenantSocketManager {
       state.socket.ev.on('messages.upsert', (m: any) => {
         logger.debug({ tenantId, messageCount: m.messages?.length }, 'Messages received');
         
-        // Forward messages to Serapod via webhook
+        // Forward messages to Moltbot via webhook
         if (m.messages && m.messages.length > 0 && m.type === 'notify') {
           for (const message of m.messages) {
-            // Only forward text messages
+            // Only forward text messages (both inbound and outbound)
             if (message.message?.conversation || message.message?.extendedTextMessage?.text) {
-              webhookService.forwardToSerapod(tenantId, message, state.phoneNumber || undefined)
+              // Forward both fromMe=false (user) AND fromMe=true (admin)
+              webhookService.forwardToMoltbot(tenantId, message, state.phoneNumber || undefined)
                 .catch(err => logger.error({ tenantId, error: err.message }, 'Webhook forward failed'));
             }
           }

@@ -1,5 +1,55 @@
 // src/types/index.ts
 
+// ========== Gateway Event Types ==========
+
+export type WebhookEventType = 'INBOUND_USER' | 'OUTBOUND_ADMIN';
+
+/**
+ * Raw webhook payload from baileys-gateway
+ */
+export interface GatewayWebhookPayload {
+  event: WebhookEventType;
+  tenantId: string;
+  wa: {
+    phoneDigits: string;
+    remoteJid: string;
+    fromMe: boolean;
+    messageId: string;
+    timestamp: number;
+    pushName?: string;
+    text: string;
+  };
+}
+
+// ========== Conversation Mode ==========
+
+export type ConversationMode = 'auto' | 'takeover';
+
+// ========== Command Types ==========
+
+export type CommandType = 
+  | 'reply'      // /ai reply or /ai reply: <instruction>
+  | 'draft'      // /ai draft
+  | 'send'       // /ai send
+  | 'auto_on'    // /ai auto on
+  | 'auto_off'   // /ai auto off
+  | 'summarize'  // /ai summarize
+  | 'unknown';
+
+export interface ParsedCommand {
+  isCommand: boolean;
+  type: CommandType;
+  instruction?: string;      // For /ai reply: <instruction>
+  rawText: string;
+}
+
+// ========== Message Sender Types ==========
+
+export type SenderType = 'user' | 'admin' | 'bot' | 'system';
+export type MessageDirection = 'inbound' | 'outbound';
+export type MessageChannel = 'app' | 'whatsapp' | 'admin_web' | 'ai';
+export type MessageOrigin = 'serapod' | 'whatsapp';
+
 /**
  * Normalized inbound message from WhatsApp
  */
@@ -115,6 +165,12 @@ export interface ConversationMemory {
   turns: ConversationTurn[];
   lastUpdated: number;
   createdAt: number;
+  // Mode state
+  mode: ConversationMode;
+  lastAdminActivityAt?: number;
+  // Draft storage
+  pendingDraft?: string;
+  pendingDraftAt?: number;
 }
 
 /**
@@ -219,4 +275,22 @@ export interface GetRedeemStatusResponse {
   };
   currentBalance?: number;
   message?: string;
+}
+
+// ========== Support Thread Types (for DB writes) ==========
+
+export interface SupportMessage {
+  conversationId: string;
+  direction: MessageDirection;
+  channel: MessageChannel;
+  senderType: SenderType;
+  senderUserId?: string;
+  senderAdminId?: string;
+  senderPhone?: string;
+  bodyText: string;
+  externalMessageId?: string;
+  externalChatId?: string;
+  origin?: MessageOrigin;
+  isSystem?: boolean;
+  metadata?: Record<string, unknown>;
 }

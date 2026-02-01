@@ -122,6 +122,16 @@ app.post('/debug/test-ai', (req, res) => {
   webhookHandler.testAI(req, res);
 });
 
+// ========== Mode API Endpoints ==========
+
+// Get conversation mode
+app.get('/api/mode/:tenantId/:phone', (req, res) => webhookHandler.getMode(req, res));
+app.get('/api/mode/:phone', (req, res) => webhookHandler.getMode(req, res)); // Default tenant
+
+// Set conversation mode
+app.post('/api/mode/:tenantId/:phone', (req, res) => webhookHandler.setMode(req, res));
+app.post('/api/mode/:phone', (req, res) => webhookHandler.setMode(req, res)); // Default tenant
+
 // ========== Manual Send Endpoint ==========
 
 // Debug send endpoint

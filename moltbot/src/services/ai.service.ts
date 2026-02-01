@@ -27,8 +27,10 @@ interface ChatResult {
 class AIService {
   /**
    * Process an inbound message and generate AI reply
+   * @param msg The inbound message
+   * @param instruction Optional instruction for commanded replies (e.g., "be more formal")
    */
-  async processMessage(msg: InboundMsg): Promise<ChatResult> {
+  async processMessage(msg: InboundMsg, instruction?: string): Promise<ChatResult> {
     const startTime = Date.now();
     const { tenantId, from: phone, text, pushName } = msg;
     
@@ -37,6 +39,7 @@ class AIService {
       phone,
       textPreview: text.substring(0, 50),
       pushName,
+      hasInstruction: !!instruction,
     }, 'Processing inbound message');
 
     try {
@@ -70,8 +73,10 @@ class AIService {
         }
       }
 
-      // 3. Add user turn to memory
-      memoryStore.addTurn(tenantId, phone, 'user', text);
+      // 3. Add user turn to memory (only if there's actual text)
+      if (text && text.trim()) {
+        memoryStore.addTurn(tenantId, phone, 'user', text);
+      }
 
       // 4. Build LLM messages from memory
       const recentTurns = memoryStore.getRecentTurns(tenantId, phone);
@@ -84,8 +89,22 @@ class AIService {
       const llm = getLlmClient();
       const tools = config.features.toolCalling ? getAllToolSpecs() : [];
 
-      // 6. Build system prompt
-      const systemPrompt = getSystemPrompt(userProfile?.name);
+      // 6. Build system prompt (with optional instruction)
+      let systemPrompt = getSystemPrompt(userProfile?.name);
+      
+      // Add instruction context if provided
+      if (instruction) {
+        systemPrompt += `\n\n[ADMIN INSTRUCTION]: ${instruction}\nFollow this instruction when crafting your response.`;
+      }
+
+      // For commanded replies without new user text, add context
+      if (!text || !text.trim()) {
+        const lastUserMsg = recentTurns.filter(t => t.role === 'user').pop();
+        if (lastUserMsg) {
+          // Don't add duplicate - just ensure we have context
+          systemPrompt += `\n\n[CONTEXT]: Generate a reply to the user's last message.`;
+        }
+      }
 
       // 7. Chat with LLM (with tool call loop)
       let result: LlmResult;
@@ -156,6 +175,7 @@ class AIService {
         phone,
         replyPreview: reply.substring(0, 50),
         toolCallCount: allToolCalls.length,
+        hasInstruction: !!instruction,
         durationMs: duration,
       }, 'Message processed successfully');
 
@@ -177,6 +197,64 @@ class AIService {
         reply: getErrorMessage('unknown_error'),
         error: error.message,
       };
+    }
+  }
+
+  /**
+   * Generate a conversation summary
+   */
+  async generateSummary(tenantId: string, phone: string): Promise<string> {
+    const startTime = Date.now();
+    
+    try {
+      // Get conversation history
+      const recentTurns = memoryStore.getRecentTurns(tenantId, phone, 20);
+      
+      if (recentTurns.length === 0) {
+        return 'No conversation history available.';
+      }
+
+      // Build messages for summary
+      const messages: LlmMessage[] = recentTurns.map(turn => ({
+        role: turn.role,
+        content: turn.content,
+      }));
+
+      // Add summary request
+      messages.push({
+        role: 'user',
+        content: 'Please provide a concise summary of this conversation in Bahasa Malaysia. Include key topics, any issues raised, and current status.',
+      });
+
+      // Get LLM client
+      const llm = getLlmClient();
+
+      // Generate summary
+      const result = await llm.chat({
+        system: 'You are a helpful assistant that summarizes customer support conversations. Respond in Bahasa Malaysia with a brief, actionable summary.',
+        messages,
+      });
+
+      const summary = result.content || 'Unable to generate summary.';
+
+      logger.info({
+        tenantId,
+        phone,
+        turnCount: recentTurns.length,
+        durationMs: Date.now() - startTime,
+      }, 'Summary generated');
+
+      return summary;
+
+    } catch (error: any) {
+      logger.error({
+        tenantId,
+        phone,
+        error: error.message,
+        durationMs: Date.now() - startTime,
+      }, 'Summary generation failed');
+
+      return `Error generating summary: ${error.message}`;
     }
   }
 

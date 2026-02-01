@@ -6,6 +6,7 @@ import {
   ConversationTurn,
   UserProfile,
   ToolCall,
+  ConversationMode,
 } from '../types';
 
 /**
@@ -84,6 +85,7 @@ class MemoryStore {
       turns: [],
       lastUpdated: now,
       createdAt: now,
+      mode: 'auto', // Default mode
     };
     
     this.store.set(key, memory);
@@ -166,6 +168,103 @@ class MemoryStore {
     return memory?.userProfile;
   }
 
+  // ========== Mode Management ==========
+
+  /**
+   * Get conversation mode
+   */
+  getMode(tenantId: string, phone: string): ConversationMode {
+    const memory = this.get(tenantId, phone);
+    return memory?.mode || 'auto';
+  }
+
+  /**
+   * Set conversation mode
+   */
+  setMode(tenantId: string, phone: string, mode: ConversationMode): void {
+    const memory = this.getOrCreate(tenantId, phone);
+    memory.mode = mode;
+    memory.lastUpdated = Date.now();
+    
+    if (mode === 'takeover') {
+      memory.lastAdminActivityAt = Date.now();
+    }
+    
+    const key = this.makeKey(tenantId, this.normalizePhone(phone));
+    this.store.set(key, memory);
+    
+    logger.info({ key, mode }, 'Conversation mode changed');
+  }
+
+  /**
+   * Record admin activity (for takeover tracking)
+   */
+  recordAdminActivity(tenantId: string, phone: string): void {
+    const memory = this.getOrCreate(tenantId, phone);
+    memory.lastAdminActivityAt = Date.now();
+    memory.lastUpdated = Date.now();
+    
+    const key = this.makeKey(tenantId, this.normalizePhone(phone));
+    this.store.set(key, memory);
+  }
+
+  /**
+   * Check if auto mode should resume (based on admin inactivity)
+   */
+  shouldResumeAuto(tenantId: string, phone: string): boolean {
+    if (config.takeover.autoRevertMs <= 0) {
+      return false; // Auto-revert disabled
+    }
+    
+    const memory = this.get(tenantId, phone);
+    if (!memory || memory.mode !== 'takeover') {
+      return false;
+    }
+    
+    const lastActivity = memory.lastAdminActivityAt || memory.createdAt;
+    return Date.now() - lastActivity > config.takeover.autoRevertMs;
+  }
+
+  // ========== Draft Management ==========
+
+  /**
+   * Store a pending draft
+   */
+  setDraft(tenantId: string, phone: string, draft: string): void {
+    const memory = this.getOrCreate(tenantId, phone);
+    memory.pendingDraft = draft;
+    memory.pendingDraftAt = Date.now();
+    memory.lastUpdated = Date.now();
+    
+    const key = this.makeKey(tenantId, this.normalizePhone(phone));
+    this.store.set(key, memory);
+    
+    logger.debug({ key }, 'Draft stored');
+  }
+
+  /**
+   * Get pending draft
+   */
+  getDraft(tenantId: string, phone: string): string | undefined {
+    const memory = this.get(tenantId, phone);
+    return memory?.pendingDraft;
+  }
+
+  /**
+   * Clear pending draft
+   */
+  clearDraft(tenantId: string, phone: string): void {
+    const memory = this.get(tenantId, phone);
+    if (memory) {
+      delete memory.pendingDraft;
+      delete memory.pendingDraftAt;
+      memory.lastUpdated = Date.now();
+      
+      const key = this.makeKey(tenantId, this.normalizePhone(phone));
+      this.store.set(key, memory);
+    }
+  }
+
   /**
    * Clear memory for a user
    */
@@ -215,6 +314,8 @@ class MemoryStore {
     
     return {
       phone: memory.phone,
+      mode: memory.mode,
+      hasDraft: !!memory.pendingDraft,
       userProfile: memory.userProfile ? {
         name: memory.userProfile.name,
         hasUserId: !!memory.userProfile.userId,
@@ -227,6 +328,9 @@ class MemoryStore {
         hasToolCalls: !!t.toolCalls?.length,
         timestamp: new Date(t.timestamp).toISOString(),
       })),
+      lastAdminActivityAt: memory.lastAdminActivityAt 
+        ? new Date(memory.lastAdminActivityAt).toISOString() 
+        : null,
       createdAt: new Date(memory.createdAt).toISOString(),
       lastUpdated: new Date(memory.lastUpdated).toISOString(),
     };

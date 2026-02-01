@@ -1,26 +1,31 @@
 /**
  * Webhook Service
  * 
- * Handles forwarding WhatsApp messages to external services (Serapod).
- * Implements retry logic and error handling.
+ * Handles forwarding WhatsApp messages to external services.
+ * Supports both inbound (user) and outbound (admin) message forwarding.
  */
 
 import { logger } from '../utils/logger';
 
-interface IngestPayload {
+export type WebhookEventType = 'INBOUND_USER' | 'OUTBOUND_ADMIN';
+
+interface WebhookPayload {
+  event: WebhookEventType;
   tenantId: string;
-  from: string;
-  to?: string;
-  messageId: string;
-  chatId: string;
-  text: string;
-  timestamp: number;
-  metadata?: Record<string, any>;
+  wa: {
+    phoneDigits: string;
+    remoteJid: string;
+    fromMe: boolean;
+    messageId: string;
+    timestamp: number;
+    pushName?: string;
+    text: string;
+  };
 }
 
 interface WebhookConfig {
-  url: string;
-  apiKey: string;
+  moltbotUrl: string;
+  moltbotSecret: string;
   enabled: boolean;
   retryAttempts: number;
   retryDelay: number;
@@ -31,16 +36,17 @@ class WebhookService {
 
   constructor() {
     this.config = {
-      url: process.env.SERAPOD_INGEST_URL || process.env.WEBHOOK_URL || '',
-      apiKey: process.env.SERAPOD_AGENT_KEY || process.env.WEBHOOK_API_KEY || '',
-      enabled: process.env.WEBHOOK_ENABLED === 'true' || !!process.env.SERAPOD_INGEST_URL,
+      moltbotUrl: process.env.MOLTBOT_WEBHOOK_URL || 'http://127.0.0.1:4000/webhook/whatsapp',
+      moltbotSecret: process.env.MOLTBOT_WEBHOOK_SECRET || '',
+      enabled: process.env.MOLTBOT_WEBHOOK_ENABLED !== 'false',
       retryAttempts: parseInt(process.env.WEBHOOK_RETRY_ATTEMPTS || '3'),
       retryDelay: parseInt(process.env.WEBHOOK_RETRY_DELAY || '1000'),
     };
 
     logger.info({
       webhookEnabled: this.config.enabled,
-      webhookUrl: this.config.url ? this.config.url.substring(0, 50) + '...' : 'not configured',
+      moltbotUrl: this.config.moltbotUrl,
+      hasSecret: !!this.config.moltbotSecret,
     }, 'WebhookService initialized');
   }
 
@@ -48,21 +54,14 @@ class WebhookService {
    * Check if webhook is enabled and configured
    */
   isEnabled(): boolean {
-    return this.config.enabled && !!this.config.url && !!this.config.apiKey;
+    return this.config.enabled && !!this.config.moltbotUrl;
   }
 
   /**
-   * Update webhook configuration
+   * Forward incoming WhatsApp message to Moltbot
+   * Handles both user messages (fromMe=false) and admin messages (fromMe=true)
    */
-  updateConfig(config: Partial<WebhookConfig>): void {
-    this.config = { ...this.config, ...config };
-    logger.info({ enabled: this.config.enabled }, 'Webhook config updated');
-  }
-
-  /**
-   * Forward incoming WhatsApp message to Serapod
-   */
-  async forwardToSerapod(
+  async forwardToMoltbot(
     tenantId: string,
     message: {
       key: { remoteJid: string; id: string; fromMe: boolean };
@@ -88,91 +87,103 @@ class WebhookService {
 
     // Extract sender info
     const remoteJid = message.key.remoteJid || '';
-    const senderPhone = remoteJid.split('@')[0];
-    const chatId = remoteJid;
-    const messageId = message.key.id;
-    const isFromMe = message.key.fromMe;
-
-    // Skip if it's our own outgoing message (to avoid echo loops)
-    if (isFromMe) {
-      logger.debug({ tenantId, messageId }, 'Skipping own message (fromMe=true)');
+    
+    // Skip group messages - only handle 1:1 chats
+    if (remoteJid.includes('@g.us')) {
+      logger.debug({ tenantId, remoteJid }, 'Skipping group message');
       return false;
     }
 
-    const payload: IngestPayload = {
+    const phoneDigits = remoteJid.split('@')[0];
+    const messageId = message.key.id;
+    const fromMe = message.key.fromMe;
+
+    // Determine event type
+    const eventType: WebhookEventType = fromMe ? 'OUTBOUND_ADMIN' : 'INBOUND_USER';
+
+    const payload: WebhookPayload = {
+      event: eventType,
       tenantId,
-      from: senderPhone,
-      to: ownNumber,
-      messageId,
-      chatId,
-      text,
-      timestamp: typeof message.messageTimestamp === 'number' 
-        ? message.messageTimestamp * 1000 
-        : Date.now(),
-      metadata: {
+      wa: {
+        phoneDigits,
+        remoteJid,
+        fromMe,
+        messageId,
+        timestamp: typeof message.messageTimestamp === 'number' 
+          ? message.messageTimestamp * 1000 
+          : Date.now(),
         pushName: message.pushName,
-        source: 'baileys-gateway',
+        text,
       },
     };
 
-    return this.sendWithRetry(payload);
+    return this.sendToMoltbot(payload);
   }
 
   /**
-   * Send payload to webhook with retry logic
+   * Legacy method for backward compatibility
    */
-  private async sendWithRetry(payload: IngestPayload): Promise<boolean> {
+  async forwardToSerapod(
+    tenantId: string,
+    message: {
+      key: { remoteJid: string; id: string; fromMe: boolean };
+      message?: { conversation?: string; extendedTextMessage?: { text?: string } };
+      pushName?: string;
+      messageTimestamp?: number;
+    },
+    ownNumber?: string
+  ): Promise<boolean> {
+    // Forward to moltbot instead
+    return this.forwardToMoltbot(tenantId, message, ownNumber);
+  }
+
+  /**
+   * Send payload to Moltbot with retry logic
+   */
+  private async sendToMoltbot(payload: WebhookPayload): Promise<boolean> {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
       try {
-        const response = await fetch(this.config.url, {
+        const response = await fetch(this.config.moltbotUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-agent-key': this.config.apiKey,
-            'x-api-key': this.config.apiKey,
+            'x-moltbot-secret': this.config.moltbotSecret,
           },
           body: JSON.stringify(payload),
         });
 
-        const data = await response.json() as { ok?: boolean; error?: string; threadId?: string; dedup?: boolean };
+        const data = await response.json() as { ok?: boolean; error?: string };
 
-        if (response.ok && data.ok) {
+        if (response.ok && data.ok !== false) {
           logger.info({
             tenantId: payload.tenantId,
-            messageId: payload.messageId,
-            threadId: data.threadId,
-            dedup: data.dedup,
-          }, 'Message forwarded to Serapod');
-          return true;
-        }
-
-        // Check for dedup (not an error)
-        if (data.dedup) {
-          logger.debug({
-            tenantId: payload.tenantId,
-            messageId: payload.messageId,
-          }, 'Message deduplicated');
+            event: payload.event,
+            messageId: payload.wa.messageId,
+            phone: payload.wa.phoneDigits,
+          }, 'Message forwarded to Moltbot');
           return true;
         }
 
         lastError = new Error(data.error || `HTTP ${response.status}`);
         logger.warn({
           tenantId: payload.tenantId,
-          messageId: payload.messageId,
+          event: payload.event,
+          messageId: payload.wa.messageId,
           attempt,
           error: lastError.message,
-        }, 'Webhook request failed');
+        }, 'Moltbot webhook request failed');
 
       } catch (error: any) {
         lastError = error;
         logger.warn({
           tenantId: payload.tenantId,
-          messageId: payload.messageId,
+          event: payload.event,
+          messageId: payload.wa.messageId,
           attempt,
           error: error.message,
-        }, 'Webhook request error');
+        }, 'Moltbot webhook request error');
       }
 
       // Wait before retry (except last attempt)
@@ -185,7 +196,8 @@ class WebhookService {
 
     logger.error({
       tenantId: payload.tenantId,
-      messageId: payload.messageId,
+      event: payload.event,
+      messageId: payload.wa.messageId,
       error: lastError?.message,
     }, 'Failed to forward message after all retries');
 
