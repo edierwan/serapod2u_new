@@ -7,13 +7,13 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { 
-    MessageSquare, 
-    Plus, 
-    ArrowLeft, 
-    Send, 
-    Image as ImageIcon, 
-    Trash2, 
+import {
+    MessageSquare,
+    Plus,
+    ArrowLeft,
+    Send,
+    Image as ImageIcon,
+    Trash2,
     Loader2,
     X,
     Check,
@@ -90,7 +90,7 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
     const [loading, setLoading] = useState(false)
     const [totalUnread, setTotalUnread] = useState(0)
     const [initialSubject, setInitialSubject] = useState('')
-    
+
     // Check for prefill from sessionStorage on mount
     useEffect(() => {
         const storedSubject = sessionStorage.getItem('prefill_chat_subject')
@@ -104,7 +104,7 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
             setView('new-chat')
         }
     }, [prefillSubject])
-    
+
     // Fetch conversations
     const fetchConversations = useCallback(async () => {
         setLoading(true)
@@ -179,14 +179,14 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
     return (
         <div className="flex flex-col h-full bg-gray-50">
             {/* Header */}
-            <div 
+            <div
                 className="flex items-center justify-between p-4 text-white sticky top-0 z-10 shadow-md"
                 style={{ backgroundColor: themeColor }}
             >
                 <div className="flex items-center gap-3">
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={view === 'inbox' ? onClose : handleBack}
                         className="text-white hover:bg-white/20 -ml-2"
                     >
@@ -194,9 +194,9 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
                     </Button>
                     <div>
                         <h2 className="text-lg font-semibold">
-                            {view === 'inbox' ? 'Support Inbox' : 
-                             view === 'new-chat' ? 'New Conversation' : 
-                             activeConversation?.subject || 'Chat'}
+                            {view === 'inbox' ? 'Support Inbox' :
+                                view === 'new-chat' ? 'New Conversation' :
+                                    activeConversation?.subject || 'Chat'}
                         </h2>
                         {view === 'thread' && activeConversation && (
                             <p className="text-xs text-white/70">{activeConversation.case_number}</p>
@@ -213,10 +213,10 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
             {/* Content */}
             <div className="flex-1 overflow-hidden relative">
                 {view === 'inbox' && (
-                    <InboxView 
-                        conversations={conversations} 
-                        loading={loading} 
-                        onConversationClick={handleConversationClick} 
+                    <InboxView
+                        conversations={conversations}
+                        loading={loading}
+                        onConversationClick={handleConversationClick}
                         onNewChat={() => setView('new-chat')}
                         onDelete={handleDelete}
                         onRefresh={fetchConversations}
@@ -224,7 +224,7 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
                     />
                 )}
                 {view === 'new-chat' && (
-                    <NewChatView 
+                    <NewChatView
                         onCancel={() => setView('inbox')}
                         onSuccess={handleNewConversation}
                         initialSubject={initialSubject}
@@ -232,7 +232,7 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
                     />
                 )}
                 {view === 'thread' && activeConversation && (
-                    <ChatThreadView 
+                    <ChatThreadView
                         conversation={activeConversation}
                         onRefresh={fetchConversations}
                     />
@@ -243,15 +243,15 @@ export function SupportChatWidgetV2({ onClose, themeColor = '#2563eb', prefillSu
 }
 
 // Inbox View
-function InboxView({ 
-    conversations, 
-    loading, 
-    onConversationClick, 
-    onNewChat, 
+function InboxView({
+    conversations,
+    loading,
+    onConversationClick,
+    onNewChat,
     onDelete,
     onRefresh,
     themeColor = '#2563eb'
-}: { 
+}: {
     conversations: Conversation[]
     loading: boolean
     onConversationClick: (conv: Conversation) => void
@@ -302,7 +302,7 @@ function InboxView({
                     <RefreshCw className="w-3 h-3 mr-1" /> Refresh
                 </Button>
             </div>
-            
+
             <ScrollArea className="flex-1 px-4">
                 <div className="space-y-3 pb-24">
                     {conversations.length === 0 ? (
@@ -314,9 +314,9 @@ function InboxView({
                     ) : (
                         conversations.map((conv) => {
                             const status = STATUS_CONFIG[conv.status]
-                            
+
                             return (
-                                <div 
+                                <div
                                     key={conv.id}
                                     className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden active:scale-[0.98] transition-transform"
                                 >
@@ -324,18 +324,18 @@ function InboxView({
                                         <div className="p-4 bg-red-50 flex items-center justify-between">
                                             <span className="text-sm text-red-700">Delete this conversation?</span>
                                             <div className="flex gap-2">
-                                                <Button 
-                                                    size="sm" 
-                                                    variant="outline" 
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
                                                     onClick={() => setDeleteConfirm(null)}
                                                     disabled={deleting}
                                                     className="h-8"
                                                 >
                                                     Cancel
                                                 </Button>
-                                                <Button 
-                                                    size="sm" 
-                                                    variant="destructive" 
+                                                <Button
+                                                    size="sm"
+                                                    variant="destructive"
                                                     onClick={() => confirmDelete(conv.id)}
                                                     disabled={deleting}
                                                     className="h-8"
@@ -345,7 +345,7 @@ function InboxView({
                                             </div>
                                         </div>
                                     ) : (
-                                        <div 
+                                        <div
                                             onClick={() => onConversationClick(conv)}
                                             className="p-4 cursor-pointer"
                                         >
@@ -375,7 +375,7 @@ function InboxView({
                                                     </Button>
                                                 </div>
                                             </div>
-                                            
+
                                             <div className="flex justify-between items-center">
                                                 <p className={cn(
                                                     "text-sm truncate flex-1 pr-4",
@@ -386,7 +386,7 @@ function InboxView({
                                                     )}
                                                     {conv.last_message_preview || 'No messages'}
                                                 </p>
-                                                
+
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     {conv.user_unread_count > 0 && (
                                                         <Badge className="bg-red-500 text-white rounded-full h-5 min-w-[20px] px-1.5 text-xs">
@@ -403,11 +403,11 @@ function InboxView({
                     )}
                 </div>
             </ScrollArea>
-            
+
             {/* Floating Action Button */}
             <div className="absolute bottom-4 left-0 right-0 px-4">
-                <Button 
-                    onClick={onNewChat} 
+                <Button
+                    onClick={onNewChat}
                     className="w-full shadow-lg rounded-full h-14 text-base font-medium text-white"
                     style={{ backgroundColor: themeColor }}
                 >
@@ -419,16 +419,16 @@ function InboxView({
 }
 
 // New Chat View
-function NewChatView({ 
-    onCancel, 
+function NewChatView({
+    onCancel,
     onSuccess,
     initialSubject = '',
     themeColor = '#2563eb'
-}: { 
+}: {
     onCancel: () => void
     onSuccess: (conversationId: string) => void
     initialSubject?: string
-    themeColor?: string 
+    themeColor?: string
 }) {
     const supabase = createClient()
     const [subject, setSubject] = useState(initialSubject)
@@ -438,7 +438,7 @@ function NewChatView({
     const [uploading, setUploading] = useState(false)
     const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
-    
+
     // Set initial subject when prop changes
     useEffect(() => {
         if (initialSubject) {
@@ -459,23 +459,23 @@ function NewChatView({
                     const canvas = document.createElement('canvas')
                     let width = img.width
                     let height = img.height
-                    
+
                     if (width > maxWidth) {
                         height = Math.round((height * maxWidth) / width)
                         width = maxWidth
                     }
-                    
+
                     canvas.width = width
                     canvas.height = height
-                    
+
                     const ctx = canvas.getContext('2d')
                     if (!ctx) {
                         reject(new Error('Could not get canvas context'))
                         return
                     }
-                    
+
                     ctx.drawImage(img, 0, 0, width, height)
-                    
+
                     canvas.toBlob(
                         (blob) => {
                             if (blob) {
@@ -516,7 +516,7 @@ function NewChatView({
 
         setUploading(true)
         setCompressionInfo(null)
-        
+
         try {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) {
@@ -526,7 +526,7 @@ function NewChatView({
 
             let fileToUpload: Blob | File = file
             let compressionMsg = ''
-            
+
             if (file.size > 500 * 1024) {
                 try {
                     const { blob, originalSize, compressedSize } = await compressImage(file)
@@ -563,10 +563,10 @@ function NewChatView({
 
             const localPreviewUrl = URL.createObjectURL(fileToUpload)
 
-            setAttachments([...attachments, { 
+            setAttachments([...attachments, {
                 url: publicUrl,
                 previewUrl: localPreviewUrl,
-                name: file.name, 
+                name: file.name,
                 type: 'image/jpeg',
                 path: fileName,
                 size: fileToUpload.size,
@@ -620,26 +620,26 @@ function NewChatView({
             <form onSubmit={handleSubmit} className="space-y-4 flex-1 flex flex-col">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Subject</label>
-                    <Input 
-                        value={subject} 
-                        onChange={(e) => setSubject(e.target.value)} 
+                    <Input
+                        value={subject}
+                        onChange={(e) => setSubject(e.target.value)}
                         placeholder="What is this about?"
                         required
                         className="bg-gray-50 h-12 text-base"
                     />
                 </div>
-                
+
                 <div className="flex-1 flex flex-col">
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Message</label>
-                    <Textarea 
-                        value={message} 
-                        onChange={(e) => setMessage(e.target.value)} 
+                    <Textarea
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
                         placeholder="Describe your issue..."
                         required
                         className="flex-1 bg-gray-50 resize-none min-h-[150px] text-base"
                     />
                 </div>
-                
+
                 {/* Image Upload */}
                 <div>
                     <input
@@ -649,11 +649,11 @@ function NewChatView({
                         onChange={handleImageUpload}
                         className="hidden"
                     />
-                    
+
                     <div className="flex items-center gap-2 flex-wrap">
-                        <Button 
-                            type="button" 
-                            variant="outline" 
+                        <Button
+                            type="button"
+                            variant="outline"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={uploading || attachments.length >= 3}
                             className="h-10"
@@ -667,11 +667,11 @@ function NewChatView({
                         </Button>
                         <span className="text-xs text-gray-400">Optional (max 5MB)</span>
                     </div>
-                    
+
                     {compressionInfo && (
                         <p className="text-xs text-green-600 mt-1">{compressionInfo}</p>
                     )}
-                    
+
                     {/* Attachment Preview */}
                     {attachments.length > 0 && (
                         <div className="flex gap-2 mt-3 flex-wrap">
@@ -699,8 +699,8 @@ function NewChatView({
                     )}
                 </div>
 
-                <Button 
-                    type="submit" 
+                <Button
+                    type="submit"
                     disabled={!subject.trim() || !message.trim() || loading}
                     className="w-full h-14 text-base font-medium rounded-xl text-white"
                     style={{ backgroundColor: themeColor }}
@@ -723,12 +723,12 @@ function NewChatView({
 }
 
 // Chat Thread View
-function ChatThreadView({ 
-    conversation, 
-    onRefresh 
-}: { 
+function ChatThreadView({
+    conversation,
+    onRefresh
+}: {
     conversation: Conversation
-    onRefresh: () => void 
+    onRefresh: () => void
 }) {
     const [messages, setMessages] = useState<Message[]>([])
     const [newMessage, setNewMessage] = useState('')
@@ -792,22 +792,22 @@ function ChatThreadView({
         e?.preventDefault()
         const msg = newMessage.trim()
         if (!msg) return
-        
+
         setError(null)
         setSending(true)
-        
+
         try {
             const res = await fetch(`/api/support/conversations/${conversation.id}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: msg })
             })
-            
+
             if (!res.ok) {
                 const data = await res.json()
                 throw new Error(data.error || 'Failed to send message')
             }
-            
+
             setNewMessage('')
             fetchMessages()
             onRefresh()
@@ -822,13 +822,13 @@ function ChatThreadView({
     const groupedMessages = messages.reduce((groups: { date: string; messages: Message[] }[], msg) => {
         const date = format(new Date(msg.created_at), 'yyyy-MM-dd')
         const lastGroup = groups[groups.length - 1]
-        
+
         if (lastGroup && lastGroup.date === date) {
             lastGroup.messages.push(msg)
         } else {
             groups.push({ date, messages: [msg] })
         }
-        
+
         return groups
     }, [])
 
@@ -867,7 +867,7 @@ function ChatThreadView({
                                         {formatDateHeader(group.date)}
                                     </span>
                                 </div>
-                                
+
                                 {/* Messages */}
                                 <div className="space-y-2">
                                     {group.messages.map((msg) => {
@@ -876,7 +876,7 @@ function ChatThreadView({
                                         const channelBadge = getChannelBadge(msg.channel)
                                         const isWhatsApp = msg.channel === 'whatsapp'
                                         const isAI = msg.channel === 'ai'
-                                        
+
                                         if (isSystem) {
                                             return (
                                                 <div key={msg.id} className="flex justify-center my-4">
@@ -888,14 +888,14 @@ function ChatThreadView({
                                         }
 
                                         return (
-                                            <div 
-                                                key={msg.id} 
+                                            <div
+                                                key={msg.id}
                                                 className={cn("flex", isUser ? "justify-end" : "justify-start")}
                                             >
                                                 <div className={cn(
                                                     "max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm relative",
-                                                    isUser 
-                                                        ? "bg-blue-600 text-white rounded-br-md" 
+                                                    isUser
+                                                        ? "bg-blue-600 text-white rounded-br-md"
                                                         : isWhatsApp
                                                             ? "bg-green-50 text-gray-900 border border-green-200 rounded-bl-md"
                                                             : isAI
@@ -912,18 +912,18 @@ function ChatThreadView({
                                                             {isWhatsApp ? 'via WhatsApp' : 'AI Assistant'}
                                                         </div>
                                                     )}
-                                                    
+
                                                     <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.body_text}</p>
-                                                    
+
                                                     {/* Attachments */}
                                                     {msg.attachments && msg.attachments.length > 0 && (
                                                         <div className="mt-2 space-y-2">
                                                             {msg.attachments.map((att: any, i: number) => (
                                                                 att.type?.startsWith('image/') || att.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                                                                    <a 
+                                                                    <a
                                                                         key={i}
-                                                                        href={att.url} 
-                                                                        target="_blank" 
+                                                                        href={att.url}
+                                                                        target="_blank"
                                                                         rel="noopener noreferrer"
                                                                         className="block"
                                                                     >
@@ -936,10 +936,10 @@ function ChatThreadView({
                                                                         />
                                                                     </a>
                                                                 ) : (
-                                                                    <a 
-                                                                        key={i} 
-                                                                        href={att.url} 
-                                                                        target="_blank" 
+                                                                    <a
+                                                                        key={i}
+                                                                        href={att.url}
+                                                                        target="_blank"
                                                                         rel="noopener noreferrer"
                                                                         className={cn(
                                                                             "flex items-center gap-1.5 text-xs underline",
@@ -953,7 +953,7 @@ function ChatThreadView({
                                                             ))}
                                                         </div>
                                                     )}
-                                                    
+
                                                     <div className={cn(
                                                         "text-[11px] mt-1 flex items-center gap-1",
                                                         isUser ? "justify-end text-blue-200" : "justify-start text-gray-400"
@@ -998,8 +998,8 @@ function ChatThreadView({
                             }}
                         />
                     </div>
-                    <Button 
-                        type="submit" 
+                    <Button
+                        type="submit"
                         disabled={!newMessage.trim() || sending}
                         className="h-11 w-11 rounded-full bg-blue-600 hover:bg-blue-700 p-0 shrink-0"
                     >

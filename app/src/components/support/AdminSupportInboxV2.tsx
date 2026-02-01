@@ -256,6 +256,24 @@ export function AdminSupportInboxV2() {
         fetchAdmins()
         fetchTags()
         fetchGlobalSettings()
+
+        // Realtime Subscription for Conversation List (Unread counts, new chats, etc)
+        const supabase = createClient()
+        const channel = supabase
+            .channel('admin_inbox_updates')
+            .on('postgres_changes', {
+                event: '*', // Listen to INSERT (new chat) and UPDATE (new message/unread count)
+                schema: 'public',
+                table: 'support_conversations'
+            }, (payload) => {
+                // Throttle or debounce could be added here if high volume
+                fetchConversations()
+            })
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
     }, [fetchConversations])
 
     const handleConversationClick = (conv: Conversation) => {
@@ -893,7 +911,7 @@ function ConversationDetailView({
             .subscribe()
 
         return () => {
-             supabase.removeChannel(channel)
+            supabase.removeChannel(channel)
         }
     }, [conversation.id])
 
