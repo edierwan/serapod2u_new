@@ -251,34 +251,39 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Fetch activations if needed for activity filters (Never Login, Never Scanned, Inactive)
+        // Fetch scan data if needed for activity filters (Never Login, Never Scanned)
+        // These filters only apply to End Users (organization_id IS NULL)
+        // We use consumer_qr_scans table which tracks actual QR code scans/activations
         const needsActivationData = activeFilters.never_login === true || 
                                     activeFilters.never_scanned === true || 
                                     activeFilters.inactive_days != null;
         
-        const activationMap = new Map<string, Date>(); // phone -> last_activated_at
+        // Set of user IDs who have scanned QR codes (activated)
+        const activatedUserIds = new Set<string>();
+        const activationDates = new Map<string, Date>(); // user_id -> last_scanned_at
         
         if (needsActivationData) {
             try {
-                // Fetch activations to check for real activity (activations often not synced to points view immediately)
-                const { data: activations } = await supabase
-                   .from('consumer_activations' as any)
-                   .select('consumer_phone, activated_at')
-                   .order('activated_at', { ascending: false });
+                // Fetch from consumer_qr_scans - this tracks all QR scans
+                // consumer_id is the user who scanned
+                const { data: scans } = await supabase
+                   .from('consumer_qr_scans' as any)
+                   .select('consumer_id, scanned_at')
+                   .order('scanned_at', { ascending: false });
                    
-                if (activations) {
-                    activations.forEach((a: any) => {
-                        if (!a.consumer_phone) return;
-                        const p = a.consumer_phone.trim();
-                        // Handle potential different phone formats if necessary, but assuming standard format
-                        const d = new Date(a.activated_at);
-                        if (!activationMap.has(p)) {
-                            activationMap.set(p, d);
+                if (scans) {
+                    scans.forEach((s: any) => {
+                        if (!s.consumer_id) return;
+                        activatedUserIds.add(s.consumer_id);
+                        // Track latest scan date for inactive_days filter
+                        if (!activationDates.has(s.consumer_id)) {
+                            activationDates.set(s.consumer_id, new Date(s.scanned_at));
                         }
                     });
                 }
+                console.log(`[Audience] Found ${activatedUserIds.size} users who have scanned QR codes`);
             } catch (e) {
-                console.warn('Error fetching activations:', e);
+                console.warn('Error fetching scan data:', e);
             }
         }
 
@@ -312,30 +317,59 @@ export async function POST(request: NextRequest) {
                 return;
             }
 
-            // Extended Activity Filters (Checking against consumer_activations)
+            // Activity Filters - these only apply to END USERS (organization_id IS NULL)
+            // Never Login / Never Scanned: Filter users who have NEVER scanned a QR code
+            // We check consumer_qr_scans table for actual scan records
             if (needsActivationData) {
-                const lastActivation = activationMap.get(phone);
+                const isEndUser = !u.organization_id;
+                const hasScanned = activatedUserIds.has(u.user_id);
                 
-                // Never Login: Exclude if they have ANY activation record
-                if (activeFilters.never_login === true && lastActivation) {
-                    excludedActivity++;
-                    return;
+                // Never Login (No Activations): ONLY include End Users who have NEVER scanned
+                // If toggle is ON, we want users who NEVER logged in, so EXCLUDE those who HAVE scanned
+                if (activeFilters.never_login === true) {
+                    // This filter only makes sense for End Users
+                    if (!isEndUser) {
+                        // Non-end users are excluded when this filter is active (we only want independent consumers)
+                        excludedActivity++;
+                        return;
+                    }
+                    if (hasScanned) {
+                        // User has logged in/scanned before - EXCLUDE them
+                        excludedActivity++;
+                        return;
+                    }
+                    // User is End User and has never scanned - KEEP them
                 }
 
-                // Never Scanned: Exclude if they have ANY activation record (Strict check)
-                // This fixes the issue where points view says 0 but user has activations
-                if (activeFilters.never_scanned === true && lastActivation) {
-                    excludedActivity++;
-                    return;
+                // Never Scanned QR code: Same logic as Never Login
+                // ONLY include End Users who have collected_system = 0 AND no scan records
+                if (activeFilters.never_scanned === true) {
+                    // This filter only makes sense for End Users
+                    if (!isEndUser) {
+                        excludedActivity++;
+                        return;
+                    }
+                    if (hasScanned) {
+                        // User has scanned QR before - EXCLUDE them
+                        excludedActivity++;
+                        return;
+                    }
+                    // Also check collected_system from points view (if available)
+                    if (u.collected_system > 0) {
+                        excludedActivity++;
+                        return;
+                    }
+                    // User is End User and has never scanned - KEEP them
                 }
 
-                // Inactive Days: Check if they have recent activation
+                // Inactive Days: Check if they have recent scan activity
                 if (activeFilters.inactive_days != null) {
-                    // Determine true last activity (Max of system points activity and activation table)
+                    const lastScan = activationDates.get(u.user_id);
                     let trueLastActivity = u.last_activity_at ? new Date(u.last_activity_at) : null;
-                    if (lastActivation) {
-                        if (!trueLastActivity || lastActivation > trueLastActivity) {
-                            trueLastActivity = lastActivation;
+                    
+                    if (lastScan) {
+                        if (!trueLastActivity || lastScan > trueLastActivity) {
+                            trueLastActivity = lastScan;
                         }
                     }
 
