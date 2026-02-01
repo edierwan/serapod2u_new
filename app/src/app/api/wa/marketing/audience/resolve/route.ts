@@ -50,94 +50,112 @@ export async function POST(request: NextRequest) {
 
         if (needsPointsView) {
             try {
-                // Try using the v_consumer_points_summary view for point-based filtering
-                let query = supabase.from('v_consumer_points_summary' as any).select('*');
+                // Use pagination to fetch ALL users from view (overcome Supabase 1000 row limit)
+                const PAGE_SIZE = 1000;
+                let offset = 0;
+                let hasMore = true;
+                const allViewUsers: any[] = [];
 
-                // Apply filters
-                if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
-                    query = query.in('user_id', user_ids);
-                } else {
-                    // Organization Type Filter
-                    if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
-                    if (activeFilters.organization_type === 'End User') {
-                        query = query.is('organization_id', null);
+                while (hasMore) {
+                    let query = supabase.from('v_consumer_points_summary' as any).select('*', { count: 'exact' });
+
+                    // Apply filters
+                    if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
+                        query = query.in('user_id', user_ids);
                     } else {
-                        query = query.eq('organization_type', activeFilters.organization_type);
+                        // Organization Type Filter
+                        if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
+                            if (activeFilters.organization_type === 'End User') {
+                                query = query.is('organization_id', null);
+                            } else {
+                                query = query.eq('organization_type', activeFilters.organization_type);
+                            }
+                        }
+
+                        // Location Filter
+                        if (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any') {
+                            query = query.eq('state', activeFilters.state);
+                        }
+
+                        // Point-based filters
+                        if (activeFilters.points_min != null) {
+                            query = query.gte('current_balance', activeFilters.points_min);
+                        }
+                        if (activeFilters.points_max != null) {
+                            query = query.lte('current_balance', activeFilters.points_max);
+                        }
+                        if (activeFilters.collected_system_min != null) {
+                            query = query.gte('collected_system', activeFilters.collected_system_min);
+                        }
+                        if (activeFilters.collected_system_max != null) {
+                            query = query.lte('collected_system', activeFilters.collected_system_max);
+                        }
+                        if (activeFilters.collected_manual_min != null) {
+                            query = query.gte('collected_manual', activeFilters.collected_manual_min);
+                        }
+                        if (activeFilters.collected_manual_max != null) {
+                            query = query.lte('collected_manual', activeFilters.collected_manual_max);
+                        }
+                        if (activeFilters.migration_points_min != null) {
+                            query = query.gte('migration_points', activeFilters.migration_points_min);
+                        }
+                        if (activeFilters.migration_points_max != null) {
+                            query = query.lte('migration_points', activeFilters.migration_points_max);
+                        }
+                        if (activeFilters.total_redeemed_min != null) {
+                            query = query.gte('total_redeemed', activeFilters.total_redeemed_min);
+                        }
+                        if (activeFilters.total_redeemed_max != null) {
+                            query = query.lte('total_redeemed', activeFilters.total_redeemed_max);
+                        }
+                        if (activeFilters.transactions_count_min != null) {
+                            query = query.gte('transactions_count', activeFilters.transactions_count_min);
+                        }
+                        if (activeFilters.transactions_count_max != null) {
+                            query = query.lte('transactions_count', activeFilters.transactions_count_max);
+                        }
+
+                        // Activity filters
+                        if (activeFilters.last_activity_after) {
+                            query = query.gte('last_activity_at', activeFilters.last_activity_after);
+                        }
+                        if (activeFilters.last_activity_before) {
+                            query = query.lte('last_activity_at', activeFilters.last_activity_before);
+                        }
+                        if (activeFilters.inactive_days != null) {
+                            const cutoffDate = new Date();
+                            cutoffDate.setDate(cutoffDate.getDate() - activeFilters.inactive_days);
+                            query = query.lte('last_activity_at', cutoffDate.toISOString());
+                        }
+                        if (activeFilters.never_scanned === true) {
+                            query = query.eq('collected_system', 0);
+                        }
+                    }
+
+                    // Only active users
+                    query = query.eq('is_active', true);
+                    query = query.range(offset, offset + PAGE_SIZE - 1);
+
+                    const { data, error, count } = await query;
+
+                    if (error) {
+                        console.warn('View query failed:', error);
+                        break;
+                    }
+
+                    if (data && data.length > 0) {
+                        allViewUsers.push(...data);
+                        offset += PAGE_SIZE;
+                        hasMore = count ? allViewUsers.length < count : data.length === PAGE_SIZE;
+                    } else {
+                        hasMore = false;
                     }
                 }
 
-                // Location Filter
-                if (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any') {
-                    query = query.eq('state', activeFilters.state);
+                if (allViewUsers.length > 0) {
+                    users = allViewUsers;
+                    viewQuerySucceeded = true;
                 }
-
-                // Point-based filters
-                if (activeFilters.points_min != null) {
-                    query = query.gte('current_balance', activeFilters.points_min);
-                }
-                if (activeFilters.points_max != null) {
-                    query = query.lte('current_balance', activeFilters.points_max);
-                }
-                if (activeFilters.collected_system_min != null) {
-                    query = query.gte('collected_system', activeFilters.collected_system_min);
-                }
-                if (activeFilters.collected_system_max != null) {
-                    query = query.lte('collected_system', activeFilters.collected_system_max);
-                }
-                if (activeFilters.collected_manual_min != null) {
-                    query = query.gte('collected_manual', activeFilters.collected_manual_min);
-                }
-                if (activeFilters.collected_manual_max != null) {
-                    query = query.lte('collected_manual', activeFilters.collected_manual_max);
-                }
-                if (activeFilters.migration_points_min != null) {
-                    query = query.gte('migration_points', activeFilters.migration_points_min);
-                }
-                if (activeFilters.migration_points_max != null) {
-                    query = query.lte('migration_points', activeFilters.migration_points_max);
-                }
-                if (activeFilters.total_redeemed_min != null) {
-                    query = query.gte('total_redeemed', activeFilters.total_redeemed_min);
-                }
-                if (activeFilters.total_redeemed_max != null) {
-                    query = query.lte('total_redeemed', activeFilters.total_redeemed_max);
-                }
-                if (activeFilters.transactions_count_min != null) {
-                    query = query.gte('transactions_count', activeFilters.transactions_count_min);
-                }
-                if (activeFilters.transactions_count_max != null) {
-                    query = query.lte('transactions_count', activeFilters.transactions_count_max);
-                }
-
-                // Activity filters
-                if (activeFilters.last_activity_after) {
-                    query = query.gte('last_activity_at', activeFilters.last_activity_after);
-                }
-                if (activeFilters.last_activity_before) {
-                    query = query.lte('last_activity_at', activeFilters.last_activity_before);
-                }
-                if (activeFilters.inactive_days != null) {
-                    const cutoffDate = new Date();
-                    cutoffDate.setDate(cutoffDate.getDate() - activeFilters.inactive_days);
-                    query = query.lte('last_activity_at', cutoffDate.toISOString());
-                }
-                if (activeFilters.never_scanned === true) {
-                    query = query.eq('collected_system', 0);
-                }
-            }
-
-            // Only active users
-            query = query.eq('is_active', true);
-
-            // Supabase has a default limit of 1000 rows, increase it to fetch all users
-            const { data, error, count } = await query.limit(50000) as any;
-
-            if (error) {
-                console.warn('View query failed, falling back to basic query:', error);
-            } else {
-                users = data || [];
-                viewQuerySucceeded = true;
-            }
             } catch (e) {
                 console.warn('View not available, using basic query:', e);
             }
@@ -145,47 +163,63 @@ export async function POST(request: NextRequest) {
 
         // Use basic users query when no point filters needed OR as fallback
         if (!needsPointsView || !viewQuerySucceeded) {
-            let query = supabase.from('users' as any).select(`
-                id, 
-                full_name, 
-                phone, 
-                location, 
-                organization_id,
-                is_active,
-                organizations!fk_users_organization (
-                    id,
-                    org_type_code, 
-                    org_name
-                )
-            `);
+            // Use pagination to fetch ALL users (overcome Supabase 1000 row limit)
+            const PAGE_SIZE = 1000;
+            let offset = 0;
+            let hasMore = true;
+            const allUsers: any[] = [];
 
-            if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
-                query = query.in('id', user_ids);
-            } else {
-                if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
-                    if (activeFilters.organization_type === 'End User') {
-                        query = query.is('organization_id', null);
-                    } else {
-                        query = query.eq('organizations.org_type_code', activeFilters.organization_type);
+            while (hasMore) {
+                let query = supabase.from('users' as any).select(`
+                    id, 
+                    full_name, 
+                    phone, 
+                    location, 
+                    organization_id,
+                    is_active,
+                    organizations!fk_users_organization (
+                        id,
+                        org_type_code, 
+                        org_name
+                    )
+                `, { count: 'exact' });
+
+                if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
+                    query = query.in('id', user_ids);
+                } else {
+                    if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
+                        if (activeFilters.organization_type === 'End User') {
+                            query = query.is('organization_id', null);
+                        } else {
+                            query = query.eq('organizations.org_type_code', activeFilters.organization_type);
+                        }
+                    }
+                    if (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any') {
+                        query = query.eq('location', activeFilters.state);
                     }
                 }
-                if (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any') {
-                    query = query.eq('location', activeFilters.state);
+
+                query = query.eq('is_active', true);
+                query = query.range(offset, offset + PAGE_SIZE - 1);
+
+                const { data, error, count } = await query;
+
+                if (error) {
+                    console.error('Error fetching users:', error);
+                    throw error;
                 }
-            }
 
-            query = query.eq('is_active', true);
-
-            // Supabase has a default limit of 1000 rows, increase it to fetch all users
-            const { data, error } = await query.limit(50000) as any;
-
-            if (error) {
-                console.error('Error fetching users:', error);
-                throw error;
+                if (data && data.length > 0) {
+                    allUsers.push(...data);
+                    offset += PAGE_SIZE;
+                    hasMore = count ? allUsers.length < count : data.length === PAGE_SIZE;
+                } else {
+                    hasMore = false;
+                }
             }
 
             // Transform to common format
-            users = (data || []).map((u: any) => ({
+            users = allUsers.map((u: any) => ({
                 user_id: u.id,
                 name: u.full_name,
                 whatsapp_phone: u.phone,
