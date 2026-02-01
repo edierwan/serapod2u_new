@@ -198,12 +198,44 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Fetch activations if needed for activity filters (Never Login, Never Scanned, Inactive)
+        const needsActivationData = activeFilters.never_login === true || 
+                                    activeFilters.never_scanned === true || 
+                                    activeFilters.inactive_days != null;
+        
+        const activationMap = new Map<string, Date>(); // phone -> last_activated_at
+        
+        if (needsActivationData) {
+            try {
+                // Fetch activations to check for real activity (activations often not synced to points view immediately)
+                const { data: activations } = await supabase
+                   .from('consumer_activations' as any)
+                   .select('consumer_phone, activated_at')
+                   .order('activated_at', { ascending: false });
+                   
+                if (activations) {
+                    activations.forEach((a: any) => {
+                        if (!a.consumer_phone) return;
+                        const p = a.consumer_phone.trim();
+                        // Handle potential different phone formats if necessary, but assuming standard format
+                        const d = new Date(a.activated_at);
+                        if (!activationMap.has(p)) {
+                            activationMap.set(p, d);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('Error fetching activations:', e);
+            }
+        }
+
         // Post-processing
         let totalMatched = users.length;
         let validPhones = 0;
         let excludedMissingPhone = 0;
         let excludedOptOut = 0;
         let excludedInvalidWA = 0;
+        let excludedActivity = 0;
         let eligibleUsers: any[] = [];
 
         users.forEach((u: any) => {
@@ -227,6 +259,47 @@ export async function POST(request: NextRequest) {
                 return;
             }
 
+            // Extended Activity Filters (Checking against consumer_activations)
+            if (needsActivationData) {
+                const lastActivation = activationMap.get(phone);
+                
+                // Never Login: Exclude if they have ANY activation record
+                if (activeFilters.never_login === true && lastActivation) {
+                    excludedActivity++;
+                    return;
+                }
+
+                // Never Scanned: Exclude if they have ANY activation record (Strict check)
+                // This fixes the issue where points view says 0 but user has activations
+                if (activeFilters.never_scanned === true && lastActivation) {
+                    excludedActivity++;
+                    return;
+                }
+
+                // Inactive Days: Check if they have recent activation
+                if (activeFilters.inactive_days != null) {
+                    // Determine true last activity (Max of system points activity and activation table)
+                    let trueLastActivity = u.last_activity_at ? new Date(u.last_activity_at) : null;
+                    if (lastActivation) {
+                        if (!trueLastActivity || lastActivation > trueLastActivity) {
+                            trueLastActivity = lastActivation;
+                        }
+                    }
+
+                    if (trueLastActivity) {
+                        const cutoff = new Date();
+                        cutoff.setDate(cutoff.getDate() - activeFilters.inactive_days);
+                        
+                        if (trueLastActivity > cutoff) {
+                            // Activity is more recent than cutoff -> User is ACTIVE -> Exclude
+                            excludedActivity++;
+                            return;
+                        }
+                    }
+                    // If no activity ever, they are considered Inactive (Keep them)
+                }
+            }
+
             validPhones++;
             eligibleUsers.push({
                 id: u.user_id,
@@ -246,7 +319,8 @@ export async function POST(request: NextRequest) {
             excluded_missing_phone: excludedMissingPhone,
             excluded_opt_out: excludedOptOut,
             excluded_invalid_wa: excludedInvalidWA,
-            excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA,
+            excluded_activity: excludedActivity,
+            excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA + excludedActivity,
             preview: eligibleUsers.slice(0, 20)
         });
 

@@ -32,6 +32,7 @@ export interface AudienceFilters {
     last_activity_before?: string | null;
     inactive_days?: number | null;
     never_scanned?: boolean;
+    never_login?: boolean;
 }
 
 interface AudienceFilterBuilderProps {
@@ -115,7 +116,7 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
 
     // Check if any activity filters are active
     const hasActivityFilters = filters.last_activity_after != null || filters.last_activity_before != null ||
-        filters.inactive_days != null || filters.never_scanned === true;
+        filters.inactive_days != null || filters.never_scanned === true || filters.never_login === true;
 
     if (loading) return <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading options...</div>;
 
@@ -268,6 +269,17 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                                     />
                                     <span className="text-muted-foreground text-sm">days</span>
                                 </div>
+                            </div>
+
+                            <div className="flex items-center space-x-2 py-2">
+                                <Switch
+                                    checked={filters.never_login ?? false}
+                                    onCheckedChange={(c) => handleChange('never_login', c)}
+                                    id="never-login"
+                                />
+                                <Label htmlFor="never-login" className="font-normal cursor-pointer">
+                                    Never Login (No Activations)
+                                </Label>
                             </div>
 
                             <div className="flex items-center space-x-2 py-2">
