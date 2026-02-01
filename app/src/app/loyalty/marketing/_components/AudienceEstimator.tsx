@@ -15,10 +15,14 @@ interface AudienceEstimatorProps {
 }
 
 interface AudienceStats {
-    total_matched: number;
-    eligible_count: number;
+    total_all_users: number;      // Total users in the system
+    total_matched: number;        // Users matching current filters
+    eligible_count: number;       // Users with valid WhatsApp
     excluded_missing_phone: number;
     excluded_opt_out: number;
+    excluded_invalid_wa: number;
+    excluded_activity: number;
+    excluded_total: number;
     preview: Array<{
         id: string;
         name: string;
@@ -125,11 +129,11 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs w-full max-w-[240px]">
                     <div className="bg-white p-2 rounded border flex flex-col items-center">
                         <span className="text-gray-500">Total Matched</span>
-                        <span className="font-bold">{stats.total_matched}</span>
+                        <span className="font-bold">{stats.total_matched.toLocaleString()}</span>
                     </div>
                     <div className="bg-red-50 p-2 rounded border border-red-100 flex flex-col items-center text-red-700">
                         <span className="flex items-center gap-1"><Ban className="w-3 h-3" /> Excluded</span>
-                        <span className="font-bold">{stats.excluded_missing_phone + stats.excluded_opt_out}</span>
+                        <span className="font-bold">{stats.excluded_total.toLocaleString()}</span>
                     </div>
                 </div>
             </div>

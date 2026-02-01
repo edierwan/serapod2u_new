@@ -14,6 +14,12 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { mode, filters, segment_id, user_ids } = body;
 
+        // First, get the TOTAL count of all active users (this is what User Management shows)
+        const { count: totalAllUsers } = await supabase
+            .from('users')
+            .select('id', { count: 'exact', head: true })
+            .eq('is_active', true);
+
         // Determine effective filters
         let activeFilters = filters || {};
         if (mode === 'segment' && segment_id) {
@@ -28,20 +34,31 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Try to use the view first, fall back to basic query
+        // Check if we need point-based filtering (requires the view)
+        const needsPointsView = 
+            activeFilters.points_min != null || activeFilters.points_max != null ||
+            activeFilters.collected_system_min != null || activeFilters.collected_system_max != null ||
+            activeFilters.collected_manual_min != null || activeFilters.collected_manual_max != null ||
+            activeFilters.migration_points_min != null || activeFilters.migration_points_max != null ||
+            activeFilters.total_redeemed_min != null || activeFilters.total_redeemed_max != null ||
+            activeFilters.transactions_count_min != null || activeFilters.transactions_count_max != null ||
+            activeFilters.last_activity_after != null || activeFilters.last_activity_before != null ||
+            (activeFilters.inactive_days != null && activeFilters.never_login !== true);
+
         let users: any[] = [];
-        let useBasicQuery = false;
+        let viewQuerySucceeded = false;
 
-        try {
-            // Try using the v_consumer_points_summary view for point-based filtering
-            let query = supabase.from('v_consumer_points_summary' as any).select('*');
+        if (needsPointsView) {
+            try {
+                // Try using the v_consumer_points_summary view for point-based filtering
+                let query = supabase.from('v_consumer_points_summary' as any).select('*');
 
-            // Apply filters
-            if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
-                query = query.in('user_id', user_ids);
-            } else {
-                // Organization Type Filter
-                if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
+                // Apply filters
+                if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
+                    query = query.in('user_id', user_ids);
+                } else {
+                    // Organization Type Filter
+                    if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
                     if (activeFilters.organization_type === 'End User') {
                         query = query.is('organization_id', null);
                     } else {
@@ -117,17 +134,17 @@ export async function POST(request: NextRequest) {
 
             if (error) {
                 console.warn('View query failed, falling back to basic query:', error);
-                useBasicQuery = true;
             } else {
                 users = data || [];
+                viewQuerySucceeded = true;
             }
-        } catch (e) {
-            console.warn('View not available, using basic query:', e);
-            useBasicQuery = true;
+            } catch (e) {
+                console.warn('View not available, using basic query:', e);
+            }
         }
 
-        // Fallback to basic users query if view is not available
-        if (useBasicQuery) {
+        // Use basic users query when no point filters needed OR as fallback
+        if (!needsPointsView || !viewQuerySucceeded) {
             let query = supabase.from('users' as any).select(`
                 id, 
                 full_name, 
@@ -174,7 +191,9 @@ export async function POST(request: NextRequest) {
                 whatsapp_phone: u.phone,
                 whatsapp_valid: u.phone && u.phone.trim().length >= 8,
                 state: u.location,
-                organization_type: u.organizations?.org_type_code,
+                organization_id: u.organization_id,
+                organization_type: u.organizations?.org_type_code || (u.organization_id ? 'Organization' : 'End User'),
+                org_name: u.organizations?.org_name,
                 current_balance: 0,
                 collected_system: 0,
                 collected_manual: 0,
@@ -306,7 +325,8 @@ export async function POST(request: NextRequest) {
                 name: u.name || 'Unknown',
                 phone: phone,
                 state: u.state,
-                organization_type: u.organization_type,
+                organization_type: u.organization_type || (u.organization_id ? 'Organization' : 'End User'),
+                org_name: u.org_name || (u.organization_id ? 'Organization' : 'End User'),
                 current_balance: u.current_balance,
                 collected_system: u.collected_system,
                 transactions_count: u.transactions_count
@@ -314,8 +334,9 @@ export async function POST(request: NextRequest) {
         });
 
         return NextResponse.json({
-            total_matched: totalMatched,
-            eligible_count: validPhones,
+            total_all_users: totalAllUsers || 0,  // Total users in system (what User Management shows)
+            total_matched: totalMatched,          // Users matching the current filters
+            eligible_count: validPhones,          // Users with valid WhatsApp phones
             excluded_missing_phone: excludedMissingPhone,
             excluded_opt_out: excludedOptOut,
             excluded_invalid_wa: excludedInvalidWA,
