@@ -150,7 +150,7 @@ const PRIORITY_CONFIG = {
 
 // Main Component
 export function AdminSupportInboxV2() {
-    const [view, setView] = useState<'list' | 'detail'>('list')
+    // Two-column layout - always show list + detail side by side
     const [conversations, setConversations] = useState<Conversation[]>([])
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
     const [loading, setLoading] = useState(false)
@@ -229,7 +229,6 @@ export function AdminSupportInboxV2() {
 
     const handleConversationClick = (conv: Conversation) => {
         setActiveConversation(conv)
-        setView('detail')
     }
 
     const handleSearch = () => {
@@ -264,177 +263,224 @@ export function AdminSupportInboxV2() {
     }
 
     return (
-        <div className="h-[700px] min-h-[500px] flex flex-col bg-white rounded-lg border shadow-sm overflow-hidden">
-            {view === 'list' ? (
-                <div className="flex flex-col h-full">
-                    {/* Header */}
-                    <div className="px-6 py-5 border-b flex items-center justify-between bg-white">
-                        <div>
-                            <h2 className="text-xl font-semibold text-gray-900">Support Inbox</h2>
-                            <p className="text-sm text-gray-500 mt-1">Monitor and respond to user inquiries from WhatsApp and App</p>
-                        </div>
-                        <div className="flex gap-2">
-                             <Button onClick={fetchConversations} variant="outline" size="sm" className="gap-2">
+        <div className="h-[750px] min-h-[600px] flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* LEFT PANEL - Conversation List */}
+            <div className="w-[380px] min-w-[320px] border-r border-gray-200 flex flex-col bg-white">
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-gray-100 bg-white">
+                    <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-lg font-semibold text-gray-900">Inbox</h2>
+                        <div className="flex items-center gap-2">
+                            <Button onClick={fetchConversations} variant="ghost" size="sm" className="h-8 w-8 p-0">
                                 <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-                                Refresh
+                            </Button>
+                            <Button onClick={() => setShowBlastModal(true)} variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <Megaphone className="w-4 h-4" />
                             </Button>
                         </div>
                     </div>
-
-                    {/* Toolbar */}
-                    <div className="p-4 border-b flex flex-wrap items-center gap-3 bg-gray-50/50">
-                        {/* Search */}
-                        <div className="relative flex-1 min-w-[200px] max-w-md">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                            <Input
-                                placeholder="Search subjects, user name, phone, case #..."
-                                className="pl-9 bg-white"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                            />
-                        </div>
-
-                        {/* Filters */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1) }}>
-                                <SelectTrigger className="w-[140px] bg-white">
-                                    <Filter className="w-3.5 h-3.5 mr-2 text-gray-500" />
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="open">Open</SelectItem>
-                                    <SelectItem value="pending_user">Pending User</SelectItem>
-                                    <SelectItem value="pending_admin">Pending Admin</SelectItem>
-                                    <SelectItem value="resolved">Resolved</SelectItem>
-                                    <SelectItem value="closed">Closed</SelectItem>
-                                    <SelectItem value="spam">Spam</SelectItem>
-                                </SelectContent>
-                            </Select>
-
-                            <Select value={priorityFilter} onValueChange={(v) => { setPriorityFilter(v); setCurrentPage(1) }}>
-                                <SelectTrigger className="w-[130px] bg-white">
-                                    <Flag className="w-3.5 h-3.5 mr-2 text-gray-500" />
-                                    <SelectValue placeholder="Priority" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Priority</SelectItem>
-                                    <SelectItem value="low">Low</SelectItem>
-                                    <SelectItem value="normal">Normal</SelectItem>
-                                    <SelectItem value="high">High</SelectItem>
-                                    <SelectItem value="urgent">Urgent</SelectItem>
-                                </SelectContent>
-                            </Select>
-
-                            <Select value={assignedFilter} onValueChange={(v) => { setAssignedFilter(v); setCurrentPage(1) }}>
-                                <SelectTrigger className="w-[140px] bg-white">
-                                    <Users className="w-3.5 h-3.5 mr-2 text-gray-500" />
-                                    <SelectValue placeholder="Assigned" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All</SelectItem>
-                                    <SelectItem value="me">Assigned to Me</SelectItem>
-                                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="flex-1" />
-
-                        <Button onClick={() => setShowBlastModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                            <Megaphone className="w-4 h-4 mr-2" />
-                            Blast Announcement
-                        </Button>
+                    
+                    {/* Search */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                            placeholder="Search conversations..."
+                            className="pl-9 h-9 bg-gray-50 border-gray-200 text-sm"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                        />
                     </div>
+                </div>
 
-                    {/* Conversation List */}
-                    <ScrollArea className="flex-1">
-                        <div className="divide-y">
-                            {loading ? (
-                                <div className="p-8 text-center text-gray-500">
-                                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                                    Loading conversations...
-                                </div>
-                            ) : conversations.length === 0 ? (
-                                <div className="p-8 text-center text-gray-500">
-                                    <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                                    No conversations found.
-                                </div>
-                            ) : (
-                                conversations.map((conv, index) => (
-                                    <ConversationRow
-                                        key={conv.id}
-                                        conversation={conv}
-                                        index={(currentPage - 1) * rowsPerPage + index + 1}
-                                        onClick={() => handleConversationClick(conv)}
-                                        onStatusChange={handleStatusChange}
-                                        onAssign={handleAssign}
-                                        admins={admins}
-                                    />
-                                ))
-                            )}
+                {/* Filter Tabs */}
+                <div className="px-2 py-2 border-b border-gray-100 flex items-center gap-1 bg-gray-50/50">
+                    <Button
+                        variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs rounded-full"
+                        onClick={() => { setStatusFilter('all'); setCurrentPage(1) }}
+                    >
+                        All
+                    </Button>
+                    <Button
+                        variant={statusFilter === 'open' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs rounded-full"
+                        onClick={() => { setStatusFilter('open'); setCurrentPage(1) }}
+                    >
+                        Open
+                    </Button>
+                    <Button
+                        variant={statusFilter === 'pending_admin' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs rounded-full"
+                        onClick={() => { setStatusFilter('pending_admin'); setCurrentPage(1) }}
+                    >
+                        Pending
+                    </Button>
+                    <Button
+                        variant={statusFilter === 'resolved' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs rounded-full"
+                        onClick={() => { setStatusFilter('resolved'); setCurrentPage(1) }}
+                    >
+                        Resolved
+                    </Button>
+                </div>
+
+                {/* Conversation List */}
+                <ScrollArea className="flex-1">
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center py-12">
+                            <Loader2 className="w-6 h-6 animate-spin text-gray-400 mb-2" />
+                            <span className="text-sm text-gray-500">Loading...</span>
                         </div>
-                    </ScrollArea>
-
-                    {/* Pagination */}
-                    {!loading && conversations.length > 0 && (
-                        <div className="p-3 border-t bg-gray-50/50 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <span>Rows per page:</span>
-                                <Select value={rowsPerPage.toString()} onValueChange={(v) => { setRowsPerPage(parseInt(v)); setCurrentPage(1) }}>
-                                    <SelectTrigger className="w-[70px] h-8 bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="10">10</SelectItem>
-                                        <SelectItem value="20">20</SelectItem>
-                                        <SelectItem value="50">50</SelectItem>
-                                        <SelectItem value="100">100</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <span className="text-gray-400">|</span>
-                                <span>{(currentPage - 1) * rowsPerPage + 1}-{Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount}</span>
+                    ) : conversations.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+                            <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                                <MessageSquare className="w-6 h-6 text-gray-400" />
                             </div>
-                            <div className="flex items-center gap-1">
-                                <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="h-8 px-2">
-                                    First
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-8 px-2">
-                                    Prev
-                                </Button>
-                                <span className="px-3 text-sm text-gray-600">
-                                    Page {currentPage} of {totalPages || 1}
-                                </span>
-                                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-8 px-2">
-                                    Next
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages} className="h-8 px-2">
-                                    Last
-                                </Button>
-                            </div>
+                            <p className="text-sm font-medium text-gray-600 mb-1">No conversations</p>
+                            <p className="text-xs text-gray-400">Conversations will appear here</p>
+                        </div>
+                    ) : (
+                        <div>
+                            {conversations.map((conv) => (
+                                <ConversationListItem
+                                    key={conv.id}
+                                    conversation={conv}
+                                    isActive={activeConversation?.id === conv.id}
+                                    onClick={() => handleConversationClick(conv)}
+                                />
+                            ))}
                         </div>
                     )}
-                </div>
-            ) : (
-                <ConversationDetailView
-                    conversation={activeConversation!}
-                    admins={admins}
-                    tags={tags}
-                    onBack={() => {
-                        setView('list')
-                        fetchConversations()
-                    }}
-                    onUpdate={fetchConversations}
-                />
-            )}
+                </ScrollArea>
+
+                {/* Pagination */}
+                {!loading && conversations.length > 0 && (
+                    <div className="px-3 py-2 border-t border-gray-100 bg-white flex items-center justify-between">
+                        <span className="text-[11px] text-gray-400">
+                            {(currentPage - 1) * rowsPerPage + 1}–{Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount}
+                        </span>
+                        <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-6 px-2 text-[10px]">
+                                ←
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-6 px-2 text-[10px]">
+                                →
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* RIGHT PANEL - Chat Detail */}
+            <div className="flex-1 flex flex-col bg-gray-50/30">
+                {activeConversation ? (
+                    <ConversationDetailView
+                        conversation={activeConversation}
+                        admins={admins}
+                        tags={tags}
+                        onBack={() => setActiveConversation(null)}
+                        onUpdate={fetchConversations}
+                    />
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                        <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                            <MessageSquare className="w-10 h-10 text-gray-300" />
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-600 mb-2">Select a conversation</h3>
+                        <p className="text-sm text-gray-400 max-w-sm">
+                            Choose a conversation from the list to view messages and respond to customers
+                        </p>
+                    </div>
+                )}
+            </div>
 
             <BlastAnnouncementModal open={showBlastModal} onOpenChange={setShowBlastModal} />
         </div>
     )
 }
 
-// Conversation Row Component
+// NEW: Compact Conversation List Item for two-column layout
+function ConversationListItem({
+    conversation,
+    isActive,
+    onClick
+}: {
+    conversation: Conversation & { primary_channel?: string; whatsapp_user_phone?: string }
+    isActive: boolean
+    onClick: () => void
+}) {
+    const isWhatsApp = conversation.primary_channel === 'whatsapp' || !!conversation.whatsapp_user_phone
+    const hasUnread = conversation.admin_unread_count > 0
+
+    return (
+        <div
+            onClick={onClick}
+            className={cn(
+                "px-3 py-3 cursor-pointer transition-all border-l-3",
+                isActive 
+                    ? "bg-blue-50 border-l-blue-500" 
+                    : hasUnread 
+                        ? "bg-blue-50/50 border-l-transparent hover:bg-gray-50" 
+                        : "border-l-transparent hover:bg-gray-50",
+                isWhatsApp && !isActive && "border-l-green-400"
+            )}
+        >
+            <div className="flex items-start gap-3">
+                {/* Avatar with unread badge */}
+                <div className="relative flex-shrink-0">
+                    <div className={cn(
+                        "w-11 h-11 rounded-full flex items-center justify-center text-sm font-medium",
+                        hasUnread ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"
+                    )}>
+                        {conversation.created_by?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                    </div>
+                    {isWhatsApp && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+                            <Phone className="w-2.5 h-2.5 text-white" />
+                        </div>
+                    )}
+                    {hasUnread && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-[10px] text-white font-bold">
+                            {conversation.admin_unread_count > 9 ? '9+' : conversation.admin_unread_count}
+                        </div>
+                    )}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                        <span className={cn(
+                            "text-sm truncate max-w-[160px]",
+                            hasUnread ? "font-semibold text-gray-900" : "font-medium text-gray-700"
+                        )}>
+                            {conversation.created_by?.full_name || 'Unknown'}
+                        </span>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">
+                            {format(new Date(conversation.last_message_at), 'MMM d, HH:mm')}
+                        </span>
+                    </div>
+                    <p className={cn(
+                        "text-xs truncate mb-1",
+                        hasUnread ? "text-gray-700" : "text-gray-500"
+                    )}>
+                        {conversation.subject}
+                    </p>
+                    <p className="text-[11px] text-gray-400 truncate">
+                        {conversation.last_message_sender_type === 'admin' && 'You: '}
+                        {conversation.last_message_preview || 'No messages'}
+                    </p>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// OLD Conversation Row Component (keeping for compatibility but not used in new layout)
 function ConversationRow({
     conversation,
     index,
@@ -459,88 +505,94 @@ function ConversationRow({
         <div
             onClick={onClick}
             className={cn(
-                "p-4 hover:bg-blue-50/50 cursor-pointer transition-all",
-                conversation.is_unread && "bg-blue-50/30",
-                isWhatsAppConversation && "border-l-4 border-l-green-500"
+                "px-4 py-3 hover:bg-gray-50 cursor-pointer transition-all border-b border-gray-100",
+                conversation.is_unread && "bg-blue-50/40",
+                isWhatsAppConversation && "border-l-2 border-l-green-500"
             )}
         >
             <div className="flex items-start gap-3">
-                {/* Row number */}
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-600">
-                    {index}
+                {/* Unread indicator / Avatar placeholder */}
+                <div className={cn(
+                    "flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium",
+                    conversation.is_unread 
+                        ? "bg-blue-100 text-blue-700" 
+                        : "bg-gray-100 text-gray-600"
+                )}>
+                    {conversation.admin_unread_count > 0 ? (
+                        <span className="font-bold">{conversation.admin_unread_count}</span>
+                    ) : (
+                        <User className="w-4 h-4" />
+                    )}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    {/* Header row */}
-                    <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2 flex-wrap">
+                    {/* Header row - prioritize customer name and case */}
+                    <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center gap-2">
                             <h4 className={cn(
-                                "text-sm font-medium truncate max-w-[200px]",
-                                conversation.is_unread ? "text-gray-900 font-bold" : "text-gray-700"
+                                "text-sm truncate max-w-[180px]",
+                                conversation.is_unread ? "text-gray-900 font-semibold" : "text-gray-700 font-medium"
                             )}>
-                                {conversation.subject}
+                                {conversation.created_by?.full_name || 'Unknown User'}
                             </h4>
-                            <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
-                                {conversation.case_number}
-                            </span>
                             {isWhatsAppConversation && (
-                                <Badge className="h-5 px-1.5 bg-green-100 text-green-700 text-[10px]">
-                                    <Phone className="w-3 h-3 mr-0.5" />
-                                    WA
-                                </Badge>
-                            )}
-                            {conversation.is_unread && (
-                                <Badge className="h-1.5 w-1.5 rounded-full p-0 bg-blue-600" />
-                            )}
-                            <Badge className={cn("text-[10px] h-5 px-1.5", statusConfig.color)}>
-                                <StatusIcon className="w-3 h-3 mr-1" />
-                                {statusConfig.label}
-                            </Badge>
-                            {conversation.priority !== 'normal' && (
-                                <Badge className={cn("text-[10px] h-5 px-1.5", priorityConfig.color)}>
-                                    {priorityConfig.label}
-                                </Badge>
+                                <Phone className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
                             )}
                         </div>
-                        <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap">
                             {format(new Date(conversation.last_message_at), 'MMM d, HH:mm')}
                         </span>
                     </div>
 
-                    {/* Preview */}
-                    <p className="text-sm text-gray-500 truncate mb-2">
+                    {/* Subject line */}
+                    <p className={cn(
+                        "text-sm truncate mb-1",
+                        conversation.is_unread ? "text-gray-800" : "text-gray-600"
+                    )}>
+                        {conversation.subject}
+                    </p>
+
+                    {/* Preview - muted */}
+                    <p className="text-xs text-gray-400 truncate mb-1.5">
                         {conversation.last_message_sender_type === 'admin' && (
-                            <span className="text-blue-600 mr-1">You:</span>
+                            <span className="text-gray-500">You: </span>
                         )}
                         {conversation.last_message_preview || 'No messages'}
                     </p>
 
-                    {/* Meta row */}
-                    <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
-                        <span className="flex items-center gap-1">
-                            <User className="w-3 h-3" />
-                            {conversation.created_by?.full_name || 'Unknown User'}
-                        </span>
-                        {conversation.created_by?.phone && (
-                            <span className="text-blue-600">{conversation.created_by.phone}</span>
+                    {/* Meta row - minimal badges */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-mono text-gray-400 border-gray-200">
+                            {conversation.case_number}
+                        </Badge>
+                        <Badge className={cn("text-[10px] h-5 px-1.5", statusConfig.color)}>
+                            {statusConfig.label}
+                        </Badge>
+                        {conversation.priority !== 'normal' && (
+                            <Badge className={cn("text-[10px] h-5 px-1.5", priorityConfig.color)}>
+                                {priorityConfig.label}
+                            </Badge>
                         )}
                         {conversation.assigned_to && (
-                            <span className="flex items-center gap-1">
+                            <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
                                 <UserPlus className="w-3 h-3" />
                                 {conversation.assigned_to.full_name}
                             </span>
                         )}
                         {conversation.tags && conversation.tags.length > 0 && (
                             <div className="flex items-center gap-1">
-                                {conversation.tags.slice(0, 3).map(tag => (
+                                {conversation.tags.slice(0, 2).map(tag => (
                                     <span
                                         key={tag.id}
-                                        className="px-1.5 py-0.5 rounded text-[10px]"
-                                        style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                        className="px-1.5 py-0.5 rounded text-[9px]"
+                                        style={{ backgroundColor: tag.color + '15', color: tag.color }}
                                     >
                                         {tag.name}
                                     </span>
                                 ))}
+                                {conversation.tags.length > 2 && (
+                                    <span className="text-[9px] text-gray-400">+{conversation.tags.length - 2}</span>
+                                )}
                             </div>
                         )}
                     </div>
@@ -626,6 +678,9 @@ function ConversationDetailView({
 
     // Get user phone for Moltbot API
     const userPhone = (convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone
+
+    // AI is enabled only when botMode is 'auto' - hide ALL AI UI when 'takeover'
+    const isAiEnabled = botMode === 'auto'
 
     // Fetch bot mode from Moltbot
     const fetchBotMode = async () => {
@@ -962,71 +1017,99 @@ function ConversationDetailView({
         <div className="flex h-full">
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0">
-                {/* Header */}
-                <div className="p-4 border-b flex items-center justify-between bg-gray-50/50">
+                {/* Header - Professional, clean design for two-column layout */}
+                <div className="px-4 py-3 border-b flex items-center justify-between bg-white">
                     <div className="flex items-center gap-3">
-                        <Button variant="ghost" size="icon" onClick={onBack}>
-                            <ArrowLeft className="w-5 h-5" />
-                        </Button>
-                        <div>
+                        {/* Avatar */}
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
+                            {convDetails.created_by?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                        </div>
+                        <div className="flex flex-col">
                             <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-gray-900">{convDetails.subject}</h3>
-                                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-                                    {convDetails.case_number}
-                                </span>
+                                <h3 className="font-semibold text-gray-900">{convDetails.created_by?.full_name || 'Unknown'}</h3>
+                                {hasWhatsApp && (
+                                    <Badge className="h-5 px-1.5 bg-green-50 text-green-700 border border-green-200 text-[10px]">
+                                        <Phone className="w-3 h-3 mr-0.5" />
+                                        WhatsApp
+                                    </Badge>
+                                )}
                             </div>
-                            <p className="text-xs text-gray-500">
-                                {convDetails.created_by?.full_name} • {convDetails.created_by?.email} • {convDetails.created_by?.phone}
-                            </p>
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <span>{convDetails.subject}</span>
+                                <span className="text-gray-300">•</span>
+                                <span className="font-mono text-gray-400">{convDetails.case_number}</span>
+                            </div>
                         </div>
                     </div>
 
-                    {/* AI Bot Mode Controls */}
-                    {hasWhatsApp && userPhone && (
-                        <div className="flex items-center gap-3">
-                            {/* Mode Badge */}
-                            <Badge
-                                className={cn(
-                                    "text-xs font-medium",
-                                    botMode === 'auto'
-                                        ? "bg-green-100 text-green-700 hover:bg-green-100"
-                                        : "bg-orange-100 text-orange-700 hover:bg-orange-100"
-                                )}
-                            >
-                                <Bot className="w-3 h-3 mr-1" />
-                                {botMode === 'auto' ? 'AUTO' : 'TAKEOVER'}
-                            </Badge>
-
-                            {/* AI Auto Toggle */}
+                    {/* Right side controls - Only show AI controls when AI is enabled */}
+                    <div className="flex items-center gap-3">
+                        {/* Manual Mode indicator with toggle to enable AI - shown when AI is OFF */}
+                        {hasWhatsApp && userPhone && !isAiEnabled && (
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <div className="flex items-center gap-2">
                                             <Switch
-                                                id="ai-auto-mode"
-                                                checked={botMode === 'auto'}
+                                                id="ai-auto-mode-off"
+                                                checked={false}
                                                 onCheckedChange={(checked) => handleBotModeToggle(checked ? 'auto' : 'takeover')}
                                                 disabled={botModeLoading}
                                             />
                                             <Label
-                                                htmlFor="ai-auto-mode"
-                                                className={cn(
-                                                    "text-xs cursor-pointer flex items-center gap-1",
-                                                    botMode === 'auto' ? "text-green-600 font-medium" : "text-gray-500"
-                                                )}
+                                                htmlFor="ai-auto-mode-off"
+                                                className="text-xs cursor-pointer flex items-center gap-1.5 text-gray-400"
                                             >
                                                 {botModeLoading && <Loader2 className="w-3 h-3 animate-spin" />}
-                                                AI Auto
+                                                <User className="w-3.5 h-3.5" />
+                                                Manual
                                             </Label>
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        <p>{botMode === 'auto' ? 'Bot auto-replies to messages' : 'Bot is silent, admin handling'}</p>
+                                        <p>AI is off. Toggle to enable auto-reply.</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
-                        </div>
-                    )}
+                        )}
+
+                        {/* AI Bot Mode Controls - ONLY show when AI is enabled */}
+                        {hasWhatsApp && userPhone && isAiEnabled && (
+                            <>
+                                {/* Mode Badge */}
+                                <Badge className="text-xs font-medium bg-green-100 text-green-700 hover:bg-green-100">
+                                    <Bot className="w-3 h-3 mr-1" />
+                                    AUTO
+                                </Badge>
+
+                                {/* AI Auto Toggle */}
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-2">
+                                                <Switch
+                                                    id="ai-auto-mode"
+                                                    checked={true}
+                                                    onCheckedChange={(checked) => handleBotModeToggle(checked ? 'auto' : 'takeover')}
+                                                    disabled={botModeLoading}
+                                                />
+                                                <Label
+                                                    htmlFor="ai-auto-mode"
+                                                    className="text-xs cursor-pointer flex items-center gap-1 text-green-600 font-medium"
+                                                >
+                                                    {botModeLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                                                    AI Auto
+                                                </Label>
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>Bot auto-replies to messages</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Error Display */}
@@ -1054,12 +1137,12 @@ function ConversationDetailView({
                                 const channelConfig = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG] || CHANNEL_CONFIG.app
                                 const ChannelIcon = channelConfig.icon
                                 const isWhatsApp = channel === 'whatsapp'
-                                const isAI = channel === 'ai'
+                                const isAIMessage = channel === 'ai'
 
                                 if (isSystem) {
                                     return (
                                         <div key={msg.id} className="flex justify-center my-4">
-                                            <span className="bg-gray-100 text-gray-500 text-xs px-3 py-1 rounded-full">
+                                            <span className="bg-gray-100 text-gray-500 text-xs px-3 py-1.5 rounded-full">
                                                 {msg.body_text}
                                             </span>
                                         </div>
@@ -1069,31 +1152,41 @@ function ConversationDetailView({
                                 return (
                                     <div key={msg.id} className={cn("flex", isAdmin ? "justify-end" : "justify-start")}>
                                         <div className={cn(
-                                            "max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative",
+                                            "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm relative",
                                             isAdmin
+                                                // Admin messages - professional neutral colors
                                                 ? isWhatsApp
-                                                    ? "bg-green-600 text-white rounded-br-none"
-                                                    : isAI
-                                                        ? "bg-amber-500 text-white rounded-br-none"
-                                                        : "bg-blue-600 text-white rounded-br-none"
+                                                    ? "bg-green-600 text-white rounded-br-sm"
+                                                    : "bg-slate-700 text-white rounded-br-sm"
+                                                // User messages - clean left aligned
                                                 : isWhatsApp
-                                                    ? "bg-green-50 text-gray-900 border border-green-200 rounded-bl-none"
-                                                    : "bg-white text-gray-900 border border-gray-100 rounded-bl-none"
+                                                    ? "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
+                                                    : "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
                                         )}>
-                                            {/* Channel badge */}
-                                            {(isWhatsApp || isAI) && (
+                                            {/* Channel badge - only show WhatsApp indicator, hide AI badge when AI is off */}
+                                            {isWhatsApp && (
                                                 <div className={cn(
-                                                    "flex items-center gap-1 text-[10px] mb-1 font-medium",
+                                                    "flex items-center gap-1 text-[10px] mb-1.5 font-medium",
                                                     isAdmin ? "text-white/80" : "text-green-600"
                                                 )}>
-                                                    <ChannelIcon className="w-3 h-3" />
-                                                    {isWhatsApp ? 'via WhatsApp' : 'AI Generated'}
+                                                    <Phone className="w-3 h-3" />
+                                                    via WhatsApp
+                                                </div>
+                                            )}
+                                            {/* Only show AI Generated badge if AI mode is enabled */}
+                                            {isAIMessage && isAiEnabled && (
+                                                <div className={cn(
+                                                    "flex items-center gap-1 text-[10px] mb-1.5 font-medium",
+                                                    isAdmin ? "text-white/80" : "text-amber-600"
+                                                )}>
+                                                    <Bot className="w-3 h-3" />
+                                                    AI Generated
                                                 </div>
                                             )}
 
-                                            <p className="whitespace-pre-wrap text-sm">{msg.body_text}</p>
+                                            <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.body_text}</p>
                                             {msg.attachments && msg.attachments.length > 0 && (
-                                                <div className="mt-2 space-y-1">
+                                                <div className="mt-2 pt-2 border-t border-white/20 space-y-1">
                                                     {msg.attachments.map((att: any, i: number) => (
                                                         <a
                                                             key={i}
@@ -1101,8 +1194,8 @@ function ConversationDetailView({
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className={cn(
-                                                                "flex items-center gap-1 text-xs underline",
-                                                                isAdmin ? "text-blue-100" : "text-blue-600"
+                                                                "flex items-center gap-1.5 text-xs hover:underline",
+                                                                isAdmin ? "text-white/90" : "text-blue-600"
                                                             )}
                                                         >
                                                             <Paperclip className="w-3 h-3" />
@@ -1112,12 +1205,12 @@ function ConversationDetailView({
                                                 </div>
                                             )}
                                             <div className={cn(
-                                                "text-[10px] mt-1 flex items-center justify-end gap-1",
-                                                isAdmin ? "text-blue-100" : "text-gray-400"
+                                                "text-[10px] mt-2 flex items-center justify-end gap-1.5",
+                                                isAdmin ? "text-white/60" : "text-gray-400"
                                             )}>
                                                 {format(new Date(msg.created_at), 'HH:mm')}
                                                 {isAdmin && msg.read_by_user_at && (
-                                                    <Eye className="w-3 h-3" />
+                                                    <CheckCircle2 className="w-3 h-3" />
                                                 )}
                                             </div>
                                         </div>
@@ -1130,9 +1223,9 @@ function ConversationDetailView({
                 </ScrollArea>
 
                 {/* Reply Input */}
-                <div className="p-4 border-t bg-white">
-                    {/* AI Suggestion Panel */}
-                    {showAiPanel && (
+                <div className="p-4 border-t bg-gray-50/50">
+                    {/* AI Suggestion Panel - ONLY show when AI is enabled */}
+                    {isAiEnabled && showAiPanel && (
                         <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2 text-amber-700 text-sm font-medium">
@@ -1170,8 +1263,8 @@ function ConversationDetailView({
                         </div>
                     )}
 
-                    {/* WhatsApp Toggle & AI Buttons */}
-                    <div className="flex items-center justify-between mb-2">
+                    {/* WhatsApp Toggle & AI Buttons - AI buttons ONLY show when AI is enabled */}
+                    <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-4">
                             {hasWhatsApp && (
                                 <TooltipProvider>
@@ -1182,15 +1275,16 @@ function ConversationDetailView({
                                                     id="whatsapp-mode"
                                                     checked={replyViaWhatsApp}
                                                     onCheckedChange={setReplyViaWhatsApp}
+                                                    className="data-[state=checked]:bg-green-600"
                                                 />
                                                 <Label
                                                     htmlFor="whatsapp-mode"
                                                     className={cn(
-                                                        "text-xs cursor-pointer flex items-center gap-1",
+                                                        "text-xs cursor-pointer flex items-center gap-1.5",
                                                         replyViaWhatsApp ? "text-green-600 font-medium" : "text-gray-500"
                                                     )}
                                                 >
-                                                    <Phone className="w-3 h-3" />
+                                                    <Phone className="w-3.5 h-3.5" />
                                                     WhatsApp
                                                 </Label>
                                             </div>
@@ -1203,61 +1297,64 @@ function ConversationDetailView({
                             )}
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            {/* AI Draft Button (Moltbot) */}
-                            {hasWhatsApp && userPhone && (
-                                <>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleGenerateDraft}
-                                        disabled={draftLoading}
-                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                                    >
-                                        {draftLoading ? (
-                                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                        ) : (
-                                            <Bot className="w-3 h-3 mr-1" />
-                                        )}
-                                        AI Draft
-                                    </Button>
-
-                                    {/* Send Draft Button */}
-                                    {pendingDraft && (
+                        {/* AI Buttons - ONLY show when AI is enabled */}
+                        {isAiEnabled && (
+                            <div className="flex items-center gap-2">
+                                {/* AI Draft Button (Moltbot) */}
+                                {hasWhatsApp && userPhone && (
+                                    <>
                                         <Button
-                                            variant="default"
+                                            variant="outline"
                                             size="sm"
-                                            onClick={handleSendDraft}
-                                            disabled={sending}
-                                            className="bg-green-600 hover:bg-green-700 text-white"
+                                            onClick={handleGenerateDraft}
+                                            disabled={draftLoading}
+                                            className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8"
                                         >
-                                            {sending ? (
-                                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                            {draftLoading ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
                                             ) : (
-                                                <Send className="w-3 h-3 mr-1" />
+                                                <Bot className="w-3.5 h-3.5 mr-1.5" />
                                             )}
-                                            Send Draft
+                                            AI Draft
                                         </Button>
-                                    )}
-                                </>
-                            )}
 
-                            {/* Original AI Assist Button */}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleAiAssist}
-                                disabled={aiLoading}
-                                className="text-amber-600 border-amber-300 hover:bg-amber-50"
-                            >
-                                {aiLoading ? (
-                                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                ) : (
-                                    <Sparkles className="w-3 h-3 mr-1" />
+                                        {/* Send Draft Button */}
+                                        {pendingDraft && (
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                onClick={handleSendDraft}
+                                                disabled={sending}
+                                                className="bg-green-600 hover:bg-green-700 text-white h-8"
+                                            >
+                                                {sending ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                                                ) : (
+                                                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                                                )}
+                                                Send Draft
+                                            </Button>
+                                        )}
+                                    </>
                                 )}
-                                AI Assist
-                            </Button>
-                        </div>
+
+                                {/* AI Assist Button */}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleAiAssist}
+                                    disabled={aiLoading}
+                                    className="text-amber-600 border-amber-200 hover:bg-amber-50 h-8"
+                                >
+                                    {aiLoading ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                                    ) : (
+                                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                                    )}
+                                    AI Assist
+                                </Button>
+                            </div>
+                        )}
                     </div>
 
                     <form onSubmit={handleSend} className="flex gap-2">
@@ -1266,8 +1363,8 @@ function ConversationDetailView({
                             onChange={(e) => setNewMessage(e.target.value)}
                             placeholder={replyViaWhatsApp ? "Type your WhatsApp reply..." : "Type your reply..."}
                             className={cn(
-                                "flex-1 resize-none min-h-[60px] max-h-[120px]",
-                                replyViaWhatsApp && "border-green-300 focus:border-green-500"
+                                "flex-1 resize-none min-h-[56px] max-h-[120px] bg-white text-sm",
+                                replyViaWhatsApp && "border-green-300 focus:border-green-500 focus:ring-green-500/20"
                             )}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1280,22 +1377,22 @@ function ConversationDetailView({
                             type="submit"
                             disabled={!newMessage.trim() || sending}
                             className={cn(
-                                "px-6",
-                                replyViaWhatsApp && "bg-green-600 hover:bg-green-700"
+                                "px-5 h-auto min-h-[56px] font-medium",
+                                replyViaWhatsApp 
+                                    ? "bg-green-600 hover:bg-green-700" 
+                                    : "bg-slate-700 hover:bg-slate-800"
                             )}
                         >
                             {sending ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : replyViaWhatsApp ? (
-                                <Phone className="w-4 h-4" />
+                                <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
-                                <Send className="w-4 h-4" />
+                                <Send className="w-5 h-5" />
                             )}
                         </Button>
                     </form>
-                    <p className="text-[10px] text-gray-400 mt-1">
+                    <p className="text-[10px] text-gray-400 mt-2">
                         {replyViaWhatsApp
-                            ? 'Message will be sent via WhatsApp and saved in app'
+                            ? 'Message will be sent via WhatsApp'
                             : 'Press Enter to send, Shift+Enter for new line'
                         }
                     </p>

@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } }
+      );
     }
 
     // Check admin permission
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest) {
         last_error: gatewayStatus.last_error,
         has_qr: gatewayStatus.has_qr,
         tenant_id: gatewayStatus.tenant_id,
-      });
+      }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (gatewayError: any) {
       // Gateway unreachable
       return NextResponse.json({

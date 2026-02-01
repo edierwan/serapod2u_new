@@ -251,6 +251,11 @@ export async function middleware(request: NextRequest) {
         authError.message?.includes('Token has expired') ||
         authError.status === 400
       ) {
+        // Return 401 for API routes instead of redirecting
+        if (request.nextUrl.pathname.startsWith('/api/')) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
         console.log('🔴 Invalid/expired token - clearing session and redirecting to login')
 
         // Only redirect if not already on login page
