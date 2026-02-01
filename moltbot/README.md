@@ -1,382 +1,436 @@
-# Moltbot - AI WhatsApp Bot for Serapod2u
+# Moltbot - AI WhatsApp Bot Service
 
-AI-powered WhatsApp chatbot that handles customer inquiries about points, orders, and redemptions. Uses LLM (OpenAI or Gemini) with tool calling to fetch real data from Serapod2u.
+Moltbot is an AI-powered WhatsApp bot that integrates with Baileys Gateway and Serapod Support Inbox. It supports **Full Duplex** mode where both the bot and admin can reply to users.
 
 ## Features
 
-- 🤖 AI-powered responses using GPT-4 or Gemini
-- 🔧 Tool calling for real-time data (points, orders, redeems)
-- 🗣️ Malay casual tone matching Serapod2u app
-- 💾 Conversation memory (10 turns, 7-day TTL)
-- 🔒 Secure webhook authentication
-- 📊 Debug endpoints for monitoring
+- 🤖 **AI Auto-Reply** - Automatic responses using OpenAI or Gemini
+- 👨‍💼 **Admin Takeover** - Admin can take over conversations manually
+- 📝 **AI Draft** - Generate AI drafts for admin review before sending
+- 🔄 **Mode Switching** - Toggle between AUTO and TAKEOVER modes
+- 📊 **Tool Calling** - Read-only tools for user lookup, points, orders
+- 💬 **Command System** - `/ai reply`, `/ai draft`, `/ai auto on/off`
 
 ## Architecture
 
 ```
-WhatsApp User
-    ↓
-baileys-gateway (VPS:3001)
-    ↓ POST /webhook/whatsapp
-Moltbot (VPS:4000)
-    ↓ AI Processing + Tool Calls
-Serapod API (Vercel)
-    ↓
-Moltbot
-    ↓ POST /messages/send
-baileys-gateway
-    ↓
-WhatsApp User
+User WhatsApp ──→ Baileys Gateway ──→ Moltbot ──→ Supabase DB
+                       ↓                              ↑
+                  (INBOUND_USER)              (Support Inbox UI)
+                       
+Admin WhatsApp ──→ Baileys Gateway ──→ Moltbot ──→ Supabase DB
+                       ↓
+                  (OUTBOUND_ADMIN)
+```
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Build
+npm run build
+
+# Run (development)
+npm run dev
+
+# Run (production)
+npm start
 ```
 
 ## Environment Variables
 
-Create a `.env` file:
-
 ```bash
 # Server
 PORT=4000
-MOLTBOT_WEBHOOK_SECRET=your-webhook-secret
+MOLTBOT_WEBHOOK_SECRET=your-secret
 MOLTBOT_DEBUG_SECRET=your-debug-secret
 
-# Gateway (Baileys)
+# Gateway
 BAILEYS_GATEWAY_URL=https://wa.serapod2u.com
-SERAPOD_WA_API_KEY=your-gateway-api-key
+SERAPOD_WA_API_KEY=your-api-key
 
-# LLM Provider (choose one)
-LLM_PROVIDER=openai  # or 'gemini'
+# Admin Detection (comma-separated phone numbers)
+ADMIN_WA_NUMBERS=60192277233,60123456789
 
-# OpenAI (if LLM_PROVIDER=openai)
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini  # or gpt-4o, gpt-4-turbo
+# LLM Provider (openai or gemini)
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-xxx
+OPENAI_MODEL=gpt-4o-mini
+# Or for Gemini:
+# GEMINI_API_KEY=xxx
+# GEMINI_MODEL=gemini-1.5-flash
 
-# Gemini (if LLM_PROVIDER=gemini)
-GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-1.5-flash  # or gemini-1.5-pro
+# Supabase (for direct DB writes)
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=xxx
 
-# LLM Settings
-LLM_MAX_TOKENS=500
-LLM_TEMPERATURE=0.7
+# Safety Mode (default: true - read-only tools only)
+BOT_SAFE_MODE=true
 
-# Serapod API
-SERAPOD_BASE_URL=https://dev.serapod2u.com
-SERAPOD_SERVICE_TOKEN=your-agent-api-key
-SERAPOD_TENANT_ID=default
-SERAPOD_TIMEOUT=10000
+# Takeover auto-revert (ms, default: 30 min)
+TAKEOVER_AUTO_REVERT_MS=1800000
 
-# Memory
-MEMORY_MAX_TURNS=10
-MEMORY_TTL_MS=604800000  # 7 days
-
-# Features
+# Features (all default: true)
 MOLTBOT_AUTO_REPLY=true
 MOLTBOT_TOOL_CALLING=true
-MOLTBOT_GREETING=true
-
-# Bot Personality
-BOT_NAME=Serapod Bot
-BOT_LANGUAGE=ms
+MOLTBOT_DB_WRITES=true
 ```
 
-## Installation
+---
 
+## API Contracts
+
+### 1. Health Check
+
+**Endpoint:** `GET /health`
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "service": "moltbot",
+  "time": "2026-02-01T10:00:00.000Z",
+  "features": {
+    "autoReply": true,
+    "toolCalling": true,
+    "greeting": true,
+    "dbWrites": true
+  }
+}
+```
+
+**Curl Example:**
 ```bash
-cd moltbot
-npm install
+curl http://localhost:4000/health
 ```
 
-## Running
+---
 
-### Development
+### 2. Inbound Webhook (from Baileys Gateway)
+
+**Endpoint:** `POST /webhook/whatsapp`
+
+**Headers:**
+```
+Content-Type: application/json
+X-Moltbot-Secret: your-secret
+```
+
+**Payload (New Format):**
+```json
+{
+  "event": "INBOUND_USER",
+  "tenantId": "default",
+  "wa": {
+    "phoneDigits": "60192277233",
+    "remoteJid": "60192277233@s.whatsapp.net",
+    "fromMe": false,
+    "messageId": "ABCD1234",
+    "timestamp": 1706780400000,
+    "pushName": "John",
+    "text": "Hello, I need help"
+  }
+}
+```
+
+**Event Types:**
+- `INBOUND_USER` - Message from end-user (fromMe=false)
+- `OUTBOUND_ADMIN` - Message from admin via WhatsApp app (fromMe=true)
+
+**Response:**
+```json
+{
+  "ok": true,
+  "event": "INBOUND_USER",
+  "messageId": "ABCD1234"
+}
+```
+
+**Curl Example (Simulate User Message):**
 ```bash
-npm run dev
+curl -X POST http://localhost:4000/webhook/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "X-Moltbot-Secret: your-secret" \
+  -d '{
+    "event": "INBOUND_USER",
+    "tenantId": "default",
+    "wa": {
+      "phoneDigits": "60192277233",
+      "remoteJid": "60192277233@s.whatsapp.net",
+      "fromMe": false,
+      "messageId": "test123",
+      "timestamp": 1706780400000,
+      "pushName": "Test User",
+      "text": "Hi, how do I check my points?"
+    }
+  }'
 ```
 
-### Production
+**Curl Example (Simulate Admin Command):**
 ```bash
-npm run build
-npm start
+curl -X POST http://localhost:4000/webhook/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "X-Moltbot-Secret: your-secret" \
+  -d '{
+    "event": "OUTBOUND_ADMIN",
+    "tenantId": "default",
+    "wa": {
+      "phoneDigits": "60192277233",
+      "remoteJid": "60192277233@s.whatsapp.net",
+      "fromMe": true,
+      "messageId": "admin123",
+      "timestamp": 1706780500000,
+      "text": "/ai reply: be more friendly"
+    }
+  }'
 ```
 
-### With PM2
+---
+
+### 3. Get Conversation Mode
+
+**Endpoint:** `GET /api/mode/:phone`
+
+**Response:**
+```json
+{
+  "ok": true,
+  "phone": "60192277233",
+  "mode": "auto",
+  "hasDraft": false,
+  "draftPreview": null
+}
+```
+
+**Curl Example:**
 ```bash
-pm2 start dist/index.js --name moltbot
+curl http://localhost:4000/api/mode/60192277233
 ```
 
-## API Endpoints
+---
 
-### Webhook (Main)
+### 4. Set Conversation Mode
 
+**Endpoint:** `POST /api/mode/:phone`
+
+**Payload:**
+```json
+{
+  "mode": "auto"
+}
 ```
-POST /webhook/whatsapp
-Headers:
-  x-moltbot-secret: <MOLTBOT_WEBHOOK_SECRET>
-Body:
+
+Valid modes: `"auto"`, `"takeover"`
+
+**Response:**
+```json
+{
+  "ok": true,
+  "phone": "60192277233",
+  "mode": "auto"
+}
+```
+
+**Curl Example:**
+```bash
+curl -X POST http://localhost:4000/api/mode/60192277233 \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "takeover"}'
+```
+
+---
+
+### 5. Generate AI Draft (for Serapod UI)
+
+**Endpoint:** `POST /api/draft/:phone`
+
+**Payload:**
+```json
+{
+  "instruction": "be more formal"
+}
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "phone": "60192277233",
+  "draft": "Terima kasih kerana menghubungi kami. Bagaimana saya boleh membantu anda hari ini?"
+}
+```
+
+**Curl Example:**
+```bash
+curl -X POST http://localhost:4000/api/draft/60192277233 \
+  -H "Content-Type: application/json" \
+  -d '{"instruction": "be friendly and helpful"}'
+```
+
+---
+
+### 6. Send Pending Draft
+
+**Endpoint:** `POST /api/draft/:phone/send`
+
+**Response:**
+```json
+{
+  "ok": true,
+  "phone": "60192277233"
+}
+```
+
+**Curl Example:**
+```bash
+curl -X POST http://localhost:4000/api/draft/60192277233/send
+```
+
+---
+
+### 7. Send WhatsApp Message (via Gateway)
+
+The Moltbot service sends messages through the Baileys Gateway. The Gateway API:
+
+**Endpoint:** `POST {BAILEYS_GATEWAY_URL}/api/send`
+
+**Headers:**
+```
+Content-Type: application/json
+X-API-Key: your-api-key
+```
+
+**Payload:**
+```json
 {
   "tenantId": "default",
-  "from": "60123456789",
-  "text": "Hi",
-  "pushName": "John"
+  "to": "60192277233",
+  "message": "Hello from bot!"
 }
 ```
 
-### Health Check
-
-```
-GET /health
-Response: { "status": "ok", "service": "moltbot", ... }
-```
-
-### Debug Health (Protected)
-
-```
-GET /debug/health?secret=<DEBUG_SECRET>
-Response: {
-  "status": "ok",
-  "config": { ... },
-  "memory": { "totalConversations": 5 },
-  "tools": ["recognize_user", "get_points_balance", ...]
-}
+**Curl Example:**
+```bash
+curl -X POST https://wa.serapod2u.com/api/send \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "tenantId": "default",
+    "to": "60192277233",
+    "message": "Hello from bot!"
+  }'
 ```
 
-### Debug Last Conversation (Protected)
+---
 
-```
-GET /debug/last/60123456789?secret=<DEBUG_SECRET>
-Response: {
-  "found": true,
-  "phone": "60123456789",
-  "userProfile": { "name": "John", ... },
-  "turnCount": 5,
-  "recentTurns": [...]
-}
-```
+## Admin Commands (via WhatsApp)
 
-### Clear Memory (Protected)
+Admins can send these commands from the WhatsApp app (messages with `fromMe=true`):
 
-```
-DELETE /debug/memory/60123456789?secret=<DEBUG_SECRET>
-```
+| Command | Description |
+|---------|-------------|
+| `/ai reply` | Generate and send AI reply immediately |
+| `/ai reply: <instruction>` | Generate reply with specific instruction |
+| `/ai draft` | Generate draft (stored, not sent) |
+| `/ai send` | Send pending draft |
+| `/ai auto on` | Enable auto-reply mode |
+| `/ai auto off` | Disable auto-reply (takeover mode) |
+| `/ai summarize` | Generate conversation summary |
 
-### Test AI (Protected)
+Alternative prefixes: `!ai`, `/bot`, `!bot`
 
-```
-POST /debug/test-ai
-Headers:
-  x-debug-secret: <DEBUG_SECRET>
-Body:
-{
-  "phone": "60123456789",
-  "text": "point saya berapa?"
-}
-```
+---
 
-### Manual Send (Debug)
+## Mode State Machine
 
-```
-GET /debug/send?to=60123456789&message=Hello
-```
+| Event | Current Mode | Result |
+|-------|--------------|--------|
+| User message | AUTO | Bot auto-replies |
+| User message | TAKEOVER | Bot silent (admin handling) |
+| Admin sends message | * | Set to TAKEOVER |
+| `/ai auto on` | * | Set to AUTO |
+| `/ai auto off` | * | Set to TAKEOVER |
+| Admin inactive 30min | TAKEOVER | Auto-revert to AUTO |
 
-## Available Tools
+---
 
-| Tool | Description |
-|------|-------------|
-| `recognize_user` | Identify user by phone number |
-| `get_points_balance` | Get user's points, tier, and stats |
-| `get_recent_orders` | Get user's order history |
-| `get_redeem_status` | Get user's redemption history |
+## Logging
+
+Structured log events for auditing:
+
+- `INBOUND_USER` - Message from end-user
+- `INBOUND_ADMIN` - Message from admin's personal WhatsApp
+- `OUTBOUND_BOT` - Bot reply (auto or commanded)
+- `OUTBOUND_ADMIN` - Admin manual reply
+- `MODE_CHANGED` - Mode switched between AUTO/TAKEOVER
+- `COMMAND_RECEIVED` - Admin command received
+- `DRAFT_CREATED` - AI draft generated
+- `DRAFT_SENT` - Draft sent
+
+---
 
 ## Testing
 
-### 1. Start Moltbot
+### Test Auto-Reply Flow
+```bash
+# 1. Simulate user message
+curl -X POST http://localhost:4000/webhook/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "X-Moltbot-Secret: secret" \
+  -d '{"event":"INBOUND_USER","tenantId":"default","wa":{"phoneDigits":"60192277233","fromMe":false,"messageId":"test1","timestamp":1706780400000,"text":"hi"}}'
+
+# 2. Check mode
+curl http://localhost:4000/api/mode/60192277233
+```
+
+### Test Admin Takeover
+```bash
+# 1. Admin sends manual reply
+curl -X POST http://localhost:4000/webhook/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "X-Moltbot-Secret: secret" \
+  -d '{"event":"OUTBOUND_ADMIN","tenantId":"default","wa":{"phoneDigits":"60192277233","fromMe":true,"messageId":"admin1","timestamp":1706780500000,"text":"ok saya bantu"}}'
+
+# 2. Check mode (should be takeover)
+curl http://localhost:4000/api/mode/60192277233
+```
+
+### Test AI Draft
+```bash
+# 1. Admin requests draft
+curl -X POST http://localhost:4000/webhook/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "X-Moltbot-Secret: secret" \
+  -d '{"event":"OUTBOUND_ADMIN","tenantId":"default","wa":{"phoneDigits":"60192277233","fromMe":true,"messageId":"cmd1","timestamp":1706780600000,"text":"/ai draft"}}'
+
+# 2. Check draft exists
+curl http://localhost:4000/api/mode/60192277233
+
+# 3. Send draft
+curl -X POST http://localhost:4000/api/draft/60192277233/send
+```
+
+### Test Auto Mode Re-enable
+```bash
+curl -X POST http://localhost:4000/webhook/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "X-Moltbot-Secret: secret" \
+  -d '{"event":"OUTBOUND_ADMIN","tenantId":"default","wa":{"phoneDigits":"60192277233","fromMe":true,"messageId":"cmd2","timestamp":1706780700000,"text":"/ai auto on"}}'
+```
+
+---
+
+## Development
 
 ```bash
+# Run with hot reload
 npm run dev
+
+# Type check
+npx tsc --noEmit
+
+# Build
+npm run build
 ```
-
-### 2. Configure Gateway Webhook
-
-In baileys-gateway, ensure webhook is configured:
-
-```json
-{
-  "webhookUrl": "http://127.0.0.1:4000/webhook/whatsapp",
-  "webhookSecret": "your-webhook-secret"
-}
-```
-
-### 3. Test Scenarios
-
-**Greeting Test:**
-```
-User: "hi"
-Bot: "Hi [Name]! 👋 Ada apa boleh saya bantu hari ni?"
-```
-
-**Points Test:**
-```
-User: "point saya berapa?"
-Bot: "Points kamu sekarang ada 1,500. Tier Gold ya! 🎉"
-```
-
-**Orders Test:**
-```
-User: "order saya?"
-Bot: "Ada 2 order terkini:
-- #SO123 - Shipped ✅
-- #SO124 - Pending"
-```
-
-**Unknown Module Test:**
-```
-User: "annual leave saya berapa?"
-Bot: "Maaf, buat masa ni modul annual leave belum ada dalam Serapod2u. Kami akan tambah kemudian! 😊"
-```
-
-## Troubleshooting
-
-### Bot not responding
-
-1. Check webhook secret matches in gateway and moltbot
-2. Verify OPENAI_API_KEY or GEMINI_API_KEY is set
-3. Check logs: `pm2 logs moltbot` or terminal output
-
-### Tool calls failing
-
-1. Verify SERAPOD_SERVICE_TOKEN matches AGENT_API_KEY in Serapod
-2. Check SERAPOD_BASE_URL is accessible
-3. Check Serapod API logs for errors
-
-### Memory issues
-
-1. Increase MEMORY_TTL_MS if conversations expire too fast
-2. Check `/debug/health` for memory stats
-3. Clear specific user: `DELETE /debug/memory/:phone`
-
-### LLM errors
-
-1. Check API key validity
-2. Try switching providers (openai ↔ gemini)
-3. Check rate limits
-
-### Common Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Unauthorized` | Wrong webhook secret | Check MOLTBOT_WEBHOOK_SECRET |
-| `OPENAI_API_KEY is required` | Missing API key | Set OPENAI_API_KEY in .env |
-| `Tool 'xxx' not found` | Invalid tool name | Check tool registry |
-| `Serapod API error` | API unreachable | Check SERAPOD_BASE_URL |
-
-## Logs
-
-Moltbot uses Pino for structured logging:
-
-```
-[INFO] Received WhatsApp message { from: "60123456789", text: "hi" }
-[INFO] User recognized { phone: "60123456789", name: "John" }
-[INFO] Tool executed { tool: "get_points_balance", durationMs: 150 }
-[INFO] Reply sent { to: "60123456789", replyPreview: "Hi John! 👋..." }
-```
-
-Set log level with:
-```bash
-LOG_LEVEL=debug npm run dev
-```
-
-## Security Notes
-
-- Never expose API keys in client code
-- Webhook secret prevents unauthorized messages
-- Debug endpoints require separate secret
-- Serapod calls use server-to-server token
-- No sensitive data in error responses
-
-## Project Structure
-
-```
-moltbot/
-├── src/
-│   ├── index.ts              # Express server setup
-│   ├── config.ts             # Environment configuration
-│   ├── types/
-│   │   └── index.ts          # TypeScript interfaces
-│   ├── providers/
-│   │   └── llm.ts            # LLM abstraction (OpenAI/Gemini)
-│   ├── services/
-│   │   ├── ai.service.ts     # AI orchestration
-│   │   ├── gateway.service.ts # WhatsApp gateway client
-│   │   ├── memory.ts         # Conversation memory store
-│   │   ├── serapod.client.ts # Serapod API client
-│   │   └── webhook.handler.ts # Webhook processing
-│   ├── tools/
-│   │   └── registry.ts       # Tool definitions
-│   ├── prompts/
-│   │   └── system.ts         # System prompts
-│   └── utils/
-│       └── logger.ts         # Pino logger
-├── .env                      # Environment variables
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
-## Roadmap
-
-### Phase 1 (Current) - Read-Only
-- ✅ User recognition
-- ✅ Points balance
-- ✅ Order status
-- ✅ Redeem status
-
-### Phase 2 - Write Actions (Coming)
-- [ ] Create support ticket
-- [ ] Submit feedback
-- [ ] Request callback
-
-### Phase 3 - Advanced
-- [ ] AI-suggested products
-- [ ] Personalized promotions
-- [ ] Multi-language support (WhatsApp Test Bot)
-
-A simple service to test 2-way WhatsApp communication with Baileys Gateway.
-
-## Features
-- Inbound Webhook Handler (`POST /webhook/whatsapp`)
-- Auto-Reply Logic (Echo + Name)
-- Gateway Client (`POST /messages/send`)
-- Debug Endpoint (`GET /debug/send`)
-
-## Setup
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-2. Configure .env:
-   Copy `.env.example` to `.env` and update values.
-   - `MOLTBOT_WEBHOOK_SECRET`: Should match Gateway's webhook API key.
-   - `SERAPOD_WA_API_KEY`: Should match Gateway's API Key.
-
-3. Run:
-   ```bash
-   npm run dev
-   ```
-
-## Usage
-
-### 1. Receive Webhook (from Gateway)
-Configure your Baileys Gateway to forward messages to:
-`http://localhost:4000/webhook/whatsapp`
-
-Env in Baileys Gateway:
-```
-WEBHOOK_URL=http://localhost:4000/webhook/whatsapp
-WEBHOOK_ENABLED=true
-WEBHOOK_API_KEY=secret
-```
-
-### 2. Manual Send Test
-Call the debug endpoint:
-`http://localhost:4000/debug/send?to=60123456789&message=HelloFromMoltbot`

@@ -1,0 +1,36 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+const MOLTBOT_URL = process.env.MOLTBOT_URL || 'http://localhost:4000'
+
+export async function POST(
+    request: NextRequest,
+    { params }: { params: { phone: string } }
+) {
+    try {
+        const phone = params.phone
+        const body = await request.json().catch(() => ({}))
+
+        if (!phone) {
+            return NextResponse.json({ ok: false, error: 'Phone number required' }, { status: 400 })
+        }
+
+        const res = await fetch(`${MOLTBOT_URL}/api/draft/${encodeURIComponent(phone)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                instruction: body.instruction || ''
+            })
+        })
+
+        const data = await res.json()
+        return NextResponse.json(data, { status: res.status })
+    } catch (error) {
+        console.error('Failed to generate draft:', error)
+        return NextResponse.json({
+            ok: false,
+            error: 'Failed to connect to Moltbot service'
+        }, { status: 500 })
+    }
+}

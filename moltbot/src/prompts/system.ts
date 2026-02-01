@@ -5,9 +5,9 @@
  * Malay casual tone, helpful assistant
  */
 export function getSystemPrompt(userName?: string): string {
-  const greeting = userName ? `Pengguna ini bernama ${userName}.` : '';
-  
-  return `Kamu adalah pembantu AI untuk Serapod2u, aplikasi loyalty program dan e-commerce untuk jenama F&B dan retail di Malaysia.
+    const greeting = userName ? `Pengguna ini bernama ${userName}.` : '';
+
+    return `Kamu adalah pembantu AI untuk Serapod2u, aplikasi loyalty program dan e-commerce untuk jenama F&B dan retail di Malaysia.
 
 ${greeting}
 
@@ -53,20 +53,20 @@ JANGAN SEKALI-KALI:
  * Get error response message
  */
 export function getErrorMessage(type: 'tool_failed' | 'unknown_error' | 'no_user'): string {
-  switch (type) {
-    case 'tool_failed':
-      return 'Maaf, saya tak dapat akses maklumat tu sekarang. Cuba lagi kejap atau hubungi support di app ya! 🙏';
-    case 'no_user':
-      return 'Hmm, saya tak jumpa akaun dengan nombor ni. Dah register dalam Serapod2u app belum? 🤔';
-    case 'unknown_error':
-    default:
-      return 'Alamak, ada masalah teknikal. Cuba lagi atau hubungi support team kami. Sorry! 😅';
-  }
+    switch (type) {
+        case 'tool_failed':
+            return 'Maaf, saya tak dapat akses maklumat tu sekarang. Cuba lagi kejap atau hubungi support di app ya! 🙏';
+        case 'no_user':
+            return 'Hmm, saya tak jumpa akaun dengan nombor ni. Dah register dalam Serapod2u app belum? 🤔';
+        case 'unknown_error':
+        default:
+            return 'Alamak, ada masalah teknikal. Cuba lagi atau hubungi support team kami. Sorry! 😅';
+    }
 }
 
 /**
  * Get unavailable module message
  */
 export function getUnavailableModuleMessage(moduleName: string): string {
-  return `Maaf, buat masa ni modul ${moduleName} belum ada dalam Serapod2u. Kami akan tambah kemudian! 😊 Ada apa-apa lain saya boleh bantu?`;
+    return `Maaf, buat masa ni modul ${moduleName} belum ada dalam Serapod2u. Kami akan tambah kemudian! 😊 Ada apa-apa lain saya boleh bantu?`;
 }

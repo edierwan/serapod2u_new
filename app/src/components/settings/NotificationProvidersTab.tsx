@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import BotAdminSection from './BotAdminSection'
+import ServicesStatusSection from './ServicesStatusSection'
 import {
   Save,
   MessageCircle,
@@ -632,10 +634,10 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       {/* Gateway Connection Status Card - Only for Baileys */}
       {whatsappConfig?.provider_name === 'baileys' && (
         <Card className={`border-2 ${gatewayStatus?.connected
-            ? 'bg-green-50 border-green-300'
-            : gatewayStatus?.pairing_state === 'waiting_qr'
-              ? 'bg-yellow-50 border-yellow-300'
-              : 'bg-red-50 border-red-300'
+          ? 'bg-green-50 border-green-300'
+          : gatewayStatus?.pairing_state === 'waiting_qr'
+            ? 'bg-yellow-50 border-yellow-300'
+            : 'bg-red-50 border-red-300'
           }`}>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between">
@@ -825,9 +827,14 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         </Card>
       )}
 
+      {/* Services Status - Gateway + Moltbot health */}
+      {whatsappConfig?.provider_name === 'baileys' && (
+        <ServicesStatusSection />
+      )}
+
       {/* Send Test Message Card - Only when connected */}
       {whatsappConfig?.provider_name === 'baileys' && gatewayStatus?.connected && (
-        <Card>
+        <Card className="mt-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Send className="w-5 h-5 text-green-600" />
@@ -1104,8 +1111,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               {/* Test Status */}
               {whatsappConfig.last_test_at && (
                 <div className={`p-4 rounded-lg border ${whatsappConfig.last_test_status === 'success'
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-red-50 border-red-200'
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-red-50 border-red-200'
                   }`}>
                   <div className="flex items-start gap-2">
                     {whatsappConfig.last_test_status === 'success' ? (
@@ -1194,6 +1201,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           )}
         </CardContent>
       </Card>
+
+      {/* WhatsApp Bot Admin Section - Only for Baileys */}
+      {whatsappConfig?.provider_name === 'baileys' && (
+        <BotAdminSection />
+      )}
     </div>
   )
 
@@ -1819,14 +1831,14 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
                   {/* Usage Warning */}
                   <div className={`p-4 rounded-lg border ${emailUsageToday >= 450 ? 'bg-red-50 border-red-200' :
-                      emailUsageToday >= 350 ? 'bg-yellow-50 border-yellow-200' :
-                        'bg-green-50 border-green-200'
+                    emailUsageToday >= 350 ? 'bg-yellow-50 border-yellow-200' :
+                      'bg-green-50 border-green-200'
                     }`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <AlertCircle className={`w-5 h-5 ${emailUsageToday >= 450 ? 'text-red-600' :
-                            emailUsageToday >= 350 ? 'text-yellow-600' :
-                              'text-green-600'
+                          emailUsageToday >= 350 ? 'text-yellow-600' :
+                            'text-green-600'
                           }`} />
                         <div>
                           <div className="font-medium text-sm">
@@ -1850,8 +1862,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     <div className="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div
                         className={`h-full transition-all ${emailUsageToday >= 450 ? 'bg-red-600' :
-                            emailUsageToday >= 350 ? 'bg-yellow-500' :
-                              'bg-green-500'
+                          emailUsageToday >= 350 ? 'bg-yellow-500' :
+                            'bg-green-500'
                           }`}
                         style={{ width: `${Math.min((emailUsageToday / 500) * 100, 100)}%` }}
                       />

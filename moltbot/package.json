@@ -1,32 +1,32 @@
 {
-  "name": "moltbot",
-  "version": "2.0.0",
-  "description": "AI-Powered WhatsApp Bot Service for Serapod2u",
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@supabase/supabase-js": "^2.93.3",
-    "axios": "^1.7.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "openai": "^6.17.0",
-    "pino": "^9.4.0",
-    "pino-pretty": "^11.2.2",
-    "uuid": "^13.0.0"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.5.4",
-    "@types/uuid": "^10.0.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.6.2"
-  }
+    "name": "moltbot",
+    "version": "2.0.0",
+    "description": "AI-Powered WhatsApp Bot Service for Serapod2u",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "dev": "ts-node src/index.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "@supabase/supabase-js": "^2.93.3",
+        "axios": "^1.7.2",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.5",
+        "express": "^4.21.0",
+        "openai": "^6.17.0",
+        "pino": "^9.4.0",
+        "pino-pretty": "^11.2.2",
+        "uuid": "^13.0.0"
+    },
+    "devDependencies": {
+        "@types/cors": "^2.8.17",
+        "@types/express": "^4.17.21",
+        "@types/node": "^22.5.4",
+        "@types/uuid": "^10.0.0",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.6.2"
+    }
 }

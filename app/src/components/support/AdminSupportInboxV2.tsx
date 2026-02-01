@@ -13,12 +13,12 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { 
-    MessageSquare, 
-    Search, 
-    RefreshCw, 
-    Send, 
-    Image as ImageIcon, 
+import {
+    MessageSquare,
+    Search,
+    RefreshCw,
+    Send,
+    Image as ImageIcon,
     Megaphone,
     Loader2,
     User,
@@ -155,22 +155,22 @@ export function AdminSupportInboxV2() {
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
     const [loading, setLoading] = useState(false)
     const [showBlastModal, setShowBlastModal] = useState(false)
-    
+
     // Filters
     const [statusFilter, setStatusFilter] = useState('all')
     const [priorityFilter, setPriorityFilter] = useState('all')
     const [assignedFilter, setAssignedFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
-    
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1)
     const [rowsPerPage, setRowsPerPage] = useState(20)
     const [totalCount, setTotalCount] = useState(0)
-    
+
     // Data for dropdowns
     const [admins, setAdmins] = useState<Admin[]>([])
     const [tags, setTags] = useState<Tag[]>([])
-    
+
     const totalPages = Math.ceil(totalCount / rowsPerPage)
 
     // Fetch conversations
@@ -184,10 +184,10 @@ export function AdminSupportInboxV2() {
             if (searchQuery) params.append('q', searchQuery)
             params.append('page', currentPage.toString())
             params.append('limit', rowsPerPage.toString())
-            
+
             const res = await fetch(`/api/admin/support/conversations?${params.toString()}`)
             const data = await res.json()
-            
+
             if (data.conversations) {
                 setConversations(data.conversations)
                 setTotalCount(data.total || data.conversations.length)
@@ -267,20 +267,34 @@ export function AdminSupportInboxV2() {
         <div className="h-[700px] min-h-[500px] flex flex-col bg-white rounded-lg border shadow-sm overflow-hidden">
             {view === 'list' ? (
                 <div className="flex flex-col h-full">
+                    {/* Header */}
+                    <div className="px-6 py-5 border-b flex items-center justify-between bg-white">
+                        <div>
+                            <h2 className="text-xl font-semibold text-gray-900">Support Inbox</h2>
+                            <p className="text-sm text-gray-500 mt-1">Monitor and respond to user inquiries from WhatsApp and App</p>
+                        </div>
+                        <div className="flex gap-2">
+                             <Button onClick={fetchConversations} variant="outline" size="sm" className="gap-2">
+                                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                                Refresh
+                            </Button>
+                        </div>
+                    </div>
+
                     {/* Toolbar */}
                     <div className="p-4 border-b flex flex-wrap items-center gap-3 bg-gray-50/50">
                         {/* Search */}
                         <div className="relative flex-1 min-w-[200px] max-w-md">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                            <Input 
-                                placeholder="Search subjects, user name, phone, case #..." 
+                            <Input
+                                placeholder="Search subjects, user name, phone, case #..."
                                 className="pl-9 bg-white"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                             />
                         </div>
-                        
+
                         {/* Filters */}
                         <div className="flex items-center gap-2 flex-wrap">
                             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1) }}>
@@ -298,7 +312,7 @@ export function AdminSupportInboxV2() {
                                     <SelectItem value="spam">Spam</SelectItem>
                                 </SelectContent>
                             </Select>
-                            
+
                             <Select value={priorityFilter} onValueChange={(v) => { setPriorityFilter(v); setCurrentPage(1) }}>
                                 <SelectTrigger className="w-[130px] bg-white">
                                     <Flag className="w-3.5 h-3.5 mr-2 text-gray-500" />
@@ -312,7 +326,7 @@ export function AdminSupportInboxV2() {
                                     <SelectItem value="urgent">Urgent</SelectItem>
                                 </SelectContent>
                             </Select>
-                            
+
                             <Select value={assignedFilter} onValueChange={(v) => { setAssignedFilter(v); setCurrentPage(1) }}>
                                 <SelectTrigger className="w-[140px] bg-white">
                                     <Users className="w-3.5 h-3.5 mr-2 text-gray-500" />
@@ -324,14 +338,10 @@ export function AdminSupportInboxV2() {
                                     <SelectItem value="unassigned">Unassigned</SelectItem>
                                 </SelectContent>
                             </Select>
-                            
-                            <Button variant="outline" size="icon" onClick={fetchConversations}>
-                                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-                            </Button>
                         </div>
-                        
+
                         <div className="flex-1" />
-                        
+
                         <Button onClick={() => setShowBlastModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
                             <Megaphone className="w-4 h-4 mr-2" />
                             Blast Announcement
@@ -366,7 +376,7 @@ export function AdminSupportInboxV2() {
                             )}
                         </div>
                     </ScrollArea>
-                    
+
                     {/* Pagination */}
                     {!loading && conversations.length > 0 && (
                         <div className="p-3 border-t bg-gray-50/50 flex items-center justify-between gap-4">
@@ -425,14 +435,14 @@ export function AdminSupportInboxV2() {
 }
 
 // Conversation Row Component
-function ConversationRow({ 
-    conversation, 
-    index, 
-    onClick, 
-    onStatusChange, 
+function ConversationRow({
+    conversation,
+    index,
+    onClick,
+    onStatusChange,
     onAssign,
-    admins 
-}: { 
+    admins
+}: {
     conversation: Conversation & { primary_channel?: string; whatsapp_user_phone?: string }
     index: number
     onClick: () => void
@@ -444,7 +454,7 @@ function ConversationRow({
     const priorityConfig = PRIORITY_CONFIG[conversation.priority]
     const StatusIcon = statusConfig.icon
     const isWhatsAppConversation = conversation.primary_channel === 'whatsapp' || !!conversation.whatsapp_user_phone
-    
+
     return (
         <div
             onClick={onClick}
@@ -459,7 +469,7 @@ function ConversationRow({
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-600">
                     {index}
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
                     {/* Header row */}
                     <div className="flex items-center justify-between mb-1">
@@ -496,7 +506,7 @@ function ConversationRow({
                             {format(new Date(conversation.last_message_at), 'MMM d, HH:mm')}
                         </span>
                     </div>
-                    
+
                     {/* Preview */}
                     <p className="text-sm text-gray-500 truncate mb-2">
                         {conversation.last_message_sender_type === 'admin' && (
@@ -504,7 +514,7 @@ function ConversationRow({
                         )}
                         {conversation.last_message_preview || 'No messages'}
                     </p>
-                    
+
                     {/* Meta row */}
                     <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                         <span className="flex items-center gap-1">
@@ -523,8 +533,8 @@ function ConversationRow({
                         {conversation.tags && conversation.tags.length > 0 && (
                             <div className="flex items-center gap-1">
                                 {conversation.tags.slice(0, 3).map(tag => (
-                                    <span 
-                                        key={tag.id} 
+                                    <span
+                                        key={tag.id}
                                         className="px-1.5 py-0.5 rounded text-[10px]"
                                         style={{ backgroundColor: tag.color + '20', color: tag.color }}
                                     >
@@ -535,7 +545,7 @@ function ConversationRow({
                         )}
                     </div>
                 </div>
-                
+
                 {/* Quick actions */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -572,13 +582,13 @@ function ConversationRow({
 }
 
 // Conversation Detail View
-function ConversationDetailView({ 
-    conversation, 
-    admins, 
-    tags, 
-    onBack, 
-    onUpdate 
-}: { 
+function ConversationDetailView({
+    conversation,
+    admins,
+    tags,
+    onBack,
+    onUpdate
+}: {
     conversation: Conversation
     admins: Admin[]
     tags: Tag[]
@@ -595,18 +605,126 @@ function ConversationDetailView({
     const [convDetails, setConvDetails] = useState(conversation)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [activeTab, setActiveTab] = useState('chat')
-    
+
     // WhatsApp reply mode
     const [replyViaWhatsApp, setReplyViaWhatsApp] = useState(false)
     const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
-    
+
     // AI Assist
     const [aiLoading, setAiLoading] = useState(false)
     const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
     const [showAiPanel, setShowAiPanel] = useState(false)
 
+    // AI Bot Mode (for Moltbot integration)
+    const [botMode, setBotMode] = useState<'auto' | 'takeover'>('auto')
+    const [botModeLoading, setBotModeLoading] = useState(false)
+    const [pendingDraft, setPendingDraft] = useState<string | null>(null)
+    const [draftLoading, setDraftLoading] = useState(false)
+
     // Check if conversation has WhatsApp
     const hasWhatsApp = !!(convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone
+
+    // Get user phone for Moltbot API
+    const userPhone = (convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone
+
+    // Fetch bot mode from Moltbot
+    const fetchBotMode = async () => {
+        if (!userPhone) return
+
+        try {
+            const res = await fetch(`/api/support/bot/mode/${encodeURIComponent(userPhone)}`)
+            if (res.ok) {
+                const data = await res.json()
+                if (data.ok) {
+                    setBotMode(data.mode || 'auto')
+                    setPendingDraft(data.draftPreview || null)
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch bot mode', error)
+        }
+    }
+
+    // Toggle bot mode
+    const handleBotModeToggle = async (newMode: 'auto' | 'takeover') => {
+        if (!userPhone || botModeLoading) return
+
+        setBotModeLoading(true)
+        try {
+            const res = await fetch(`/api/support/bot/mode/${encodeURIComponent(userPhone)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: newMode })
+            })
+
+            if (res.ok) {
+                const data = await res.json()
+                setBotMode(data.mode || newMode)
+            }
+        } catch (error) {
+            console.error('Failed to update bot mode', error)
+        } finally {
+            setBotModeLoading(false)
+        }
+    }
+
+    // Generate AI draft via Moltbot
+    const handleGenerateDraft = async () => {
+        if (!userPhone || draftLoading) return
+
+        setDraftLoading(true)
+        setError(null)
+
+        try {
+            const res = await fetch(`/api/support/bot/draft/${encodeURIComponent(userPhone)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instruction: '' })
+            })
+
+            const data = await res.json()
+
+            if (data.ok && data.draft) {
+                setPendingDraft(data.draft)
+                setShowAiPanel(true)
+                setAiSuggestion(data.draft)
+            } else {
+                setError(data.error || 'Failed to generate draft')
+            }
+        } catch (error) {
+            setError('Failed to generate AI draft')
+        } finally {
+            setDraftLoading(false)
+        }
+    }
+
+    // Send pending draft
+    const handleSendDraft = async () => {
+        if (!userPhone || !pendingDraft) return
+
+        setSending(true)
+        setError(null)
+
+        try {
+            const res = await fetch(`/api/support/bot/draft/${encodeURIComponent(userPhone)}/send`, {
+                method: 'POST'
+            })
+
+            if (res.ok) {
+                setPendingDraft(null)
+                setAiSuggestion(null)
+                setShowAiPanel(false)
+                fetchMessages()
+            } else {
+                const data = await res.json()
+                setError(data.error || 'Failed to send draft')
+            }
+        } catch (error) {
+            setError('Failed to send draft')
+        } finally {
+            setSending(false)
+        }
+    }
 
     // Fetch messages
     const fetchMessages = async () => {
@@ -652,6 +770,7 @@ function ConversationDetailView({
     useEffect(() => {
         fetchMessages()
         fetchDetails()
+        fetchBotMode()
     }, [conversation.id])
 
     // Send message
@@ -659,10 +778,10 @@ function ConversationDetailView({
         e.preventDefault()
         const msg = newMessage.trim()
         if (!msg) return
-        
+
         setError(null)
         setSending(true)
-        
+
         try {
             // If WhatsApp reply mode is enabled and user has WhatsApp
             if (replyViaWhatsApp && hasWhatsApp) {
@@ -676,10 +795,10 @@ function ConversationDetailView({
                         text: msg
                     })
                 })
-                
+
                 const waData = await waRes.json()
                 setSendingWhatsApp(false)
-                
+
                 if (!waRes.ok) {
                     // Still saved in DB, show warning
                     if (waData.storedInDb) {
@@ -688,7 +807,7 @@ function ConversationDetailView({
                         throw new Error(waData.error || 'Failed to send via WhatsApp')
                     }
                 }
-                
+
                 setNewMessage('')
                 setAiSuggestion(null)
                 fetchMessages()
@@ -700,19 +819,23 @@ function ConversationDetailView({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: msg })
                 })
-                
+
                 if (!res.ok) {
                     const data = await res.json()
                     throw new Error(data.error || 'Failed to send message')
                 }
-                
+
                 setNewMessage('')
                 setAiSuggestion(null)
                 fetchMessages()
                 onUpdate()
             }
         } catch (err: any) {
-            setError(err.message)
+            if (err.message === 'User not found') {
+                setError('Failed: Admin profile missing. Please contact developer.')
+            } else {
+                setError(err.message)
+            }
         } finally {
             setSending(false)
             setSendingWhatsApp(false)
@@ -724,7 +847,7 @@ function ConversationDetailView({
         setAiLoading(true)
         setError(null)
         setShowAiPanel(true)
-        
+
         try {
             const res = await fetch('/api/agent/assist', {
                 method: 'POST',
@@ -734,13 +857,20 @@ function ConversationDetailView({
                     tone: 'friendly'
                 })
             })
-            
+
             const data = await res.json()
-            
+
             if (data.ok && data.suggestedReply) {
                 setAiSuggestion(data.suggestedReply)
             } else {
-                setError(data.error || 'AI assist unavailable')
+                // Handle "User not found" gracefully - likely auth sync issue
+                if (data.error === 'User not found') {
+                    console.warn('AI Assist: Admin user not found in DB')
+                    // Show a milder error or suppress it for AI panel
+                    setError('AI Assistant unavailable (Admin profile missing)')
+                } else {
+                    setError(data.error || 'AI assist unavailable')
+                }
             }
         } catch (err: any) {
             setError('Failed to get AI suggestion')
@@ -761,14 +891,14 @@ function ConversationDetailView({
     const handleAddNote = async () => {
         const note = newNote.trim()
         if (!note) return
-        
+
         try {
             const res = await fetch(`/api/admin/support/conversations/${conversation.id}/notes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ note_text: note })
             })
-            
+
             if (res.ok) {
                 setNewNote('')
                 fetchNotes()
@@ -816,9 +946,9 @@ function ConversationDetailView({
                 body: JSON.stringify({ assigned_admin_id: adminId })
             })
             const admin = admins.find(a => a.id === adminId)
-            setConvDetails(prev => ({ 
-                ...prev, 
-                assigned_to: admin ? { id: admin.id, email: admin.email, full_name: admin.full_name } : undefined 
+            setConvDetails(prev => ({
+                ...prev,
+                assigned_to: admin ? { id: admin.id, email: admin.email, full_name: admin.full_name } : undefined
             }))
             onUpdate()
         } catch (error) {
@@ -850,6 +980,53 @@ function ConversationDetailView({
                             </p>
                         </div>
                     </div>
+
+                    {/* AI Bot Mode Controls */}
+                    {hasWhatsApp && userPhone && (
+                        <div className="flex items-center gap-3">
+                            {/* Mode Badge */}
+                            <Badge
+                                className={cn(
+                                    "text-xs font-medium",
+                                    botMode === 'auto'
+                                        ? "bg-green-100 text-green-700 hover:bg-green-100"
+                                        : "bg-orange-100 text-orange-700 hover:bg-orange-100"
+                                )}
+                            >
+                                <Bot className="w-3 h-3 mr-1" />
+                                {botMode === 'auto' ? 'AUTO' : 'TAKEOVER'}
+                            </Badge>
+
+                            {/* AI Auto Toggle */}
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2">
+                                            <Switch
+                                                id="ai-auto-mode"
+                                                checked={botMode === 'auto'}
+                                                onCheckedChange={(checked) => handleBotModeToggle(checked ? 'auto' : 'takeover')}
+                                                disabled={botModeLoading}
+                                            />
+                                            <Label
+                                                htmlFor="ai-auto-mode"
+                                                className={cn(
+                                                    "text-xs cursor-pointer flex items-center gap-1",
+                                                    botMode === 'auto' ? "text-green-600 font-medium" : "text-gray-500"
+                                                )}
+                                            >
+                                                {botModeLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                                                AI Auto
+                                            </Label>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>{botMode === 'auto' ? 'Bot auto-replies to messages' : 'Bot is silent, admin handling'}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
+                    )}
                 </div>
 
                 {/* Error Display */}
@@ -878,7 +1055,7 @@ function ConversationDetailView({
                                 const ChannelIcon = channelConfig.icon
                                 const isWhatsApp = channel === 'whatsapp'
                                 const isAI = channel === 'ai'
-                                
+
                                 if (isSystem) {
                                     return (
                                         <div key={msg.id} className="flex justify-center my-4">
@@ -893,12 +1070,12 @@ function ConversationDetailView({
                                     <div key={msg.id} className={cn("flex", isAdmin ? "justify-end" : "justify-start")}>
                                         <div className={cn(
                                             "max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative",
-                                            isAdmin 
-                                                ? isWhatsApp 
-                                                    ? "bg-green-600 text-white rounded-br-none" 
+                                            isAdmin
+                                                ? isWhatsApp
+                                                    ? "bg-green-600 text-white rounded-br-none"
                                                     : isAI
                                                         ? "bg-amber-500 text-white rounded-br-none"
-                                                        : "bg-blue-600 text-white rounded-br-none" 
+                                                        : "bg-blue-600 text-white rounded-br-none"
                                                 : isWhatsApp
                                                     ? "bg-green-50 text-gray-900 border border-green-200 rounded-bl-none"
                                                     : "bg-white text-gray-900 border border-gray-100 rounded-bl-none"
@@ -913,15 +1090,15 @@ function ConversationDetailView({
                                                     {isWhatsApp ? 'via WhatsApp' : 'AI Generated'}
                                                 </div>
                                             )}
-                                            
+
                                             <p className="whitespace-pre-wrap text-sm">{msg.body_text}</p>
                                             {msg.attachments && msg.attachments.length > 0 && (
                                                 <div className="mt-2 space-y-1">
                                                     {msg.attachments.map((att: any, i: number) => (
-                                                        <a 
-                                                            key={i} 
-                                                            href={att.url} 
-                                                            target="_blank" 
+                                                        <a
+                                                            key={i}
+                                                            href={att.url}
+                                                            target="_blank"
                                                             rel="noopener noreferrer"
                                                             className={cn(
                                                                 "flex items-center gap-1 text-xs underline",
@@ -962,9 +1139,9 @@ function ConversationDetailView({
                                     <Sparkles className="w-4 h-4" />
                                     AI Suggestion
                                 </div>
-                                <Button 
-                                    variant="ghost" 
-                                    size="sm" 
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     className="h-6 w-6 p-0 text-amber-600 hover:text-amber-800"
                                     onClick={() => setShowAiPanel(false)}
                                 >
@@ -979,8 +1156,8 @@ function ConversationDetailView({
                             ) : aiSuggestion ? (
                                 <>
                                     <p className="text-sm text-gray-700 whitespace-pre-wrap mb-2">{aiSuggestion}</p>
-                                    <Button 
-                                        size="sm" 
+                                    <Button
+                                        size="sm"
                                         className="bg-amber-500 hover:bg-amber-600 text-white"
                                         onClick={useAiSuggestion}
                                     >
@@ -992,8 +1169,8 @@ function ConversationDetailView({
                             )}
                         </div>
                     )}
-                    
-                    {/* WhatsApp Toggle & AI Button */}
+
+                    {/* WhatsApp Toggle & AI Buttons */}
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-4">
                             {hasWhatsApp && (
@@ -1006,8 +1183,8 @@ function ConversationDetailView({
                                                     checked={replyViaWhatsApp}
                                                     onCheckedChange={setReplyViaWhatsApp}
                                                 />
-                                                <Label 
-                                                    htmlFor="whatsapp-mode" 
+                                                <Label
+                                                    htmlFor="whatsapp-mode"
                                                     className={cn(
                                                         "text-xs cursor-pointer flex items-center gap-1",
                                                         replyViaWhatsApp ? "text-green-600 font-medium" : "text-gray-500"
@@ -1025,23 +1202,64 @@ function ConversationDetailView({
                                 </TooltipProvider>
                             )}
                         </div>
-                        
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={handleAiAssist}
-                            disabled={aiLoading}
-                            className="text-amber-600 border-amber-300 hover:bg-amber-50"
-                        >
-                            {aiLoading ? (
-                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                            ) : (
-                                <Sparkles className="w-3 h-3 mr-1" />
+
+                        <div className="flex items-center gap-2">
+                            {/* AI Draft Button (Moltbot) */}
+                            {hasWhatsApp && userPhone && (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleGenerateDraft}
+                                        disabled={draftLoading}
+                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                    >
+                                        {draftLoading ? (
+                                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                        ) : (
+                                            <Bot className="w-3 h-3 mr-1" />
+                                        )}
+                                        AI Draft
+                                    </Button>
+
+                                    {/* Send Draft Button */}
+                                    {pendingDraft && (
+                                        <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={handleSendDraft}
+                                            disabled={sending}
+                                            className="bg-green-600 hover:bg-green-700 text-white"
+                                        >
+                                            {sending ? (
+                                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                            ) : (
+                                                <Send className="w-3 h-3 mr-1" />
+                                            )}
+                                            Send Draft
+                                        </Button>
+                                    )}
+                                </>
                             )}
-                            AI Assist
-                        </Button>
+
+                            {/* Original AI Assist Button */}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleAiAssist}
+                                disabled={aiLoading}
+                                className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                            >
+                                {aiLoading ? (
+                                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                ) : (
+                                    <Sparkles className="w-3 h-3 mr-1" />
+                                )}
+                                AI Assist
+                            </Button>
+                        </div>
                     </div>
-                    
+
                     <form onSubmit={handleSend} className="flex gap-2">
                         <Textarea
                             value={newMessage}
@@ -1058,9 +1276,9 @@ function ConversationDetailView({
                                 }
                             }}
                         />
-                        <Button 
-                            type="submit" 
-                            disabled={!newMessage.trim() || sending} 
+                        <Button
+                            type="submit"
+                            disabled={!newMessage.trim() || sending}
                             className={cn(
                                 "px-6",
                                 replyViaWhatsApp && "bg-green-600 hover:bg-green-700"
@@ -1076,7 +1294,7 @@ function ConversationDetailView({
                         </Button>
                     </form>
                     <p className="text-[10px] text-gray-400 mt-1">
-                        {replyViaWhatsApp 
+                        {replyViaWhatsApp
                             ? 'Message will be sent via WhatsApp and saved in app'
                             : 'Press Enter to send, Shift+Enter for new line'
                         }
@@ -1091,7 +1309,7 @@ function ConversationDetailView({
                         <TabsTrigger value="chat" className="text-xs">Details</TabsTrigger>
                         <TabsTrigger value="notes" className="text-xs">Notes ({notes.length})</TabsTrigger>
                     </TabsList>
-                    
+
                     <TabsContent value="chat" className="flex-1 overflow-auto m-0 p-4 space-y-4">
                         {/* Status */}
                         <div>
@@ -1133,8 +1351,8 @@ function ConversationDetailView({
                         {/* Assignment */}
                         <div>
                             <Label className="text-xs text-gray-500 mb-1.5 block">Assigned To</Label>
-                            <Select 
-                                value={convDetails.assigned_to?.id || 'unassigned'} 
+                            <Select
+                                value={convDetails.assigned_to?.id || 'unassigned'}
                                 onValueChange={(v) => handleAssignChange(v === 'unassigned' ? null : v)}
                             >
                                 <SelectTrigger className="w-full bg-white">
@@ -1157,7 +1375,7 @@ function ConversationDetailView({
                             <div className="flex flex-wrap gap-1">
                                 {convDetails.tags && convDetails.tags.length > 0 ? (
                                     convDetails.tags.map(tag => (
-                                        <Badge 
+                                        <Badge
                                             key={tag.id}
                                             style={{ backgroundColor: tag.color + '20', color: tag.color }}
                                             className="text-xs"
@@ -1190,7 +1408,7 @@ function ConversationDetailView({
                             </div>
                         </div>
                     </TabsContent>
-                    
+
                     <TabsContent value="notes" className="flex-1 overflow-auto m-0 p-4 flex flex-col">
                         {/* Add Note */}
                         <div className="mb-4">
@@ -1200,16 +1418,16 @@ function ConversationDetailView({
                                 placeholder="Add internal note..."
                                 className="resize-none min-h-[80px] text-sm"
                             />
-                            <Button 
-                                size="sm" 
-                                className="mt-2 w-full" 
+                            <Button
+                                size="sm"
+                                className="mt-2 w-full"
                                 onClick={handleAddNote}
                                 disabled={!newNote.trim()}
                             >
                                 <StickyNote className="w-3.5 h-3.5 mr-1.5" /> Add Note
                             </Button>
                         </div>
-                        
+
                         {/* Notes List */}
                         <div className="flex-1 space-y-3">
                             {notes.length === 0 ? (
@@ -1244,7 +1462,7 @@ function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenC
     const [loadingStates, setLoadingStates] = useState(false)
     const [previewCount, setPreviewCount] = useState<number | null>(null)
     const [loadingPreview, setLoadingPreview] = useState(false)
-    
+
     const [progress, setProgress] = useState<{
         status: 'idle' | 'sending' | 'complete' | 'error'
         total: number
@@ -1319,7 +1537,7 @@ function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenC
 
     const handleSend = async () => {
         if (!message.trim()) return
-        
+
         setSending(true)
         setProgress({
             status: 'sending',
@@ -1334,34 +1552,34 @@ function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenC
             const res = await fetch('/api/admin/support/blast/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message, 
+                body: JSON.stringify({
+                    message,
                     subject: 'Announcement',
                     targetType,
                     states: targetType === 'state' ? selectedStates : [],
                     roles: targetType === 'role' ? selectedRoles : []
                 })
             })
-            
+
             if (!res.body) {
                 throw new Error('No response body')
             }
-            
+
             const reader = res.body.getReader()
             const decoder = new TextDecoder()
-            
+
             while (true) {
                 const { done, value } = await reader.read()
                 if (done) break
-                
+
                 const chunk = decoder.decode(value)
                 const lines = chunk.split('\n')
-                
+
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6))
-                            
+
                             if (data.type === 'error') {
                                 setProgress(p => ({ ...p, status: 'error', message: data.error }))
                             } else if (data.type === 'start') {
@@ -1430,22 +1648,22 @@ function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenC
                         <div>
                             <Label>Target Audience</Label>
                             <div className="flex gap-2 mt-1.5">
-                                <Button 
-                                    variant={targetType === 'all' ? 'default' : 'outline'} 
+                                <Button
+                                    variant={targetType === 'all' ? 'default' : 'outline'}
                                     size="sm"
                                     onClick={() => setTargetType('all')}
                                 >
                                     All Users
                                 </Button>
-                                <Button 
-                                    variant={targetType === 'state' ? 'default' : 'outline'} 
+                                <Button
+                                    variant={targetType === 'state' ? 'default' : 'outline'}
                                     size="sm"
                                     onClick={() => setTargetType('state')}
                                 >
                                     By State
                                 </Button>
-                                <Button 
-                                    variant={targetType === 'role' ? 'default' : 'outline'} 
+                                <Button
+                                    variant={targetType === 'role' ? 'default' : 'outline'}
                                     size="sm"
                                     onClick={() => setTargetType('role')}
                                 >
@@ -1534,11 +1752,11 @@ function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenC
                                 <span>{progress.percent}%</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-3">
-                                <div 
+                                <div
                                     className={cn(
                                         "h-3 rounded-full transition-all duration-300",
                                         progress.status === 'error' ? 'bg-red-500' :
-                                        progress.status === 'complete' ? 'bg-green-500' : 'bg-blue-500'
+                                            progress.status === 'complete' ? 'bg-green-500' : 'bg-blue-500'
                                     )}
                                     style={{ width: `${progress.percent}%` }}
                                 />
@@ -1579,7 +1797,7 @@ function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenC
                     {progress.status === 'idle' ? (
                         <>
                             <Button variant="outline" onClick={handleClose}>Cancel</Button>
-                            <Button 
+                            <Button
                                 onClick={handleSend}
                                 disabled={!message.trim() || sending}
                                 className="bg-purple-600 hover:bg-purple-700"
