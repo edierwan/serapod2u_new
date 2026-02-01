@@ -449,10 +449,10 @@ export default function WhatsAppSubTabs({
             {/* WhatsApp Account Connection */}
             <Card
                 className={`border-2 ${gatewayStatus?.connected
-                        ? 'bg-green-50 border-green-300'
-                        : gatewayStatus?.pairing_state === 'waiting_qr'
-                            ? 'bg-yellow-50 border-yellow-300'
-                            : 'bg-gray-50 border-gray-200'
+                    ? 'bg-green-50 border-green-300'
+                    : gatewayStatus?.pairing_state === 'waiting_qr'
+                        ? 'bg-yellow-50 border-yellow-300'
+                        : 'bg-gray-50 border-gray-200'
                     }`}
             >
                 <CardHeader className="pb-3">
@@ -814,6 +814,27 @@ export default function WhatsAppSubTabs({
                                 </div>
                             </div>
 
+                            {/* Inbox Controls - New Setting */}
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100 pb-2">
+                                <Switch
+                                    id="inbox_whatsapp_reply"
+                                    checked={whatsappConfig.config_public?.inbox_reply_via_whatsapp ?? false}
+                                    onCheckedChange={checked =>
+                                        setWhatsappConfig({
+                                            ...whatsappConfig,
+                                            config_public: {
+                                                ...whatsappConfig.config_public,
+                                                inbox_reply_via_whatsapp: checked
+                                            }
+                                        })
+                                    }
+                                />
+                                <div>
+                                    <Label htmlFor="inbox_whatsapp_reply" className="cursor-pointer font-medium">Enable WhatsApp Reply in Support Inbox</Label>
+                                    <p className="text-xs text-gray-500">Allow agents to switch between WhatsApp and App Chat when replying.</p>
+                                </div>
+                            </div>
+
                             {/* Baileys-specific fields */}
                             {whatsappConfig.provider_name === 'baileys' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
@@ -1082,8 +1103,8 @@ export default function WhatsAppSubTabs({
                             {lastTestResult && (
                                 <div
                                     className={`p-4 rounded-lg border ${lastTestResult.success
-                                            ? 'bg-green-50 border-green-200'
-                                            : 'bg-red-50 border-red-200'
+                                        ? 'bg-green-50 border-green-200'
+                                        : 'bg-red-50 border-red-200'
                                         }`}
                                 >
                                     <div className="flex items-start gap-2">
@@ -1109,8 +1130,8 @@ export default function WhatsAppSubTabs({
                             {whatsappConfig?.last_test_at && !lastTestResult && (
                                 <div
                                     className={`p-4 rounded-lg border ${whatsappConfig.last_test_status === 'success'
-                                            ? 'bg-green-50 border-green-200'
-                                            : 'bg-red-50 border-red-200'
+                                        ? 'bg-green-50 border-green-200'
+                                        : 'bg-red-50 border-red-200'
                                         }`}
                                 >
                                     <div className="flex items-start gap-2">

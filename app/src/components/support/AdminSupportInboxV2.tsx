@@ -174,6 +174,11 @@ export function AdminSupportInboxV2() {
     const [admins, setAdmins] = useState<Admin[]>([])
     const [tags, setTags] = useState<Tag[]>([])
 
+    // Global AI Auto Mode State (from Settings)
+    const [globalAiEnabled, setGlobalAiEnabled] = useState(true)
+    // Global Inbox WhatsApp Reply Setting
+    const [inboxWhatsAppEnabled, setInboxWhatsAppEnabled] = useState(false)
+
     const totalPages = Math.ceil(totalCount / rowsPerPage)
 
     // Fetch conversations
@@ -224,10 +229,32 @@ export function AdminSupportInboxV2() {
         }
     }
 
+    // Fetch global settings
+    const fetchGlobalSettings = async () => {
+        try {
+            // AI Mode
+            const aiRes = await fetch('/api/admin/whatsapp/ai-mode')
+            const aiData = await aiRes.json()
+            if (aiData.ok) {
+                setGlobalAiEnabled(aiData.mode === 'auto')
+            }
+
+            // WhatsApp Config
+            const waRes = await fetch('/api/admin/whatsapp/config')
+            if (waRes.ok) {
+                const waData = await waRes.json()
+                setInboxWhatsAppEnabled(waData.config?.config_public?.inbox_reply_via_whatsapp === true)
+            }
+        } catch (err) {
+            console.error('Failed to fetch global settings:', err)
+        }
+    }
+
     useEffect(() => {
         fetchConversations()
         fetchAdmins()
         fetchTags()
+        fetchGlobalSettings()
     }, [fetchConversations])
 
     const handleConversationClick = (conv: Conversation) => {
@@ -390,6 +417,8 @@ export function AdminSupportInboxV2() {
                         onUpdate={fetchConversations}
                         showSidebar={showSidebar}
                         setShowSidebar={setShowSidebar}
+                        globalAiEnabled={globalAiEnabled}
+                        inboxWhatsAppEnabled={inboxWhatsAppEnabled}
                     />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
@@ -646,7 +675,9 @@ function ConversationDetailView({
     onBack,
     onUpdate,
     showSidebar,
-    setShowSidebar
+    setShowSidebar,
+    globalAiEnabled,
+    inboxWhatsAppEnabled
 }: {
     conversation: Conversation
     admins: Admin[]
@@ -655,6 +686,8 @@ function ConversationDetailView({
     onUpdate: () => void
     showSidebar: boolean
     setShowSidebar: (show: boolean) => void
+    globalAiEnabled: boolean
+    inboxWhatsAppEnabled: boolean
 }) {
     const [messages, setMessages] = useState<Message[]>([])
     const [notes, setNotes] = useState<ConversationNote[]>([])
@@ -667,8 +700,7 @@ function ConversationDetailView({
     const scrollRef = useRef<HTMLDivElement>(null)
     const [activeTab, setActiveTab] = useState('chat')
 
-    // WhatsApp reply mode
-    const [replyViaWhatsApp, setReplyViaWhatsApp] = useState(false)
+    // WhatsApp reply config (Fetched from settings)
     const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
     // AI Assist
@@ -689,7 +721,11 @@ function ConversationDetailView({
     const userPhone = (convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone
 
     // AI is enabled only when botMode is 'auto' - hide ALL AI UI when 'takeover'
-    const isAiEnabled = botMode === 'auto'
+    // Also respects global AI setting
+    const isAiEnabled = botMode === 'auto' && globalAiEnabled
+
+    // Derived State: Should we reply via WhatsApp?
+    const replyViaWhatsApp = inboxWhatsAppEnabled && hasWhatsApp
 
     // Fetch bot mode from Moltbot
     const fetchBotMode = async () => {
@@ -1054,7 +1090,7 @@ function ConversationDetailView({
                     {/* Right side controls - Only show AI controls when AI is enabled */}
                     <div className="flex items-center gap-3">
                         {/* Manual Mode indicator with toggle to enable AI - shown when AI is OFF */}
-                        {hasWhatsApp && userPhone && !isAiEnabled && (
+                        {globalAiEnabled && hasWhatsApp && userPhone && !isAiEnabled && (
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -1083,7 +1119,7 @@ function ConversationDetailView({
                         )}
 
                         {/* AI Bot Mode Controls - ONLY show when AI is enabled */}
-                        {hasWhatsApp && userPhone && isAiEnabled && (
+                        {globalAiEnabled && hasWhatsApp && userPhone && isAiEnabled && (
                             <>
                                 {/* Mode Badge */}
                                 <Badge className="text-xs font-medium bg-green-100 text-green-700 hover:bg-green-100">
@@ -1291,37 +1327,15 @@ function ConversationDetailView({
                         </div>
                     )}
 
-                    {/* WhatsApp Toggle & AI Buttons - AI buttons ONLY show when AI is enabled */}
+                    {/* AI Buttons - AI buttons ONLY show when AI is enabled */}
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-4">
-                            {hasWhatsApp && (
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <div className="flex items-center gap-2">
-                                                <Switch
-                                                    id="whatsapp-mode"
-                                                    checked={replyViaWhatsApp}
-                                                    onCheckedChange={setReplyViaWhatsApp}
-                                                    className="data-[state=checked]:bg-green-600"
-                                                />
-                                                <Label
-                                                    htmlFor="whatsapp-mode"
-                                                    className={cn(
-                                                        "text-xs cursor-pointer flex items-center gap-1.5",
-                                                        replyViaWhatsApp ? "text-green-600 font-medium" : "text-gray-500"
-                                                    )}
-                                                >
-                                                    <Phone className="w-3.5 h-3.5" />
-                                                    WhatsApp
-                                                </Label>
-                                            </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>Send reply via WhatsApp to {(convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone}</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
+                            {/* WhatsApp Indicator (Stateless) - Show if enabled */}
+                            {replyViaWhatsApp && (
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                    <Phone className="w-3 h-3 mr-1" />
+                                    via WhatsApp
+                                </Badge>
                             )}
                         </div>
 

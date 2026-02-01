@@ -42,10 +42,10 @@ export async function GET(request: NextRequest) {
     } catch (error: any) {
         console.error('Error fetching AI mode:', error)
         // Return default 'auto' on error to maintain backwards compatibility
-        return NextResponse.json({ 
-            ok: true, 
-            mode: 'auto', 
-            enabled: true 
+        return NextResponse.json({
+            ok: true,
+            mode: 'auto',
+            enabled: true
         })
     }
 }
@@ -88,13 +88,13 @@ export async function POST(request: NextRequest) {
 
         if (upsertError) {
             console.error('Upsert error:', upsertError)
-            
+
             // If upsert fails, try update then insert
             const { error: updateError } = await (supabase as any)
                 .from('org_notification_settings')
-                .update({ 
-                    ai_mode: mode, 
-                    updated_at: new Date().toISOString() 
+                .update({
+                    ai_mode: mode,
+                    updated_at: new Date().toISOString()
                 })
                 .eq('org_id', userRecord.organization_id)
 
@@ -112,9 +112,9 @@ export async function POST(request: NextRequest) {
 
                 if (insertError) {
                     console.error('Insert error:', insertError)
-                    return NextResponse.json({ 
-                        ok: false, 
-                        error: 'Failed to save AI mode setting' 
+                    return NextResponse.json({
+                        ok: false,
+                        error: 'Failed to save AI mode setting'
                     }, { status: 500 })
                 }
             }
