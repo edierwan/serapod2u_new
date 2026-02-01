@@ -766,6 +766,25 @@ function ChatThreadView({
     useEffect(() => {
         fetchMessages()
         markAsRead()
+
+        // Realtime Subscription
+        const supabase = createClient()
+        const channel = supabase
+            .channel(`widget_support_messages:${conversation.id}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'support_messages',
+                filter: `thread_id=eq.${conversation.id}`
+            }, () => {
+                fetchMessages()
+                onRefresh()
+            })
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
     }, [conversation.id])
 
     // Send message

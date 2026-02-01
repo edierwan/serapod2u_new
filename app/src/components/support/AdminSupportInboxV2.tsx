@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -871,6 +872,29 @@ function ConversationDetailView({
         fetchMessages()
         fetchDetails()
         fetchBotMode()
+
+        // Realtime Subscription for new messages
+        const supabase = createClient()
+        const channel = supabase
+            .channel(`admin_support_messages:${conversation.id}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'support_messages',
+                filter: `thread_id=eq.${conversation.id}`
+            }, (payload) => {
+                // When new message arrives, re-fetch messages to get full data (sender info etc)
+                fetchMessages()
+                // Update the conversation details (last message, unread status)
+                fetchDetails()
+                // Notify parent to update the list
+                onUpdate()
+            })
+            .subscribe()
+
+        return () => {
+             supabase.removeChannel(channel)
+        }
     }, [conversation.id])
 
     // Send message
