@@ -5,21 +5,21 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET(request: NextRequest) {
     try {
         const supabase = await createClient()
-        
+
         // Get current user
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         if (authError || !user) {
             return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
 
-        // Get user's organization (using any to bypass strict typing)
-        const { data: profile } = await (supabase as any)
-            .from('user_profiles')
+        // Get user's organization from users table (consistent with Dashboard)
+        const { data: userRecord } = await supabase
+            .from('users')
             .select('organization_id')
-            .eq('user_id', user.id)
+            .eq('id', user.id)
             .single()
 
-        if (!profile?.organization_id) {
+        if (!userRecord?.organization_id) {
             return NextResponse.json({ ok: false, error: 'No organization' }, { status: 400 })
         }
 
@@ -27,15 +27,15 @@ export async function GET(request: NextRequest) {
         const { data: settings } = await (supabase as any)
             .from('organization_settings')
             .select('setting_value')
-            .eq('organization_id', profile.organization_id)
+            .eq('organization_id', userRecord.organization_id)
             .eq('setting_key', 'whatsapp_ai_mode')
             .single()
 
         // Default to 'auto' if not set
         const mode = settings?.setting_value || 'auto'
 
-        return NextResponse.json({ 
-            ok: true, 
+        return NextResponse.json({
+            ok: true,
             mode,
             enabled: mode === 'auto'
         })
@@ -50,21 +50,21 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const supabase = await createClient()
-        
+
         // Get current user
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         if (authError || !user) {
             return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
 
-        // Get user's organization (using any to bypass strict typing)
-        const { data: profile } = await (supabase as any)
-            .from('user_profiles')
+        // Get user's organization from users table
+        const { data: userRecord } = await supabase
+            .from('users')
             .select('organization_id')
-            .eq('user_id', user.id)
+            .eq('id', user.id)
             .single()
 
-        if (!profile?.organization_id) {
+        if (!userRecord?.organization_id) {
             return NextResponse.json({ ok: false, error: 'No organization' }, { status: 400 })
         }
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         const { error: upsertError } = await (supabase as any)
             .from('organization_settings')
             .upsert({
-                organization_id: profile.organization_id,
+                organization_id: userRecord.organization_id,
                 setting_key: 'whatsapp_ai_mode',
                 setting_value: mode,
                 updated_at: new Date().toISOString()
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
             const { data: existing } = await (supabase as any)
                 .from('organization_settings')
                 .select('id')
-                .eq('organization_id', profile.organization_id)
+                .eq('organization_id', userRecord.organization_id)
                 .eq('setting_key', 'whatsapp_ai_mode')
                 .single()
 
@@ -96,21 +96,21 @@ export async function POST(request: NextRequest) {
                 await (supabase as any)
                     .from('organization_settings')
                     .update({ setting_value: mode, updated_at: new Date().toISOString() })
-                    .eq('organization_id', profile.organization_id)
+                    .eq('organization_id', userRecord.organization_id)
                     .eq('setting_key', 'whatsapp_ai_mode')
             } else {
                 await (supabase as any)
                     .from('organization_settings')
                     .insert({
-                        organization_id: profile.organization_id,
+                        organization_id: userRecord.organization_id,
                         setting_key: 'whatsapp_ai_mode',
                         setting_value: mode
                     })
             }
         }
 
-        return NextResponse.json({ 
-            ok: true, 
+        return NextResponse.json({
+            ok: true,
             mode,
             enabled: mode === 'auto',
             message: mode === 'auto' ? 'AI Auto-Reply enabled' : 'AI Auto-Reply disabled'

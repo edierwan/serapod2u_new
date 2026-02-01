@@ -238,17 +238,17 @@ export default function BotAdminSection() {
                             <div>
                                 <CardTitle className="text-lg">AI Auto-Reply</CardTitle>
                                 <CardDescription>
-                                    {globalAiEnabled 
+                                    {globalAiEnabled
                                         ? 'AI bot is actively responding to customer messages'
                                         : 'AI is disabled. Human agents handle all conversations.'}
                                 </CardDescription>
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            <Badge 
+                            <Badge
                                 variant="outline"
-                                className={`text-sm px-3 py-1 ${globalAiEnabled 
-                                    ? 'bg-green-100 text-green-700 border-green-300' 
+                                className={`text-sm px-3 py-1 ${globalAiEnabled
+                                    ? 'bg-green-100 text-green-700 border-green-300'
                                     : 'bg-gray-100 text-gray-600 border-gray-300'}`}
                             >
                                 {globalAiEnabled ? 'AUTO' : 'MANUAL'}
@@ -261,8 +261,8 @@ export default function BotAdminSection() {
                                     disabled={aiModeLoading}
                                     className="data-[state=checked]:bg-green-600"
                                 />
-                                <Label 
-                                    htmlFor="global-ai-toggle" 
+                                <Label
+                                    htmlFor="global-ai-toggle"
                                     className={`text-sm font-medium cursor-pointer ${globalAiEnabled ? 'text-green-700' : 'text-gray-500'}`}
                                 >
                                     {aiModeLoading ? (

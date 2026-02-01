@@ -266,7 +266,7 @@ export function AdminSupportInboxV2() {
     }
 
     return (
-        <div className="h-[calc(100vh-180px)] min-h-[500px] flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="h-full flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {/* LEFT PANEL - Conversation List */}
             <div className="w-[380px] min-w-[320px] border-r border-gray-200 flex flex-col bg-white">
                 {/* Header */}
@@ -282,7 +282,7 @@ export function AdminSupportInboxV2() {
                             </Button>
                         </div>
                     </div>
-                    
+
                     {/* Search */}
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -427,10 +427,10 @@ function ConversationListItem({
             onClick={onClick}
             className={cn(
                 "px-3 py-3 cursor-pointer transition-all border-l-3",
-                isActive 
-                    ? "bg-blue-50 border-l-blue-500" 
-                    : hasUnread 
-                        ? "bg-blue-50/50 border-l-transparent hover:bg-gray-50" 
+                isActive
+                    ? "bg-blue-50 border-l-blue-500"
+                    : hasUnread
+                        ? "bg-blue-50/50 border-l-transparent hover:bg-gray-50"
                         : "border-l-transparent hover:bg-gray-50",
                 isWhatsApp && !isActive && "border-l-green-400"
             )}
@@ -519,8 +519,8 @@ function ConversationRow({
                 {/* Unread indicator / Avatar placeholder */}
                 <div className={cn(
                     "flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium",
-                    conversation.is_unread 
-                        ? "bg-blue-100 text-blue-700" 
+                    conversation.is_unread
+                        ? "bg-blue-100 text-blue-700"
                         : "bg-gray-100 text-gray-600"
                 )}>
                     {conversation.admin_unread_count > 0 ? (
@@ -1118,7 +1118,7 @@ function ConversationDetailView({
                                 </TooltipProvider>
                             </>
                         )}
-                        
+
                         {/* Sidebar Toggle Button */}
                         <TooltipProvider>
                             <Tooltip>
@@ -1406,8 +1406,8 @@ function ConversationDetailView({
                             disabled={!newMessage.trim() || sending}
                             className={cn(
                                 "px-5 h-auto min-h-[56px] font-medium",
-                                replyViaWhatsApp 
-                                    ? "bg-green-600 hover:bg-green-700" 
+                                replyViaWhatsApp
+                                    ? "bg-green-600 hover:bg-green-700"
                                     : "bg-slate-700 hover:bg-slate-800"
                             )}
                         >
@@ -1434,147 +1434,147 @@ function ConversationDetailView({
             )}>
                 {showSidebar && (
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full w-80">
-                    <TabsList className="w-full justify-start rounded-none border-b bg-white px-2">
-                        <TabsTrigger value="chat" className="text-xs">Details</TabsTrigger>
-                        <TabsTrigger value="notes" className="text-xs">Notes ({notes.length})</TabsTrigger>
-                    </TabsList>
+                        <TabsList className="w-full justify-start rounded-none border-b bg-white px-2">
+                            <TabsTrigger value="chat" className="text-xs">Details</TabsTrigger>
+                            <TabsTrigger value="notes" className="text-xs">Notes ({notes.length})</TabsTrigger>
+                        </TabsList>
 
-                    <TabsContent value="chat" className="flex-1 overflow-auto m-0 p-4 space-y-4">
-                        {/* Status */}
-                        <div>
-                            <Label className="text-xs text-gray-500 mb-1.5 block">Status</Label>
-                            <Select value={convDetails.status} onValueChange={handleStatusChange}>
-                                <SelectTrigger className="w-full bg-white">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-                                        <SelectItem key={key} value={key}>
-                                            <div className="flex items-center gap-2">
-                                                <config.icon className="w-3.5 h-3.5" />
-                                                {config.label}
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        <TabsContent value="chat" className="flex-1 overflow-auto m-0 p-4 space-y-4">
+                            {/* Status */}
+                            <div>
+                                <Label className="text-xs text-gray-500 mb-1.5 block">Status</Label>
+                                <Select value={convDetails.status} onValueChange={handleStatusChange}>
+                                    <SelectTrigger className="w-full bg-white">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                                            <SelectItem key={key} value={key}>
+                                                <div className="flex items-center gap-2">
+                                                    <config.icon className="w-3.5 h-3.5" />
+                                                    {config.label}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-                        {/* Priority */}
-                        <div>
-                            <Label className="text-xs text-gray-500 mb-1.5 block">Priority</Label>
-                            <Select value={convDetails.priority} onValueChange={handlePriorityChange}>
-                                <SelectTrigger className="w-full bg-white">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-                                        <SelectItem key={key} value={key}>
-                                            <Badge className={cn("text-xs", config.color)}>{config.label}</Badge>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                            {/* Priority */}
+                            <div>
+                                <Label className="text-xs text-gray-500 mb-1.5 block">Priority</Label>
+                                <Select value={convDetails.priority} onValueChange={handlePriorityChange}>
+                                    <SelectTrigger className="w-full bg-white">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                                            <SelectItem key={key} value={key}>
+                                                <Badge className={cn("text-xs", config.color)}>{config.label}</Badge>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-                        {/* Assignment */}
-                        <div>
-                            <Label className="text-xs text-gray-500 mb-1.5 block">Assigned To</Label>
-                            <Select
-                                value={convDetails.assigned_to?.id || 'unassigned'}
-                                onValueChange={(v) => handleAssignChange(v === 'unassigned' ? null : v)}
-                            >
-                                <SelectTrigger className="w-full bg-white">
-                                    <SelectValue placeholder="Unassigned" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                                    {admins.map(admin => (
-                                        <SelectItem key={admin.id} value={admin.id}>
-                                            {admin.full_name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                            {/* Assignment */}
+                            <div>
+                                <Label className="text-xs text-gray-500 mb-1.5 block">Assigned To</Label>
+                                <Select
+                                    value={convDetails.assigned_to?.id || 'unassigned'}
+                                    onValueChange={(v) => handleAssignChange(v === 'unassigned' ? null : v)}
+                                >
+                                    <SelectTrigger className="w-full bg-white">
+                                        <SelectValue placeholder="Unassigned" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                                        {admins.map(admin => (
+                                            <SelectItem key={admin.id} value={admin.id}>
+                                                {admin.full_name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-                        {/* Tags */}
-                        <div>
-                            <Label className="text-xs text-gray-500 mb-1.5 block">Tags</Label>
-                            <div className="flex flex-wrap gap-1">
-                                {convDetails.tags && convDetails.tags.length > 0 ? (
-                                    convDetails.tags.map(tag => (
-                                        <Badge
-                                            key={tag.id}
-                                            style={{ backgroundColor: tag.color + '20', color: tag.color }}
-                                            className="text-xs"
-                                        >
-                                            {tag.name}
-                                        </Badge>
-                                    ))
+                            {/* Tags */}
+                            <div>
+                                <Label className="text-xs text-gray-500 mb-1.5 block">Tags</Label>
+                                <div className="flex flex-wrap gap-1">
+                                    {convDetails.tags && convDetails.tags.length > 0 ? (
+                                        convDetails.tags.map(tag => (
+                                            <Badge
+                                                key={tag.id}
+                                                style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                className="text-xs"
+                                            >
+                                                {tag.name}
+                                            </Badge>
+                                        ))
+                                    ) : (
+                                        <span className="text-xs text-gray-400">No tags</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* User Info */}
+                            <div className="pt-4 border-t">
+                                <Label className="text-xs text-gray-500 mb-2 block">User Information</Label>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <User className="w-4 h-4 text-gray-400" />
+                                        <span>{convDetails.created_by?.full_name || 'Unknown'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <MessageCircle className="w-4 h-4 text-gray-400" />
+                                        <span className="text-blue-600">{convDetails.created_by?.phone || 'No phone'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                                        <Clock className="w-4 h-4 text-gray-400" />
+                                        <span>Created {formatDistanceToNow(new Date(convDetails.created_at), { addSuffix: true })}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="notes" className="flex-1 overflow-auto m-0 p-4 flex flex-col">
+                            {/* Add Note */}
+                            <div className="mb-4">
+                                <Textarea
+                                    value={newNote}
+                                    onChange={(e) => setNewNote(e.target.value)}
+                                    placeholder="Add internal note..."
+                                    className="resize-none min-h-[80px] text-sm"
+                                />
+                                <Button
+                                    size="sm"
+                                    className="mt-2 w-full"
+                                    onClick={handleAddNote}
+                                    disabled={!newNote.trim()}
+                                >
+                                    <StickyNote className="w-3.5 h-3.5 mr-1.5" /> Add Note
+                                </Button>
+                            </div>
+
+                            {/* Notes List */}
+                            <div className="flex-1 space-y-3">
+                                {notes.length === 0 ? (
+                                    <p className="text-xs text-gray-400 text-center py-4">No internal notes yet</p>
                                 ) : (
-                                    <span className="text-xs text-gray-400">No tags</span>
+                                    notes.map(note => (
+                                        <div key={note.id} className="bg-yellow-50 border border-yellow-100 rounded-lg p-3">
+                                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.note_text}</p>
+                                            <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
+                                                <span>{note.admin?.full_name || 'Admin'}</span>
+                                                <span>{format(new Date(note.created_at), 'MMM d, HH:mm')}</span>
+                                            </div>
+                                        </div>
+                                    ))
                                 )}
                             </div>
-                        </div>
-
-                        {/* User Info */}
-                        <div className="pt-4 border-t">
-                            <Label className="text-xs text-gray-500 mb-2 block">User Information</Label>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex items-center gap-2">
-                                    <User className="w-4 h-4 text-gray-400" />
-                                    <span>{convDetails.created_by?.full_name || 'Unknown'}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <MessageCircle className="w-4 h-4 text-gray-400" />
-                                    <span className="text-blue-600">{convDetails.created_by?.phone || 'No phone'}</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500">
-                                    <Clock className="w-4 h-4 text-gray-400" />
-                                    <span>Created {formatDistanceToNow(new Date(convDetails.created_at), { addSuffix: true })}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="notes" className="flex-1 overflow-auto m-0 p-4 flex flex-col">
-                        {/* Add Note */}
-                        <div className="mb-4">
-                            <Textarea
-                                value={newNote}
-                                onChange={(e) => setNewNote(e.target.value)}
-                                placeholder="Add internal note..."
-                                className="resize-none min-h-[80px] text-sm"
-                            />
-                            <Button
-                                size="sm"
-                                className="mt-2 w-full"
-                                onClick={handleAddNote}
-                                disabled={!newNote.trim()}
-                            >
-                                <StickyNote className="w-3.5 h-3.5 mr-1.5" /> Add Note
-                            </Button>
-                        </div>
-
-                        {/* Notes List */}
-                        <div className="flex-1 space-y-3">
-                            {notes.length === 0 ? (
-                                <p className="text-xs text-gray-400 text-center py-4">No internal notes yet</p>
-                            ) : (
-                                notes.map(note => (
-                                    <div key={note.id} className="bg-yellow-50 border border-yellow-100 rounded-lg p-3">
-                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.note_text}</p>
-                                        <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
-                                            <span>{note.admin?.full_name || 'Admin'}</span>
-                                            <span>{format(new Date(note.created_at), 'MMM d, HH:mm')}</span>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </TabsContent>
-                </Tabs>
+                        </TabsContent>
+                    </Tabs>
                 )}
             </div>
         </div>
