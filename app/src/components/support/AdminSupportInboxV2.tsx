@@ -47,7 +47,9 @@ import {
     Bot,
     Sparkles,
     Zap,
-    Globe
+    Globe,
+    PanelRightClose,
+    PanelRightOpen
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -155,6 +157,7 @@ export function AdminSupportInboxV2() {
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
     const [loading, setLoading] = useState(false)
     const [showBlastModal, setShowBlastModal] = useState(false)
+    const [showSidebar, setShowSidebar] = useState(false) // Collapsible drawer state - hidden by default
 
     // Filters
     const [statusFilter, setStatusFilter] = useState('all')
@@ -263,7 +266,7 @@ export function AdminSupportInboxV2() {
     }
 
     return (
-        <div className="h-[750px] min-h-[600px] flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="h-[calc(100vh-180px)] min-h-[500px] flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {/* LEFT PANEL - Conversation List */}
             <div className="w-[380px] min-w-[320px] border-r border-gray-200 flex flex-col bg-white">
                 {/* Header */}
@@ -385,6 +388,8 @@ export function AdminSupportInboxV2() {
                         tags={tags}
                         onBack={() => setActiveConversation(null)}
                         onUpdate={fetchConversations}
+                        showSidebar={showSidebar}
+                        setShowSidebar={setShowSidebar}
                     />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
@@ -639,13 +644,17 @@ function ConversationDetailView({
     admins,
     tags,
     onBack,
-    onUpdate
+    onUpdate,
+    showSidebar,
+    setShowSidebar
 }: {
     conversation: Conversation
     admins: Admin[]
     tags: Tag[]
     onBack: () => void
     onUpdate: () => void
+    showSidebar: boolean
+    setShowSidebar: (show: boolean) => void
 }) {
     const [messages, setMessages] = useState<Message[]>([])
     const [notes, setNotes] = useState<ConversationNote[]>([])
@@ -1109,6 +1118,29 @@ function ConversationDetailView({
                                 </TooltipProvider>
                             </>
                         )}
+                        
+                        {/* Sidebar Toggle Button */}
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 w-8 p-0"
+                                        onClick={() => setShowSidebar(!showSidebar)}
+                                    >
+                                        {showSidebar ? (
+                                            <PanelRightClose className="w-4 h-4 text-gray-500" />
+                                        ) : (
+                                            <PanelRightOpen className="w-4 h-4 text-gray-500" />
+                                        )}
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{showSidebar ? 'Hide Details' : 'Show Details'}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                     </div>
                 </div>
 
@@ -1154,14 +1186,10 @@ function ConversationDetailView({
                                         <div className={cn(
                                             "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm relative",
                                             isAdmin
-                                                // Admin messages - professional neutral colors
-                                                ? isWhatsApp
-                                                    ? "bg-green-600 text-white rounded-br-sm"
-                                                    : "bg-slate-700 text-white rounded-br-sm"
-                                                // User messages - clean left aligned
-                                                : isWhatsApp
-                                                    ? "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
-                                                    : "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
+                                                // Admin messages - WhatsApp style outgoing (teal/green)
+                                                ? "bg-emerald-500 text-white rounded-br-sm"
+                                                // User messages - WhatsApp style incoming (light green)
+                                                : "bg-green-100 text-gray-900 rounded-bl-sm"
                                         )}>
                                             {/* Channel badge - only show WhatsApp indicator, hide AI badge when AI is off */}
                                             {isWhatsApp && (
@@ -1399,9 +1427,13 @@ function ConversationDetailView({
                 </div>
             </div>
 
-            {/* Right Sidebar - Metadata Panel */}
-            <div className="w-80 border-l bg-gray-50/50 flex flex-col overflow-hidden">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+            {/* Right Sidebar - Collapsible Drawer */}
+            <div className={cn(
+                "border-l bg-gray-50/50 flex flex-col overflow-hidden transition-all duration-300 ease-in-out",
+                showSidebar ? "w-80 opacity-100" : "w-0 opacity-0"
+            )}>
+                {showSidebar && (
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full w-80">
                     <TabsList className="w-full justify-start rounded-none border-b bg-white px-2">
                         <TabsTrigger value="chat" className="text-xs">Details</TabsTrigger>
                         <TabsTrigger value="notes" className="text-xs">Notes ({notes.length})</TabsTrigger>
@@ -1543,6 +1575,7 @@ function ConversationDetailView({
                         </div>
                     </TabsContent>
                 </Tabs>
+                )}
             </div>
         </div>
     )

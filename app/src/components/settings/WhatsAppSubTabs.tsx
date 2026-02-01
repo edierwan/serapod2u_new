@@ -99,6 +99,10 @@ export default function WhatsAppSubTabs({
   const urlTab = searchParams.get('whatsapp_tab')
   const [activeTab, setActiveTab] = useState(urlTab || 'status')
 
+  // Global AI Auto Mode State
+  const [globalAiEnabled, setGlobalAiEnabled] = useState(true)
+  const [aiModeLoading, setAiModeLoading] = useState(false)
+
   // Gateway status state
   const [gatewayStatus, setGatewayStatus] = useState<{
     configured: boolean
@@ -136,6 +140,39 @@ export default function WhatsAppSubTabs({
     const params = new URLSearchParams(searchParams.toString())
     params.set('whatsapp_tab', value)
     router.push(`?${params.toString()}`, { scroll: false })
+  }
+
+  // Fetch global AI mode status
+  const fetchGlobalAiMode = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/whatsapp/ai-mode')
+      const data = await res.json()
+      if (data.ok) {
+        setGlobalAiEnabled(data.mode === 'auto')
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch AI mode:', err)
+    }
+  }, [])
+
+  // Toggle global AI mode
+  const handleToggleGlobalAi = async (enabled: boolean) => {
+    setAiModeLoading(true)
+    try {
+      const res = await fetch('/api/admin/whatsapp/ai-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: enabled ? 'auto' : 'takeover' })
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setGlobalAiEnabled(enabled)
+      }
+    } catch (err: any) {
+      console.error('Failed to toggle AI mode:', err)
+    } finally {
+      setAiModeLoading(false)
+    }
   }
 
   // Helper to parse complex error objects from gateway
@@ -362,6 +399,11 @@ export default function WhatsAppSubTabs({
       setSendingTest(false)
     }
   }
+
+  // Fetch AI mode on mount
+  useEffect(() => {
+    fetchGlobalAiMode()
+  }, [fetchGlobalAiMode])
 
   // Start/stop polling for gateway status
   useEffect(() => {
@@ -626,6 +668,77 @@ export default function WhatsAppSubTabs({
   // ========================================
   const renderConfigurationTab = () => (
     <div className="space-y-6">
+      {/* AI Auto-Reply Control - PROMINENT */}
+      <Card className="border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${globalAiEnabled ? 'bg-green-100' : 'bg-gray-100'}`}>
+                {globalAiEnabled ? (
+                  <Bot className="w-6 h-6 text-green-600" />
+                ) : (
+                  <Bot className="w-6 h-6 text-gray-500" />
+                )}
+              </div>
+              <div>
+                <CardTitle className="text-lg">AI Auto-Reply</CardTitle>
+                <CardDescription>
+                  {globalAiEnabled 
+                    ? 'AI bot is actively responding to customer messages'
+                    : 'AI is disabled. Human agents handle all conversations.'}
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge 
+                variant="outline"
+                className={`text-sm px-3 py-1 ${globalAiEnabled 
+                  ? 'bg-green-100 text-green-700 border-green-300' 
+                  : 'bg-gray-100 text-gray-600 border-gray-300'}`}
+              >
+                {globalAiEnabled ? 'AUTO' : 'MANUAL'}
+              </Badge>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="global-ai-toggle-config"
+                  checked={globalAiEnabled}
+                  onCheckedChange={handleToggleGlobalAi}
+                  disabled={aiModeLoading}
+                  className="data-[state=checked]:bg-green-600"
+                />
+                <Label 
+                  htmlFor="global-ai-toggle-config" 
+                  className={`text-sm font-medium cursor-pointer ${globalAiEnabled ? 'text-green-700' : 'text-gray-500'}`}
+                >
+                  {aiModeLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : globalAiEnabled ? (
+                    'ON'
+                  ) : (
+                    'OFF'
+                  )}
+                </Label>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className={`p-3 rounded-lg text-sm ${globalAiEnabled ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+            {globalAiEnabled ? (
+              <p className="text-green-700 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                <span><strong>AI is ON</strong> — The bot will automatically reply to WhatsApp messages. AI controls visible in Support Inbox.</span>
+              </p>
+            ) : (
+              <p className="text-amber-700 flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                <span><strong>AI is OFF</strong> — All AI features hidden in Support Inbox. Human agents handle conversations manually.</span>
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

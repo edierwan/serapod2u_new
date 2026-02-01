@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 // GET /api/admin/whatsapp/ai-mode - Get global AI mode
 export async function GET(request: NextRequest) {
@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
 
-        // Get user's organization
-        const { data: profile } = await supabase
+        // Get user's organization (using any to bypass strict typing)
+        const { data: profile } = await (supabase as any)
             .from('user_profiles')
             .select('organization_id')
             .eq('user_id', user.id)
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Get AI mode from org settings
-        const { data: settings } = await supabase
+        const { data: settings } = await (supabase as any)
             .from('organization_settings')
             .select('setting_value')
             .eq('organization_id', profile.organization_id)
@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
 
-        // Get user's organization
-        const { data: profile } = await supabase
+        // Get user's organization (using any to bypass strict typing)
+        const { data: profile } = await (supabase as any)
             .from('user_profiles')
             .select('organization_id')
             .eq('user_id', user.id)
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
         const mode = body.mode === 'auto' ? 'auto' : 'takeover'
 
         // Upsert the setting
-        const { error: upsertError } = await supabase
+        const { error: upsertError } = await (supabase as any)
             .from('organization_settings')
             .upsert({
                 organization_id: profile.organization_id,
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 
         if (upsertError) {
             // If upsert fails due to missing table or constraint, try insert/update separately
-            const { data: existing } = await supabase
+            const { data: existing } = await (supabase as any)
                 .from('organization_settings')
                 .select('id')
                 .eq('organization_id', profile.organization_id)
@@ -93,13 +93,13 @@ export async function POST(request: NextRequest) {
                 .single()
 
             if (existing) {
-                await supabase
+                await (supabase as any)
                     .from('organization_settings')
                     .update({ setting_value: mode, updated_at: new Date().toISOString() })
                     .eq('organization_id', profile.organization_id)
                     .eq('setting_key', 'whatsapp_ai_mode')
             } else {
-                await supabase
+                await (supabase as any)
                     .from('organization_settings')
                     .insert({
                         organization_id: profile.organization_id,
