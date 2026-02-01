@@ -60,20 +60,24 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
 
     useEffect(() => {
         // Fetch Segments
+        console.log('Fetching segments and templates...');
         fetch('/api/wa/marketing/segments')
             .then(r => r.json())
             .then(d => setSegments(Array.isArray(d) ? d : []))
-            .catch(console.error);
+            .catch(err => console.error('Error fetching segments:', err));
             
         // Fetch Templates
         fetch('/api/wa/marketing/templates')
             .then(r => r.json())
             .then(d => {
+                console.log('Templates fetched:', d);
                 if(Array.isArray(d)) {
                     setTemplates(d);
+                } else {
+                    setTemplates([]);
                 }
             })
-            .catch(console.error);
+            .catch(err => console.error('Error fetching templates:', err));
     }, []);
 
     const steps = [
