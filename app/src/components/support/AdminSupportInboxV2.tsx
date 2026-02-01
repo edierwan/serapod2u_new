@@ -266,9 +266,9 @@ export function AdminSupportInboxV2() {
     }
 
     return (
-        <div className="h-full flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="h-[calc(100vh-120px)] flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {/* LEFT PANEL - Conversation List */}
-            <div className="w-[380px] min-w-[320px] border-r border-gray-200 flex flex-col bg-white">
+            <div className="w-[380px] min-w-[320px] border-r border-gray-200 flex flex-col bg-white h-full">
                 {/* Header */}
                 <div className="px-4 py-3 border-b border-gray-100 bg-white">
                     <div className="flex items-center justify-between mb-3">
@@ -332,8 +332,8 @@ export function AdminSupportInboxV2() {
                     </Button>
                 </div>
 
-                {/* Conversation List */}
-                <ScrollArea className="flex-1">
+                {/* Conversation List - Scrollable container */}
+                <ScrollArea className="flex-1 overflow-hidden">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-12">
                             <Loader2 className="w-6 h-6 animate-spin text-gray-400 mb-2" />
@@ -380,7 +380,7 @@ export function AdminSupportInboxV2() {
             </div>
 
             {/* RIGHT PANEL - Chat Detail */}
-            <div className="flex-1 flex flex-col bg-gray-50/30">
+            <div className="flex-1 flex flex-col bg-gray-50/30 h-full overflow-hidden">
                 {activeConversation ? (
                     <ConversationDetailView
                         conversation={activeConversation}
@@ -1023,9 +1023,9 @@ function ConversationDetailView({
     const statusConfig = STATUS_CONFIG[convDetails.status]
 
     return (
-        <div className="flex h-full">
+        <div className="flex h-full overflow-hidden">
             {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
                 {/* Header - Professional, clean design for two-column layout */}
                 <div className="px-4 py-3 border-b flex items-center justify-between bg-white">
                     <div className="flex items-center gap-3">
@@ -1154,8 +1154,8 @@ function ConversationDetailView({
                     </div>
                 )}
 
-                {/* Messages */}
-                <ScrollArea className="flex-1 p-4 bg-gray-50/30">
+                {/* Messages - Scrollable area */}
+                <ScrollArea className="flex-1 p-4 bg-gray-50/30 overflow-y-auto">
                     <div className="space-y-4 pb-4">
                         {loadingMessages ? (
                             <div className="flex justify-center py-8">

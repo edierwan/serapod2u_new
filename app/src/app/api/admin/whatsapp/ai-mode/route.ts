@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
 
-        // Get user's organization from users table (consistent with Dashboard)
+        // Get user's organization from users table
         const { data: userRecord } = await supabase
             .from('users')
             .select('organization_id')
@@ -23,16 +23,15 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ ok: false, error: 'No organization' }, { status: 400 })
         }
 
-        // Get AI mode from org settings
-        const { data: settings } = await (supabase as any)
-            .from('organization_settings')
-            .select('setting_value')
-            .eq('organization_id', userRecord.organization_id)
-            .eq('setting_key', 'whatsapp_ai_mode')
+        // Get AI mode from org_notification_settings table
+        const { data: settings, error: settingsError } = await supabase
+            .from('org_notification_settings')
+            .select('ai_mode')
+            .eq('org_id', userRecord.organization_id)
             .single()
 
-        // Default to 'auto' if not set
-        const mode = settings?.setting_value || 'auto'
+        // Default to 'auto' if not set or column doesn't exist yet
+        const mode = (settings as any)?.ai_mode || 'auto'
 
         return NextResponse.json({
             ok: true,
@@ -42,7 +41,12 @@ export async function GET(request: NextRequest) {
 
     } catch (error: any) {
         console.error('Error fetching AI mode:', error)
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+        // Return default 'auto' on error to maintain backwards compatibility
+        return NextResponse.json({ 
+            ok: true, 
+            mode: 'auto', 
+            enabled: true 
+        })
     }
 }
 
@@ -71,41 +75,48 @@ export async function POST(request: NextRequest) {
         const body = await request.json()
         const mode = body.mode === 'auto' ? 'auto' : 'takeover'
 
-        // Upsert the setting
+        // Upsert into org_notification_settings table
         const { error: upsertError } = await (supabase as any)
-            .from('organization_settings')
+            .from('org_notification_settings')
             .upsert({
-                organization_id: userRecord.organization_id,
-                setting_key: 'whatsapp_ai_mode',
-                setting_value: mode,
+                org_id: userRecord.organization_id,
+                ai_mode: mode,
                 updated_at: new Date().toISOString()
             }, {
-                onConflict: 'organization_id,setting_key'
+                onConflict: 'org_id'
             })
 
         if (upsertError) {
-            // If upsert fails due to missing table or constraint, try insert/update separately
-            const { data: existing } = await (supabase as any)
-                .from('organization_settings')
-                .select('id')
-                .eq('organization_id', userRecord.organization_id)
-                .eq('setting_key', 'whatsapp_ai_mode')
-                .single()
+            console.error('Upsert error:', upsertError)
+            
+            // If upsert fails, try update then insert
+            const { error: updateError } = await (supabase as any)
+                .from('org_notification_settings')
+                .update({ 
+                    ai_mode: mode, 
+                    updated_at: new Date().toISOString() 
+                })
+                .eq('org_id', userRecord.organization_id)
 
-            if (existing) {
-                await (supabase as any)
-                    .from('organization_settings')
-                    .update({ setting_value: mode, updated_at: new Date().toISOString() })
-                    .eq('organization_id', userRecord.organization_id)
-                    .eq('setting_key', 'whatsapp_ai_mode')
-            } else {
-                await (supabase as any)
-                    .from('organization_settings')
+            if (updateError) {
+                // Try insert if update also fails (row doesn't exist)
+                const { error: insertError } = await (supabase as any)
+                    .from('org_notification_settings')
                     .insert({
-                        organization_id: userRecord.organization_id,
-                        setting_key: 'whatsapp_ai_mode',
-                        setting_value: mode
+                        org_id: userRecord.organization_id,
+                        ai_mode: mode,
+                        otp_enabled: false,
+                        otp_channel: 'whatsapp',
+                        whatsapp_enabled: true
                     })
+
+                if (insertError) {
+                    console.error('Insert error:', insertError)
+                    return NextResponse.json({ 
+                        ok: false, 
+                        error: 'Failed to save AI mode setting' 
+                    }, { status: 500 })
+                }
             }
         }
 
