@@ -69,6 +69,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Ensure template_id is a valid UUID or NULL
+    let safeTemplateId = template_id;
+    if (safeTemplateId && typeof safeTemplateId === 'string') {
+        // Basic UUID validation (or just check length/format)
+        // If it looks like "2" or short string, set to null to avoid DB crash
+        if (safeTemplateId.length < 20) { // UUIDs are 36 chars
+            safeTemplateId = null;
+        }
+    }
+
     const { data, error } = await supabase
       .from('marketing_campaigns' as any)
       .insert({
@@ -78,7 +88,7 @@ export async function POST(request: Request) {
         status: 'draft',
         audience_filters: audience_filters || {},
         message_body,
-        template_id,
+        template_id: safeTemplateId,
         scheduled_at,
         quiet_hours_enabled,
         quiet_hours_start,
