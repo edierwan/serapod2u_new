@@ -410,7 +410,8 @@ export async function POST(request: NextRequest) {
             excluded_invalid_wa: excludedInvalidWA,
             excluded_activity: excludedActivity,
             excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA + excludedActivity,
-            preview: eligibleUsers.slice(0, 20)
+            preview: eligibleUsers.slice(0, 20),
+            users: body.include_all ? eligibleUsers : undefined
         });
 
     } catch (err: any) {

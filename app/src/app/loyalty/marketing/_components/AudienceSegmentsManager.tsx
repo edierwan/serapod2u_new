@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Users, Edit, Trash2, Copy, Loader2, Save, ArrowLeft } from 'lucide-react';
+import { Plus, Users, Edit, Trash2, Copy, Loader2, Save, ArrowLeft, Download } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
@@ -34,6 +34,7 @@ export function AudienceSegmentsManager() {
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
     // View mode state
@@ -61,6 +62,66 @@ export function AudienceSegmentsManager() {
             toast({ title: 'Error', description: 'Failed to load segments', variant: 'destructive' });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDownload = async (segment: Segment) => {
+        setDownloadingId(segment.id);
+        try {
+            const res = await fetch('/api/wa/marketing/audience/resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'segment',
+                    segment_id: segment.id,
+                    include_all: true
+                })
+            });
+
+            if (!res.ok) throw new Error("Failed to fetch segment data");
+
+            const data = await res.json();
+            const users = data.users || [];
+
+            if (users.length === 0) {
+                toast({ title: "Info", description: "No users in this segment to download." });
+                return;
+            }
+
+            // Convert to CSV
+            const headers = ["User ID", "Name", "Phone", "State", "Org Type", "Org Name", "Balance", "Collected System", "Tx Count"];
+            const csvRows = [headers.join(",")];
+
+            users.forEach((u: any) => {
+                const row = [
+                    u.id,
+                    `"${(u.name || '').replace(/"/g, '""')}"`,
+                    u.phone,
+                    u.state || '',
+                    u.organization_type,
+                    `"${(u.org_name || '').replace(/"/g, '""')}"`,
+                    u.current_balance,
+                    u.collected_system,
+                    u.transactions_count
+                ];
+                csvRows.push(row.join(","));
+            });
+
+            const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `${segment.name.replace(/\s+/g, '_')}_users.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            toast({ title: "Success", description: "Segment data downloaded." });
+        } catch (error) {
+            console.error(error);
+            toast({ title: "Error", description: "Failed to download segment data", variant: "destructive" });
+        } finally {
+            setDownloadingId(null);
         }
     };
 
@@ -313,6 +374,9 @@ export function AudienceSegmentsManager() {
                                         <TableCell>{new Date(segment.updated_at).toLocaleDateString()}</TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-2">
+                                                <Button variant="ghost" size="icon" onClick={() => handleDownload(segment)} disabled={downloadingId === segment.id}>
+                                                    {downloadingId === segment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                                </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleEdit(segment)}><Edit className="h-4 w-4" /></Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleDuplicate(segment)}><Copy className="h-4 w-4" /></Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleDelete(segment.id)} disabled={deletingId === segment.id}>

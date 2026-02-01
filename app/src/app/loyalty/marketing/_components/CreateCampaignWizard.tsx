@@ -33,6 +33,8 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
     const [estimatedRecipients, setEstimatedRecipients] = useState(0);
 
     const [segments, setSegments] = useState<any[]>([]);
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -57,9 +59,20 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
     });
 
     useEffect(() => {
+        // Fetch Segments
         fetch('/api/wa/marketing/segments')
             .then(r => r.json())
             .then(d => setSegments(Array.isArray(d) ? d : []))
+            .catch(console.error);
+            
+        // Fetch Templates
+        fetch('/api/wa/marketing/templates')
+            .then(r => r.json())
+            .then(d => {
+                if(Array.isArray(d)) {
+                    setTemplates(d);
+                }
+            })
             .catch(console.error);
     }, []);
 
@@ -68,12 +81,6 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
         { num: 2, label: 'Audience' },
         { num: 3, label: 'Message' },
         { num: 4, label: 'Review' }
-    ];
-
-    const mockTemplates = [
-        { id: '1', name: 'Start from Scratch', body: '' },
-        { id: '2', name: 'Standard Promo', body: 'Hi {name}, huge sale today! {short_link}' },
-        { id: '3', name: 'Points Reminder', body: 'You have {points_balance} points expiring soon.' }
     ];
 
     const handleNext = () => setStep(s => Math.min(s + 1, 4));
@@ -280,24 +287,51 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                 {step === 3 && (
                     <div className="grid md:grid-cols-2 gap-8 h-[500px]">
                         <div className="flex flex-col gap-4 h-full">
-                            <div className="space-y-2">
-                                <Label>Template</Label>
-                                <Select
-                                    value={formData.templateId}
-                                    onValueChange={(val) => {
-                                        const tmpl = mockTemplates.find(t => t.id === val);
-                                        setFormData({
-                                            ...formData,
-                                            templateId: val,
-                                            message: tmpl?.body || formData.message
-                                        });
-                                    }}
-                                >
-                                    <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
-                                    <SelectContent>
-                                        {mockTemplates.map(t => (
-                                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                                        ))}
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Template Category</Label>
+                                    <ScrollArea className="w-full whitespace-nowrap pb-2">
+                                        <div className="flex w-max space-x-2 p-1">
+                                            {['All Categories', ...Array.from(new Set(templates.map(t => t.category || 'General')))].map((cat) => (
+                                                <Badge
+                                                    key={cat}
+                                                    variant={selectedCategory === cat ? "default" : "outline"}
+                                                    className="cursor-pointer px-3 py-1 font-normal"
+                                                    onClick={() => {
+                                                        setSelectedCategory(cat);
+                                                        // Optional: clear selection if category changes? No, keep it.
+                                                    }}
+                                                >
+                                                    {cat}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Template</Label>
+                                    <Select
+                                        value={formData.templateId}
+                                        onValueChange={(val) => {
+                                            const tmpl = templates.find(t => t.id === val);
+                                            setFormData({
+                                                ...formData,
+                                                templateId: val,
+                                                message: tmpl?.body || formData.message
+                                            });
+                                        }}
+                                    >
+                                        <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
+                                        <SelectContent>
+                                            {templates
+                                                .filter(t => selectedCategory === 'All Categories' || (t.category || 'General') === selectedCategory)
+                                                .map(t => (
+                                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                     </SelectContent>
                                 </Select>
                             </div>
