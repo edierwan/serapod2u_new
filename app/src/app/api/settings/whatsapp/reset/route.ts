@@ -14,7 +14,7 @@ import { getWhatsAppConfig, isAdminUser, callGateway, logGatewayAction } from '@
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -40,23 +40,23 @@ export async function POST(request: NextRequest) {
 
     // Get WhatsApp config from DB
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
-    
+
     if (!config || !config.baseUrl) {
-      return NextResponse.json({ 
-        error: 'WhatsApp gateway not configured' 
+      return NextResponse.json({
+        error: 'WhatsApp gateway not configured'
       }, { status: 400 });
     }
 
     // Call gateway tenant reset endpoint
     const result = await callGateway(
-      config.baseUrl, 
-      config.apiKey, 
-      'POST', 
+      config.baseUrl,
+      config.apiKey,
+      'POST',
       '/session/reset',
       undefined,
       config.tenantId
     );
-    
+
     // Log the action
     await logGatewayAction(supabase, {
       action: 'reset',
@@ -64,13 +64,13 @@ export async function POST(request: NextRequest) {
       orgId: userProfile.organization_id,
       metadata: { result, tenantId: config.tenantId },
     });
-    
+
     return NextResponse.json(result);
 
   } catch (error: any) {
     console.error('Error resetting WhatsApp session:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Failed to reset session' 
+    return NextResponse.json({
+      error: error.message || 'Failed to reset session'
     }, { status: 500 });
   }
 }

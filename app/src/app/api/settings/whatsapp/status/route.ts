@@ -14,7 +14,7 @@ import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     // Get WhatsApp config from DB
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
-    
+
     if (!config || !config.baseUrl) {
       return NextResponse.json({
         configured: false,
@@ -56,14 +56,14 @@ export async function GET(request: NextRequest) {
     // Call gateway tenant status endpoint
     try {
       const gatewayStatus = await callGateway(
-        config.baseUrl, 
-        config.apiKey, 
-        'GET', 
+        config.baseUrl,
+        config.apiKey,
+        'GET',
         '/status',
         undefined,
         config.tenantId
       );
-      
+
       return NextResponse.json({
         configured: true,
         connected: gatewayStatus.connected,

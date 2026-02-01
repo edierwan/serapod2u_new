@@ -14,7 +14,7 @@ import { getWhatsAppConfig, isAdminUser, callGateway, logGatewayAction } from '@
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -40,10 +40,10 @@ export async function POST(request: NextRequest) {
 
     // Get WhatsApp config from DB
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
-    
+
     if (!config || !config.baseUrl) {
-      return NextResponse.json({ 
-        error: 'WhatsApp gateway not configured' 
+      return NextResponse.json({
+        error: 'WhatsApp gateway not configured'
       }, { status: 400 });
     }
 
@@ -57,10 +57,10 @@ export async function POST(request: NextRequest) {
 
     // Use provided number or fall back to test number
     const recipientNumber = body.to || config.testNumber;
-    
+
     if (!recipientNumber) {
-      return NextResponse.json({ 
-        error: 'No recipient number provided and no test number configured' 
+      return NextResponse.json({
+        error: 'No recipient number provided and no test number configured'
       }, { status: 400 });
     }
 
@@ -69,29 +69,29 @@ export async function POST(request: NextRequest) {
 
     // Call gateway tenant send endpoint
     const result = await callGateway(
-      config.baseUrl, 
-      config.apiKey, 
-      'POST', 
-      '/messages/send', 
+      config.baseUrl,
+      config.apiKey,
+      'POST',
+      '/messages/send',
       {
         to: recipientNumber,
         text: message,
       },
       config.tenantId
     );
-    
+
     // Log the action
     await logGatewayAction(supabase, {
       action: 'send_test',
       userId: user.id,
       orgId: userProfile.organization_id,
-      metadata: { 
+      metadata: {
         recipient: recipientNumber,
         result,
         tenantId: config.tenantId,
       },
     });
-    
+
     return NextResponse.json({
       success: result.ok,
       message_id: result.jid,
@@ -101,9 +101,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error sending test message:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: false,
-      error: error.message || 'Failed to send test message' 
+      error: error.message || 'Failed to send test message'
     }, { status: 500 });
   }
 }

@@ -148,9 +148,9 @@ export class BaileysService {
     if (connection === 'close') {
       const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-      
+
       logger.info({ statusCode, shouldReconnect }, 'Connection closed');
-      
+
       this.qrCode = null;
       this.pairingState = 'disconnected';
       this.lastError = lastDisconnect?.error?.message || 'Connection closed';
@@ -159,10 +159,10 @@ export class BaileysService {
         this.reconnectAttempts++;
         logger.info({ attempt: this.reconnectAttempts }, 'Attempting to reconnect...');
         this.pairingState = 'reconnecting';
-        
+
         // Delay before reconnect
         await new Promise(resolve => setTimeout(resolve, 3000));
-        
+
         if (!this.isShuttingDown) {
           await this.initialize();
         }
@@ -224,10 +224,10 @@ export class BaileysService {
     if (this.pairingState === 'disconnected' && !this.isInitializing) {
       logger.info('No QR available, triggering reconnection...');
       await this.initialize();
-      
+
       // Wait a bit for QR to be generated
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       if (this.qrCode && this.qrExpiry > Date.now()) {
         const expiresInSec = Math.max(0, Math.floor((this.qrExpiry - Date.now()) / 1000));
         return { qr: this.qrCode, expires_in_sec: expiresInSec };
@@ -349,17 +349,17 @@ export class BaileysService {
     try {
       // Normalize phone number
       let phone = to.replace(/\D/g, '');
-      
+
       // Handle Malaysian numbers (starts with 0)
       if (phone.startsWith('0')) {
         phone = '60' + phone.substring(1);
       }
-      
+
       // Ensure it doesn't start with +
       phone = phone.replace(/^\+/, '');
 
       const jid = `${phone}@s.whatsapp.net`;
-      
+
       logger.info({ jid, textLength: text.length }, 'Sending message');
 
       const result = await this.socket.sendMessage(jid, { text });

@@ -3,6 +3,7 @@
 -- ============================================
 
 -- 1. Create view for consumer points summary (reusable for segments)
+-- This leverages the existing v_consumer_points_balance view and adds organization info
 CREATE OR REPLACE VIEW v_consumer_points_summary AS
 SELECT 
     u.id as user_id,
@@ -13,24 +14,23 @@ SELECT
     u.location as state,
     u.organization_id,
     o.org_type_code as organization_type,
-    COALESCE(spl.current_balance, 0) as current_balance,
-    COALESCE(spl.total_collected_system, 0) as collected_system,
-    COALESCE(spl.total_collected_manual, 0) as collected_manual,
-    COALESCE(spl.migration_points, 0) as migration_points,
-    COALESCE(spl.other_points, 0) as other_points,
-    COALESCE(spl.total_redeemed, 0) as total_redeemed,
-    COALESCE(
-        (SELECT COUNT(*) FROM shop_points_transactions spt WHERE spt.user_id = u.id),
-        0
-    ) as transactions_count,
-    COALESCE(spl.last_activity_at, spl.updated_at) as last_activity_at
+    COALESCE(cpb.current_balance, 0) as current_balance,
+    COALESCE(cpb.total_collected_system, 0) as collected_system,
+    COALESCE(cpb.total_collected_manual, 0) as collected_manual,
+    COALESCE(cpb.total_migration, 0) as migration_points,
+    0 as other_points,
+    COALESCE(cpb.total_redeemed, 0) as total_redeemed,
+    COALESCE(cpb.transaction_count, 0) as transactions_count,
+    cpb.last_transaction_date as last_activity_at
 FROM users u
 LEFT JOIN organizations o ON u.organization_id = o.id
-LEFT JOIN shop_points_ledger spl ON spl.user_id = u.id
+LEFT JOIN v_consumer_points_balance cpb ON cpb.user_id = u.id
 WHERE u.is_active = true;
 
--- 2. Create index on shop_points_ledger for faster lookups
-CREATE INDEX IF NOT EXISTS idx_shop_points_ledger_user_id ON shop_points_ledger(user_id);
+-- 2. Create indexes for better query performance on users table
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_users_location ON users(location) WHERE location IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_organization_id ON users(organization_id) WHERE organization_id IS NOT NULL;
 
 -- 3. Update marketing_segments table to support new filter schema
 -- (If the table doesn't exist, this will create it. If it exists, we just ensure columns exist)
@@ -96,10 +96,16 @@ CREATE TABLE IF NOT EXISTS marketing_opt_outs (
 
 CREATE INDEX IF NOT EXISTS idx_marketing_opt_outs_phone ON marketing_opt_outs(phone);
 
--- 5. Grant necessary permissions (adjust role names as needed)
--- GRANT SELECT ON v_consumer_points_summary TO authenticated;
--- GRANT ALL ON marketing_segments TO authenticated;
--- GRANT ALL ON marketing_opt_outs TO authenticated;
+-- 5. Grant necessary permissions
+GRANT SELECT ON v_consumer_points_summary TO authenticated;
+GRANT SELECT ON v_consumer_points_summary TO service_role;
+GRANT ALL ON marketing_segments TO authenticated;
+GRANT ALL ON marketing_segments TO service_role;
+GRANT ALL ON marketing_opt_outs TO authenticated;
+GRANT ALL ON marketing_opt_outs TO service_role;
+
+-- Force schema reload
+NOTIFY pgrst, 'reload schema';
 
 -- ============================================
 -- End of Migration

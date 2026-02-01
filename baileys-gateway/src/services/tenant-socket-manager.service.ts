@@ -17,6 +17,7 @@ import { Boom } from '@hapi/boom';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
+import { webhookService } from './webhook.service';
 
 export type PairingState = 'connected' | 'waiting_qr' | 'disconnected' | 'connecting' | 'reconnecting';
 
@@ -235,6 +236,17 @@ class TenantSocketManager {
 
       state.socket.ev.on('messages.upsert', (m: any) => {
         logger.debug({ tenantId, messageCount: m.messages?.length }, 'Messages received');
+        
+        // Forward messages to Serapod via webhook
+        if (m.messages && m.messages.length > 0 && m.type === 'notify') {
+          for (const message of m.messages) {
+            // Only forward text messages
+            if (message.message?.conversation || message.message?.extendedTextMessage?.text) {
+              webhookService.forwardToSerapod(tenantId, message, state.phoneNumber || undefined)
+                .catch(err => logger.error({ tenantId, error: err.message }, 'Webhook forward failed'));
+            }
+          }
+        }
       });
 
       logger.info({ tenantId }, 'Socket initialized');

@@ -10,11 +10,11 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  Save, 
-  MessageCircle, 
-  MessageSquare, 
-  Mail, 
+import {
+  Save,
+  MessageCircle,
+  MessageSquare,
+  Mail,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -92,7 +92,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
-  
+
   // Separate configs for each channel
   const [whatsappConfig, setWhatsappConfig] = useState<ProviderConfig | null>(null)
   const [smsConfig, setSmsConfig] = useState<ProviderConfig | null>(null)
@@ -126,10 +126,10 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const [testNumber, setTestNumber] = useState('')
   const [testMessage, setTestMessage] = useState('')
   const [sendingTest, setSendingTest] = useState(false)
-  
+
   // Smart polling state
   const statusPollRef = useRef<NodeJS.Timeout | null>(null)
-  const lastStatusRef = useRef<{data: any, at: number} | null>(null)
+  const lastStatusRef = useRef<{ data: any, at: number } | null>(null)
   const [pollInterval, setPollInterval] = useState(5000)
   const [isGatewayUnreachable, setIsGatewayUnreachable] = useState(false)
 
@@ -138,11 +138,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       loadProviderConfigs()
       loadEmailUsage()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
-  
+
   // Helper to parse complex error objects from gateway
   const getFriendlyErrorMessage = (errorStr: string | null) => {
     if (!errorStr) return null;
@@ -183,15 +183,15 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   // ============================================
   // WhatsApp Gateway Control Functions
   // ============================================
-  
+
   const fetchGatewayStatus = useCallback(async () => {
     if (!whatsappConfig?.provider_name || whatsappConfig.provider_name !== 'baileys') {
       return
     }
-    
+
     // Don't show global loading on background polls unless it's the very first time
     if (!lastStatusRef.current) {
-        setGatewayLoading(true)
+      setGatewayLoading(true)
     }
 
     try {
@@ -206,7 +206,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       // Network level success
       if (response.ok) {
         const data = await response.json()
-        
+
         // Cache successful response
         lastStatusRef.current = { data, at: Date.now() }
         setGatewayStatus(data)
@@ -219,7 +219,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         } else {
           setQrCode(null)
         }
-        
+
         // Update test number from config if available
         if (data.phone_number && !testNumber) {
           setTestNumber(whatsappConfig.config_public.test_number || '')
@@ -229,16 +229,16 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       }
     } catch (error) {
       console.error('Error fetching gateway status:', error)
-      
+
       // Handle resilience: Only clear status if cache is stale (>30s)
       const cached = lastStatusRef.current;
       const isStale = !cached || (Date.now() - cached.at > 30000);
-      
+
       if (isStale) {
-          setIsGatewayUnreachable(true)
-          setGatewayStatus(null) // Only clear if we really lost it
+        setIsGatewayUnreachable(true)
+        setGatewayStatus(null) // Only clear if we really lost it
       } else {
-          setIsGatewayUnreachable(true) // Just warn user, keep showing old data
+        setIsGatewayUnreachable(true) // Just warn user, keep showing old data
       }
 
       // Backoff polling on error
@@ -252,7 +252,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     try {
       const response = await fetch('/api/settings/whatsapp/qr')
       const data = await response.json()
-      
+
       if (response.ok && data.qr) {
         // Gateway returns raw QR string - convert to data URL for display
         // Import qrcode dynamically to avoid SSR issues
@@ -278,15 +278,15 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     if (!confirm('This will disconnect the current WhatsApp number and require re-scanning the QR code. Continue?')) {
       return
     }
-    
+
     try {
       setGatewayAction('reset')
       const response = await fetch('/api/settings/whatsapp/reset', {
         method: 'POST',
       })
-      
+
       const data = await response.json()
-      
+
       if (response.ok) {
         setGatewayStatus(prev => prev ? { ...prev, pairing_state: 'waiting_qr', connected: false, phone_number: null } : null)
         await fetchQRCode()
@@ -304,15 +304,15 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     if (!confirm('This will disconnect from WhatsApp. Continue?')) {
       return
     }
-    
+
     try {
       setGatewayAction('logout')
       const response = await fetch('/api/settings/whatsapp/logout', {
         method: 'POST',
       })
-      
+
       const data = await response.json()
-      
+
       if (response.ok) {
         setGatewayStatus(prev => prev ? { ...prev, connected: false, pairing_state: 'disconnected' } : null)
         setQrCode(null)
@@ -332,9 +332,9 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       const response = await fetch('/api/settings/whatsapp/reconnect', {
         method: 'POST',
       })
-      
+
       const data = await response.json()
-      
+
       if (response.ok) {
         await fetchGatewayStatus()
       } else {
@@ -352,7 +352,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       alert('Please enter a recipient number')
       return
     }
-    
+
     try {
       setSendingTest(true)
       const response = await fetch('/api/settings/whatsapp/test', {
@@ -363,9 +363,9 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           message: testMessage || undefined,
         }),
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         alert(`✅ Test message sent successfully to ${data.sent_to}`)
       } else {
@@ -380,22 +380,22 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
   // Start/stop polling for gateway status with dynamic interval
   useEffect(() => {
-    if (whatsappConfig?.provider_name === 'baileys' && whatsappConfig.config_public.base_url) {
+    if (whatsappConfig?.provider_name === 'baileys') {
       // Initial fetch
       fetchGatewayStatus()
-      
+
       // Set test number from config
       if (whatsappConfig.config_public.test_number) {
         setTestNumber(whatsappConfig.config_public.test_number)
       }
-      
+
       // Dynamic polling
       const runPoll = () => {
-         fetchGatewayStatus();
+        fetchGatewayStatus();
       }
 
       statusPollRef.current = setInterval(runPoll, pollInterval);
-      
+
       return () => {
         if (statusPollRef.current) {
           clearInterval(statusPollRef.current)
@@ -410,7 +410,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       const timer = setTimeout(() => {
         fetchQRCode()
       }, qrExpiry * 1000)
-      
+
       return () => clearTimeout(timer)
     }
   }, [gatewayStatus?.pairing_state, qrExpiry])
@@ -432,12 +432,12 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       data?.forEach((config: any) => {
         let sensitive = {};
         try {
-            // Try to parse sensitive data if it was stored as JSON string
-            if (config.config_encrypted) { // Using config_encrypted as temp storage for now
-                 sensitive = JSON.parse(config.config_encrypted);
-            }
+          // Try to parse sensitive data if it was stored as JSON string
+          if (config.config_encrypted) { // Using config_encrypted as temp storage for now
+            sensitive = JSON.parse(config.config_encrypted);
+          }
         } catch (e) {
-            console.error('Failed to parse sensitive data', e);
+          console.error('Failed to parse sensitive data', e);
         }
 
         const providerConfig: ProviderConfig = {
@@ -455,8 +455,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
         // Populate sensitive data state
         setSensitiveData(prev => ({
-            ...prev,
-            [config.channel]: sensitive
+          ...prev,
+          [config.channel]: sensitive
         }));
 
         switch (config.channel) {
@@ -482,8 +482,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const handleSaveProvider = async (channel: 'whatsapp' | 'sms' | 'email') => {
     if (!isReady) return
 
-    const config = channel === 'whatsapp' ? whatsappConfig : 
-                   channel === 'sms' ? smsConfig : emailConfig
+    const config = channel === 'whatsapp' ? whatsappConfig :
+      channel === 'sms' ? smsConfig : emailConfig
 
     if (!config) return
 
@@ -503,7 +503,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         url = url.replace(/:3001\/?$/, '');
         // Remove trailing slash
         if (url.endsWith('/')) url = url.slice(0, -1);
-        
+
         // Update in build object
         config.config_public.base_url = url;
       }
@@ -545,8 +545,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   }
 
   const handleTestProvider = async (channel: 'whatsapp' | 'sms' | 'email') => {
-    const config = channel === 'whatsapp' ? whatsappConfig : 
-                   channel === 'sms' ? smsConfig : emailConfig
+    const config = channel === 'whatsapp' ? whatsappConfig :
+      channel === 'sms' ? smsConfig : emailConfig
 
     if (!config || !config.provider_name) {
       alert('Please select a provider and configure credentials first')
@@ -559,7 +559,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       // Get test number if not in config
       let testNumber = config.config_public.test_number
       if (!testNumber) {
-         testNumber = window.prompt("Enter a phone number to send the test message to:")
+        testNumber = window.prompt("Enter a phone number to send the test message to:")
       }
 
       const response = await fetch('/api/notifications/test', {
@@ -603,7 +603,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     } catch (error: any) {
       console.error(`Error testing ${channel} provider:`, error)
       alert(`Test failed: ${error.message}`)
-      
+
       const updatedConfig = {
         ...config,
         last_test_status: 'failed',
@@ -616,11 +616,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           setWhatsappConfig(updatedConfig)
           break
         case 'sms':
-            setSmsConfig(updatedConfig)
-            break
+          setSmsConfig(updatedConfig)
+          break
         case 'email':
-            setEmailConfig(updatedConfig)
-            break
+          setEmailConfig(updatedConfig)
+          break
       }
     } finally {
       setSaving(false)
@@ -630,14 +630,13 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const renderWhatsAppConfig = () => (
     <div className="space-y-6">
       {/* Gateway Connection Status Card - Only for Baileys */}
-      {whatsappConfig?.provider_name === 'baileys' && whatsappConfig.config_public.base_url && (
-        <Card className={`border-2 ${
-          gatewayStatus?.connected 
-            ? 'bg-green-50 border-green-300' 
+      {whatsappConfig?.provider_name === 'baileys' && (
+        <Card className={`border-2 ${gatewayStatus?.connected
+            ? 'bg-green-50 border-green-300'
             : gatewayStatus?.pairing_state === 'waiting_qr'
               ? 'bg-yellow-50 border-yellow-300'
               : 'bg-red-50 border-red-300'
-        }`}>
+          }`}>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -651,8 +650,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               <div className="flex items-center gap-2">
                 {gatewayLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
                 <Badge variant={gatewayStatus?.connected ? 'default' : 'destructive'} className={
-                  gatewayStatus?.connected 
-                    ? 'bg-green-600' 
+                  gatewayStatus?.connected
+                    ? 'bg-green-600'
                     : gatewayStatus?.pairing_state === 'waiting_qr'
                       ? 'bg-yellow-600'
                       : isGatewayUnreachable
@@ -660,13 +659,13 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                         : ''
                 }>
                   {isGatewayUnreachable ? 'Unreachable' :
-                   gatewayStatus?.pairing_state === 'connected' ? 'Connected' :
-                   gatewayStatus?.pairing_state === 'waiting_qr' ? 'Waiting for QR Scan' :
-                   gatewayStatus?.pairing_state === 'connecting' ? 'Connecting...' :
-                   gatewayStatus?.pairing_state === 'reconnecting' ? 'Reconnecting...' :
-                   gatewayStatus?.pairing_state === 'gateway_unreachable' ? 'Gateway Unreachable' :
-                   gatewayStatus?.pairing_state === 'not_configured' ? 'Not Configured' :
-                   'Disconnected'}
+                    gatewayStatus?.pairing_state === 'connected' ? 'Connected' :
+                      gatewayStatus?.pairing_state === 'waiting_qr' ? 'Waiting for QR Scan' :
+                        gatewayStatus?.pairing_state === 'connecting' ? 'Connecting...' :
+                          gatewayStatus?.pairing_state === 'reconnecting' ? 'Reconnecting...' :
+                            gatewayStatus?.pairing_state === 'gateway_unreachable' ? 'Gateway Unreachable' :
+                              gatewayStatus?.pairing_state === 'not_configured' ? 'Not Configured' :
+                                'Disconnected'}
                 </Badge>
               </div>
             </CardTitle>
@@ -708,13 +707,13 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                 <div className="text-center space-y-4">
                   <QrCode className="w-12 h-12 mx-auto text-yellow-600" />
                   <h3 className="font-semibold text-lg">Scan QR Code to Connect WhatsApp</h3>
-                  
+
                   {qrCode ? (
                     <div className="flex flex-col items-center gap-4">
                       <div className="p-4 bg-white rounded-lg shadow-lg border">
-                        <img 
-                          src={qrCode} 
-                          alt="WhatsApp QR Code" 
+                        <img
+                          src={qrCode}
+                          alt="WhatsApp QR Code"
                           className="w-64 h-64 mx-auto"
                         />
                       </div>
@@ -728,7 +727,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                       <p className="mt-2 text-sm text-gray-500">Loading QR code...</p>
                     </div>
                   )}
-                  
+
                   <div className="bg-blue-50 rounded-lg p-4 text-left">
                     <p className="font-medium text-blue-900 mb-2">How to scan:</p>
                     <ol className="list-decimal list-inside text-sm text-blue-800 space-y-1">
@@ -752,9 +751,9 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     {isGatewayUnreachable ? 'Connection Warning' : 'Connection Error'}
                   </p>
                   <p className={`text-sm ${isGatewayUnreachable ? 'text-orange-700' : 'text-red-700'}`}>
-                    {isGatewayUnreachable 
-                        ? 'Gateway is currently unreachable. Retrying automatically...' 
-                        : getFriendlyErrorMessage(gatewayStatus?.last_error || '')}
+                    {isGatewayUnreachable
+                      ? 'Gateway is currently unreachable. Retrying automatically...'
+                      : getFriendlyErrorMessage(gatewayStatus?.last_error || '')}
                   </p>
                 </div>
               </div>
@@ -764,8 +763,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
             <div className="flex flex-wrap gap-3 pt-2">
               {gatewayStatus?.connected ? (
                 <>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={handleGatewayReset}
                     disabled={!!gatewayAction}
                     className="border-yellow-500 text-yellow-700 hover:bg-yellow-50"
@@ -777,8 +776,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     )}
                     Change WhatsApp Number
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={handleGatewayLogout}
                     disabled={!!gatewayAction}
                     className="border-red-500 text-red-700 hover:bg-red-50"
@@ -794,7 +793,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               ) : (
                 <>
                   {gatewayStatus?.pairing_state !== 'waiting_qr' && (
-                    <Button 
+                    <Button
                       onClick={handleGatewayReset}
                       disabled={!!gatewayAction}
                       className="bg-green-600 hover:bg-green-700"
@@ -807,8 +806,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                       Connect WhatsApp
                     </Button>
                   )}
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={handleGatewayReconnect}
                     disabled={!!gatewayAction}
                   >
@@ -860,7 +859,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                 />
               </div>
             </div>
-            <Button 
+            <Button
               onClick={handleSendTestMessage}
               disabled={sendingTest || !testNumber}
               className="bg-green-600 hover:bg-green-700"
@@ -967,7 +966,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     />
                     <p className="text-xs text-gray-500">
                       The secure URL of your gateway. Example: <strong>https://wa.serapod2u.com</strong>.
-                      <br/>
+                      <br />
                       <span className="text-amber-600">Note: Port 3001 is closed. Do not include :3001 in the URL.</span>
                     </p>
                   </div>
@@ -1104,11 +1103,10 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
               {/* Test Status */}
               {whatsappConfig.last_test_at && (
-                <div className={`p-4 rounded-lg border ${
-                  whatsappConfig.last_test_status === 'success' 
-                    ? 'bg-green-50 border-green-200' 
+                <div className={`p-4 rounded-lg border ${whatsappConfig.last_test_status === 'success'
+                    ? 'bg-green-50 border-green-200'
                     : 'bg-red-50 border-red-200'
-                }`}>
+                  }`}>
                   <div className="flex items-start gap-2">
                     {whatsappConfig.last_test_status === 'success' ? (
                       <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
@@ -1135,7 +1133,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               {/* Save Button */}
               <div className="flex justify-end gap-3">
                 {whatsappConfig.provider_name !== 'baileys' && (
-                  <Button 
+                  <Button
                     variant="outline"
                     onClick={() => handleTestProvider('whatsapp')}
                     disabled={!whatsappConfig.is_active}
@@ -1820,18 +1818,16 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   </div>
 
                   {/* Usage Warning */}
-                  <div className={`p-4 rounded-lg border ${
-                    emailUsageToday >= 450 ? 'bg-red-50 border-red-200' :
-                    emailUsageToday >= 350 ? 'bg-yellow-50 border-yellow-200' :
-                    'bg-green-50 border-green-200'
-                  }`}>
+                  <div className={`p-4 rounded-lg border ${emailUsageToday >= 450 ? 'bg-red-50 border-red-200' :
+                      emailUsageToday >= 350 ? 'bg-yellow-50 border-yellow-200' :
+                        'bg-green-50 border-green-200'
+                    }`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <AlertCircle className={`w-5 h-5 ${
-                          emailUsageToday >= 450 ? 'text-red-600' :
-                          emailUsageToday >= 350 ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`} />
+                        <AlertCircle className={`w-5 h-5 ${emailUsageToday >= 450 ? 'text-red-600' :
+                            emailUsageToday >= 350 ? 'text-yellow-600' :
+                              'text-green-600'
+                          }`} />
                         <div>
                           <div className="font-medium text-sm">
                             Daily Email Usage: {emailUsageLoading ? '...' : emailUsageToday} / 500
@@ -1852,12 +1848,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     </div>
                     {/* Progress bar */}
                     <div className="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full transition-all ${
-                          emailUsageToday >= 450 ? 'bg-red-600' :
-                          emailUsageToday >= 350 ? 'bg-yellow-500' :
-                          'bg-green-500'
-                        }`}
+                      <div
+                        className={`h-full transition-all ${emailUsageToday >= 450 ? 'bg-red-600' :
+                            emailUsageToday >= 350 ? 'bg-yellow-500' :
+                              'bg-green-500'
+                          }`}
                         style={{ width: `${Math.min((emailUsageToday / 500) * 100, 100)}%` }}
                       />
                     </div>
@@ -2000,8 +1995,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                             <p className="text-sm text-yellow-700 mt-1">
                               You need to authorize this application to send emails on your behalf.
                             </p>
-                            <Button 
-                              variant="outline" 
+                            <Button
+                              variant="outline"
                               className="mt-3 border-yellow-300 hover:bg-yellow-100"
                               onClick={() => {
                                 alert('OAuth2 flow would open here. In production, this would redirect to Google OAuth consent screen.')

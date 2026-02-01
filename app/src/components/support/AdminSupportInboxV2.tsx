@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { 
     MessageSquare, 
     Search, 
@@ -39,7 +41,13 @@ import {
     MessageCircle,
     Eye,
     EyeOff,
-    Paperclip
+    Paperclip,
+    Phone,
+    Smartphone,
+    Bot,
+    Sparkles,
+    Zap,
+    Globe
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -85,6 +93,13 @@ interface Message {
     created_at: string
     read_by_user_at?: string
     read_by_admin_at?: string
+    // WhatsApp sync fields
+    channel?: 'app' | 'whatsapp' | 'admin_web' | 'ai'
+    direction?: 'inbound' | 'outbound'
+    sender_phone?: string
+    origin?: 'serapod' | 'whatsapp'
+    external_message_id?: string
+    metadata?: Record<string, any>
 }
 
 interface ConversationNote {
@@ -106,6 +121,14 @@ interface Tag {
     id: string
     name: string
     color: string
+}
+
+// Channel configuration for badges
+const CHANNEL_CONFIG = {
+    app: { label: 'App', color: 'bg-blue-100 text-blue-700', icon: Smartphone },
+    whatsapp: { label: 'WhatsApp', color: 'bg-green-100 text-green-700', icon: Phone },
+    admin_web: { label: 'Web', color: 'bg-purple-100 text-purple-700', icon: Globe },
+    ai: { label: 'AI', color: 'bg-amber-100 text-amber-700', icon: Bot }
 }
 
 // Status configuration
@@ -410,7 +433,7 @@ function ConversationRow({
     onAssign,
     admins 
 }: { 
-    conversation: Conversation
+    conversation: Conversation & { primary_channel?: string; whatsapp_user_phone?: string }
     index: number
     onClick: () => void
     onStatusChange: (id: string, status: string) => void
@@ -420,13 +443,15 @@ function ConversationRow({
     const statusConfig = STATUS_CONFIG[conversation.status]
     const priorityConfig = PRIORITY_CONFIG[conversation.priority]
     const StatusIcon = statusConfig.icon
+    const isWhatsAppConversation = conversation.primary_channel === 'whatsapp' || !!conversation.whatsapp_user_phone
     
     return (
         <div
             onClick={onClick}
             className={cn(
                 "p-4 hover:bg-blue-50/50 cursor-pointer transition-all",
-                conversation.is_unread && "bg-blue-50/30"
+                conversation.is_unread && "bg-blue-50/30",
+                isWhatsAppConversation && "border-l-4 border-l-green-500"
             )}
         >
             <div className="flex items-start gap-3">
@@ -448,6 +473,12 @@ function ConversationRow({
                             <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
                                 {conversation.case_number}
                             </span>
+                            {isWhatsAppConversation && (
+                                <Badge className="h-5 px-1.5 bg-green-100 text-green-700 text-[10px]">
+                                    <Phone className="w-3 h-3 mr-0.5" />
+                                    WA
+                                </Badge>
+                            )}
                             {conversation.is_unread && (
                                 <Badge className="h-1.5 w-1.5 rounded-full p-0 bg-blue-600" />
                             )}
@@ -564,6 +595,18 @@ function ConversationDetailView({
     const [convDetails, setConvDetails] = useState(conversation)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [activeTab, setActiveTab] = useState('chat')
+    
+    // WhatsApp reply mode
+    const [replyViaWhatsApp, setReplyViaWhatsApp] = useState(false)
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
+    
+    // AI Assist
+    const [aiLoading, setAiLoading] = useState(false)
+    const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
+    const [showAiPanel, setShowAiPanel] = useState(false)
+
+    // Check if conversation has WhatsApp
+    const hasWhatsApp = !!(convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone
 
     // Fetch messages
     const fetchMessages = async () => {
@@ -621,24 +664,96 @@ function ConversationDetailView({
         setSending(true)
         
         try {
-            const res = await fetch(`/api/admin/support/conversations/${conversation.id}/messages`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: msg })
-            })
-            
-            if (!res.ok) {
-                const data = await res.json()
-                throw new Error(data.error || 'Failed to send message')
+            // If WhatsApp reply mode is enabled and user has WhatsApp
+            if (replyViaWhatsApp && hasWhatsApp) {
+                setSendingWhatsApp(true)
+                const waRes = await fetch('/api/support/whatsapp/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        threadId: conversation.id,
+                        toPhoneE164: (convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone,
+                        text: msg
+                    })
+                })
+                
+                const waData = await waRes.json()
+                setSendingWhatsApp(false)
+                
+                if (!waRes.ok) {
+                    // Still saved in DB, show warning
+                    if (waData.storedInDb) {
+                        setError(`WhatsApp delivery failed: ${waData.error}. Message saved in app.`)
+                    } else {
+                        throw new Error(waData.error || 'Failed to send via WhatsApp')
+                    }
+                }
+                
+                setNewMessage('')
+                setAiSuggestion(null)
+                fetchMessages()
+                onUpdate()
+            } else {
+                // Normal app message
+                const res = await fetch(`/api/admin/support/conversations/${conversation.id}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                })
+                
+                if (!res.ok) {
+                    const data = await res.json()
+                    throw new Error(data.error || 'Failed to send message')
+                }
+                
+                setNewMessage('')
+                setAiSuggestion(null)
+                fetchMessages()
+                onUpdate()
             }
-            
-            setNewMessage('')
-            fetchMessages()
-            onUpdate()
         } catch (err: any) {
             setError(err.message)
         } finally {
             setSending(false)
+            setSendingWhatsApp(false)
+        }
+    }
+
+    // AI Assist handler
+    const handleAiAssist = async () => {
+        setAiLoading(true)
+        setError(null)
+        setShowAiPanel(true)
+        
+        try {
+            const res = await fetch('/api/agent/assist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    conversationId: conversation.id,
+                    tone: 'friendly'
+                })
+            })
+            
+            const data = await res.json()
+            
+            if (data.ok && data.suggestedReply) {
+                setAiSuggestion(data.suggestedReply)
+            } else {
+                setError(data.error || 'AI assist unavailable')
+            }
+        } catch (err: any) {
+            setError('Failed to get AI suggestion')
+        } finally {
+            setAiLoading(false)
+        }
+    }
+
+    // Use AI suggestion
+    const useAiSuggestion = () => {
+        if (aiSuggestion) {
+            setNewMessage(aiSuggestion)
+            setShowAiPanel(false)
         }
     }
 
@@ -758,6 +873,11 @@ function ConversationDetailView({
                             messages.map((msg) => {
                                 const isAdmin = msg.sender_type === 'admin'
                                 const isSystem = msg.sender_type === 'system'
+                                const channel = msg.channel || 'app'
+                                const channelConfig = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG] || CHANNEL_CONFIG.app
+                                const ChannelIcon = channelConfig.icon
+                                const isWhatsApp = channel === 'whatsapp'
+                                const isAI = channel === 'ai'
                                 
                                 if (isSystem) {
                                     return (
@@ -772,11 +892,28 @@ function ConversationDetailView({
                                 return (
                                     <div key={msg.id} className={cn("flex", isAdmin ? "justify-end" : "justify-start")}>
                                         <div className={cn(
-                                            "max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm",
+                                            "max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative",
                                             isAdmin 
-                                                ? "bg-blue-600 text-white rounded-br-none" 
-                                                : "bg-white text-gray-900 border border-gray-100 rounded-bl-none"
+                                                ? isWhatsApp 
+                                                    ? "bg-green-600 text-white rounded-br-none" 
+                                                    : isAI
+                                                        ? "bg-amber-500 text-white rounded-br-none"
+                                                        : "bg-blue-600 text-white rounded-br-none" 
+                                                : isWhatsApp
+                                                    ? "bg-green-50 text-gray-900 border border-green-200 rounded-bl-none"
+                                                    : "bg-white text-gray-900 border border-gray-100 rounded-bl-none"
                                         )}>
+                                            {/* Channel badge */}
+                                            {(isWhatsApp || isAI) && (
+                                                <div className={cn(
+                                                    "flex items-center gap-1 text-[10px] mb-1 font-medium",
+                                                    isAdmin ? "text-white/80" : "text-green-600"
+                                                )}>
+                                                    <ChannelIcon className="w-3 h-3" />
+                                                    {isWhatsApp ? 'via WhatsApp' : 'AI Generated'}
+                                                </div>
+                                            )}
+                                            
                                             <p className="whitespace-pre-wrap text-sm">{msg.body_text}</p>
                                             {msg.attachments && msg.attachments.length > 0 && (
                                                 <div className="mt-2 space-y-1">
@@ -817,12 +954,103 @@ function ConversationDetailView({
 
                 {/* Reply Input */}
                 <div className="p-4 border-t bg-white">
+                    {/* AI Suggestion Panel */}
+                    {showAiPanel && (
+                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 text-amber-700 text-sm font-medium">
+                                    <Sparkles className="w-4 h-4" />
+                                    AI Suggestion
+                                </div>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-6 w-6 p-0 text-amber-600 hover:text-amber-800"
+                                    onClick={() => setShowAiPanel(false)}
+                                >
+                                    <X className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            {aiLoading ? (
+                                <div className="flex items-center gap-2 text-amber-600 text-sm py-2">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Generating suggestion...
+                                </div>
+                            ) : aiSuggestion ? (
+                                <>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap mb-2">{aiSuggestion}</p>
+                                    <Button 
+                                        size="sm" 
+                                        className="bg-amber-500 hover:bg-amber-600 text-white"
+                                        onClick={useAiSuggestion}
+                                    >
+                                        <Zap className="w-3 h-3 mr-1" /> Use This Reply
+                                    </Button>
+                                </>
+                            ) : (
+                                <p className="text-sm text-gray-500">No suggestion available</p>
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* WhatsApp Toggle & AI Button */}
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-4">
+                            {hasWhatsApp && (
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-2">
+                                                <Switch
+                                                    id="whatsapp-mode"
+                                                    checked={replyViaWhatsApp}
+                                                    onCheckedChange={setReplyViaWhatsApp}
+                                                />
+                                                <Label 
+                                                    htmlFor="whatsapp-mode" 
+                                                    className={cn(
+                                                        "text-xs cursor-pointer flex items-center gap-1",
+                                                        replyViaWhatsApp ? "text-green-600 font-medium" : "text-gray-500"
+                                                    )}
+                                                >
+                                                    <Phone className="w-3 h-3" />
+                                                    WhatsApp
+                                                </Label>
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>Send reply via WhatsApp to {(convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            )}
+                        </div>
+                        
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={handleAiAssist}
+                            disabled={aiLoading}
+                            className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                        >
+                            {aiLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            ) : (
+                                <Sparkles className="w-3 h-3 mr-1" />
+                            )}
+                            AI Assist
+                        </Button>
+                    </div>
+                    
                     <form onSubmit={handleSend} className="flex gap-2">
                         <Textarea
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder="Type your reply..."
-                            className="flex-1 resize-none min-h-[60px] max-h-[120px]"
+                            placeholder={replyViaWhatsApp ? "Type your WhatsApp reply..." : "Type your reply..."}
+                            className={cn(
+                                "flex-1 resize-none min-h-[60px] max-h-[120px]",
+                                replyViaWhatsApp && "border-green-300 focus:border-green-500"
+                            )}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault()
@@ -830,11 +1058,29 @@ function ConversationDetailView({
                                 }
                             }}
                         />
-                        <Button type="submit" disabled={!newMessage.trim() || sending} className="px-6">
-                            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        <Button 
+                            type="submit" 
+                            disabled={!newMessage.trim() || sending} 
+                            className={cn(
+                                "px-6",
+                                replyViaWhatsApp && "bg-green-600 hover:bg-green-700"
+                            )}
+                        >
+                            {sending ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : replyViaWhatsApp ? (
+                                <Phone className="w-4 h-4" />
+                            ) : (
+                                <Send className="w-4 h-4" />
+                            )}
                         </Button>
                     </form>
-                    <p className="text-[10px] text-gray-400 mt-1">Press Enter to send, Shift+Enter for new line</p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                        {replyViaWhatsApp 
+                            ? 'Message will be sent via WhatsApp and saved in app'
+                            : 'Press Enter to send, Shift+Enter for new line'
+                        }
+                    </p>
                 </div>
             </div>
 

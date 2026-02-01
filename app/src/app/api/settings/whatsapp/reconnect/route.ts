@@ -15,7 +15,7 @@ import { getWhatsAppConfig, isAdminUser, callGateway, logGatewayAction } from '@
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -41,24 +41,24 @@ export async function POST(request: NextRequest) {
 
     // Get WhatsApp config from DB
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
-    
+
     if (!config || !config.baseUrl) {
-      return NextResponse.json({ 
-        error: 'WhatsApp gateway not configured' 
+      return NextResponse.json({
+        error: 'WhatsApp gateway not configured'
       }, { status: 400 });
     }
 
     // For multi-tenant gateway, calling status endpoint will trigger lazy socket creation
     // which effectively acts as a reconnect
     const result = await callGateway(
-      config.baseUrl, 
-      config.apiKey, 
-      'GET', 
+      config.baseUrl,
+      config.apiKey,
+      'GET',
       '/status',
       undefined,
       config.tenantId
     );
-    
+
     // Log the action
     await logGatewayAction(supabase, {
       action: 'reconnect',
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       orgId: userProfile.organization_id,
       metadata: { result, tenantId: config.tenantId },
     });
-    
+
     return NextResponse.json({
       ok: result.ok,
       pairing_state: result.pairing_state,
@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error reconnecting WhatsApp:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Failed to reconnect' 
+    return NextResponse.json({
+      error: error.message || 'Failed to reconnect'
     }, { status: 500 });
   }
 }

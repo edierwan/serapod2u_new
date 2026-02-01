@@ -22,7 +22,10 @@ import {
     AlertCircle,
     CheckCircle2,
     RefreshCw,
-    Paperclip
+    Paperclip,
+    Phone,
+    Bot,
+    Smartphone
 } from 'lucide-react'
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -49,6 +52,18 @@ interface Message {
     created_at: string
     read_by_user_at?: string
     read_by_admin_at?: string
+    // WhatsApp sync fields
+    channel?: 'app' | 'whatsapp' | 'admin_web' | 'ai'
+    origin?: 'serapod' | 'whatsapp'
+    sender_phone?: string
+    metadata?: Record<string, any>
+}
+
+// Channel badge helper
+const getChannelBadge = (channel?: string) => {
+    if (channel === 'whatsapp') return { icon: Phone, label: 'WhatsApp', color: 'text-green-600' }
+    if (channel === 'ai') return { icon: Bot, label: 'AI', color: 'text-amber-600' }
+    return null
 }
 
 // Status badge config
@@ -839,6 +854,9 @@ function ChatThreadView({
                                     {group.messages.map((msg) => {
                                         const isUser = msg.sender_type === 'user'
                                         const isSystem = msg.sender_type === 'system'
+                                        const channelBadge = getChannelBadge(msg.channel)
+                                        const isWhatsApp = msg.channel === 'whatsapp'
+                                        const isAI = msg.channel === 'ai'
                                         
                                         if (isSystem) {
                                             return (
@@ -856,11 +874,26 @@ function ChatThreadView({
                                                 className={cn("flex", isUser ? "justify-end" : "justify-start")}
                                             >
                                                 <div className={cn(
-                                                    "max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm",
+                                                    "max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm relative",
                                                     isUser 
                                                         ? "bg-blue-600 text-white rounded-br-md" 
-                                                        : "bg-white text-gray-900 rounded-bl-md"
+                                                        : isWhatsApp
+                                                            ? "bg-green-50 text-gray-900 border border-green-200 rounded-bl-md"
+                                                            : isAI
+                                                                ? "bg-amber-50 text-gray-900 border border-amber-200 rounded-bl-md"
+                                                                : "bg-white text-gray-900 rounded-bl-md"
                                                 )}>
+                                                    {/* Channel indicator for non-user messages */}
+                                                    {!isUser && channelBadge && (
+                                                        <div className={cn(
+                                                            "flex items-center gap-1 text-[10px] mb-1 font-medium",
+                                                            channelBadge.color
+                                                        )}>
+                                                            <channelBadge.icon className="w-3 h-3" />
+                                                            {isWhatsApp ? 'via WhatsApp' : 'AI Assistant'}
+                                                        </div>
+                                                    )}
+                                                    
                                                     <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.body_text}</p>
                                                     
                                                     {/* Attachments */}

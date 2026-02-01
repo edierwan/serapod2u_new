@@ -23,12 +23,12 @@ import cors from 'cors';
 import { tenantSocketManager } from './services/tenant-socket-manager.service';
 import { tenantRegistry } from './services/tenant-registry.service';
 import { requireTenantAuth, requireLegacyAuth, AuthenticatedRequest } from './utils/auth-middleware';
-import { 
-  resetRateLimiter, 
-  qrRateLimiter, 
-  sendRateLimiter, 
+import {
+  resetRateLimiter,
+  qrRateLimiter,
+  sendRateLimiter,
   statusRateLimiter,
-  shutdownRateLimiter 
+  shutdownRateLimiter
 } from './utils/rate-limiter';
 import { logger } from './utils/logger';
 
@@ -181,7 +181,7 @@ app.get(
     try {
       const tenantId = req.tenantId!;
       const status = await tenantSocketManager.getStatus(tenantId);
-      
+
       // Return legacy format (without tenant_id wrapper)
       res.json({
         connected: status.connected,
@@ -232,7 +232,7 @@ app.get(
     try {
       const tenantId = req.tenantId!;
       const qrData = await tenantSocketManager.getQR(tenantId);
-      
+
       // Return legacy format
       res.json({
         qr: qrData.qr,
@@ -264,7 +264,7 @@ app.post(
       }
 
       const result = await tenantSocketManager.sendMessage(tenantId, to, messageText);
-      
+
       // Return legacy format
       res.json({
         ok: result.ok,
@@ -346,7 +346,7 @@ const gracefulShutdown = async () => {
   try {
     // Shutdown rate limiter cleanup
     shutdownRateLimiter();
-    
+
     // Shutdown all tenant sockets
     await tenantSocketManager.shutdownAll();
   } catch (error: any) {

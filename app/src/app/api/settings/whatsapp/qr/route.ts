@@ -15,7 +15,7 @@ import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -41,23 +41,23 @@ export async function GET(request: NextRequest) {
 
     // Get WhatsApp config from DB
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
-    
+
     if (!config || !config.baseUrl) {
-      return NextResponse.json({ 
-        error: 'WhatsApp gateway not configured' 
+      return NextResponse.json({
+        error: 'WhatsApp gateway not configured'
       }, { status: 400 });
     }
 
     // Call gateway tenant QR endpoint
     const qrData = await callGateway(
-      config.baseUrl, 
-      config.apiKey, 
-      'GET', 
+      config.baseUrl,
+      config.apiKey,
+      'GET',
       '/session/qr',
       undefined,
       config.tenantId
     );
-    
+
     return NextResponse.json({
       ok: qrData.ok,
       qr: qrData.qr,
@@ -68,8 +68,8 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error getting WhatsApp QR:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Failed to get QR code' 
+    return NextResponse.json({
+      error: error.message || 'Failed to get QR code'
     }, { status: 500 });
   }
 }
