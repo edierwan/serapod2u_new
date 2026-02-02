@@ -93,8 +93,16 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
     const [orgTypeOpen, setOrgTypeOpen] = useState(false);
     const [locationOpen, setLocationOpen] = useState(false);
 
-    // Safeguard for filters prop
-    const safeFilters = filters || {};
+    // Safeguard for filters prop with runtime logs
+    if (filters && !Array.isArray(filters)) {
+        // Expected behavior (object), but logging to confirm type for debugging
+        // console.log("AudienceFilterBuilder filters is object:", filters);
+    } else if (Array.isArray(filters)) {
+        console.error("AudienceFilterBuilder received array filters, expected object", filters);
+    }
+
+    // Default to object if null/undefined or array (since we expect object structure below)
+    const safeFilters = (filters && !Array.isArray(filters)) ? filters : {};
 
     // Get selected values (support both old single and new multi format)
     const selectedOrgTypes = safeFilters.organization_types || 

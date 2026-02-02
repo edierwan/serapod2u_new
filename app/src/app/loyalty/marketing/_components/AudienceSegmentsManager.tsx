@@ -28,12 +28,14 @@ type Segment = {
 
 type ViewMode = 'list' | 'create' | 'edit';
 
-const defaultFilters: AudienceFilters = {
-    organization_type: 'all',
-    state: 'any',
-    opt_in_only: true,
-    only_valid_whatsapp: true
-};
+function makeDefaultFilters(): AudienceFilters {
+    return {
+        organization_type: 'all',
+        state: 'any',
+        opt_in_only: true,
+        only_valid_whatsapp: true
+    };
+}
 
 export function AudienceSegmentsManager() {
     const { toast } = useToast();
@@ -55,7 +57,7 @@ export function AudienceSegmentsManager() {
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        filters: defaultFilters,
+        filters: makeDefaultFilters(),
         estimated_count: 0
     });
 
@@ -145,8 +147,16 @@ export function AudienceSegmentsManager() {
     }, []);
 
     const handleNew = () => {
+        const newFilters = makeDefaultFilters();
+        // Temporary debug log as requested
+        console.log('DEBUG: handleNew defaultFilters check', {
+            type: typeof newFilters,
+            isArray: Array.isArray(newFilters),
+            value: newFilters
+        });
+        
         setEditingSegment(null);
-        setFormData({ name: '', description: '', filters: { ...defaultFilters }, estimated_count: 0 });
+        setFormData({ name: '', description: '', filters: newFilters, estimated_count: 0 });
         setViewMode('create');
     };
 
@@ -155,7 +165,7 @@ export function AudienceSegmentsManager() {
         setFormData({
             name: seg.name,
             description: seg.description,
-            filters: seg.filters || defaultFilters,
+            filters: seg.filters || makeDefaultFilters(),
             estimated_count: seg.estimated_count
         });
         setViewMode('edit');
@@ -164,7 +174,7 @@ export function AudienceSegmentsManager() {
     const handleCancel = () => {
         setViewMode('list');
         setEditingSegment(null);
-        setFormData({ name: '', description: '', filters: defaultFilters, estimated_count: 0 });
+        setFormData({ name: '', description: '', filters: makeDefaultFilters(), estimated_count: 0 });
     };
 
     const handleSave = async () => {
