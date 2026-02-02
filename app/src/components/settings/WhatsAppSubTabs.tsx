@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -94,6 +95,7 @@ export default function WhatsAppSubTabs({
 }: WhatsAppSubTabsProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const supabase = createClient()
 
     // Get initial tab from URL or default to 'status'
     const urlTab = searchParams.get('whatsapp_tab')
@@ -215,23 +217,37 @@ export default function WhatsAppSubTabs({
         saveTestNumbersToConfig(updated)
     }
 
-    // Save test numbers to config
+    // Save test numbers to config - direct API call to ensure persistence
     const saveTestNumbersToConfig = async (numbers: string[]) => {
         if (!whatsappConfig) return
         setSavingTestNumbers(true)
         try {
-            setWhatsappConfig({
+            // Update local state
+            const updatedConfig = {
                 ...whatsappConfig,
                 config_public: {
                     ...whatsappConfig.config_public,
                     test_numbers: numbers,
                     test_number: numbers[0] || '' // Keep primary for backward compatibility
                 }
-            })
-            // Trigger save
-            await onSave()
+            }
+            setWhatsappConfig(updatedConfig)
+
+            // Direct database update to ensure persistence
+            const { error } = await (supabase as any)
+                .from('notification_provider_configs')
+                .update({
+                    config_public: updatedConfig.config_public,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', whatsappConfig.id)
+
+            if (error) throw error
+            
+            console.log('Test numbers saved:', numbers)
         } catch (err: any) {
             console.error('Failed to save test numbers:', err)
+            alert('Failed to save test numbers: ' + err.message)
         } finally {
             setSavingTestNumbers(false)
         }
@@ -420,34 +436,57 @@ export default function WhatsAppSubTabs({
 
     // Send test message
     const handleSendTestMessage = async () => {
-        if (!testNumber) {
-            alert('Please enter a recipient number')
+        if (savedTestNumbers.length === 0) {
+            alert('Please add at least one test recipient number')
             return
         }
 
         try {
             setSendingTest(true)
-            const response = await fetch('/api/settings/whatsapp/test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    to: testNumber,
-                    message: testMessage || undefined
-                })
-            })
+            
+            // Send to all saved test numbers
+            const results: { number: string; success: boolean; error?: string }[] = []
+            
+            for (const number of savedTestNumbers) {
+                try {
+                    const response = await fetch('/api/settings/whatsapp/test', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            to: number,
+                            message: testMessage || undefined
+                        })
+                    })
+                    const data = await response.json()
+                    results.push({ 
+                        number, 
+                        success: data.success, 
+                        error: data.error 
+                    })
+                } catch (err: any) {
+                    results.push({ number, success: false, error: err.message })
+                }
+            }
 
-            const data = await response.json()
+            const successCount = results.filter(r => r.success).length
+            const failedCount = results.filter(r => !r.success).length
 
-            if (data.success) {
+            if (failedCount === 0) {
                 setLastTestResult({
                     success: true,
-                    message: `Message sent successfully to ${data.sent_to}`,
+                    message: `Message sent successfully to ${successCount} recipient${successCount > 1 ? 's' : ''}: ${savedTestNumbers.join(', ')}`,
+                    timestamp: new Date()
+                })
+            } else if (successCount === 0) {
+                setLastTestResult({
+                    success: false,
+                    message: `Failed to send to all ${failedCount} recipient${failedCount > 1 ? 's' : ''}. ${results[0]?.error || 'Unknown error'}`,
                     timestamp: new Date()
                 })
             } else {
                 setLastTestResult({
-                    success: false,
-                    message: data.error || 'Failed to send message',
+                    success: true,
+                    message: `Sent to ${successCount}/${savedTestNumbers.length} recipients. ${failedCount} failed.`,
                     timestamp: new Date()
                 })
             }
@@ -1105,82 +1144,17 @@ export default function WhatsAppSubTabs({
     // ========================================
     const renderTestingTab = () => (
         <div className="space-y-6">
-            {/* Saved Test Numbers Card */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                        <Smartphone className="w-5 h-5 text-blue-600" />
-                        Test Recipients
-                    </CardTitle>
-                    <CardDescription>
-                        Manage phone numbers for testing WhatsApp broadcasts and campaigns. These numbers will be available across all testing features.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {/* Add new number */}
-                    <div className="flex gap-2">
-                        <Input
-                            placeholder="Enter phone number (e.g., 60192277233)"
-                            value={newTestNumber}
-                            onChange={e => setNewTestNumber(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleAddTestNumber()}
-                            className="flex-1"
-                        />
-                        <Button onClick={handleAddTestNumber} disabled={savingTestNumbers || !newTestNumber.trim()}>
-                            {savingTestNumbers ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
-                        </Button>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                        Enter number with country code (e.g., 60192277233 for Malaysia)
-                    </p>
-
-                    {/* Saved numbers list */}
-                    {savedTestNumbers.length > 0 ? (
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium">Saved Test Numbers</Label>
-                            <div className="flex flex-wrap gap-2">
-                                {savedTestNumbers.map((number, idx) => (
-                                    <Badge 
-                                        key={number} 
-                                        variant="secondary" 
-                                        className="px-3 py-1.5 text-sm flex items-center gap-2 bg-blue-50 text-blue-700 border border-blue-200"
-                                    >
-                                        <Smartphone className="w-3 h-3" />
-                                        {number}
-                                        {idx === 0 && <span className="text-[10px] bg-blue-200 px-1 rounded">Primary</span>}
-                                        <button
-                                            onClick={() => handleRemoveTestNumber(number)}
-                                            className="ml-1 hover:text-red-600 transition-colors"
-                                            title="Remove number"
-                                        >
-                                            <XCircle className="w-4 h-4" />
-                                        </button>
-                                    </Badge>
-                                ))}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="text-center py-6 text-gray-500 border rounded-lg bg-gray-50">
-                            <Smartphone className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                            <p className="text-sm">No test numbers saved yet</p>
-                            <p className="text-xs">Add numbers above to use for testing</p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Send Test Message Card */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                         <Send className="w-5 h-5 text-green-600" />
-                        Send Test Message
+                        WhatsApp Test Message
                     </CardTitle>
                     <CardDescription>
-                        Verify your WhatsApp connection by sending a test message without affecting live flows
+                        Send test messages to verify your WhatsApp connection. Messages will be sent to all recipients in the list below.
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
                     {!gatewayStatus?.connected && whatsappConfig?.provider_name === 'baileys' ? (
                         <div className="text-center py-8 text-gray-500">
                             <WifiOff className="w-12 h-12 mx-auto mb-3 text-gray-300" />
@@ -1192,56 +1166,103 @@ export default function WhatsAppSubTabs({
                         </div>
                     ) : (
                         <>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Recipient Number</Label>
-                                    {savedTestNumbers.length > 0 ? (
-                                        <Select value={testNumber} onValueChange={setTestNumber}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select or enter a number" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {savedTestNumbers.map(num => (
-                                                    <SelectItem key={num} value={num}>
-                                                        {num}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    ) : (
-                                        <Input
-                                            placeholder="60192277233"
-                                            value={testNumber}
-                                            onChange={e => setTestNumber(e.target.value)}
-                                        />
-                                    )}
-                                    <p className="text-xs text-gray-500">
-                                        {savedTestNumbers.length > 0 
-                                            ? 'Select from saved numbers or add new ones above'
-                                            : 'Enter number with country code (e.g., 60192277233 for Malaysia)'}
-                                    </p>
+                            {/* Test Recipients Section */}
+                            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Smartphone className="w-5 h-5 text-blue-600" />
+                                        <Label className="text-sm font-semibold">Test Recipients</Label>
+                                    </div>
+                                    <Badge variant="outline" className="text-xs">
+                                        {savedTestNumbers.length} number{savedTestNumbers.length !== 1 ? 's' : ''}
+                                    </Badge>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Message (Optional)</Label>
+
+                                {/* Add new number */}
+                                <div className="flex gap-2">
                                     <Input
-                                        placeholder="Leave empty for default test message"
-                                        value={testMessage}
-                                        onChange={e => setTestMessage(e.target.value)}
+                                        placeholder="Enter phone number with country code (e.g., 60192277233)"
+                                        value={newTestNumber}
+                                        onChange={e => setNewTestNumber(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleAddTestNumber()}
+                                        className="flex-1 bg-white"
                                     />
+                                    <Button 
+                                        onClick={handleAddTestNumber} 
+                                        disabled={savingTestNumbers || !newTestNumber.trim()}
+                                        size="sm"
+                                    >
+                                        {savingTestNumbers ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
+                                    </Button>
                                 </div>
+
+                                {/* Saved numbers list */}
+                                {savedTestNumbers.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2 pt-2">
+                                        {savedTestNumbers.map((number) => (
+                                            <Badge 
+                                                key={number} 
+                                                variant="secondary" 
+                                                className="px-3 py-2 text-sm flex items-center gap-2 bg-white text-gray-700 border border-gray-200 shadow-sm"
+                                            >
+                                                <Smartphone className="w-3.5 h-3.5 text-blue-500" />
+                                                <span className="font-mono">{number}</span>
+                                                <button
+                                                    onClick={() => handleRemoveTestNumber(number)}
+                                                    className="ml-1 text-gray-400 hover:text-red-600 transition-colors"
+                                                    title="Remove number"
+                                                >
+                                                    <XCircle className="w-4 h-4" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-gray-400">
+                                        <p className="text-sm">No test numbers added yet</p>
+                                        <p className="text-xs">Add phone numbers above to receive test messages</p>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Message Input */}
+                            <div className="space-y-2">
+                                <Label>Message (Optional)</Label>
+                                <Input
+                                    placeholder="Leave empty for default test message"
+                                    value={testMessage}
+                                    onChange={e => setTestMessage(e.target.value)}
+                                />
+                                <p className="text-xs text-gray-500">
+                                    Default message: "This is a test message from Serapod2U WhatsApp Gateway"
+                                </p>
+                            </div>
+
+                            {/* Send Button */}
                             <Button
                                 onClick={handleSendTestMessage}
-                                disabled={sendingTest || !testNumber}
-                                className="bg-green-600 hover:bg-green-700"
+                                disabled={sendingTest || savedTestNumbers.length === 0}
+                                className="w-full bg-green-600 hover:bg-green-700 h-12 text-base"
                             >
                                 {sendingTest ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    <>
+                                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                        Sending to {savedTestNumbers.length} recipient{savedTestNumbers.length > 1 ? 's' : ''}...
+                                    </>
                                 ) : (
-                                    <Send className="w-4 h-4 mr-2" />
+                                    <>
+                                        <Send className="w-5 h-5 mr-2" />
+                                        Send Test Message to {savedTestNumbers.length} Recipient{savedTestNumbers.length !== 1 ? 's' : ''}
+                                    </>
                                 )}
-                                Send Test Message
                             </Button>
+
+                            {savedTestNumbers.length === 0 && (
+                                <p className="text-center text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                                    <AlertTriangle className="w-4 h-4 inline mr-1" />
+                                    Add at least one test recipient number above to send test messages
+                                </p>
+                            )}
 
                             {/* Last Test Result */}
                             {lastTestResult && (
