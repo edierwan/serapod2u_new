@@ -45,11 +45,16 @@ export async function POST(request: NextRequest) {
                 ? [activeFilters.organization_type] 
                 : []);
         
+        console.log('[Audience Resolve] Raw filters:', JSON.stringify(activeFilters));
+        console.log('[Audience Resolve] Determined orgTypes:', orgTypes);
+
         // Check what we're targeting
         const hasOrgContactTypes = orgTypes.some((t: string) => ORG_CONTACT_TYPES.includes(t));
         const hasOrgUserTypes = orgTypes.some((t: string) => ORG_USER_TYPES.includes(t));
         const hasEndUsers = orgTypes.includes('End User') || orgTypes.length === 0;
         const isAllTypes = orgTypes.length === 0 || orgTypes.includes('all') || orgTypes.includes('All') || orgTypes.includes('All Organization Types');
+
+        console.log('[Audience Resolve] Flags:', { hasOrgContactTypes, hasOrgUserTypes, hasEndUsers, isAllTypes });
 
         // Location filter (support both single and multi-select)
         const locationStates = activeFilters.states || 
@@ -84,57 +89,74 @@ export async function POST(request: NextRequest) {
         // This targets individual users who belong to organizations of specified types
         // Similar to User Management filter by Organization Type
         // ============================================
+        console.log('[Audience Resolve] Processing HQ section:', {
+            hasOrgUserTypes,
+            isAllTypes,
+            orgTypes,
+            targetWillBeProcessed: (hasOrgUserTypes || isAllTypes) && mode !== 'specific_users'
+        });
+
         if ((hasOrgUserTypes || isAllTypes) && mode !== 'specific_users') {
             const targetOrgUserTypes = isAllTypes 
                 ? ORG_USER_TYPES 
                 : orgTypes.filter((t: string) => ORG_USER_TYPES.includes(t));
 
+            console.log('[Audience Resolve] HQ targeting org types:', targetOrgUserTypes);
+
             if (targetOrgUserTypes.length > 0) {
-                // First get organization IDs of these types
-                let orgQuery = supabase.from('organizations')
-                    .select('id, org_type_code, state_id, states!left(state_name)')
+                // Step 1: Get all organization IDs that match the target types
+                const { data: targetOrgs, error: orgError } = await supabase
+                    .from('organizations')
+                    .select('id, org_name, org_type_code, state_id, states!left(state_name)')
                     .eq('is_active', true)
                     .in('org_type_code', targetOrgUserTypes);
 
-                const { data: orgsData } = await orgQuery;
+                console.log('[Audience Resolve] HQ organizations found:', targetOrgs?.length, 'Error:', orgError?.message);
 
-                if (orgsData && orgsData.length > 0) {
-                    // Filter by location if needed
-                    let filteredOrgIds = orgsData
-                        .filter(org => {
-                            if (locationStates.length === 0) return true;
+                if (targetOrgs && targetOrgs.length > 0) {
+                    // Apply location filter to organizations if needed
+                    const filteredOrgs = locationStates.length > 0
+                        ? targetOrgs.filter(org => {
                             const stateName = (org.states as any)?.state_name;
                             return stateName && locationStates.includes(stateName);
                         })
-                        .map(org => org.id);
+                        : targetOrgs;
 
-                    if (filteredOrgIds.length > 0) {
-                        // Get users belonging to these organizations
+                    const targetOrgIds = filteredOrgs.map(org => org.id);
+                    console.log('[Audience Resolve] HQ filtered org IDs:', targetOrgIds.length);
+
+                    if (targetOrgIds.length > 0) {
+                        // Step 2: Get ALL users that belong to these organizations
+                        // Query similar to User Management
                         const PAGE_SIZE = 1000;
                         let offset = 0;
                         let hasMore = true;
                         const allOrgUsers: any[] = [];
 
                         while (hasMore) {
-                            let userQuery = supabase.from('users')
+                            const { data: usersData, error: userError, count } = await supabase
+                                .from('users')
                                 .select(`
                                     id,
                                     full_name,
                                     phone,
                                     location,
                                     organization_id,
-                                    is_active,
-                                    organizations!left(org_name, org_type_code, state_id, states!left(state_name))
+                                    is_active
                                 `, { count: 'exact' })
                                 .eq('is_active', true)
-                                .in('organization_id', filteredOrgIds);
+                                .in('organization_id', targetOrgIds)
+                                .range(offset, offset + PAGE_SIZE - 1);
 
-                            userQuery = userQuery.range(offset, offset + PAGE_SIZE - 1);
+                            console.log('[Audience Resolve] HQ users query result:', { 
+                                usersCount: usersData?.length, 
+                                totalCount: count, 
+                                error: userError?.message,
+                                sampleUser: usersData?.[0]
+                            });
 
-                            const { data: usersData, error, count } = await userQuery;
-
-                            if (error) {
-                                console.error('Error fetching org users:', error);
+                            if (userError) {
+                                console.error('Error fetching org users:', userError);
                                 break;
                             }
 
@@ -147,11 +169,16 @@ export async function POST(request: NextRequest) {
                             }
                         }
 
+                        console.log('[Audience Resolve] HQ total users fetched:', allOrgUsers.length);
+
+                        // Create org lookup map for faster access
+                        const orgMap = new Map(filteredOrgs.map(org => [org.id, org]));
+
                         // Process users
                         for (const u of allOrgUsers) {
                             const phone = u.phone?.trim();
-                            const org = u.organizations as any;
-                            const stateName = org?.states?.state_name || u.location;
+                            const org = orgMap.get(u.organization_id);
+                            const stateName = (org?.states as any)?.state_name || u.location;
 
                             totalMatched++;
 
@@ -186,11 +213,20 @@ export async function POST(request: NextRequest) {
         // ============================================
         // PART 1: Target Organizations (DIST, MFG, SHOP, WH)
         // Uses organization's contact_phone, not individual user phones
+        // NOTE: This should NOT run when ONLY HQ-type organizations are selected
+        // HQ users are handled in PART 0
         // ============================================
-        if ((hasOrgContactTypes || isAllTypes) && mode !== 'specific_users') {
+        // Explicitly exclude HQ from PART 1 - HQ should only return users, not org contacts
+        const onlyHQSelected = orgTypes.length > 0 && orgTypes.every((t: string) => ORG_USER_TYPES.includes(t));
+        const shouldRunPart1 = (hasOrgContactTypes || isAllTypes) && mode !== 'specific_users' && !onlyHQSelected;
+        console.log('[Audience Resolve] PART 1 will run?', shouldRunPart1, { hasOrgContactTypes, isAllTypes, onlyHQSelected });
+        
+        if (shouldRunPart1) {
             const targetOrgTypes = isAllTypes 
                 ? ORG_CONTACT_TYPES 
                 : orgTypes.filter((t: string) => ORG_CONTACT_TYPES.includes(t));
+
+            console.log('[Audience Resolve] PART 1 targetOrgTypes:', targetOrgTypes);
 
             if (targetOrgTypes.length > 0) {
                 // Fetch organizations with pagination

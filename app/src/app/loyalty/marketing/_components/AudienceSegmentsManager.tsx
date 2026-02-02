@@ -265,8 +265,8 @@ export function AudienceSegmentsManager() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                    {/* Left Column: Form & Filters - 2/5 = 40% */}
-                    <div className="lg:col-span-2 space-y-6 order-2 lg:order-1">
+                    {/* Left Column: Form & Filters - 3/5 = 60% */}
+                    <div className="lg:col-span-3 space-y-6 order-2 lg:order-1">
                         <Card>
                             <CardHeader className="pb-4">
                                 <CardTitle className="text-lg">Segment Details</CardTitle>
@@ -305,8 +305,8 @@ export function AudienceSegmentsManager() {
                         </Card>
                     </div>
 
-                    {/* Right Column: Preview - 3/5 = 60% */}
-                    <div className="lg:col-span-3 order-1 lg:order-2">
+                    {/* Right Column: Preview - 2/5 = 40% */}
+                    <div className="lg:col-span-2 order-1 lg:order-2">
                         <div className="lg:sticky lg:top-6 space-y-4">
                             <Card className="border-l-4 border-l-primary">
                                 <CardContent className="pt-6">

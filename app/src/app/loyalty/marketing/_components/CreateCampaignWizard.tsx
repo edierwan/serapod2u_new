@@ -235,8 +235,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
     };
 
     return (
-        <Card className="w-full border shadow-sm">
-            <CardHeader>
+        <Card className="w-full border shadow-sm flex flex-col max-h-[calc(100vh-200px)] overflow-hidden">
+            <CardHeader className="flex-shrink-0">
                 <div className="flex justify-between items-center mb-8">
                     <CardTitle className="text-xl">{editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}</CardTitle>
                     <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
@@ -255,7 +255,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                     ))}
                 </div>
             </CardHeader>
-            <CardContent className="pt-8 min-h-[500px]">
+            <CardContent className="pt-8 min-h-[400px] flex-1 overflow-y-auto">
                 {/* Step 1: Objective */}
                 {step === 1 && (
                     <div className="max-w-4xl mx-auto space-y-8">
@@ -578,14 +578,17 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                     </div>
                 )}
             </CardContent>
-            <div className="p-6 border-t bg-gray-50 flex justify-between rounded-b-lg">
+            {/* Sticky bottom action bar - always visible */}
+            <div className="sticky bottom-0 p-6 border-t bg-gray-50 flex justify-between rounded-b-lg shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                 <Button variant="outline" onClick={step === 1 ? onCancel : handleBack}>
                     {step === 1 ? 'Cancel' : 'Back'}
                 </Button>
                 {step < 4 ? (
-                    <Button onClick={handleNext}>Next Step <ChevronRight className="w-4 h-4 ml-2" /></Button>
+                    <Button onClick={handleNext} size="lg" className="px-6 shadow-sm">
+                        Next Step <ChevronRight className="w-4 h-4 ml-2" />
+                    </Button>
                 ) : (
-                    <Button onClick={handleLaunch} disabled={submitting}>
+                    <Button onClick={handleLaunch} disabled={submitting} size="lg" className="px-6 shadow-sm">
                         {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
                         Launch Campaign
                     </Button>
