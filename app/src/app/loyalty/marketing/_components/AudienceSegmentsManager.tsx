@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -58,6 +58,11 @@ export function AudienceSegmentsManager() {
         filters: defaultFilters,
         estimated_count: 0
     });
+
+    // Memoized callback to prevent re-render loops in AudienceEstimator
+    const handleCountChange = useCallback((count: number) => {
+        setFormData(prev => ({ ...prev, estimated_count: count }));
+    }, []);
 
     const fetchSegments = async () => {
         setLoading(true);
@@ -313,7 +318,7 @@ export function AudienceSegmentsManager() {
                                     <AudienceEstimator
                                         mode="filters"
                                         filters={formData.filters}
-                                        onCountChange={(count: number) => setFormData(prev => ({ ...prev, estimated_count: count }))}
+                                        onCountChange={handleCountChange}
                                     />
                                 </CardContent>
                             </Card>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Users, Loader2, AlertTriangle, CheckCircle, XCircle, Ban } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,6 +37,14 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
     const [stats, setStats] = useState<AudienceStats | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    
+    // Use refs to avoid dependency issues with callbacks
+    const onCountChangeRef = useRef(onCountChange);
+    onCountChangeRef.current = onCountChange;
+    
+    // Serialize filters to detect actual changes (not just reference changes)
+    const filtersKey = JSON.stringify(filters || {});
+    const userIdsKey = userIds?.join(',') || '';
 
     useEffect(() => {
         let isMounted = true;
@@ -45,7 +53,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
             if (mode === 'segment' && !segmentId) return;
             if (mode === 'specific_users' && (!userIds || userIds.length === 0)) {
                 setStats(null);
-                onCountChange?.(0);
+                onCountChangeRef.current?.(0);
                 return;
             }
 
@@ -69,7 +77,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
                 const data = await res.json();
                 if (isMounted) {
                     setStats(data);
-                    onCountChange?.(data.eligible_count);
+                    onCountChangeRef.current?.(data.eligible_count);
                 }
             } catch (err: any) {
                 if (isMounted) setError(err.message);
@@ -83,7 +91,8 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
             isMounted = false;
             clearTimeout(timer);
         };
-    }, [mode, filters, segmentId, userIds, onCountChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, filtersKey, segmentId, userIdsKey]);
 
     if (error) {
         return (

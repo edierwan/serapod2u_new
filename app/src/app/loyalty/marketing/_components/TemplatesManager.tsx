@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,18 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit, Copy, Send, Loader2, Search, Filter, Sparkles } from 'lucide-react';
+import { Plus, Edit, Copy, Send, Loader2, Search, Filter, Sparkles, ShieldCheck, ShieldAlert, ShieldX, Link, User, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react';
+import { 
+    validateTemplate, 
+    getRiskLevel, 
+    getRiskBadgeColor, 
+    getRiskBadgeLabel,
+    renderPreview,
+    SUPPORTED_VARIABLES,
+    type TemplateSafetyResult,
+    type RiskLevel
+} from '@/lib/template-safety.client';
+import { useDebounce } from '@/hooks/use-debounce';
 
 type Template = {
     id: string;
@@ -17,6 +28,8 @@ type Template = {
     category: string;
     body: string;
     is_system?: boolean;
+    risk_score?: number;
+    risk_flags?: string[];
 };
 
 export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Template) => void }) {
@@ -26,16 +39,40 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
     const [isEditing, setIsEditing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [saving, setSaving] = useState(false);
 
     // Form state
     const [editData, setEditData] = useState<Partial<Template>>({});
+    
+    // Safety validation state
+    const [safetyResult, setSafetyResult] = useState<TemplateSafetyResult | null>(null);
+    const debouncedBody = useDebounce(editData.body || '', 400);
+
+    // Run validation when body changes
+    useEffect(() => {
+        if (debouncedBody) {
+            const result = validateTemplate(debouncedBody);
+            setSafetyResult(result);
+        } else {
+            setSafetyResult(null);
+        }
+    }, [debouncedBody]);
 
     const fetchTemplates = async () => {
         try {
             const res = await fetch('/api/wa/marketing/templates');
             if (res.ok) {
                 const data = await res.json();
-                setTemplates(data || []);
+                // Compute risk scores for templates
+                const templatesWithRisk = (data || []).map((t: Template) => {
+                    const validation = validateTemplate(t.body || '');
+                    return {
+                        ...t,
+                        risk_score: validation.riskScore,
+                        risk_flags: validation.riskFlags.map(f => f.code)
+                    };
+                });
+                setTemplates(templatesWithRisk);
             }
         } catch (error) {
             console.error(error);
@@ -79,34 +116,63 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
     const handleEdit = (tmpl: Template) => {
         setSelectedTemplate(tmpl);
         setEditData({ ...tmpl });
+        setSafetyResult(null);  // Reset safety result
         setIsEditing(true);
     };
 
     const handleCreate = () => {
         setSelectedTemplate(null);
         setEditData({ name: '', category: 'General', body: '' });
+        setSafetyResult(null);  // Reset safety result
         setIsEditing(true);
     };
 
     const handleSave = async () => {
         if (!editData.name || !editData.body) return;
 
+        // Validate template before saving
+        const validation = validateTemplate(editData.body);
+        if (!validation.isValid) {
+            alert(`Cannot save template:\n${validation.errors.map(e => e.message).join('\n')}`);
+            return;
+        }
+
+        setSaving(true);
         try {
             const res = await fetch('/api/wa/marketing/templates', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(editData)
+                body: JSON.stringify({
+                    ...editData,
+                    risk_score: validation.riskScore,
+                    risk_flags: validation.riskFlags.map(f => f.code)
+                })
             });
             if (res.ok) {
                 fetchTemplates();
                 setIsEditing(false);
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Failed to save template');
             }
         } catch (e) {
             console.error(e);
+        } finally {
+            setSaving(false);
         }
     };
 
     if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin inline-block mr-2" /> Loading templates...</div>;
+
+    // Risk badge icon helper
+    const getRiskIcon = (score: number) => {
+        const level = getRiskLevel(score);
+        switch (level) {
+            case 'safe': return <ShieldCheck className="h-3 w-3" />;
+            case 'warning': return <ShieldAlert className="h-3 w-3" />;
+            case 'blocked': return <ShieldX className="h-3 w-3" />;
+        }
+    };
 
     // Category badge colors
     const getCategoryColor = (category: string) => {
@@ -202,15 +268,38 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                                 <CardTitle className="text-sm font-medium group-hover:text-primary transition-colors">
                                                     {tmpl.name}
                                                 </CardTitle>
-                                                {tmpl.is_system && (
-                                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                                                        System
-                                                    </Badge>
-                                                )}
+                                                <div className="flex items-center gap-1">
+                                                    {/* Risk Badge */}
+                                                    {tmpl.risk_score !== undefined && (
+                                                        <Badge 
+                                                            variant="outline" 
+                                                            className={`text-[10px] px-1.5 py-0 flex items-center gap-1 ${getRiskBadgeColor(getRiskLevel(tmpl.risk_score))}`}
+                                                        >
+                                                            {getRiskIcon(tmpl.risk_score)}
+                                                            {getRiskBadgeLabel(getRiskLevel(tmpl.risk_score))}
+                                                        </Badge>
+                                                    )}
+                                                    {tmpl.is_system && (
+                                                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                                            System
+                                                        </Badge>
+                                                    )}
+                                                </div>
                                             </div>
                                         </CardHeader>
                                         <CardContent>
                                             <p className="text-xs text-gray-500 line-clamp-3">{tmpl.body}</p>
+                                            {/* Quick stats */}
+                                            <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                                                <span className="flex items-center gap-1">
+                                                    <Link className="h-3 w-3" />
+                                                    {(tmpl.body?.match(/https?:\/\/[^\s]+/gi) || []).length + (tmpl.body?.includes('{short_link}') ? 1 : 0)} links
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <User className="h-3 w-3" />
+                                                    {tmpl.body?.includes('{name}') || tmpl.body?.includes('{city}') ? 'Yes' : 'No'}
+                                                </span>
+                                            </div>
                                         </CardContent>
                                     </Card>
                                 ))}
@@ -268,7 +357,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                     <span className="text-xs text-muted-foreground">{editData.body?.length || 0} chars</span>
                                 </div>
                                 <Textarea
-                                    className="h-[300px] font-mono text-sm resize-none bg-gray-50 focus:bg-white transition-colors"
+                                    className="h-[200px] font-mono text-sm resize-none bg-gray-50 focus:bg-white transition-colors"
                                     placeholder="Type your message here... Use {variable} for dynamic content."
                                     value={editData.body}
                                     onChange={e => setEditData({ ...editData, body: e.target.value })}
@@ -278,6 +367,78 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                     <strong>Supported variables:</strong> {'{name}, {city}, {points_balance}, {short_link}'}
                                 </div>
                             </div>
+
+                            {/* Safety Checks Panel */}
+                            {safetyResult && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-base font-semibold flex items-center gap-2">
+                                            <ShieldCheck className="h-4 w-4" />
+                                            Safety Checks
+                                        </Label>
+                                        <Badge 
+                                            variant="outline" 
+                                            className={`flex items-center gap-1 ${getRiskBadgeColor(getRiskLevel(safetyResult.riskScore))}`}
+                                        >
+                                            {getRiskIcon(safetyResult.riskScore)}
+                                            Risk Score: {safetyResult.riskScore}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Quick Stats */}
+                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                        <div className="bg-gray-50 rounded p-2 text-center">
+                                            <div className="font-semibold">{safetyResult.metadata.linkCount}</div>
+                                            <div className="text-muted-foreground">Links</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded p-2 text-center">
+                                            <div className="font-semibold">{safetyResult.metadata.personalizationTokens.length}</div>
+                                            <div className="text-muted-foreground">Personal</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded p-2 text-center">
+                                            <div className="font-semibold">{safetyResult.metadata.emojiCount}</div>
+                                            <div className="text-muted-foreground">Emojis</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Errors */}
+                                    {safetyResult.errors.length > 0 && (
+                                        <div className="space-y-1">
+                                            {safetyResult.errors.map((error, i) => (
+                                                <div key={i} className="flex items-start gap-2 text-xs bg-red-50 text-red-700 p-2 rounded border border-red-200">
+                                                    <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                                    <span>{error.message}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Warnings */}
+                                    {safetyResult.warnings.length > 0 && (
+                                        <div className="space-y-1">
+                                            {safetyResult.warnings.map((warning, i) => (
+                                                <div key={i} className="flex items-start gap-2 text-xs bg-amber-50 text-amber-700 p-2 rounded border border-amber-200">
+                                                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                                    <div>
+                                                        <span>{warning.message}</span>
+                                                        {warning.suggestion && (
+                                                            <span className="block text-amber-600 mt-0.5">💡 {warning.suggestion}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* All Good */}
+                                    {safetyResult.errors.length === 0 && safetyResult.warnings.length === 0 && (
+                                        <div className="flex items-center gap-2 text-xs bg-green-50 text-green-700 p-2 rounded border border-green-200">
+                                            <CheckCircle className="h-3.5 w-3.5" />
+                                            <span>All safety checks passed!</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Preview */}
@@ -300,7 +461,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                 <div className="bg-[#e5ddd5] h-full p-4 flex flex-col gap-2 overflow-y-auto pb-20 relative">
                                     <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4a4a4a 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
                                     <div className="bg-white p-3 rounded-lg rounded-tl-none shadow-sm text-sm self-start max-w-[90%] whitespace-pre-wrap relative z-10 mx-1 mt-2">
-                                        {editData.body || <span className="text-gray-400 italic">Your message will appear here...</span>}
+                                        {editData.body ? renderPreview(editData.body) : <span className="text-gray-400 italic">Your message will appear here...</span>}
                                         <div className="text-[10px] text-gray-400 text-right mt-1 flex justify-end gap-1 items-center">
                                             12:00 PM <span className="text-blue-500">✓✓</span>
                                         </div>

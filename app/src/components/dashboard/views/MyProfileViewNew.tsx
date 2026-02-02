@@ -949,7 +949,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   </div>
 
                   <div>
-                    <Label className="text-sm font-medium">Location</Label>
+                    <Label className="text-sm font-medium">State</Label>
                     <Select
                       value={formData.location}
                       onValueChange={(value) => setFormData({ ...formData, location: value })}
@@ -1102,7 +1102,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-500 font-medium">Location</p>
+                        <p className="text-sm text-gray-500 font-medium">State</p>
                         <button
                           onClick={() => setIsEditing(true)}
                           className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"

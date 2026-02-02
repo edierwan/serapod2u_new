@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Send, Save, AlertTriangle, Users, Calendar as CalendarIcon, Clock, Smartphone, ChevronRight, Check } from 'lucide-react';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Send, Save, AlertTriangle, Users, Calendar as CalendarIcon, Clock, Smartphone, ChevronRight, Check, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -19,6 +20,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
 import { AudienceEstimator } from './AudienceEstimator';
 import { SpecificUserSelector } from './SpecificUserSelector';
+import { 
+    validateTemplate, 
+    getRiskLevel, 
+    getRiskBadgeColor, 
+    getRiskBadgeLabel,
+    type TemplateSafetyResult
+} from '@/lib/template-safety.client';
 
 type WizardProps = {
     onCancel: () => void;
@@ -32,10 +40,14 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
     const [submitting, setSubmitting] = useState(false);
     const [testing, setTesting] = useState(false);
     const [estimatedRecipients, setEstimatedRecipients] = useState(0);
+    const [acknowledgeRisk, setAcknowledgeRisk] = useState(false);
 
     const [segments, setSegments] = useState<any[]>([]);
     const [templates, setTemplates] = useState<any[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
+    
+    // Message safety validation
+    const [messageSafety, setMessageSafety] = useState<TemplateSafetyResult | null>(null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -107,6 +119,25 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
             .catch(err => console.error('Error fetching templates:', err));
     }, []);
 
+    // Validate message safety when it changes
+    useEffect(() => {
+        if (formData.message) {
+            const result = validateTemplate(formData.message);
+            setMessageSafety(result);
+            // Reset acknowledgement if risk changes
+            if (result.riskScore >= 80 || result.riskScore < 50) {
+                setAcknowledgeRisk(false);
+            }
+        } else {
+            setMessageSafety(null);
+        }
+    }, [formData.message]);
+
+    // Memoized count change handler
+    const handleCountChange = useCallback((count: number) => {
+        setEstimatedRecipients(count);
+    }, []);
+
     const steps = [
         { num: 1, label: 'Objective' },
         { num: 2, label: 'Audience' },
@@ -146,6 +177,39 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
         if (!formData.name || !formData.message) {
             toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" });
             return;
+        }
+
+        // Pre-send safety checks
+        if (messageSafety) {
+            // Block if risk >= 80
+            if (messageSafety.riskScore >= 80) {
+                toast({ 
+                    title: "Campaign Blocked", 
+                    description: "Message has critical safety issues. Please fix them before launching.", 
+                    variant: "destructive" 
+                });
+                return;
+            }
+
+            // Require acknowledgement if risk 50-79
+            if (messageSafety.riskScore >= 50 && !acknowledgeRisk) {
+                toast({ 
+                    title: "Acknowledgement Required", 
+                    description: "Please acknowledge the risks before launching this campaign.", 
+                    variant: "destructive" 
+                });
+                return;
+            }
+
+            // Check for blocking errors
+            if (!messageSafety.isValid) {
+                toast({ 
+                    title: "Cannot Launch", 
+                    description: messageSafety.errors[0]?.message || "Message has validation errors.", 
+                    variant: "destructive" 
+                });
+                return;
+            }
         }
         setSubmitting(true);
         try {
@@ -525,10 +589,76 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                     </div>
                                 </div>
 
+                                {/* Template Safety Badge */}
+                                {messageSafety && (
+                                    <div className={`p-4 rounded-lg border ${
+                                        messageSafety.riskScore >= 80 
+                                            ? 'bg-red-50 border-red-200' 
+                                            : messageSafety.riskScore >= 50 
+                                                ? 'bg-amber-50 border-amber-200' 
+                                                : 'bg-green-50 border-green-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            {messageSafety.riskScore >= 80 ? (
+                                                <ShieldX className="w-5 h-5 text-red-500" />
+                                            ) : messageSafety.riskScore >= 50 ? (
+                                                <ShieldAlert className="w-5 h-5 text-amber-500" />
+                                            ) : (
+                                                <ShieldCheck className="w-5 h-5 text-green-500" />
+                                            )}
+                                            <h4 className="font-medium text-sm">
+                                                Message Safety: {getRiskBadgeLabel(getRiskLevel(messageSafety.riskScore))}
+                                            </h4>
+                                            <Badge 
+                                                variant="outline" 
+                                                className={`ml-auto ${getRiskBadgeColor(getRiskLevel(messageSafety.riskScore))}`}
+                                            >
+                                                Score: {messageSafety.riskScore}
+                                            </Badge>
+                                        </div>
+                                        
+                                        {messageSafety.riskScore >= 80 && (
+                                            <p className="text-xs text-red-700 mb-2">
+                                                ⛔ This message cannot be sent due to critical safety issues.
+                                            </p>
+                                        )}
+                                        
+                                        {messageSafety.errors.length > 0 && (
+                                            <div className="space-y-1 mb-2">
+                                                {messageSafety.errors.map((e, i) => (
+                                                    <p key={i} className="text-xs text-red-600">❌ {e.message}</p>
+                                                ))}
+                                            </div>
+                                        )}
+                                        
+                                        {messageSafety.warnings.length > 0 && messageSafety.riskScore < 80 && (
+                                            <div className="space-y-1">
+                                                {messageSafety.warnings.map((w, i) => (
+                                                    <p key={i} className="text-xs text-amber-700">⚠️ {w.message}</p>
+                                                ))}
+                                            </div>
+                                        )}
+                                        
+                                        {/* Acknowledge checkbox for medium risk */}
+                                        {messageSafety.riskScore >= 50 && messageSafety.riskScore < 80 && (
+                                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-amber-200">
+                                                <Checkbox 
+                                                    id="acknowledge-risk"
+                                                    checked={acknowledgeRisk}
+                                                    onCheckedChange={(checked) => setAcknowledgeRisk(checked === true)}
+                                                />
+                                                <label htmlFor="acknowledge-risk" className="text-xs text-amber-800 cursor-pointer">
+                                                    I understand the risks and want to proceed with this campaign
+                                                </label>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-100">
                                     <div className="flex items-center gap-2 mb-2">
                                         <AlertTriangle className={`w-4 h-4 ${riskLevel === 'High' ? 'text-red-500' : 'text-yellow-500'}`} />
-                                        <h4 className="font-medium text-sm">Risk Assessment: {riskLevel}</h4>
+                                        <h4 className="font-medium text-sm">Audience Size: {riskLevel}</h4>
                                     </div>
                                     <p className="text-xs text-yellow-700">
                                         {riskLevel === 'High'
@@ -588,9 +718,14 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                         Next Step <ChevronRight className="w-4 h-4 ml-2" />
                     </Button>
                 ) : (
-                    <Button onClick={handleLaunch} disabled={submitting} size="lg" className="px-6 shadow-sm">
+                    <Button 
+                        onClick={handleLaunch} 
+                        disabled={submitting || (messageSafety?.riskScore ?? 0) >= 80 || ((messageSafety?.riskScore ?? 0) >= 50 && !acknowledgeRisk)} 
+                        size="lg" 
+                        className="px-6 shadow-sm"
+                    >
                         {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                        Launch Campaign
+                        {(messageSafety?.riskScore ?? 0) >= 80 ? 'Blocked' : 'Launch Campaign'}
                     </Button>
                 )}
             </div>

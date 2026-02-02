@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { validateTemplate } from '@/lib/template-safety';
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -56,7 +57,18 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, category, body: templateBody, variables } = body;
+    const { name, category, body: templateBody, variables, risk_score, risk_flags } = body;
+
+    // Server-side validation (never trust client)
+    const validation = validateTemplate(templateBody || '');
+    
+    // Block if template has critical errors
+    if (!validation.isValid) {
+      return NextResponse.json({ 
+        error: 'Template validation failed',
+        errors: validation.errors 
+      }, { status: 400 });
+    }
 
     const { data, error } = await supabase
       .from('marketing_templates' as any)
@@ -66,6 +78,12 @@ export async function POST(request: Request) {
         category,
         body: templateBody,
         variables: variables || [],
+        risk_score: validation.riskScore,
+        risk_flags: validation.riskFlags.map(f => f.code),
+        link_count: validation.metadata.linkCount,
+        link_domains: validation.metadata.linkDomains,
+        personalization_tokens: validation.metadata.personalizationTokens,
+        content_hash: validation.metadata.normalizedContentHash,
         created_by: user.id
       })
       .select()
