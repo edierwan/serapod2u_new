@@ -24,7 +24,8 @@ async function getWhatsappConfig(supabase: any, orgId: string) {
   return {
     baseUrl: publicConfig.base_url,
     apiKey: sensitiveConfig.api_key,
-    testNumber: publicConfig.test_number
+    testNumber: publicConfig.test_number,
+    testNumbers: publicConfig.test_numbers || [] // Support multiple test numbers
   };
 }
 
@@ -59,9 +60,13 @@ export async function POST(request: Request) {
        return NextResponse.json({ error: 'WhatsApp configuration not found. Please configure it in Settings > Notification Providers.' }, { status: 400 });
     }
 
-    const targetNumber = number || config.testNumber;
+    // Get target number: use provided number, or first from test_numbers array, or legacy test_number
+    const targetNumber = number || (config.testNumbers && config.testNumbers.length > 0 ? config.testNumbers[0] : config.testNumber);
     if (!targetNumber) {
-         return NextResponse.json({ error: 'No test recipient configured or provided' }, { status: 400 });
+         return NextResponse.json({ 
+           error: 'No test recipient configured. Please add test phone numbers in Settings > Notifications > WhatsApp > Testing tab.',
+           code: 'NO_TEST_RECIPIENT'
+         }, { status: 400 });
     }
     
     // Replace variables with sample data if present in message

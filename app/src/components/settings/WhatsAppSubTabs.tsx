@@ -128,6 +128,11 @@ export default function WhatsAppSubTabs({
         message: string
         timestamp: Date
     } | null>(null)
+    
+    // Saved test numbers state
+    const [savedTestNumbers, setSavedTestNumbers] = useState<string[]>([])
+    const [newTestNumber, setNewTestNumber] = useState('')
+    const [savingTestNumbers, setSavingTestNumbers] = useState(false)
 
     // Smart polling state
     const statusPollRef = useRef<NodeJS.Timeout | null>(null)
@@ -172,6 +177,63 @@ export default function WhatsAppSubTabs({
             console.error('Failed to toggle AI mode:', err)
         } finally {
             setAiModeLoading(false)
+        }
+    }
+
+    // Load saved test numbers from config
+    useEffect(() => {
+        if (whatsappConfig?.config_public?.test_numbers) {
+            setSavedTestNumbers(whatsappConfig.config_public.test_numbers)
+        } else if (whatsappConfig?.config_public?.test_number) {
+            // Migrate single test number to array
+            setSavedTestNumbers([whatsappConfig.config_public.test_number])
+        }
+    }, [whatsappConfig?.config_public?.test_numbers, whatsappConfig?.config_public?.test_number])
+
+    // Add new test number
+    const handleAddTestNumber = () => {
+        const number = newTestNumber.replace(/[^\d+]/g, '').trim()
+        if (!number || number.length < 8) {
+            alert('Please enter a valid phone number')
+            return
+        }
+        if (savedTestNumbers.includes(number)) {
+            alert('This number is already in the list')
+            return
+        }
+        const updated = [...savedTestNumbers, number]
+        setSavedTestNumbers(updated)
+        setNewTestNumber('')
+        // Auto-save to config
+        saveTestNumbersToConfig(updated)
+    }
+
+    // Remove test number
+    const handleRemoveTestNumber = (numberToRemove: string) => {
+        const updated = savedTestNumbers.filter(n => n !== numberToRemove)
+        setSavedTestNumbers(updated)
+        saveTestNumbersToConfig(updated)
+    }
+
+    // Save test numbers to config
+    const saveTestNumbersToConfig = async (numbers: string[]) => {
+        if (!whatsappConfig) return
+        setSavingTestNumbers(true)
+        try {
+            setWhatsappConfig({
+                ...whatsappConfig,
+                config_public: {
+                    ...whatsappConfig.config_public,
+                    test_numbers: numbers,
+                    test_number: numbers[0] || '' // Keep primary for backward compatibility
+                }
+            })
+            // Trigger save
+            await onSave()
+        } catch (err: any) {
+            console.error('Failed to save test numbers:', err)
+        } finally {
+            setSavingTestNumbers(false)
         }
     }
 
@@ -1043,6 +1105,71 @@ export default function WhatsAppSubTabs({
     // ========================================
     const renderTestingTab = () => (
         <div className="space-y-6">
+            {/* Saved Test Numbers Card */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <Smartphone className="w-5 h-5 text-blue-600" />
+                        Test Recipients
+                    </CardTitle>
+                    <CardDescription>
+                        Manage phone numbers for testing WhatsApp broadcasts and campaigns. These numbers will be available across all testing features.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {/* Add new number */}
+                    <div className="flex gap-2">
+                        <Input
+                            placeholder="Enter phone number (e.g., 60192277233)"
+                            value={newTestNumber}
+                            onChange={e => setNewTestNumber(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleAddTestNumber()}
+                            className="flex-1"
+                        />
+                        <Button onClick={handleAddTestNumber} disabled={savingTestNumbers || !newTestNumber.trim()}>
+                            {savingTestNumbers ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
+                        </Button>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                        Enter number with country code (e.g., 60192277233 for Malaysia)
+                    </p>
+
+                    {/* Saved numbers list */}
+                    {savedTestNumbers.length > 0 ? (
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Saved Test Numbers</Label>
+                            <div className="flex flex-wrap gap-2">
+                                {savedTestNumbers.map((number, idx) => (
+                                    <Badge 
+                                        key={number} 
+                                        variant="secondary" 
+                                        className="px-3 py-1.5 text-sm flex items-center gap-2 bg-blue-50 text-blue-700 border border-blue-200"
+                                    >
+                                        <Smartphone className="w-3 h-3" />
+                                        {number}
+                                        {idx === 0 && <span className="text-[10px] bg-blue-200 px-1 rounded">Primary</span>}
+                                        <button
+                                            onClick={() => handleRemoveTestNumber(number)}
+                                            className="ml-1 hover:text-red-600 transition-colors"
+                                            title="Remove number"
+                                        >
+                                            <XCircle className="w-4 h-4" />
+                                        </button>
+                                    </Badge>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-6 text-gray-500 border rounded-lg bg-gray-50">
+                            <Smartphone className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                            <p className="text-sm">No test numbers saved yet</p>
+                            <p className="text-xs">Add numbers above to use for testing</p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Send Test Message Card */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -1068,13 +1195,30 @@ export default function WhatsAppSubTabs({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Recipient Number</Label>
-                                    <Input
-                                        placeholder="60192277233"
-                                        value={testNumber}
-                                        onChange={e => setTestNumber(e.target.value)}
-                                    />
+                                    {savedTestNumbers.length > 0 ? (
+                                        <Select value={testNumber} onValueChange={setTestNumber}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select or enter a number" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {savedTestNumbers.map(num => (
+                                                    <SelectItem key={num} value={num}>
+                                                        {num}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    ) : (
+                                        <Input
+                                            placeholder="60192277233"
+                                            value={testNumber}
+                                            onChange={e => setTestNumber(e.target.value)}
+                                        />
+                                    )}
                                     <p className="text-xs text-gray-500">
-                                        Enter number with country code (e.g., 60192277233 for Malaysia)
+                                        {savedTestNumbers.length > 0 
+                                            ? 'Select from saved numbers or add new ones above'
+                                            : 'Enter number with country code (e.g., 60192277233 for Malaysia)'}
                                     </p>
                                 </div>
                                 <div className="space-y-2">

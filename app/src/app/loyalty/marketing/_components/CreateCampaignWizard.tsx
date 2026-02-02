@@ -339,9 +339,9 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                     <Label>Template Category</Label>
                                     <ScrollArea className="w-full whitespace-nowrap pb-2">
                                         <div className="flex w-max space-x-2 p-1">
-                                            {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].filter(cat => 
-                                                cat === 'All Categories' || templates.some(t => (t.category || 'General') === cat)
-                                            ).map((cat) => (
+                                            {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP'].map((cat) => {
+                                                const count = cat === 'All Categories' ? templates.length : templates.filter(t => (t.category || 'General') === cat).length;
+                                                return (
                                                 <Badge
                                                     key={cat}
                                                     variant={selectedCategory === cat ? "default" : "outline"}
@@ -355,11 +355,12 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                                     {cat}
                                                     {cat !== 'All Categories' && (
                                                         <span className="ml-1 text-[10px] opacity-70">
-                                                            ({templates.filter(t => (t.category || 'General') === cat).length})
+                                                            ({count})
                                                         </span>
                                                     )}
                                                 </Badge>
-                                            ))}
+                                            );
+                                            })}
                                         </div>
                                     </ScrollArea>
                                 </div>
