@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if we need point-based filtering (requires the view)
-        const needsPointsView = 
+        const needsPointsView =
             activeFilters.points_min != null || activeFilters.points_max != null ||
             activeFilters.collected_system_min != null || activeFilters.collected_system_max != null ||
             activeFilters.collected_manual_min != null || activeFilters.collected_manual_max != null ||
@@ -66,8 +66,12 @@ export async function POST(request: NextRequest) {
                         // Organization Type Filter
                         if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
                             if (activeFilters.organization_type === 'End User') {
+                                // End Users: users with no organization_id (independent consumers)
                                 query = query.is('organization_id', null);
                             } else {
+                                // Organization staff: users whose organization matches the type
+                                // This matches User Management behavior - showing users who are MEMBERS of that org type
+                                query = query.not('organization_id', 'is', null);
                                 query = query.eq('organization_type', activeFilters.organization_type);
                             }
                         }
@@ -189,8 +193,12 @@ export async function POST(request: NextRequest) {
                 } else {
                     if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
                         if (activeFilters.organization_type === 'End User') {
+                            // End Users: users with no organization_id (independent consumers)
                             query = query.is('organization_id', null);
                         } else {
+                            // Organization staff: users whose organization matches the type
+                            // This matches User Management behavior - showing users who are MEMBERS of that org type
+                            query = query.not('organization_id', 'is', null);
                             query = query.eq('organizations.org_type_code', activeFilters.organization_type);
                         }
                     }
@@ -254,23 +262,23 @@ export async function POST(request: NextRequest) {
         // Fetch scan data if needed for activity filters (Never Login, Never Scanned)
         // These filters only apply to End Users (organization_id IS NULL)
         // We use consumer_qr_scans table which tracks actual QR code scans/activations
-        const needsActivationData = activeFilters.never_login === true || 
-                                    activeFilters.never_scanned === true || 
-                                    activeFilters.inactive_days != null;
-        
+        const needsActivationData = activeFilters.never_login === true ||
+            activeFilters.never_scanned === true ||
+            activeFilters.inactive_days != null;
+
         // Set of user IDs who have scanned QR codes (activated)
         const activatedUserIds = new Set<string>();
         const activationDates = new Map<string, Date>(); // user_id -> last_scanned_at
-        
+
         if (needsActivationData) {
             try {
                 // Fetch from consumer_qr_scans - this tracks all QR scans
                 // consumer_id is the user who scanned
                 const { data: scans } = await supabase
-                   .from('consumer_qr_scans' as any)
-                   .select('consumer_id, scanned_at')
-                   .order('scanned_at', { ascending: false });
-                   
+                    .from('consumer_qr_scans' as any)
+                    .select('consumer_id, scanned_at')
+                    .order('scanned_at', { ascending: false });
+
                 if (scans) {
                     scans.forEach((s: any) => {
                         if (!s.consumer_id) return;
@@ -323,7 +331,7 @@ export async function POST(request: NextRequest) {
             if (needsActivationData) {
                 const isEndUser = !u.organization_id;
                 const hasScanned = activatedUserIds.has(u.user_id);
-                
+
                 // Never Login (No Activations): ONLY include End Users who have NEVER scanned
                 // If toggle is ON, we want users who NEVER logged in, so EXCLUDE those who HAVE scanned
                 if (activeFilters.never_login === true) {
@@ -366,7 +374,7 @@ export async function POST(request: NextRequest) {
                 if (activeFilters.inactive_days != null) {
                     const lastScan = activationDates.get(u.user_id);
                     let trueLastActivity = u.last_activity_at ? new Date(u.last_activity_at) : null;
-                    
+
                     if (lastScan) {
                         if (!trueLastActivity || lastScan > trueLastActivity) {
                             trueLastActivity = lastScan;
@@ -376,7 +384,7 @@ export async function POST(request: NextRequest) {
                     if (trueLastActivity) {
                         const cutoff = new Date();
                         cutoff.setDate(cutoff.getDate() - activeFilters.inactive_days);
-                        
+
                         if (trueLastActivity > cutoff) {
                             // Activity is more recent than cutoff -> User is ACTIVE -> Exclude
                             excludedActivity++;

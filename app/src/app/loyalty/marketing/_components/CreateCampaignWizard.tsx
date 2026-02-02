@@ -23,9 +23,10 @@ import { SpecificUserSelector } from './SpecificUserSelector';
 type WizardProps = {
     onCancel: () => void;
     onComplete: () => void;
+    editingCampaign?: any;
 };
 
-export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
+export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: WizardProps) {
     const { toast } = useToast();
     const [step, setStep] = useState(1);
     const [submitting, setSubmitting] = useState(false);
@@ -58,6 +59,32 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
         quietHours: true
     });
 
+    // Load editing campaign data if provided
+    useEffect(() => {
+        if (editingCampaign) {
+            const audienceFilters = editingCampaign.audience_filters || {};
+            setFormData({
+                name: editingCampaign.name || '',
+                objective: editingCampaign.objective || 'Promo',
+                audienceMode: audienceFilters.mode || 'filters',
+                selectedSegmentId: audienceFilters.segment_id || '',
+                selectedUserIds: audienceFilters.user_ids || [],
+                filters: audienceFilters.filters || {
+                    organization_type: 'all',
+                    state: 'any',
+                    opt_in_only: true,
+                    only_valid_whatsapp: true
+                },
+                message: editingCampaign.message_body || '',
+                templateId: editingCampaign.template_id || '',
+                scheduleType: editingCampaign.scheduled_at ? 'schedule' : 'now',
+                scheduledDate: editingCampaign.scheduled_at ? new Date(editingCampaign.scheduled_at) : undefined,
+                quietHours: editingCampaign.quiet_hours_enabled !== false
+            });
+            setEstimatedRecipients(audienceFilters.estimated_count || 0);
+        }
+    }, [editingCampaign]);
+
     useEffect(() => {
         // Fetch Segments
         console.log('Fetching segments and templates...');
@@ -65,13 +92,13 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
             .then(r => r.json())
             .then(d => setSegments(Array.isArray(d) ? d : []))
             .catch(err => console.error('Error fetching segments:', err));
-            
+
         // Fetch Templates
         fetch('/api/wa/marketing/templates')
             .then(r => r.json())
             .then(d => {
                 console.log('Templates fetched:', d);
-                if(Array.isArray(d)) {
+                if (Array.isArray(d)) {
                     setTemplates(d);
                 } else {
                     setTemplates([]);
@@ -162,11 +189,27 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
 
     const riskLevel = estimatedRecipients > 5000 ? 'High' : estimatedRecipients > 1000 ? 'Medium' : 'Low';
 
+    // Helper function for category badge colors
+    const getCategoryBadgeColor = (category: string) => {
+        if (selectedCategory === category) return '';
+        const colors: Record<string, string> = {
+            'Engagement': 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200',
+            'Informational': 'hover:bg-gray-50 hover:text-gray-700',
+            'Loyalty': 'hover:bg-purple-50 hover:text-purple-700 hover:border-purple-200',
+            'Promotional': 'hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200',
+            'Reactivation': 'hover:bg-red-50 hover:text-red-700 hover:border-red-200',
+            'Seasonal': 'hover:bg-green-50 hover:text-green-700 hover:border-green-200',
+            'VIP': 'hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-200',
+            'General': 'hover:bg-gray-50',
+        };
+        return colors[category] || '';
+    };
+
     return (
         <Card className="w-full border shadow-sm">
             <CardHeader>
                 <div className="flex justify-between items-center mb-8">
-                    <CardTitle className="text-xl">Create New Campaign</CardTitle>
+                    <CardTitle className="text-xl">{editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}</CardTitle>
                     <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
                 </div>
                 {/* Stepper */}
@@ -290,23 +333,31 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                 {/* Step 3: Message */}
                 {step === 3 && (
                     <div className="grid md:grid-cols-2 gap-8 h-[500px]">
-                        <div className="flex flex-col gap-4 h-full">
+                        <div className="flex flex-col gap-4 h-full overflow-hidden">
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label>Template Category</Label>
                                     <ScrollArea className="w-full whitespace-nowrap pb-2">
                                         <div className="flex w-max space-x-2 p-1">
-                                            {['All Categories', ...Array.from(new Set(templates.map(t => t.category || 'General')))].map((cat) => (
+                                            {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].filter(cat => 
+                                                cat === 'All Categories' || templates.some(t => (t.category || 'General') === cat)
+                                            ).map((cat) => (
                                                 <Badge
                                                     key={cat}
                                                     variant={selectedCategory === cat ? "default" : "outline"}
-                                                    className="cursor-pointer px-3 py-1 font-normal"
+                                                    className={`cursor-pointer px-3 py-1 font-normal transition-colors ${
+                                                        selectedCategory === cat ? '' : 'hover:bg-muted'
+                                                    } ${getCategoryBadgeColor(cat)}`}
                                                     onClick={() => {
                                                         setSelectedCategory(cat);
-                                                        // Optional: clear selection if category changes? No, keep it.
                                                     }}
                                                 >
                                                     {cat}
+                                                    {cat !== 'All Categories' && (
+                                                        <span className="ml-1 text-[10px] opacity-70">
+                                                            ({templates.filter(t => (t.category || 'General') === cat).length})
+                                                        </span>
+                                                    )}
                                                 </Badge>
                                             ))}
                                         </div>
@@ -318,26 +369,72 @@ export function CreateCampaignWizard({ onCancel, onComplete }: WizardProps) {
                                     <Select
                                         value={formData.templateId}
                                         onValueChange={(val) => {
-                                            const tmpl = templates.find(t => t.id === val);
-                                            setFormData({
-                                                ...formData,
-                                                templateId: val,
-                                                message: tmpl?.body || formData.message
-                                            });
+                                            if (val === 'scratch') {
+                                                setFormData({
+                                                    ...formData,
+                                                    templateId: '',
+                                                    message: ''
+                                                });
+                                            } else {
+                                                const tmpl = templates.find(t => t.id === val);
+                                                setFormData({
+                                                    ...formData,
+                                                    templateId: val,
+                                                    message: tmpl?.body || formData.message
+                                                });
+                                            }
                                         }}
                                     >
                                         <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
-                                        <SelectContent>
-                                            {templates
-                                                .filter(t => selectedCategory === 'All Categories' || (t.category || 'General') === selectedCategory)
-                                                .map(t => (
-                                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                                            ))}
+                                        <SelectContent className="max-h-[300px]">
+                                            <SelectItem value="scratch">
+                                                <span className="flex items-center gap-2">
+                                                    <span className="text-muted-foreground">✏️</span>
+                                                    Start from Scratch
+                                                </span>
+                                            </SelectItem>
+                                            {selectedCategory === 'All Categories' ? (
+                                                // Group templates by category when showing all
+                                                Object.entries(
+                                                    templates.reduce((acc, t) => {
+                                                        const cat = t.category || 'General';
+                                                        if (!acc[cat]) acc[cat] = [];
+                                                        acc[cat].push(t);
+                                                        return acc;
+                                                    }, {} as Record<string, typeof templates>)
+                                                ).sort(([a], [b]) => a.localeCompare(b)).map(([category, categoryTemplates]) => (
+                                                    <div key={category}>
+                                                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
+                                                            {category} ({categoryTemplates.length})
+                                                        </div>
+                                                        {categoryTemplates.map(t => (
+                                                            <SelectItem key={t.id} value={t.id}>
+                                                                <span className="flex items-center gap-2">
+                                                                    {t.name}
+                                                                    {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                                                </span>
+                                                            </SelectItem>
+                                                        ))}
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                // Show templates for selected category
+                                                templates
+                                                    .filter(t => (t.category || 'General') === selectedCategory)
+                                                    .map(t => (
+                                                        <SelectItem key={t.id} value={t.id}>
+                                                            <span className="flex items-center gap-2">
+                                                                {t.name}
+                                                                {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                                            </span>
+                                                        </SelectItem>
+                                                    ))
+                                            )}
                                         </SelectContent>
                                     </Select>
                                 </div>
                             </div>
-                            <div className="flex-1 flex flex-col gap-2">
+                            <div className="flex-1 flex flex-col gap-2 min-h-0">
                                 <Label>Message Body</Label>
                                 <Textarea
                                     className="flex-1 resize-none font-mono text-sm"

@@ -24,7 +24,13 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from('marketing_campaigns' as any)
-    .select('*')
+    .select(`
+      *,
+      creator:created_by (
+        id,
+        full_name
+      )
+    `)
     .eq('org_id', userProfile.organization_id)
     .order('updated_at', { ascending: false });
 
@@ -43,7 +49,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  
+
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -72,11 +78,11 @@ export async function POST(request: Request) {
     // Ensure template_id is a valid UUID or NULL
     let safeTemplateId = template_id;
     if (safeTemplateId && typeof safeTemplateId === 'string') {
-        // Basic UUID validation (or just check length/format)
-        // If it looks like "2" or short string, set to null to avoid DB crash
-        if (safeTemplateId.length < 20) { // UUIDs are 36 chars
-            safeTemplateId = null;
-        }
+      // Basic UUID validation (or just check length/format)
+      // If it looks like "2" or short string, set to null to avoid DB crash
+      if (safeTemplateId.length < 20) { // UUIDs are 36 chars
+        safeTemplateId = null;
+      }
     }
 
     const { data, error } = await supabase
@@ -99,8 +105,8 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-        console.error("Create campaign error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("Create campaign error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json(data);

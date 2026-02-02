@@ -18,6 +18,7 @@ function MarketingPageContent() {
     // Default to 'campaigns' tab if not specified
     const initialTab = searchParams.get('tab') || 'campaigns';
     const [activeTab, setActiveTab] = useState(initialTab);
+    const [editingCampaign, setEditingCampaign] = useState<any>(null);
 
     // Sync state with URL when it changes externally (e.g. back button)
     useEffect(() => {
@@ -31,6 +32,11 @@ function MarketingPageContent() {
         setActiveTab(value);
         // Use replace to avoid filling history stack too much, or push to allow back navigation
         router.push(`?tab=${value}`);
+    };
+
+    const handleEditCampaign = (campaign: any) => {
+        setEditingCampaign(campaign);
+        handleTabChange('create');
     };
 
     return (
@@ -84,13 +90,17 @@ function MarketingPageContent() {
                 </TabsList>
 
                 <TabsContent value="campaigns" className="min-h-[400px]">
-                    <CampaignsList onNew={() => handleTabChange('create')} />
+                    <CampaignsList 
+                        onNew={() => { setEditingCampaign(null); handleTabChange('create'); }} 
+                        onEdit={handleEditCampaign}
+                    />
                 </TabsContent>
 
                 <TabsContent value="create">
                     <CreateCampaignWizard
-                        onCancel={() => handleTabChange('campaigns')}
-                        onComplete={() => handleTabChange('campaigns')}
+                        onCancel={() => { setEditingCampaign(null); handleTabChange('campaigns'); }}
+                        onComplete={() => { setEditingCampaign(null); handleTabChange('campaigns'); }}
+                        editingCampaign={editingCampaign}
                     />
                 </TabsContent>
 

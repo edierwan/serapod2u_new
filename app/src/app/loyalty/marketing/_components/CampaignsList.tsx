@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText } from 'lucide-react';
+import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from "date-fns";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Campaign = {
     id: string;
@@ -22,13 +23,28 @@ type Campaign = {
     sent_count: number;
     failed_count: number;
     message_body: string;
+    audience_filters?: any;
+    template_id?: string;
+    creator?: {
+        id: string;
+        full_name: string;
+    };
 };
 
-export function CampaignsList({ onNew }: { onNew: () => void }) {
+interface CampaignsListProps {
+    onNew: () => void;
+    onEdit?: (campaign: Campaign) => void;
+}
+
+export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+    
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
 
     const fetchCampaigns = async () => {
         try {
@@ -71,6 +87,27 @@ export function CampaignsList({ onNew }: { onNew: () => void }) {
         console.log(`Action ${action} on campaign ${id}`);
         // API calls would go here
         handleRefresh();
+    };
+
+    // Pagination calculations
+    const totalPages = Math.ceil(campaigns.length / pageSize);
+    const paginatedCampaigns = useMemo(() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        return campaigns.slice(startIndex, startIndex + pageSize);
+    }, [campaigns, currentPage, pageSize]);
+
+    // Reset to page 1 when campaigns change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [campaigns.length]);
+
+    const handleEditCampaign = (campaign: Campaign) => {
+        if (onEdit) {
+            onEdit(campaign);
+        } else {
+            // Fallback: open in sheet for editing
+            setSelectedCampaign(campaign);
+        }
     };
 
     if (loading) {
@@ -117,27 +154,36 @@ export function CampaignsList({ onNew }: { onNew: () => void }) {
                             <Button onClick={onNew} className="mt-4">Get Started</Button>
                         </div>
                     ) : (
+                        <>
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-[50px]">#</TableHead>
                                     <TableHead>Campaign Name</TableHead>
                                     <TableHead>Objective</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Recipients</TableHead>
+                                    <TableHead>Created By</TableHead>
                                     <TableHead>Scheduled / Time</TableHead>
                                     <TableHead>Updated</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {campaigns.map(c => (
+                                {paginatedCampaigns.map((c, index) => (
                                     <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => setSelectedCampaign(c)}>
+                                        <TableCell className="text-muted-foreground font-mono text-sm">
+                                            {(currentPage - 1) * pageSize + index + 1}
+                                        </TableCell>
                                         <TableCell className="font-medium">
                                             {c.name}
                                         </TableCell>
                                         <TableCell>{c.objective}</TableCell>
                                         <TableCell>{getStatusBadge(c.status)}</TableCell>
                                         <TableCell>{c.estimated_count.toLocaleString()}</TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {c.creator?.full_name || '-'}
+                                        </TableCell>
                                         <TableCell>{c.scheduled_at ? format(new Date(c.scheduled_at), 'MMM d, HH:mm') : '-'}</TableCell>
                                         <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
                                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -172,6 +218,75 @@ export function CampaignsList({ onNew }: { onNew: () => void }) {
                                 ))}
                             </TableBody>
                         </Table>
+
+                        {/* Pagination Controls */}
+                        {campaigns.length > 0 && (
+                            <div className="flex items-center justify-between px-2 py-4 border-t">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span>Rows per page:</span>
+                                    <Select value={pageSize.toString()} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                                        <SelectTrigger className="w-[70px] h-8">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="5">5</SelectItem>
+                                            <SelectItem value="10">10</SelectItem>
+                                            <SelectItem value="20">20</SelectItem>
+                                            <SelectItem value="50">50</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <span className="ml-4">
+                                        Showing {Math.min((currentPage - 1) * pageSize + 1, campaigns.length)} - {Math.min(currentPage * pageSize, campaigns.length)} of {campaigns.length}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm"
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                    >
+                                        <ChevronLeft className="h-4 w-4" />
+                                        Previous
+                                    </Button>
+                                    <div className="flex items-center gap-1">
+                                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                            let pageNum;
+                                            if (totalPages <= 5) {
+                                                pageNum = i + 1;
+                                            } else if (currentPage <= 3) {
+                                                pageNum = i + 1;
+                                            } else if (currentPage >= totalPages - 2) {
+                                                pageNum = totalPages - 4 + i;
+                                            } else {
+                                                pageNum = currentPage - 2 + i;
+                                            }
+                                            return (
+                                                <Button
+                                                    key={pageNum}
+                                                    variant={currentPage === pageNum ? "default" : "outline"}
+                                                    size="sm"
+                                                    className="w-8 h-8 p-0"
+                                                    onClick={() => setCurrentPage(pageNum)}
+                                                >
+                                                    {pageNum}
+                                                </Button>
+                                            );
+                                        })}
+                                    </div>
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm"
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages || totalPages === 0}
+                                    >
+                                        Next
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                        </>
                     )}
                 </CardContent>
             </Card>
@@ -234,7 +349,10 @@ export function CampaignsList({ onNew }: { onNew: () => void }) {
                             <SheetFooter>
                                 <Button variant="outline" onClick={() => setSelectedCampaign(null)}>Close</Button>
                                 {selectedCampaign.status === 'draft' && (
-                                    <Button>Edit Campaign</Button>
+                                    <Button onClick={() => {
+                                        handleEditCampaign(selectedCampaign);
+                                        setSelectedCampaign(null);
+                                    }}>Edit Campaign</Button>
                                 )}
                             </SheetFooter>
                         </>
