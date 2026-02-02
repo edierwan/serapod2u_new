@@ -91,9 +91,24 @@ const DropdownMenuItem = React.forwardRef<
 ))
 DropdownMenuItem.displayName = "DropdownMenuItem"
 
+interface DropdownMenuSeparatorProps extends React.HTMLAttributes<HTMLDivElement> {}
+
+const DropdownMenuSeparator = React.forwardRef<
+  HTMLDivElement,
+  DropdownMenuSeparatorProps
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={`h-px bg-gray-200 my-1 ${className}`}
+    {...props}
+  />
+))
+DropdownMenuSeparator.displayName = "DropdownMenuSeparator"
+
 export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 }
