@@ -105,17 +105,27 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
 
     useEffect(() => {
         Promise.all([
-            fetch('/api/wa/marketing/audience/org-types').then(r => r.json()),
-            fetch('/api/wa/marketing/audience/states').then(r => r.json())
+            fetch('/api/wa/marketing/audience/org-types').then(r => r.json()).catch(() => ({ organization_types: [] })),
+            fetch('/api/wa/marketing/audience/states').then(r => r.json()).catch(() => ({ states: [] }))
         ]).then(([orgData, stateData]) => {
-            const types = new Set<string>((orgData.organization_types as string[]) || []);
+            const rawTypes = (orgData?.organization_types as string[]) || [];
+            const safeTypes = Array.isArray(rawTypes) 
+                ? rawTypes.filter(t => typeof t === 'string' && t.length > 0) 
+                : [];
+            
+            const types = new Set<string>(safeTypes);
             types.add('End User');
             setOrgTypes(Array.from(types).sort());
 
-            setStates((stateData.states as string[]) || []);
+            const rawStates = (stateData?.states as string[]) || [];
+            const safeStates = Array.isArray(rawStates)
+                 ? rawStates.filter(s => typeof s === 'string' && s.length > 0)
+                 : [];
+            setStates(safeStates.sort());
+            
             setLoading(false);
         }).catch(err => {
-            console.error(err);
+            console.error("Error loading filters:", err);
             setLoading(false);
         });
     }, []);
