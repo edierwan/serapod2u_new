@@ -10,8 +10,64 @@ import { Loader2, ChevronDown, ChevronUp, Coins, Activity, X, Check } from 'luci
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+// import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"; // REPLACED due to potential CSP/eval issues
 import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+// Simple safe list component replacing Command for better CSP compliance
+function FilterList({ 
+    items, 
+    selectedItems, 
+    onToggle, 
+    placeholder 
+}: { 
+    items: string[], 
+    selectedItems: string[], 
+    onToggle: (item: string) => void,
+    placeholder: string
+}) {
+    const [search, setSearch] = useState('');
+    const filtered = items.filter(i => i.toLowerCase().includes(search.toLowerCase()));
+
+    return (
+        <div className="flex flex-col gap-2 p-2">
+            <Input 
+                placeholder={placeholder} 
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)} 
+                className="h-9"
+            />
+            <ScrollArea className="h-[200px] rounded-md border p-2">
+                {filtered.length === 0 ? (
+                    <div className="text-sm text-muted-foreground p-2 text-center">No results found.</div>
+                ) : (
+                    <div className="space-y-1">
+                        {filtered.map(item => (
+                            <div 
+                                key={item}
+                                onClick={() => onToggle(item)}
+                                className={cn(
+                                    "flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground",
+                                    selectedItems.includes(item) && "bg-accent/50"
+                                )}
+                            >
+                                <div className={cn(
+                                    "flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                                    selectedItems.includes(item) 
+                                        ? "bg-primary text-primary-foreground" 
+                                        : "opacity-50"
+                                )}>
+                                    {selectedItems.includes(item) && <Check className="h-3 w-3" />}
+                                </div>
+                                <span>{item}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </ScrollArea>
+        </div>
+    );
+}
 
 export interface AudienceFilters {
     organization_type: string;  // Legacy single select (kept for backward compatibility)
@@ -243,31 +299,12 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[300px] p-0" align="start">
-                            <Command>
-                                <CommandInput placeholder="Search organization types..." />
-                                <CommandList>
-                                    <CommandEmpty>No types found.</CommandEmpty>
-                                    <CommandGroup>
-                                        {orgTypes.map((type) => (
-                                            <CommandItem
-                                                key={type}
-                                                value={type}
-                                                onSelect={() => handleOrgTypeToggle(type)}
-                                            >
-                                                <div className={cn(
-                                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                                    selectedOrgTypes.includes(type) 
-                                                        ? "bg-primary text-primary-foreground" 
-                                                        : "opacity-50"
-                                                )}>
-                                                    {selectedOrgTypes.includes(type) && <Check className="h-3 w-3" />}
-                                                </div>
-                                                {type}
-                                            </CommandItem>
-                                        ))}
-                                    </CommandGroup>
-                                </CommandList>
-                            </Command>
+                            <FilterList
+                                items={orgTypes}
+                                selectedItems={selectedOrgTypes}
+                                onToggle={handleOrgTypeToggle}
+                                placeholder="Search organization types..."
+                            />
                         </PopoverContent>
                     </Popover>
                     {selectedOrgTypes.length > 0 && (
@@ -307,31 +344,12 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[300px] p-0" align="start">
-                            <Command>
-                                <CommandInput placeholder="Search locations..." />
-                                <CommandList>
-                                    <CommandEmpty>No locations found.</CommandEmpty>
-                                    <CommandGroup>
-                                        {states.map((state) => (
-                                            <CommandItem
-                                                key={state}
-                                                value={state}
-                                                onSelect={() => handleStateToggle(state)}
-                                            >
-                                                <div className={cn(
-                                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                                    selectedStates.includes(state) 
-                                                        ? "bg-primary text-primary-foreground" 
-                                                        : "opacity-50"
-                                                )}>
-                                                    {selectedStates.includes(state) && <Check className="h-3 w-3" />}
-                                                </div>
-                                                {state}
-                                            </CommandItem>
-                                        ))}
-                                    </CommandGroup>
-                                </CommandList>
-                            </Command>
+                            <FilterList
+                                items={states}
+                                selectedItems={selectedStates}
+                                onToggle={handleStateToggle}
+                                placeholder="Search locations..."
+                            />
                         </PopoverContent>
                     </Popover>
                     {selectedStates.length > 0 && (
