@@ -93,41 +93,53 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
     const [orgTypeOpen, setOrgTypeOpen] = useState(false);
     const [locationOpen, setLocationOpen] = useState(false);
 
+    // Safeguard for filters prop
+    const safeFilters = filters || {};
+
     // Get selected values (support both old single and new multi format)
-    const selectedOrgTypes = filters.organization_types || 
-        (filters.organization_type && filters.organization_type !== 'all' && filters.organization_type !== 'All' 
-            ? [filters.organization_type] 
+    const selectedOrgTypes = safeFilters.organization_types || 
+        (safeFilters.organization_type && safeFilters.organization_type !== 'all' && safeFilters.organization_type !== 'All' 
+            ? [safeFilters.organization_type] 
             : []);
-    const selectedStates = filters.states || 
-        (filters.state && filters.state !== 'any' && filters.state !== 'Any Location' 
-            ? [filters.state] 
+    const selectedStates = safeFilters.states || 
+        (safeFilters.state && safeFilters.state !== 'any' && safeFilters.state !== 'Any Location' 
+            ? [safeFilters.state] 
             : []);
 
     useEffect(() => {
+        let isMounted = true;
         Promise.all([
             fetch('/api/wa/marketing/audience/org-types').then(r => r.json()).catch(() => ({ organization_types: [] })),
             fetch('/api/wa/marketing/audience/states').then(r => r.json()).catch(() => ({ states: [] }))
         ]).then(([orgData, stateData]) => {
-            const rawTypes = (orgData?.organization_types as string[]) || [];
-            const safeTypes = Array.isArray(rawTypes) 
-                ? rawTypes.filter(t => typeof t === 'string' && t.length > 0) 
-                : [];
+            if (!isMounted) return;
             
-            const types = new Set<string>(safeTypes);
-            types.add('End User');
-            setOrgTypes(Array.from(types).sort());
+            try {
+                const rawTypes = (orgData?.organization_types as string[]) || [];
+                const safeTypes = Array.isArray(rawTypes) 
+                    ? rawTypes.filter(t => typeof t === 'string' && t.length > 0) 
+                    : [];
+                
+                const types = new Set<string>(safeTypes);
+                types.add('End User');
+                setOrgTypes(Array.from(types).sort());
 
-            const rawStates = (stateData?.states as string[]) || [];
-            const safeStates = Array.isArray(rawStates)
-                 ? rawStates.filter(s => typeof s === 'string' && s.length > 0)
-                 : [];
-            setStates(safeStates.sort());
+                const rawStates = (stateData?.states as string[]) || [];
+                const safeStates = Array.isArray(rawStates)
+                     ? rawStates.filter(s => typeof s === 'string' && s.length > 0)
+                     : [];
+                setStates(safeStates.sort());
+            } catch (e) {
+                console.error("Error processing filter options", e);
+            }
             
             setLoading(false);
         }).catch(err => {
             console.error("Error loading filters:", err);
-            setLoading(false);
+            if (isMounted) setLoading(false);
         });
+
+        return () => { isMounted = false; };
     }, []);
 
     const handleChange = <K extends keyof AudienceFilters>(key: K, value: AudienceFilters[K]) => {
@@ -203,7 +215,7 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                                 <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-full p-0" align="start">
+                        <PopoverContent className="w-[300px] p-0" align="start">
                             <Command>
                                 <CommandInput placeholder="Search organization types..." />
                                 <CommandList>
@@ -267,7 +279,7 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                                 <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-full p-0" align="start">
+                        <PopoverContent className="w-[300px] p-0" align="start">
                             <Command>
                                 <CommandInput placeholder="Search locations..." />
                                 <CommandList>

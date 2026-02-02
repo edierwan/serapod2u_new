@@ -146,7 +146,7 @@ export function AudienceSegmentsManager() {
 
     const handleNew = () => {
         setEditingSegment(null);
-        setFormData({ name: '', description: '', filters: defaultFilters, estimated_count: 0 });
+        setFormData({ name: '', description: '', filters: { ...defaultFilters }, estimated_count: 0 });
         setViewMode('create');
     };
 
