@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Organization types that should target organizations (not individual users)
+const ORG_BASED_TYPES = ['DIST', 'HQ', 'MFG', 'SHOP', 'WH'];
+
 export async function POST(request: NextRequest) {
     const supabase = await createClient();
 
@@ -14,7 +17,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { mode, filters, segment_id, user_ids } = body;
 
-        // First, get the TOTAL count of all active users (this is what User Management shows)
+        // First, get the TOTAL count of all active users
         const { count: totalAllUsers } = await supabase
             .from('users')
             .select('id', { count: 'exact', head: true })
@@ -34,216 +37,31 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Check if we need point-based filtering (requires the view)
-        const needsPointsView =
-            activeFilters.points_min != null || activeFilters.points_max != null ||
-            activeFilters.collected_system_min != null || activeFilters.collected_system_max != null ||
-            activeFilters.collected_manual_min != null || activeFilters.collected_manual_max != null ||
-            activeFilters.migration_points_min != null || activeFilters.migration_points_max != null ||
-            activeFilters.total_redeemed_min != null || activeFilters.total_redeemed_max != null ||
-            activeFilters.transactions_count_min != null || activeFilters.transactions_count_max != null ||
-            activeFilters.last_activity_after != null || activeFilters.last_activity_before != null ||
-            (activeFilters.inactive_days != null && activeFilters.never_login !== true);
+        // Determine organization types to target (support both single and multi-select)
+        const orgTypes = activeFilters.organization_types || 
+            (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all' 
+                ? [activeFilters.organization_type] 
+                : []);
+        
+        // Check what we're targeting
+        const hasOrgTypes = orgTypes.some((t: string) => ORG_BASED_TYPES.includes(t));
+        const hasEndUsers = orgTypes.includes('End User') || orgTypes.length === 0;
+        const isAllTypes = orgTypes.length === 0 || orgTypes.includes('all') || orgTypes.includes('All') || orgTypes.includes('All Organization Types');
 
-        let users: any[] = [];
-        let viewQuerySucceeded = false;
+        // Location filter (support both single and multi-select)
+        const locationStates = activeFilters.states || 
+            (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any' 
+                ? [activeFilters.state] 
+                : []);
 
-        if (needsPointsView) {
-            try {
-                // Use pagination to fetch ALL users from view (overcome Supabase 1000 row limit)
-                const PAGE_SIZE = 1000;
-                let offset = 0;
-                let hasMore = true;
-                const allViewUsers: any[] = [];
-
-                while (hasMore) {
-                    let query = supabase.from('v_consumer_points_summary' as any).select('*', { count: 'exact' });
-
-                    // Apply filters
-                    if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
-                        query = query.in('user_id', user_ids);
-                    } else {
-                        // Organization Type Filter
-                        if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
-                            if (activeFilters.organization_type === 'End User') {
-                                // End Users: users with no organization_id (independent consumers)
-                                query = query.is('organization_id', null);
-                            } else {
-                                // Organization staff: users whose organization matches the type
-                                // This matches User Management behavior - showing users who are MEMBERS of that org type
-                                query = query.not('organization_id', 'is', null);
-                                query = query.eq('organization_type', activeFilters.organization_type);
-                            }
-                        }
-
-                        // Location Filter
-                        if (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any') {
-                            query = query.eq('state', activeFilters.state);
-                        }
-
-                        // Point-based filters
-                        if (activeFilters.points_min != null) {
-                            query = query.gte('current_balance', activeFilters.points_min);
-                        }
-                        if (activeFilters.points_max != null) {
-                            query = query.lte('current_balance', activeFilters.points_max);
-                        }
-                        if (activeFilters.collected_system_min != null) {
-                            query = query.gte('collected_system', activeFilters.collected_system_min);
-                        }
-                        if (activeFilters.collected_system_max != null) {
-                            query = query.lte('collected_system', activeFilters.collected_system_max);
-                        }
-                        if (activeFilters.collected_manual_min != null) {
-                            query = query.gte('collected_manual', activeFilters.collected_manual_min);
-                        }
-                        if (activeFilters.collected_manual_max != null) {
-                            query = query.lte('collected_manual', activeFilters.collected_manual_max);
-                        }
-                        if (activeFilters.migration_points_min != null) {
-                            query = query.gte('migration_points', activeFilters.migration_points_min);
-                        }
-                        if (activeFilters.migration_points_max != null) {
-                            query = query.lte('migration_points', activeFilters.migration_points_max);
-                        }
-                        if (activeFilters.total_redeemed_min != null) {
-                            query = query.gte('total_redeemed', activeFilters.total_redeemed_min);
-                        }
-                        if (activeFilters.total_redeemed_max != null) {
-                            query = query.lte('total_redeemed', activeFilters.total_redeemed_max);
-                        }
-                        if (activeFilters.transactions_count_min != null) {
-                            query = query.gte('transactions_count', activeFilters.transactions_count_min);
-                        }
-                        if (activeFilters.transactions_count_max != null) {
-                            query = query.lte('transactions_count', activeFilters.transactions_count_max);
-                        }
-
-                        // Activity filters
-                        if (activeFilters.last_activity_after) {
-                            query = query.gte('last_activity_at', activeFilters.last_activity_after);
-                        }
-                        if (activeFilters.last_activity_before) {
-                            query = query.lte('last_activity_at', activeFilters.last_activity_before);
-                        }
-                        if (activeFilters.inactive_days != null) {
-                            const cutoffDate = new Date();
-                            cutoffDate.setDate(cutoffDate.getDate() - activeFilters.inactive_days);
-                            query = query.lte('last_activity_at', cutoffDate.toISOString());
-                        }
-                        if (activeFilters.never_scanned === true) {
-                            query = query.eq('collected_system', 0);
-                        }
-                    }
-
-                    // Only active users
-                    query = query.eq('is_active', true);
-                    query = query.range(offset, offset + PAGE_SIZE - 1);
-
-                    const { data, error, count } = await query;
-
-                    if (error) {
-                        console.warn('View query failed:', error);
-                        break;
-                    }
-
-                    if (data && data.length > 0) {
-                        allViewUsers.push(...data);
-                        offset += PAGE_SIZE;
-                        hasMore = count ? allViewUsers.length < count : data.length === PAGE_SIZE;
-                    } else {
-                        hasMore = false;
-                    }
-                }
-
-                if (allViewUsers.length > 0) {
-                    users = allViewUsers;
-                    viewQuerySucceeded = true;
-                }
-            } catch (e) {
-                console.warn('View not available, using basic query:', e);
-            }
-        }
-
-        // Use basic users query when no point filters needed OR as fallback
-        if (!needsPointsView || !viewQuerySucceeded) {
-            // Use pagination to fetch ALL users (overcome Supabase 1000 row limit)
-            const PAGE_SIZE = 1000;
-            let offset = 0;
-            let hasMore = true;
-            const allUsers: any[] = [];
-
-            while (hasMore) {
-                let query = supabase.from('users' as any).select(`
-                    id, 
-                    full_name, 
-                    phone, 
-                    location, 
-                    organization_id,
-                    is_active,
-                    organizations!fk_users_organization (
-                        id,
-                        org_type_code, 
-                        org_name
-                    )
-                `, { count: 'exact' });
-
-                if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
-                    query = query.in('id', user_ids);
-                } else {
-                    if (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all') {
-                        if (activeFilters.organization_type === 'End User') {
-                            // End Users: users with no organization_id (independent consumers)
-                            query = query.is('organization_id', null);
-                        } else {
-                            // Organization staff: users whose organization matches the type
-                            // This matches User Management behavior - showing users who are MEMBERS of that org type
-                            query = query.not('organization_id', 'is', null);
-                            query = query.eq('organizations.org_type_code', activeFilters.organization_type);
-                        }
-                    }
-                    if (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any') {
-                        query = query.eq('location', activeFilters.state);
-                    }
-                }
-
-                query = query.eq('is_active', true);
-                query = query.range(offset, offset + PAGE_SIZE - 1);
-
-                const { data, error, count } = await query;
-
-                if (error) {
-                    console.error('Error fetching users:', error);
-                    throw error;
-                }
-
-                if (data && data.length > 0) {
-                    allUsers.push(...data);
-                    offset += PAGE_SIZE;
-                    hasMore = count ? allUsers.length < count : data.length === PAGE_SIZE;
-                } else {
-                    hasMore = false;
-                }
-            }
-
-            // Transform to common format
-            users = allUsers.map((u: any) => ({
-                user_id: u.id,
-                name: u.full_name,
-                whatsapp_phone: u.phone,
-                whatsapp_valid: u.phone && u.phone.trim().length >= 8,
-                state: u.location,
-                organization_id: u.organization_id,
-                organization_type: u.organizations?.org_type_code || (u.organization_id ? 'Organization' : 'End User'),
-                org_name: u.organizations?.org_name,
-                current_balance: 0,
-                collected_system: 0,
-                collected_manual: 0,
-                migration_points: 0,
-                total_redeemed: 0,
-                transactions_count: 0
-            }));
-        }
+        // Results containers
+        let totalMatched = 0;
+        let validPhones = 0;
+        let excludedMissingPhone = 0;
+        let excludedOptOut = 0;
+        let excludedInvalidWA = 0;
+        let excludedActivity = 0;
+        let eligibleRecipients: any[] = [];
 
         // Fetch opt-outs if needed
         let optOutPhones = new Set<string>();
@@ -252,174 +70,368 @@ export async function POST(request: NextRequest) {
                 const { data: optOuts } = await supabase
                     .from('marketing_opt_outs' as any)
                     .select('phone');
-
                 optOuts?.forEach((o: any) => optOutPhones.add(o.phone));
             } catch (e) {
-                console.warn('Could not fetch opt-outs (table might be missing)', e);
+                console.warn('Could not fetch opt-outs:', e);
             }
         }
 
-        // Fetch scan data if needed for activity filters (Never Login, Never Scanned)
-        // These filters only apply to End Users (organization_id IS NULL)
-        // We use consumer_qr_scans table which tracks actual QR code scans/activations
-        const needsActivationData = activeFilters.never_login === true ||
-            activeFilters.never_scanned === true ||
-            activeFilters.inactive_days != null;
+        // ============================================
+        // PART 1: Target Organizations (DIST, HQ, MFG, SHOP, WH)
+        // Uses organization's contact_phone, not individual user phones
+        // ============================================
+        if ((hasOrgTypes || isAllTypes) && mode !== 'specific_users') {
+            const targetOrgTypes = isAllTypes 
+                ? ORG_BASED_TYPES 
+                : orgTypes.filter((t: string) => ORG_BASED_TYPES.includes(t));
 
-        // Set of user IDs who have scanned QR codes (activated)
-        const activatedUserIds = new Set<string>();
-        const activationDates = new Map<string, Date>(); // user_id -> last_scanned_at
+            if (targetOrgTypes.length > 0) {
+                // Fetch organizations with pagination
+                const PAGE_SIZE = 1000;
+                let offset = 0;
+                let hasMore = true;
+                const allOrgs: any[] = [];
 
-        if (needsActivationData) {
-            try {
-                // Fetch from consumer_qr_scans - this tracks all QR scans
-                // consumer_id is the user who scanned
-                const { data: scans } = await supabase
-                    .from('consumer_qr_scans' as any)
-                    .select('consumer_id, scanned_at')
-                    .order('scanned_at', { ascending: false });
+                while (hasMore) {
+                    let query = supabase.from('organizations')
+                        .select(`
+                            id,
+                            org_name,
+                            org_type_code,
+                            contact_name,
+                            contact_phone,
+                            state_id,
+                            states!left (state_name)
+                        `, { count: 'exact' })
+                        .eq('is_active', true)
+                        .in('org_type_code', targetOrgTypes);
 
-                if (scans) {
-                    scans.forEach((s: any) => {
-                        if (!s.consumer_id) return;
-                        activatedUserIds.add(s.consumer_id);
-                        // Track latest scan date for inactive_days filter
-                        if (!activationDates.has(s.consumer_id)) {
-                            activationDates.set(s.consumer_id, new Date(s.scanned_at));
-                        }
+                    query = query.range(offset, offset + PAGE_SIZE - 1);
+
+                    const { data, error, count } = await query;
+
+                    if (error) {
+                        console.error('Error fetching organizations:', error);
+                        throw error;
+                    }
+
+                    if (data && data.length > 0) {
+                        allOrgs.push(...data);
+                        offset += PAGE_SIZE;
+                        hasMore = count ? allOrgs.length < count : data.length === PAGE_SIZE;
+                    } else {
+                        hasMore = false;
+                    }
+                }
+
+                // Process organizations
+                for (const org of allOrgs) {
+                    const phone = org.contact_phone?.trim();
+                    const stateName = (org.states as any)?.state_name;
+
+                    // Apply location filter
+                    if (locationStates.length > 0 && stateName && !locationStates.includes(stateName)) {
+                        continue; // Skip if location doesn't match
+                    }
+
+                    totalMatched++;
+
+                    // Check for valid phone
+                    if (!phone || phone.length < 8) {
+                        excludedMissingPhone++;
+                        continue;
+                    }
+
+                    // Check opt-out
+                    if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
+                        excludedOptOut++;
+                        continue;
+                    }
+
+                    validPhones++;
+                    eligibleRecipients.push({
+                        id: org.id,
+                        name: org.contact_name || org.org_name,
+                        phone: phone,
+                        state: stateName || 'No Location',
+                        organization_type: org.org_type_code,
+                        org_name: org.org_name,
+                        is_organization: true
                     });
                 }
-                console.log(`[Audience] Found ${activatedUserIds.size} users who have scanned QR codes`);
-            } catch (e) {
-                console.warn('Error fetching scan data:', e);
             }
         }
 
-        // Post-processing
-        let totalMatched = users.length;
-        let validPhones = 0;
-        let excludedMissingPhone = 0;
-        let excludedOptOut = 0;
-        let excludedInvalidWA = 0;
-        let excludedActivity = 0;
-        let eligibleUsers: any[] = [];
+        // ============================================
+        // PART 2: Target End Users (individuals without organization)
+        // Keep existing logic for End Users only
+        // ============================================
+        if ((hasEndUsers || isAllTypes || mode === 'specific_users') && 
+            !(hasOrgTypes && !hasEndUsers && !isAllTypes)) {
+            
+            // Check if we need point-based filtering
+            const needsPointsView =
+                activeFilters.points_min != null || activeFilters.points_max != null ||
+                activeFilters.collected_system_min != null || activeFilters.collected_system_max != null ||
+                activeFilters.collected_manual_min != null || activeFilters.collected_manual_max != null ||
+                activeFilters.migration_points_min != null || activeFilters.migration_points_max != null ||
+                activeFilters.total_redeemed_min != null || activeFilters.total_redeemed_max != null ||
+                activeFilters.transactions_count_min != null || activeFilters.transactions_count_max != null ||
+                activeFilters.last_activity_after != null || activeFilters.last_activity_before != null ||
+                (activeFilters.inactive_days != null && activeFilters.never_login !== true);
 
-        users.forEach((u: any) => {
-            const phone = u.whatsapp_phone?.trim();
+            let users: any[] = [];
+            let viewQuerySucceeded = false;
 
-            // Check for valid phone
-            if (!phone || phone.length < 8) {
-                excludedMissingPhone++;
-                return;
+            if (needsPointsView) {
+                try {
+                    const PAGE_SIZE = 1000;
+                    let offset = 0;
+                    let hasMore = true;
+                    const allViewUsers: any[] = [];
+
+                    while (hasMore) {
+                        let query = supabase.from('v_consumer_points_summary' as any).select('*', { count: 'exact' });
+
+                        if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
+                            query = query.in('user_id', user_ids);
+                        } else {
+                            // End Users only: users with no organization_id
+                            query = query.is('organization_id', null);
+
+                            // Location Filter
+                            if (locationStates.length > 0) {
+                                query = query.in('state', locationStates);
+                            }
+
+                            // Point-based filters
+                            if (activeFilters.points_min != null) query = query.gte('current_balance', activeFilters.points_min);
+                            if (activeFilters.points_max != null) query = query.lte('current_balance', activeFilters.points_max);
+                            if (activeFilters.collected_system_min != null) query = query.gte('collected_system', activeFilters.collected_system_min);
+                            if (activeFilters.collected_system_max != null) query = query.lte('collected_system', activeFilters.collected_system_max);
+                            if (activeFilters.collected_manual_min != null) query = query.gte('collected_manual', activeFilters.collected_manual_min);
+                            if (activeFilters.collected_manual_max != null) query = query.lte('collected_manual', activeFilters.collected_manual_max);
+                            if (activeFilters.migration_points_min != null) query = query.gte('migration_points', activeFilters.migration_points_min);
+                            if (activeFilters.migration_points_max != null) query = query.lte('migration_points', activeFilters.migration_points_max);
+                            if (activeFilters.total_redeemed_min != null) query = query.gte('total_redeemed', activeFilters.total_redeemed_min);
+                            if (activeFilters.total_redeemed_max != null) query = query.lte('total_redeemed', activeFilters.total_redeemed_max);
+                            if (activeFilters.transactions_count_min != null) query = query.gte('transactions_count', activeFilters.transactions_count_min);
+                            if (activeFilters.transactions_count_max != null) query = query.lte('transactions_count', activeFilters.transactions_count_max);
+
+                            // Activity filters
+                            if (activeFilters.last_activity_after) query = query.gte('last_activity_at', activeFilters.last_activity_after);
+                            if (activeFilters.last_activity_before) query = query.lte('last_activity_at', activeFilters.last_activity_before);
+                            if (activeFilters.inactive_days != null) {
+                                const cutoffDate = new Date();
+                                cutoffDate.setDate(cutoffDate.getDate() - activeFilters.inactive_days);
+                                query = query.lte('last_activity_at', cutoffDate.toISOString());
+                            }
+                            if (activeFilters.never_scanned === true) query = query.eq('collected_system', 0);
+                        }
+
+                        query = query.eq('is_active', true);
+                        query = query.range(offset, offset + PAGE_SIZE - 1);
+
+                        const { data, error, count } = await query;
+
+                        if (error) {
+                            console.warn('View query failed:', error);
+                            break;
+                        }
+
+                        if (data && data.length > 0) {
+                            allViewUsers.push(...data);
+                            offset += PAGE_SIZE;
+                            hasMore = count ? allViewUsers.length < count : data.length === PAGE_SIZE;
+                        } else {
+                            hasMore = false;
+                        }
+                    }
+
+                    if (allViewUsers.length > 0) {
+                        users = allViewUsers;
+                        viewQuerySucceeded = true;
+                    }
+                } catch (e) {
+                    console.warn('View not available, using basic query:', e);
+                }
             }
 
-            // Check valid WhatsApp (basic validation)
-            if (activeFilters.only_valid_whatsapp !== false && !u.whatsapp_valid) {
-                excludedInvalidWA++;
-                return;
+            // Use basic users query when no point filters needed OR as fallback
+            if (!needsPointsView || !viewQuerySucceeded) {
+                const PAGE_SIZE = 1000;
+                let offset = 0;
+                let hasMore = true;
+                const allUsers: any[] = [];
+
+                while (hasMore) {
+                    let query = supabase.from('users' as any).select(`
+                        id, 
+                        full_name, 
+                        phone, 
+                        location, 
+                        organization_id,
+                        is_active
+                    `, { count: 'exact' });
+
+                    if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
+                        query = query.in('id', user_ids);
+                    } else {
+                        // End Users only: users with no organization_id
+                        query = query.is('organization_id', null);
+                        
+                        if (locationStates.length > 0) {
+                            query = query.in('location', locationStates);
+                        }
+                    }
+
+                    query = query.eq('is_active', true);
+                    query = query.range(offset, offset + PAGE_SIZE - 1);
+
+                    const { data, error, count } = await query;
+
+                    if (error) {
+                        console.error('Error fetching users:', error);
+                        throw error;
+                    }
+
+                    if (data && data.length > 0) {
+                        allUsers.push(...data);
+                        offset += PAGE_SIZE;
+                        hasMore = count ? allUsers.length < count : data.length === PAGE_SIZE;
+                    } else {
+                        hasMore = false;
+                    }
+                }
+
+                // Transform to common format
+                users = allUsers.map((u: any) => ({
+                    user_id: u.id,
+                    name: u.full_name,
+                    whatsapp_phone: u.phone,
+                    whatsapp_valid: u.phone && u.phone.trim().length >= 8,
+                    state: u.location,
+                    organization_id: u.organization_id,
+                    organization_type: 'End User',
+                    org_name: 'End User',
+                    current_balance: 0,
+                    collected_system: 0
+                }));
             }
 
-            // Check opt-out
-            if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
-                excludedOptOut++;
-                return;
-            }
+            // Fetch scan data if needed for activity filters
+            const needsActivationData = activeFilters.never_login === true ||
+                activeFilters.never_scanned === true ||
+                activeFilters.inactive_days != null;
 
-            // Activity Filters - these only apply to END USERS (organization_id IS NULL)
-            // Never Login / Never Scanned: Filter users who have NEVER scanned a QR code
-            // We check consumer_qr_scans table for actual scan records
+            const activatedUserIds = new Set<string>();
+            const activationDates = new Map<string, Date>();
+
             if (needsActivationData) {
-                const isEndUser = !u.organization_id;
-                const hasScanned = activatedUserIds.has(u.user_id);
+                try {
+                    const { data: scans } = await supabase
+                        .from('consumer_qr_scans' as any)
+                        .select('consumer_id, scanned_at')
+                        .order('scanned_at', { ascending: false });
 
-                // Never Login (No Activations): ONLY include End Users who have NEVER scanned
-                // If toggle is ON, we want users who NEVER logged in, so EXCLUDE those who HAVE scanned
-                if (activeFilters.never_login === true) {
-                    // This filter only makes sense for End Users
-                    if (!isEndUser) {
-                        // Non-end users are excluded when this filter is active (we only want independent consumers)
-                        excludedActivity++;
-                        return;
+                    if (scans) {
+                        scans.forEach((s: any) => {
+                            if (!s.consumer_id) return;
+                            activatedUserIds.add(s.consumer_id);
+                            if (!activationDates.has(s.consumer_id)) {
+                                activationDates.set(s.consumer_id, new Date(s.scanned_at));
+                            }
+                        });
                     }
-                    if (hasScanned) {
-                        // User has logged in/scanned before - EXCLUDE them
-                        excludedActivity++;
-                        return;
-                    }
-                    // User is End User and has never scanned - KEEP them
+                } catch (e) {
+                    console.warn('Error fetching scan data:', e);
+                }
+            }
+
+            // Process End Users
+            for (const u of users) {
+                const phone = u.whatsapp_phone?.trim();
+                totalMatched++;
+
+                // Check for valid phone
+                if (!phone || phone.length < 8) {
+                    excludedMissingPhone++;
+                    continue;
                 }
 
-                // Never Scanned QR code: Same logic as Never Login
-                // ONLY include End Users who have collected_system = 0 AND no scan records
-                if (activeFilters.never_scanned === true) {
-                    // This filter only makes sense for End Users
-                    if (!isEndUser) {
-                        excludedActivity++;
-                        return;
-                    }
-                    if (hasScanned) {
-                        // User has scanned QR before - EXCLUDE them
-                        excludedActivity++;
-                        return;
-                    }
-                    // Also check collected_system from points view (if available)
-                    if (u.collected_system > 0) {
-                        excludedActivity++;
-                        return;
-                    }
-                    // User is End User and has never scanned - KEEP them
+                // Check valid WhatsApp
+                if (activeFilters.only_valid_whatsapp !== false && !u.whatsapp_valid) {
+                    excludedInvalidWA++;
+                    continue;
                 }
 
-                // Inactive Days: Check if they have recent scan activity
-                if (activeFilters.inactive_days != null) {
-                    const lastScan = activationDates.get(u.user_id);
-                    let trueLastActivity = u.last_activity_at ? new Date(u.last_activity_at) : null;
+                // Check opt-out
+                if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
+                    excludedOptOut++;
+                    continue;
+                }
 
-                    if (lastScan) {
-                        if (!trueLastActivity || lastScan > trueLastActivity) {
+                // Activity Filters for End Users
+                if (needsActivationData) {
+                    const hasScanned = activatedUserIds.has(u.user_id);
+
+                    if (activeFilters.never_login === true && hasScanned) {
+                        excludedActivity++;
+                        continue;
+                    }
+
+                    if (activeFilters.never_scanned === true) {
+                        if (hasScanned || u.collected_system > 0) {
+                            excludedActivity++;
+                            continue;
+                        }
+                    }
+
+                    if (activeFilters.inactive_days != null) {
+                        const lastScan = activationDates.get(u.user_id);
+                        let trueLastActivity = u.last_activity_at ? new Date(u.last_activity_at) : null;
+
+                        if (lastScan && (!trueLastActivity || lastScan > trueLastActivity)) {
                             trueLastActivity = lastScan;
                         }
-                    }
 
-                    if (trueLastActivity) {
-                        const cutoff = new Date();
-                        cutoff.setDate(cutoff.getDate() - activeFilters.inactive_days);
+                        if (trueLastActivity) {
+                            const cutoff = new Date();
+                            cutoff.setDate(cutoff.getDate() - activeFilters.inactive_days);
 
-                        if (trueLastActivity > cutoff) {
-                            // Activity is more recent than cutoff -> User is ACTIVE -> Exclude
-                            excludedActivity++;
-                            return;
+                            if (trueLastActivity > cutoff) {
+                                excludedActivity++;
+                                continue;
+                            }
                         }
                     }
-                    // If no activity ever, they are considered Inactive (Keep them)
                 }
-            }
 
-            validPhones++;
-            eligibleUsers.push({
-                id: u.user_id,
-                name: u.name || 'Unknown',
-                phone: phone,
-                state: u.state,
-                organization_type: u.organization_type || (u.organization_id ? 'Organization' : 'End User'),
-                org_name: u.org_name || (u.organization_id ? 'Organization' : 'End User'),
-                current_balance: u.current_balance,
-                collected_system: u.collected_system,
-                transactions_count: u.transactions_count
-            });
-        });
+                validPhones++;
+                eligibleRecipients.push({
+                    id: u.user_id,
+                    name: u.name || 'Unknown',
+                    phone: phone,
+                    state: u.state || 'No Location',
+                    organization_type: 'End User',
+                    org_name: 'End User',
+                    current_balance: u.current_balance,
+                    collected_system: u.collected_system
+                });
+            }
+        }
 
         return NextResponse.json({
-            total_all_users: totalAllUsers || 0,  // Total users in system (what User Management shows)
-            total_matched: totalMatched,          // Users matching the current filters
-            eligible_count: validPhones,          // Users with valid WhatsApp phones
+            total_all_users: totalAllUsers || 0,
+            total_matched: totalMatched,
+            eligible_count: validPhones,
             excluded_missing_phone: excludedMissingPhone,
             excluded_opt_out: excludedOptOut,
             excluded_invalid_wa: excludedInvalidWA,
             excluded_activity: excludedActivity,
             excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA + excludedActivity,
-            preview: eligibleUsers.slice(0, 20),
-            users: body.include_all ? eligibleUsers : undefined
+            preview: eligibleRecipients.slice(0, 20),
+            users: body.include_all ? eligibleRecipients : undefined
         });
 
     } catch (err: any) {

@@ -1,17 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState, useEffect, useRef } from 'react';
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Loader2, ChevronDown, ChevronUp, Coins, Activity } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, ChevronDown, ChevronUp, Coins, Activity, X, Check } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 export interface AudienceFilters {
-    organization_type: string;
-    state: string;
+    organization_type: string;  // Legacy single select (kept for backward compatibility)
+    organization_types?: string[];  // New multi-select
+    state: string;  // Legacy single select
+    states?: string[];  // New multi-select
     opt_in_only: boolean;
     only_valid_whatsapp: boolean;
     // Point-based filters
@@ -84,6 +90,18 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
     const [loading, setLoading] = useState(true);
     const [pointFiltersOpen, setPointFiltersOpen] = useState(false);
     const [activityFiltersOpen, setActivityFiltersOpen] = useState(false);
+    const [orgTypeOpen, setOrgTypeOpen] = useState(false);
+    const [locationOpen, setLocationOpen] = useState(false);
+
+    // Get selected values (support both old single and new multi format)
+    const selectedOrgTypes = filters.organization_types || 
+        (filters.organization_type && filters.organization_type !== 'all' && filters.organization_type !== 'All' 
+            ? [filters.organization_type] 
+            : []);
+    const selectedStates = filters.states || 
+        (filters.state && filters.state !== 'any' && filters.state !== 'Any Location' 
+            ? [filters.state] 
+            : []);
 
     useEffect(() => {
         Promise.all([
@@ -106,6 +124,38 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
         onChange({ ...filters, [key]: value });
     };
 
+    const handleOrgTypeToggle = (type: string) => {
+        const current = [...selectedOrgTypes];
+        const index = current.indexOf(type);
+        if (index > -1) {
+            current.splice(index, 1);
+        } else {
+            current.push(type);
+        }
+        // Update both old and new format for compatibility
+        onChange({ 
+            ...filters, 
+            organization_types: current,
+            organization_type: current.length === 1 ? current[0] : (current.length === 0 ? 'all' : 'multiple')
+        });
+    };
+
+    const handleStateToggle = (state: string) => {
+        const current = [...selectedStates];
+        const index = current.indexOf(state);
+        if (index > -1) {
+            current.splice(index, 1);
+        } else {
+            current.push(state);
+        }
+        // Update both old and new format for compatibility
+        onChange({ 
+            ...filters, 
+            states: current,
+            state: current.length === 1 ? current[0] : (current.length === 0 ? 'any' : 'multiple')
+        });
+    };
+
     // Check if any point filters are active
     const hasPointFilters = filters.points_min != null || filters.points_max != null ||
         filters.collected_system_min != null || filters.collected_system_max != null ||
@@ -124,40 +174,132 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
         <div className="space-y-6">
             {/* Basic Filters */}
             <div className="space-y-4">
+                {/* Multi-Select Organization Type */}
                 <div className="space-y-2">
                     <Label>Organization Type</Label>
-                    <Select
-                        value={filters.organization_type}
-                        onValueChange={(v) => handleChange('organization_type', v)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Organization Types</SelectItem>
-                            {orgTypes.map(type => (
-                                <SelectItem key={type} value={type}>{type}</SelectItem>
+                    <Popover open={orgTypeOpen} onOpenChange={setOrgTypeOpen}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={orgTypeOpen}
+                                className="w-full justify-between font-normal"
+                            >
+                                {selectedOrgTypes.length === 0 
+                                    ? "All Organization Types" 
+                                    : selectedOrgTypes.length === 1
+                                        ? selectedOrgTypes[0]
+                                        : `${selectedOrgTypes.length} types selected`}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start">
+                            <Command>
+                                <CommandInput placeholder="Search organization types..." />
+                                <CommandList>
+                                    <CommandEmpty>No types found.</CommandEmpty>
+                                    <CommandGroup>
+                                        {orgTypes.map((type) => (
+                                            <CommandItem
+                                                key={type}
+                                                value={type}
+                                                onSelect={() => handleOrgTypeToggle(type)}
+                                            >
+                                                <div className={cn(
+                                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                                                    selectedOrgTypes.includes(type) 
+                                                        ? "bg-primary text-primary-foreground" 
+                                                        : "opacity-50"
+                                                )}>
+                                                    {selectedOrgTypes.includes(type) && <Check className="h-3 w-3" />}
+                                                </div>
+                                                {type}
+                                            </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                </CommandList>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
+                    {selectedOrgTypes.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                            {selectedOrgTypes.map((type) => (
+                                <Badge key={type} variant="secondary" className="text-xs">
+                                    {type}
+                                    <button
+                                        className="ml-1 hover:text-destructive"
+                                        onClick={() => handleOrgTypeToggle(type)}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
                             ))}
-                        </SelectContent>
-                    </Select>
+                        </div>
+                    )}
                 </div>
 
+                {/* Multi-Select Location */}
                 <div className="space-y-2">
                     <Label>Location (State)</Label>
-                    <Select
-                        value={filters.state}
-                        onValueChange={(v) => handleChange('state', v)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="any">Any Location</SelectItem>
-                            {states.map(state => (
-                                <SelectItem key={state} value={state}>{state}</SelectItem>
+                    <Popover open={locationOpen} onOpenChange={setLocationOpen}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={locationOpen}
+                                className="w-full justify-between font-normal"
+                            >
+                                {selectedStates.length === 0 
+                                    ? "Any Location" 
+                                    : selectedStates.length === 1
+                                        ? selectedStates[0]
+                                        : `${selectedStates.length} locations selected`}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start">
+                            <Command>
+                                <CommandInput placeholder="Search locations..." />
+                                <CommandList>
+                                    <CommandEmpty>No locations found.</CommandEmpty>
+                                    <CommandGroup>
+                                        {states.map((state) => (
+                                            <CommandItem
+                                                key={state}
+                                                value={state}
+                                                onSelect={() => handleStateToggle(state)}
+                                            >
+                                                <div className={cn(
+                                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                                                    selectedStates.includes(state) 
+                                                        ? "bg-primary text-primary-foreground" 
+                                                        : "opacity-50"
+                                                )}>
+                                                    {selectedStates.includes(state) && <Check className="h-3 w-3" />}
+                                                </div>
+                                                {state}
+                                            </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                </CommandList>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
+                    {selectedStates.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                            {selectedStates.map((state) => (
+                                <Badge key={state} variant="secondary" className="text-xs">
+                                    {state}
+                                    <button
+                                        className="ml-1 hover:text-destructive"
+                                        onClick={() => handleStateToggle(state)}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
                             ))}
-                        </SelectContent>
-                    </Select>
+                        </div>
+                    )}
                 </div>
             </div>
 
