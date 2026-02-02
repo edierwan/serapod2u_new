@@ -60,6 +60,10 @@ function RangeInput({
     onMinChange: (v: number | null) => void; 
     onMaxChange: (v: number | null) => void;
 }) {
+    // Ensure values are safe for render
+    const safeMin = (typeof minValue === 'number' || typeof minValue === 'string') ? minValue : '';
+    const safeMax = (typeof maxValue === 'number' || typeof maxValue === 'string') ? maxValue : '';
+
     return (
         <div className="space-y-2">
             <Label className="text-sm font-medium">{label}</Label>
@@ -67,7 +71,7 @@ function RangeInput({
                 <Input 
                     type="number" 
                     placeholder="Min"
-                    value={minValue ?? ''}
+                    value={safeMin}
                     onChange={(e) => onMinChange(e.target.value ? Number(e.target.value) : null)}
                     className="w-24"
                 />
@@ -75,7 +79,7 @@ function RangeInput({
                 <Input 
                     type="number" 
                     placeholder="Max"
-                    value={maxValue ?? ''}
+                    value={safeMax}
                     onChange={(e) => onMaxChange(e.target.value ? Number(e.target.value) : null)}
                     className="w-24"
                 />
@@ -104,15 +108,30 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
     // Default to object if null/undefined or array (since we expect object structure below)
     const safeFilters = (filters && !Array.isArray(filters)) ? filters : {};
 
-    // Get selected values (support both old single and new multi format)
-    const selectedOrgTypes = safeFilters.organization_types || 
-        (safeFilters.organization_type && safeFilters.organization_type !== 'all' && safeFilters.organization_type !== 'All' 
-            ? [safeFilters.organization_type] 
-            : []);
-    const selectedStates = safeFilters.states || 
-        (safeFilters.state && safeFilters.state !== 'any' && safeFilters.state !== 'Any Location' 
-            ? [safeFilters.state] 
-            : []);
+    // TEMP: Defensive checks
+    if (!safeFilters) console.error("AudienceFilterBuilder: safeFilters is null/undefined");
+
+    // Get selected values (defensively)
+    const getSafeArray = (arr: any) => Array.isArray(arr) ? arr.filter(i => typeof i === 'string') : [];
+    
+    // Logic for combining legacy single-select and new multi-select
+    const rawOrgTypes = safeFilters.organization_types;
+    const legacyOrgType = safeFilters.organization_type;
+    
+    const selectedOrgTypes = rawOrgTypes 
+        ? getSafeArray(rawOrgTypes)
+        : (legacyOrgType && legacyOrgType !== 'all' && legacyOrgType !== 'All')
+            ? [legacyOrgType]
+            : [];
+
+    const rawStates = safeFilters.states;
+    const legacyState = safeFilters.state;
+
+    const selectedStates = rawStates
+        ? getSafeArray(rawStates)
+        : (legacyState && legacyState !== 'any' && legacyState !== 'Any Location')
+            ? [legacyState]
+            : [];
 
     useEffect(() => {
         let isMounted = true;

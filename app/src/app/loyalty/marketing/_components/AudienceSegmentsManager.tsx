@@ -253,6 +253,12 @@ export function AudienceSegmentsManager() {
 
     // Render Editor View
     if (viewMode === 'create' || viewMode === 'edit') {
+        const hasInvalidFilterChild = formData.filters && typeof formData.filters !== 'object';
+        if (hasInvalidFilterChild) {
+            console.error("CRITICAL: formData.filters is invalid type", formData.filters);
+            return <div>Error loading editor: Invalid filters data. Check console.</div>;
+        }
+
         return (
             <div className="space-y-6">
                 {/* Header */}
