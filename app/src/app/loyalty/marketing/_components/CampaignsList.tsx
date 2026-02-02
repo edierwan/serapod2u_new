@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight, Trash2, Edit, Eye } from 'lucide-react';
 import { format } from "date-fns";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Campaign = {
@@ -189,27 +189,63 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
                                                         <span className="sr-only">Open menu</span>
-                                                        <MoreHorizontal className="h-4 w-4" />
+                                                        <MoreHorizontal className="h-4 w-4 text-gray-700" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => handleAction('duplicate', c.id)}>
-                                                        <Copy className="mr-2 h-4 w-4" /> Duplicate
+                                                <DropdownMenuContent 
+                                                    align="end" 
+                                                    className="w-40 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5"
+                                                >
+                                                    {c.status === 'draft' && (
+                                                        <DropdownMenuItem 
+                                                            onClick={() => handleEditCampaign(c)}
+                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                        >
+                                                            <Edit className="h-4 w-4 text-gray-600" />
+                                                            Edit
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                    <DropdownMenuItem 
+                                                        onClick={() => setSelectedCampaign(c)}
+                                                        className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                    >
+                                                        <Eye className="h-4 w-4 text-gray-600" />
+                                                        View
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem 
+                                                        onClick={() => handleAction('duplicate', c.id)}
+                                                        className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                    >
+                                                        <Copy className="h-4 w-4 text-gray-600" />
+                                                        Duplicate
                                                     </DropdownMenuItem>
                                                     {c.status === 'sending' && (
-                                                        <DropdownMenuItem onClick={() => handleAction('pause', c.id)}>
-                                                            <Pause className="mr-2 h-4 w-4" /> Pause Sending
+                                                        <DropdownMenuItem 
+                                                            onClick={() => handleAction('pause', c.id)}
+                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                        >
+                                                            <Pause className="h-4 w-4 text-gray-600" />
+                                                            Pause
                                                         </DropdownMenuItem>
                                                     )}
                                                     {c.status === 'paused' && (
-                                                        <DropdownMenuItem onClick={() => handleAction('resume', c.id)}>
-                                                            <Play className="mr-2 h-4 w-4" /> Resume Sending
+                                                        <DropdownMenuItem 
+                                                            onClick={() => handleAction('resume', c.id)}
+                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                        >
+                                                            <Play className="h-4 w-4 text-gray-600" />
+                                                            Resume
                                                         </DropdownMenuItem>
                                                     )}
-                                                    <DropdownMenuItem onClick={() => handleAction('archive', c.id)} className="text-red-600">
-                                                        <Archive className="mr-2 h-4 w-4" /> Archive
+                                                    <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
+                                                    <DropdownMenuItem 
+                                                        onClick={() => handleAction('archive', c.id)}
+                                                        className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
+                                                    >
+                                                        <Archive className="h-4 w-4 text-red-600" />
+                                                        Archive
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>

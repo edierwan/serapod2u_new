@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Organization types that should target organizations (not individual users)
-const ORG_BASED_TYPES = ['DIST', 'HQ', 'MFG', 'SHOP', 'WH'];
+// Organization types that should target organization contacts (company contact_phone)
+const ORG_CONTACT_TYPES = ['DIST', 'MFG', 'SHOP', 'WH'];
+// Organization types that should target individual users within those organizations
+const ORG_USER_TYPES = ['HQ'];
 
 export async function POST(request: NextRequest) {
     const supabase = await createClient();
@@ -44,7 +46,8 @@ export async function POST(request: NextRequest) {
                 : []);
         
         // Check what we're targeting
-        const hasOrgTypes = orgTypes.some((t: string) => ORG_BASED_TYPES.includes(t));
+        const hasOrgContactTypes = orgTypes.some((t: string) => ORG_CONTACT_TYPES.includes(t));
+        const hasOrgUserTypes = orgTypes.some((t: string) => ORG_USER_TYPES.includes(t));
         const hasEndUsers = orgTypes.includes('End User') || orgTypes.length === 0;
         const isAllTypes = orgTypes.length === 0 || orgTypes.includes('all') || orgTypes.includes('All') || orgTypes.includes('All Organization Types');
 
@@ -77,13 +80,117 @@ export async function POST(request: NextRequest) {
         }
 
         // ============================================
-        // PART 1: Target Organizations (DIST, HQ, MFG, SHOP, WH)
+        // PART 0: Target Users in Organization Types (e.g., HQ)
+        // This targets individual users who belong to organizations of specified types
+        // Similar to User Management filter by Organization Type
+        // ============================================
+        if ((hasOrgUserTypes || isAllTypes) && mode !== 'specific_users') {
+            const targetOrgUserTypes = isAllTypes 
+                ? ORG_USER_TYPES 
+                : orgTypes.filter((t: string) => ORG_USER_TYPES.includes(t));
+
+            if (targetOrgUserTypes.length > 0) {
+                // First get organization IDs of these types
+                let orgQuery = supabase.from('organizations')
+                    .select('id, org_type_code, state_id, states!left(state_name)')
+                    .eq('is_active', true)
+                    .in('org_type_code', targetOrgUserTypes);
+
+                const { data: orgsData } = await orgQuery;
+
+                if (orgsData && orgsData.length > 0) {
+                    // Filter by location if needed
+                    let filteredOrgIds = orgsData
+                        .filter(org => {
+                            if (locationStates.length === 0) return true;
+                            const stateName = (org.states as any)?.state_name;
+                            return stateName && locationStates.includes(stateName);
+                        })
+                        .map(org => org.id);
+
+                    if (filteredOrgIds.length > 0) {
+                        // Get users belonging to these organizations
+                        const PAGE_SIZE = 1000;
+                        let offset = 0;
+                        let hasMore = true;
+                        const allOrgUsers: any[] = [];
+
+                        while (hasMore) {
+                            let userQuery = supabase.from('users')
+                                .select(`
+                                    id,
+                                    full_name,
+                                    phone,
+                                    location,
+                                    organization_id,
+                                    is_active,
+                                    organizations!left(org_name, org_type_code, state_id, states!left(state_name))
+                                `, { count: 'exact' })
+                                .eq('is_active', true)
+                                .in('organization_id', filteredOrgIds);
+
+                            userQuery = userQuery.range(offset, offset + PAGE_SIZE - 1);
+
+                            const { data: usersData, error, count } = await userQuery;
+
+                            if (error) {
+                                console.error('Error fetching org users:', error);
+                                break;
+                            }
+
+                            if (usersData && usersData.length > 0) {
+                                allOrgUsers.push(...usersData);
+                                offset += PAGE_SIZE;
+                                hasMore = count ? allOrgUsers.length < count : usersData.length === PAGE_SIZE;
+                            } else {
+                                hasMore = false;
+                            }
+                        }
+
+                        // Process users
+                        for (const u of allOrgUsers) {
+                            const phone = u.phone?.trim();
+                            const org = u.organizations as any;
+                            const stateName = org?.states?.state_name || u.location;
+
+                            totalMatched++;
+
+                            // Check for valid phone
+                            if (!phone || phone.length < 8) {
+                                excludedMissingPhone++;
+                                continue;
+                            }
+
+                            // Check opt-out
+                            if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
+                                excludedOptOut++;
+                                continue;
+                            }
+
+                            validPhones++;
+                            eligibleRecipients.push({
+                                id: u.id,
+                                name: u.full_name || 'Unknown',
+                                phone: phone,
+                                state: stateName || 'No Location',
+                                organization_type: org?.org_type_code || 'Unknown',
+                                org_name: org?.org_name || 'Unknown',
+                                is_organization_user: true
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // PART 1: Target Organizations (DIST, MFG, SHOP, WH)
         // Uses organization's contact_phone, not individual user phones
         // ============================================
-        if ((hasOrgTypes || isAllTypes) && mode !== 'specific_users') {
+        if ((hasOrgContactTypes || isAllTypes) && mode !== 'specific_users') {
             const targetOrgTypes = isAllTypes 
-                ? ORG_BASED_TYPES 
-                : orgTypes.filter((t: string) => ORG_BASED_TYPES.includes(t));
+                ? ORG_CONTACT_TYPES 
+                : orgTypes.filter((t: string) => ORG_CONTACT_TYPES.includes(t));
 
             if (targetOrgTypes.length > 0) {
                 // Fetch organizations with pagination
@@ -167,7 +274,7 @@ export async function POST(request: NextRequest) {
         // Keep existing logic for End Users only
         // ============================================
         if ((hasEndUsers || isAllTypes || mode === 'specific_users') && 
-            !(hasOrgTypes && !hasEndUsers && !isAllTypes)) {
+            !((hasOrgContactTypes || hasOrgUserTypes) && !hasEndUsers && !isAllTypes)) {
             
             // Check if we need point-based filtering
             const needsPointsView =

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Users, Edit, Trash2, Copy, Loader2, Save, ArrowLeft, Download } from 'lucide-react';
+import { Plus, Users, Edit, Trash2, Copy, Loader2, Save, ArrowLeft, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
 import { AudienceEstimator } from './AudienceEstimator';
@@ -18,6 +19,11 @@ type Segment = {
     estimated_count: number;
     filters: AudienceFilters;
     updated_at: string;
+    created_at?: string;
+    creator?: {
+        id: string;
+        full_name: string;
+    };
 };
 
 type ViewMode = 'list' | 'create' | 'edit';
@@ -36,6 +42,10 @@ export function AudienceSegmentsManager() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
 
     // View mode state
     const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -254,12 +264,12 @@ export function AudienceSegmentsManager() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Left Column: Form & Filters */}
-                    <div className="lg:col-span-2 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    {/* Left Column: Form & Filters - 2/5 = 40% */}
+                    <div className="lg:col-span-2 space-y-6 order-2 lg:order-1">
                         <Card>
-                            <CardHeader>
-                                <CardTitle>Segment Details</CardTitle>
+                            <CardHeader className="pb-4">
+                                <CardTitle className="text-lg">Segment Details</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
@@ -282,8 +292,8 @@ export function AudienceSegmentsManager() {
                         </Card>
 
                         <Card>
-                            <CardHeader>
-                                <CardTitle>Audience Filters</CardTitle>
+                            <CardHeader className="pb-4">
+                                <CardTitle className="text-lg">Audience Filters</CardTitle>
                                 <CardDescription>Refine your audience based on their profile and behavior.</CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -295,8 +305,8 @@ export function AudienceSegmentsManager() {
                         </Card>
                     </div>
 
-                    {/* Right Column: Preview */}
-                    <div className="lg:col-span-1">
+                    {/* Right Column: Preview - 3/5 = 60% */}
+                    <div className="lg:col-span-3 order-1 lg:order-2">
                         <div className="lg:sticky lg:top-6 space-y-4">
                             <Card className="border-l-4 border-l-primary">
                                 <CardContent className="pt-6">
@@ -313,6 +323,18 @@ export function AudienceSegmentsManager() {
             </div>
         );
     }
+
+    // Pagination calculations
+    const totalPages = Math.ceil(segments.length / pageSize);
+    const paginatedSegments = useMemo(() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        return segments.slice(startIndex, startIndex + pageSize);
+    }, [segments, currentPage, pageSize]);
+
+    // Reset to page 1 when segments change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [segments.length]);
 
     // Render List View
     return (
@@ -338,9 +360,11 @@ export function AudienceSegmentsManager() {
                     <Table>
                         <TableHeader>
                             <TableRow>
+                                <TableHead className="w-[50px]">#</TableHead>
                                 <TableHead>Segment Name</TableHead>
                                 <TableHead>Description</TableHead>
                                 <TableHead>Est. Size</TableHead>
+                                <TableHead>Created By</TableHead>
                                 <TableHead>Last Updated</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -348,11 +372,11 @@ export function AudienceSegmentsManager() {
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading segments...</TableCell>
+                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading segments...</TableCell>
                                 </TableRow>
                             ) : segments.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-12">
+                                    <TableCell colSpan={7} className="text-center py-12">
                                         <div className="flex flex-col items-center gap-2">
                                             <Users className="h-10 w-10 text-gray-300" />
                                             <p className="text-gray-900 font-medium">No segments yet</p>
@@ -362,24 +386,30 @@ export function AudienceSegmentsManager() {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                segments.map((segment) => (
+                                paginatedSegments.map((segment, index) => (
                                     <TableRow key={segment.id}>
+                                        <TableCell className="text-muted-foreground font-mono text-sm">
+                                            {(currentPage - 1) * pageSize + index + 1}
+                                        </TableCell>
                                         <TableCell className="font-medium">{segment.name}</TableCell>
-                                        <TableCell className="text-muted-foreground">{segment.description}</TableCell>
+                                        <TableCell className="text-muted-foreground max-w-[200px] truncate">{segment.description}</TableCell>
                                         <TableCell>
                                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
                                                 {segment.estimated_count.toLocaleString()} users
                                             </span>
                                         </TableCell>
-                                        <TableCell>{new Date(segment.updated_at).toLocaleDateString()}</TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {segment.creator?.full_name || '-'}
+                                        </TableCell>
+                                        <TableCell className="text-sm">{new Date(segment.updated_at).toLocaleDateString()}</TableCell>
                                         <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="icon" onClick={() => handleDownload(segment)} disabled={downloadingId === segment.id}>
+                                            <div className="flex justify-end gap-1">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownload(segment)} disabled={downloadingId === segment.id} title="Download">
                                                     {downloadingId === segment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                                                 </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleEdit(segment)}><Edit className="h-4 w-4" /></Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDuplicate(segment)}><Copy className="h-4 w-4" /></Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(segment.id)} disabled={deletingId === segment.id}>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(segment)} title="Edit"><Edit className="h-4 w-4" /></Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(segment)} title="Duplicate"><Copy className="h-4 w-4" /></Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(segment.id)} disabled={deletingId === segment.id} title="Delete">
                                                     {deletingId === segment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-red-500" />}
                                                 </Button>
                                             </div>
@@ -389,6 +419,74 @@ export function AudienceSegmentsManager() {
                             )}
                         </TableBody>
                     </Table>
+
+                    {/* Pagination Controls */}
+                    {segments.length > 0 && (
+                        <div className="flex items-center justify-between px-2 py-4 border-t">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>Rows per page:</span>
+                                <Select value={pageSize.toString()} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                                    <SelectTrigger className="w-[70px] h-8">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="5">5</SelectItem>
+                                        <SelectItem value="10">10</SelectItem>
+                                        <SelectItem value="20">20</SelectItem>
+                                        <SelectItem value="50">50</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <span className="ml-4">
+                                    Showing {Math.min((currentPage - 1) * pageSize + 1, segments.length)} - {Math.min(currentPage * pageSize, segments.length)} of {segments.length}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                    Previous
+                                </Button>
+                                <div className="flex items-center gap-1">
+                                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                        let pageNum;
+                                        if (totalPages <= 5) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage <= 3) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage >= totalPages - 2) {
+                                            pageNum = totalPages - 4 + i;
+                                        } else {
+                                            pageNum = currentPage - 2 + i;
+                                        }
+                                        return (
+                                            <Button
+                                                key={pageNum}
+                                                variant={currentPage === pageNum ? "default" : "outline"}
+                                                size="sm"
+                                                className="w-8 h-8 p-0"
+                                                onClick={() => setCurrentPage(pageNum)}
+                                            >
+                                                {pageNum}
+                                            </Button>
+                                        );
+                                    })}
+                                </div>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages || totalPages === 0}
+                                >
+                                    Next
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

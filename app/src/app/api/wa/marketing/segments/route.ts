@@ -11,19 +11,27 @@ export async function GET(request: Request) {
 
   const { data: userProfile } = await supabase
     .from('users')
-    .select('organization_id')
+    .select('organization_id, role_code')
     .eq('id', user.id)
     .single();
 
-  if (!userProfile?.organization_id) {
-    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+  // Super admin can see all segments, others only see their org's segments
+  const isSuperAdmin = userProfile?.role_code === 'SUPER_ADMIN';
+
+  let query = supabase
+    .from('marketing_segments' as any)
+    .select(`
+      *,
+      creator:created_by(id, full_name)
+    `)
+    .order('created_at', { ascending: false });
+
+  // Only filter by org for non-super admins
+  if (!isSuperAdmin && userProfile?.organization_id) {
+    query = query.eq('org_id', userProfile.organization_id);
   }
 
-  const { data, error } = await supabase
-    .from('marketing_segments' as any)
-    .select('*')
-    .eq('org_id', userProfile.organization_id)
-    .order('created_at', { ascending: false });
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

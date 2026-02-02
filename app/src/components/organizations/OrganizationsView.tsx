@@ -101,6 +101,9 @@ interface Organization {
     org_name: string
     org_code: string
   }
+  states?: {
+    state_name: string
+  }
   children_count?: number
   users_count?: number
   products_count?: number
@@ -114,7 +117,7 @@ interface OrganizationsViewProps {
   onViewChange?: (view: string) => void
 }
 
-type SortField = 'org_name' | 'org_type_code' | 'contact_name' | 'city' | 'is_active'
+type SortField = 'org_name' | 'org_type_code' | 'contact_name' | 'state' | 'is_active'
 type SortDirection = 'asc' | 'desc'
 
 interface BlockingRecord {
@@ -293,7 +296,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           *,
           org_types:organization_types(type_name, type_description),
           parent_org:organizations!parent_org_id(org_name, org_code),
-          payment_terms(term_name, deposit_percentage, balance_percentage)
+          payment_terms(term_name, deposit_percentage, balance_percentage),
+          states(state_name)
         `)
         .eq('is_active', true)  // Only fetch active organizations
 
@@ -398,9 +402,13 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     if (bVal === null || bVal === undefined) return -1
 
     // Handle different data types
-    if (sortField === 'org_name' || sortField === 'contact_name' || sortField === 'city') {
+    if (sortField === 'org_name' || sortField === 'contact_name') {
       aVal = (aVal || '').toLowerCase()
       bVal = (bVal || '').toLowerCase()
+    } else if (sortField === 'state') {
+      // Sort by state name
+      aVal = (a.states?.state_name || '').toLowerCase()
+      bVal = (b.states?.state_name || '').toLowerCase()
     } else if (sortField === 'org_type_code') {
       // Sort by type name instead of code
       aVal = a.org_types?.type_name || a.org_type_code
@@ -1021,11 +1029,11 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </span>
                   </div>
 
-                  {/* Location */}
+                  {/* State */}
                   <div className="flex items-center gap-2 text-sm">
                     <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                    <span className={`truncate ${!org.city ? 'text-gray-400 italic' : 'text-gray-700'}`}>
-                      {org.city || 'Not updated'}
+                    <span className={`truncate ${!org.states?.state_name ? 'text-gray-400 italic' : 'text-gray-700'}`}>
+                      {org.states?.state_name || 'Not updated'}
                     </span>
                   </div>
                 </div>
@@ -1257,11 +1265,11 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   </TableHead>
                   <TableHead>
                     <button
-                      onClick={() => handleSort('city')}
+                      onClick={() => handleSort('state')}
                       className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
                     >
-                      Location
-                      {sortField === 'city' ? (
+                      State
+                      {sortField === 'state' ? (
                         sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                       ) : (
                         <ArrowUpDown className="w-3 h-3 opacity-30" />
@@ -1298,7 +1306,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </TableCell>
                     <TableCell>
                       <div className="text-xs">
-                        <div>{org.city || 'Not updated'}</div>
+                        <div>{org.states?.state_name || 'Not updated'}</div>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">

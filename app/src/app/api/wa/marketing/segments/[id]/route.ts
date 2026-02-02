@@ -36,28 +36,39 @@ export async function DELETE(
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user org
+    // Get user profile with role
     const { data: userProfile } = await supabase
         .from('users')
-        .select('organization_id')
+        .select('organization_id, role_code')
         .eq('id', user.id)
         .single();
 
-    if (!userProfile?.organization_id) {
-        return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    try {
+        // Check if user is super admin - can delete any segment
+        const isSuperAdmin = userProfile?.role_code === 'SUPER_ADMIN';
+        
+        let deleteQuery = supabase
+            .from('marketing_segments' as any)
+            .delete()
+            .eq('id', params.id);
+
+        // Only restrict by org_id for non-super admins
+        if (!isSuperAdmin && userProfile?.organization_id) {
+            deleteQuery = deleteQuery.eq('org_id', userProfile.organization_id);
+        }
+
+        const { error, count } = await deleteQuery;
+
+        if (error) {
+            console.error('Delete segment error:', error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (err: any) {
+        console.error('Delete segment exception:', err);
+        return NextResponse.json({ error: err.message || 'Failed to delete segment' }, { status: 500 });
     }
-
-    const { error } = await supabase
-        .from('marketing_segments' as any)
-        .delete()
-        .eq('id', params.id)
-        .eq('org_id', userProfile.organization_id); // Security: only delete own org segments
-
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true });
 }
 
 export async function PUT(

@@ -149,6 +149,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
         }
         setSubmitting(true);
         try {
+            // First, create/update the campaign
             const res = await fetch('/api/wa/marketing/campaigns', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -170,7 +171,35 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
             });
 
             if (res.ok) {
-                toast({ title: "Success", description: "Campaign created successfully!" });
+                const campaignData = await res.json();
+                
+                // If "Send Now", launch the campaign immediately
+                if (formData.scheduleType === 'now' && campaignData?.id) {
+                    toast({ title: "Campaign Created", description: "Now sending to recipients..." });
+                    
+                    const launchRes = await fetch(`/api/wa/marketing/campaigns/${campaignData.id}/launch`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (launchRes.ok) {
+                        const launchData = await launchRes.json();
+                        toast({ 
+                            title: "Campaign Launched! 🚀", 
+                            description: launchData.message || `Sending to ${estimatedRecipients} recipients` 
+                        });
+                    } else {
+                        const launchError = await launchRes.json();
+                        toast({ 
+                            title: "Campaign Created", 
+                            description: `Campaign saved but launch failed: ${launchError.error}`, 
+                            variant: "destructive" 
+                        });
+                    }
+                } else {
+                    toast({ title: "Success", description: "Campaign scheduled successfully!" });
+                }
+                
                 onComplete();
             } else {
                 const data = await res.json();
@@ -260,8 +289,9 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
 
                 {/* Step 2: Audience */}
                 {step === 2 && (
-                    <div className="grid md:grid-cols-2 gap-8 h-[500px]">
-                        <div className="space-y-4 flex flex-col h-full">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6 min-h-[500px]">
+                        {/* Left Column: Filters - 2/5 = 40% */}
+                        <div className="md:col-span-2 space-y-4 flex flex-col h-full order-2 md:order-1">
                             <h3 className="font-medium">Define Audience</h3>
 
                             <div className="space-y-2">
@@ -318,7 +348,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                             </ScrollArea>
                         </div>
 
-                        <div className="h-full">
+                        {/* Right Column: Preview - 3/5 = 60% */}
+                        <div className="md:col-span-3 h-full order-1 md:order-2">
                             <AudienceEstimator
                                 mode={formData.audienceMode}
                                 filters={formData.filters}
