@@ -65,14 +65,19 @@ export async function GET(request: NextRequest) {
 
         // Get campaign names
         const campaignIds = Array.from(new Set(logs.map((l: any) => l.campaign_id).filter(Boolean)));
-        let campaignMap: Record<string, string> = {};
+        let campaignMap: Record<string, { name: string; total_recipients: number | null; sent_count: number | null; status: string | null }> = {};
         if (campaignIds.length > 0) {
             const { data: campaigns } = await (supabase as any)
                 .from('marketing_campaigns')
-                .select('id, name')
+                .select('id, name, total_recipients, sent_count, status')
                 .in('id', campaignIds);
             campaigns?.forEach((c: any) => {
-                campaignMap[c.id] = c.name;
+                campaignMap[c.id] = {
+                    name: c.name,
+                    total_recipients: c.total_recipients ?? null,
+                    sent_count: c.sent_count ?? null,
+                    status: c.status ?? null
+                };
             });
         }
 
@@ -92,7 +97,10 @@ export async function GET(request: NextRequest) {
         // Transform logs to include campaign name and sender name
         const transformedLogs = logs.map((log: any) => ({
             ...log,
-            campaign_name: campaignMap[log.campaign_id] || 'Unknown Campaign',
+            campaign_name: campaignMap[log.campaign_id]?.name || 'Unknown Campaign',
+            campaign_total_recipients: campaignMap[log.campaign_id]?.total_recipients ?? null,
+            campaign_sent_count: campaignMap[log.campaign_id]?.sent_count ?? null,
+            campaign_status: campaignMap[log.campaign_id]?.status ?? null,
             sent_by_user: log.sent_by ? { full_name: senderMap[log.sent_by] || 'Unknown' } : null
         }));
 

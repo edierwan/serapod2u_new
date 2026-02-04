@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,7 @@ type Campaign = {
     estimated_count: number;
     sent_count: number;
     failed_count: number;
+    total_recipients?: number | null;
     message_body: string;
     audience_filters?: any;
     template_id?: string;
@@ -70,6 +71,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     const [countdownTick, setCountdownTick] = useState(0);
     const [runNowConfirm, setRunNowConfirm] = useState<{ show: boolean; campaign: Campaign | null }>({ show: false, campaign: null });
     const [runningNow, setRunningNow] = useState(false);
+    const launchingIdsRef = useRef<Set<string>>(new Set());
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -124,13 +126,37 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'draft': return <Badge variant="secondary">Draft</Badge>;
-            case 'scheduled': return <Badge variant="outline" className="border-blue-500 text-blue-500">Scheduled</Badge>;
-            case 'sending': return <Badge className="bg-blue-600 animate-pulse">Sending</Badge>;
+            case 'scheduled':
+                return <Badge variant="outline" className="border-amber-500 text-amber-600">Scheduling</Badge>;
+            case 'sending':
+                return (
+                    <Badge className="bg-blue-600">
+                        <span className="flex items-center gap-1">
+                            Broadcasting
+                            <span className="ml-1 inline-flex items-center gap-1">
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-white animate-bounce [animation-delay:0ms]" />
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-white animate-bounce [animation-delay:150ms]" />
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-white animate-bounce [animation-delay:300ms]" />
+                            </span>
+                        </span>
+                    </Badge>
+                );
             case 'completed': return <Badge className="bg-green-600">Completed</Badge>;
             case 'paused': return <Badge variant="outline" className="border-orange-500 text-orange-500">Paused</Badge>;
             case 'failed': return <Badge variant="destructive">Failed</Badge>;
             default: return <Badge variant="outline">{status}</Badge>;
         }
+    };
+
+    const getRecipientsDisplay = (campaign: Campaign) => {
+        const total = campaign.total_recipients ?? campaign.estimated_count;
+        const sent = campaign.sent_count || 0;
+
+        if (campaign.status === 'sending') {
+            return `${sent.toLocaleString()}/${total.toLocaleString()}`;
+        }
+
+        return total.toLocaleString();
     };
 
     const handleAction = async (action: string, id: string) => {
@@ -241,6 +267,72 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
         }
     }, [selectedCampaign]);
 
+    const autoLaunchDueCampaigns = useCallback(async () => {
+        const now = new Date();
+        const dueCampaigns = campaigns.filter((c) => {
+            if (!c.scheduled_at) return false;
+            if (!['scheduled', 'draft'].includes(c.status)) return false;
+            return new Date(c.scheduled_at) <= now;
+        });
+
+        for (const campaign of dueCampaigns) {
+            if (launchingIdsRef.current.has(campaign.id)) continue;
+            launchingIdsRef.current.add(campaign.id);
+
+            try {
+                const res = await fetch(`/api/wa/marketing/campaigns/${campaign.id}/launch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setCampaigns((prev) =>
+                        prev.map((c) =>
+                            c.id === campaign.id
+                                ? {
+                                    ...c,
+                                    status: 'sending',
+                                    total_recipients: data?.total_recipients ?? c.total_recipients ?? c.estimated_count,
+                                    sent_count: c.sent_count || 0,
+                                    failed_count: c.failed_count || 0
+                                }
+                                : c
+                        )
+                    );
+                } else {
+                    const error = await res.json().catch(() => ({}));
+                    toast({
+                        title: 'Failed to launch scheduled campaign',
+                        description: error.error || 'Unable to launch campaign.',
+                        variant: 'destructive'
+                    });
+                }
+            } catch (err) {
+                toast({
+                    title: 'Failed to launch scheduled campaign',
+                    description: 'Unable to launch campaign.',
+                    variant: 'destructive'
+                });
+            } finally {
+                setTimeout(() => launchingIdsRef.current.delete(campaign.id), 15000);
+            }
+        }
+    }, [campaigns, toast]);
+
+    useEffect(() => {
+        autoLaunchDueCampaigns();
+        const interval = setInterval(autoLaunchDueCampaigns, 10000);
+        return () => clearInterval(interval);
+    }, [autoLaunchDueCampaigns]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchCampaigns();
+        }, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     if (loading) {
         return (
             <Card>
@@ -316,7 +408,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                             </TableCell>
                                             <TableCell>{c.objective}</TableCell>
                                             <TableCell>{getStatusBadge(c.status)}</TableCell>
-                                            <TableCell>{c.estimated_count.toLocaleString()}</TableCell>
+                                            <TableCell>{getRecipientsDisplay(c)}</TableCell>
                                             <TableCell className="text-sm text-muted-foreground">
                                                 {c.creator?.full_name || '-'}
                                             </TableCell>

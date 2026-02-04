@@ -28,6 +28,9 @@ interface SendLog {
     id: string;
     campaign_id: string;
     campaign_name: string;
+    campaign_total_recipients?: number | null;
+    campaign_sent_count?: number | null;
+    campaign_status?: string | null;
     recipient_phone: string;
     recipient_name: string | null;
     organization_name: string | null;
@@ -311,6 +314,7 @@ export function SendLogsView() {
                                         <TableHead className="text-xs font-semibold">Date & Time</TableHead>
                                         <TableHead className="text-xs font-semibold">Campaign</TableHead>
                                         <TableHead className="text-xs font-semibold">Recipient</TableHead>
+                                        <TableHead className="text-xs font-semibold">Recipients</TableHead>
                                         <TableHead className="text-xs font-semibold">Organization</TableHead>
                                         <TableHead className="text-xs font-semibold">Sent By</TableHead>
                                         <TableHead className="text-xs font-semibold">Status</TableHead>
@@ -344,6 +348,15 @@ export function SendLogsView() {
                                                         <div className="text-xs text-gray-500 font-mono">{log.recipient_phone}</div>
                                                     </div>
                                                 </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                {log.campaign_total_recipients ? (
+                                                    <span className="text-xs text-gray-600 font-mono">
+                                                        {(log.campaign_sent_count || 0).toLocaleString()}/{log.campaign_total_recipients.toLocaleString()}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">-</span>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 {log.organization_name ? (

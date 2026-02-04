@@ -88,13 +88,15 @@ export async function POST(request: Request) {
     // Extract estimated_count from audience_filters
     const estimatedCount = audience_filters?.estimated_count || 0;
 
+    const status = scheduled_at ? 'scheduled' : 'draft';
+
     const { data, error } = await supabase
       .from('marketing_campaigns' as any)
       .insert({
         org_id: userProfile.organization_id,
         name,
         objective,
-        status: 'draft',
+        status,
         audience_filters: audience_filters || {},
         estimated_count: estimatedCount,
         message_body,

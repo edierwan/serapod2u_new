@@ -247,6 +247,18 @@ async function sendMessagesAsync(
                 failedCount++;
             }
 
+            const processedCount = sentCount + failedCount;
+            if (processedCount % 5 === 0 || processedCount === recipients.length) {
+                await supabase
+                    .from('marketing_campaigns')
+                    .update({
+                        sent_count: sentCount,
+                        delivered_count: deliveredCount,
+                        failed_count: failedCount
+                    })
+                    .eq('id', campaignId);
+            }
+
             // Rate limiting - wait 100ms between messages
             await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -263,6 +275,18 @@ async function sendMessagesAsync(
                 .eq('recipient_phone', recipient.phone);
 
             failedCount++;
+
+            const processedCount = sentCount + failedCount;
+            if (processedCount % 5 === 0 || processedCount === recipients.length) {
+                await supabase
+                    .from('marketing_campaigns')
+                    .update({
+                        sent_count: sentCount,
+                        delivered_count: deliveredCount,
+                        failed_count: failedCount
+                    })
+                    .eq('id', campaignId);
+            }
         }
     }
 
