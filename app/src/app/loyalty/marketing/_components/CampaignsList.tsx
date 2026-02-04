@@ -294,7 +294,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                                 <span className="font-mono">{countdown.display}</span>
                                                                 <span className="text-muted-foreground">remaining</span>
                                                             </div>
-                                                        ) : countdown?.isOverdue && c.status === 'scheduled' ? (
+                                                        ) : countdown?.isOverdue && !['completed', 'failed', 'sending', 'archived', 'paused'].includes(c.status) ? (
                                                             <div className="flex items-center gap-1 text-xs text-amber-600">
                                                                 <AlertTriangle className="h-3 w-3" />
                                                                 <span className="font-mono">{countdown.display}</span>
