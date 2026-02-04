@@ -266,7 +266,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                     {paginatedCampaigns.map((c, index) => {
                                         // Calculate countdown for scheduled campaigns
                                         const countdown = c.scheduled_at ? formatCountdown(c.scheduled_at) : null;
-                                        const scheduledTime = c.scheduled_at ? format(new Date(c.scheduled_at), 'HH:mm:ss') : null;
+                                        const scheduledTime = c.scheduled_at ? format(new Date(c.scheduled_at), 'hh:mm:ss a') : null;
                                         
                                         return (
                                         <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => setSelectedCampaign(c)}>

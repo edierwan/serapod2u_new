@@ -33,6 +33,7 @@ import {
     DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
     NumberHealth,
     SafetyPreset,
@@ -497,12 +498,10 @@ export function PrelaunchAnalysisModal({
                                 </p>
                                 <div className="flex items-center gap-2 mt-3">
                                     <Label className="text-sm font-medium text-amber-800">Schedule for:</Label>
-                                    <Input
-                                        type="datetime-local"
-                                        value={scheduledAt}
-                                        onChange={(e) => setScheduledAt(e.target.value)}
-                                        className="w-auto bg-white"
-                                        min={new Date().toISOString().slice(0, 16)}
+                                    <DateTimePicker 
+                                        date={scheduledAt ? new Date(scheduledAt) : undefined}
+                                        setDate={(d) => setScheduledAt(d ? d.toISOString() : '')}
+                                        minDate={new Date()}
                                     />
                                 </div>
                             </div>
