@@ -29,7 +29,7 @@ export async function POST(
 
         // Get the campaign with admin client to bypass RLS
         const adminClient = createAdminClient();
-        const { data: campaign, error: campaignError } = await adminClient
+        const { data: campaign, error: campaignError } = await (adminClient as any)
             .from('marketing_campaigns')
             .select('*')
             .eq('id', campaignId)
@@ -56,7 +56,7 @@ export async function POST(
 
         // Clear scheduled_at and forward to the launch endpoint
         // This effectively makes it launch immediately
-        await adminClient
+        await (adminClient as any)
             .from('marketing_campaigns')
             .update({ 
                 scheduled_at: null,
@@ -77,7 +77,7 @@ export async function POST(
         if (!launchRes.ok) {
             const error = await launchRes.json();
             // Restore scheduled_at if launch failed
-            await adminClient
+            await (adminClient as any)
                 .from('marketing_campaigns')
                 .update({ 
                     scheduled_at: campaign.scheduled_at,
