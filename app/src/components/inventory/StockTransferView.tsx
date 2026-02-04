@@ -396,7 +396,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
           transfer_no: transferNo,
           from_organization_id: fromWarehouse,
           to_organization_id: toWarehouse,
-          status: 'completed',
+          status: 'in_transit',
           items: transferItems.map(item => ({
             variant_id: item.variant_id,
             variant_name: item.variant_name,
