@@ -22,6 +22,7 @@ import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder'
 import { AudienceEstimator } from './AudienceEstimator';
 import { SpecificUserSelector } from './SpecificUserSelector';
 import { CampaignSafetyAdvisor } from './CampaignSafetyAdvisor';
+import { PrelaunchAnalysisModal } from './PrelaunchAnalysisModal';
 import {
     validateTemplate,
     getRiskLevel,
@@ -36,9 +37,11 @@ type WizardProps = {
     onCancel: () => void;
     onComplete: () => void;
     editingCampaign?: any;
+    selectedLanguage?: 'EN' | 'BM';
+    onLanguageChange?: (lang: 'EN' | 'BM') => void;
 };
 
-export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: WizardProps) {
+export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, selectedLanguage: propLanguage, onLanguageChange }: WizardProps) {
     const { toast } = useToast();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -47,10 +50,15 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
     const [testing, setTesting] = useState(false);
     const [estimatedRecipients, setEstimatedRecipients] = useState(0);
     const [acknowledgeRisk, setAcknowledgeRisk] = useState(false);
+    const [showPrelaunchModal, setShowPrelaunchModal] = useState(false);
 
     const [segments, setSegments] = useState<any[]>([]);
     const [templates, setTemplates] = useState<any[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
+    // Use prop language if provided, otherwise local state
+    const [localLanguage, setLocalLanguage] = useState<'EN' | 'BM'>(propLanguage || 'EN');
+    const selectedLanguage = propLanguage ?? localLanguage;
+    const setSelectedLanguage = onLanguageChange ?? setLocalLanguage;
 
     // Mock number health - in real app fetch from API
     const [numberHealth] = useState<NumberHealth>({
@@ -133,7 +141,11 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
             .then(d => {
                 console.log('Templates fetched:', d);
                 if (Array.isArray(d)) {
-                    setTemplates(d);
+                    const normalized = d.map((t: any) => ({
+                        ...t,
+                        language: (t.language || 'EN').toString().toUpperCase()
+                    }));
+                    setTemplates(normalized);
                 } else {
                     setTemplates([]);
                 }
@@ -141,6 +153,27 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
             .catch(err => console.error('Error fetching templates:', err));
 
     }, []);
+
+    // Sync selected language from chosen template (editing or manual selection)
+    useEffect(() => {
+        if (formData.templateId && templates.length > 0) {
+            const tmpl = templates.find(t => t.id === formData.templateId);
+            if (tmpl?.language) {
+                setSelectedLanguage((tmpl.language || 'EN').toString().toUpperCase() as 'EN' | 'BM');
+            }
+        }
+    }, [formData.templateId, templates]);
+
+    // If language changes and current template doesn't match, clear template selection
+    useEffect(() => {
+        if (formData.templateId) {
+            const tmpl = templates.find(t => t.id === formData.templateId);
+            const tmplLang = (tmpl?.language || 'EN').toString().toUpperCase();
+            if (tmplLang !== selectedLanguage) {
+                setFormData(prev => ({ ...prev, templateId: '' }));
+            }
+        }
+    }, [selectedLanguage, templates, formData.templateId]);
 
     // Validate message safety when it changes
     useEffect(() => {
@@ -237,9 +270,27 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                 return;
             }
         }
+
+        // Show pre-launch analysis modal instead of launching immediately
+        setShowPrelaunchModal(true);
+    };
+
+    // Called when user confirms launch in the prelaunch modal
+    const handleConfirmLaunch = async (config: {
+        presetId: string;
+        mode: 'send_now' | 'schedule';
+        scheduledAt?: string;
+        split?: { enabled: boolean; batchSize: number };
+    }) => {
+        setShowPrelaunchModal(false);
         setSubmitting(true);
+        
         try {
-            // First, create/update the campaign
+            // Determine schedule based on config
+            const isScheduled = config.mode === 'schedule' || config.scheduledAt;
+            const scheduledAt = config.scheduledAt || (formData.scheduleType === 'schedule' ? formData.scheduledDate : null);
+            
+            // First, create/update the campaign with preset snapshot
             const res = await fetch('/api/wa/marketing/campaigns', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -259,28 +310,41 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                     },
                     message_body: formData.message,
                     template_id: formData.templateId,
-                    scheduled_at: formData.scheduleType === 'schedule' ? formData.scheduledDate : null,
-                    quiet_hours_enabled: formData.quietHours
+                    scheduled_at: scheduledAt,
+                    quiet_hours_enabled: formData.quietHours,
+                    // Include preset configuration for audit
+                    safety_preset_id: config.presetId,
+                    split_config: config.split,
                 })
             });
 
             if (res.ok) {
                 const campaignData = await res.json();
 
-                // If "Send Now", launch the campaign immediately
-                if (formData.scheduleType === 'now' && campaignData?.id) {
+                // If "Send Now" mode, launch the campaign immediately
+                if (config.mode === 'send_now' && campaignData?.id) {
                     toast({ title: "Campaign Created", description: "Now sending to recipients..." });
 
                     const launchRes = await fetch(`/api/wa/marketing/campaigns/${campaignData.id}/launch`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            preset_id: config.presetId,
+                            split: config.split,
+                        })
                     });
 
                     if (launchRes.ok) {
                         const launchData = await launchRes.json();
+                        // Get preset name for toast
+                        const presetNames: Record<string, string> = {
+                            'system-safe-warmup': 'Safe Warm-Up',
+                            'system-balanced': 'Balanced',
+                            'system-high-volume': 'High Volume'
+                        };
                         toast({
                             title: "Campaign Launched! 🚀",
-                            description: launchData.message || `Sending to ${estimatedRecipients} recipients`
+                            description: `Sending to ${estimatedRecipients} recipients using ${presetNames[config.presetId] || config.presetId} preset`
                         });
                     } else {
                         const launchError = await launchRes.json();
@@ -291,7 +355,12 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                         });
                     }
                 } else {
-                    toast({ title: "Success", description: "Campaign scheduled successfully!" });
+                    toast({ 
+                        title: "Success", 
+                        description: config.mode === 'schedule' 
+                            ? "Campaign scheduled successfully!" 
+                            : "Campaign created successfully!"
+                    });
                 }
 
                 onComplete();
@@ -311,6 +380,10 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
     };
 
     const riskLevel = estimatedRecipients > 5000 ? 'High' : estimatedRecipients > 1000 ? 'Medium' : 'Low';
+
+    const templatesByLanguage = templates.filter(
+        (t) => (t.language || 'EN').toString().toUpperCase() === selectedLanguage
+    );
 
     // Helper function for category badge colors
     const getCategoryBadgeColor = (category: string) => {
@@ -480,10 +553,22 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                         <div className="flex flex-col gap-4 h-full overflow-hidden">
                             <div className="space-y-4">
                                 <div className="space-y-2">
+                                    <Label>Template Language</Label>
+                                    <Select value={selectedLanguage} onValueChange={(value: 'EN' | 'BM') => setSelectedLanguage(value)}>
+                                        <SelectTrigger className="w-[140px]"><SelectValue placeholder="Language" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="EN">EN</SelectItem>
+                                            <SelectItem value="BM">BM</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
                                     <Label>Template Category</Label>
                                     <div className="flex flex-wrap gap-2 pb-2">
                                         {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].map((cat) => {
-                                            const count = cat === 'All Categories' ? templates.length : templates.filter(t => (t.category || 'General') === cat).length;
+                                            const count = cat === 'All Categories'
+                                                ? templatesByLanguage.length
+                                                : templatesByLanguage.filter(t => (t.category || 'General') === cat).length;
                                             return (
                                                 <Badge
                                                     key={cat}
@@ -538,12 +623,12 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                             {selectedCategory === 'All Categories' ? (
                                                 // Group templates by category when showing all
                                                 Object.entries(
-                                                    templates.reduce((acc, t) => {
+                                                    templatesByLanguage.reduce((acc, t) => {
                                                         const cat = t.category || 'General';
                                                         if (!acc[cat]) acc[cat] = [];
                                                         acc[cat].push(t);
                                                         return acc;
-                                                    }, {} as Record<string, typeof templates>)
+                                                    }, {} as Record<string, typeof templatesByLanguage>)
                                                 ).sort(([a], [b]) => a.localeCompare(b)).map(([category, categoryTemplates]) => (
                                                     <div key={category}>
                                                         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
@@ -561,7 +646,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                                 ))
                                             ) : (
                                                 // Show templates for selected category
-                                                templates
+                                                templatesByLanguage
                                                     .filter(t => (t.category || 'General') === selectedCategory)
                                                     .map(t => (
                                                         <SelectItem key={t.id} value={t.id}>
@@ -797,6 +882,20 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                     </Button>
                 )}
             </div>
+
+            {/* Pre-Launch Safety Analysis Modal */}
+            <PrelaunchAnalysisModal
+                open={showPrelaunchModal}
+                onOpenChange={setShowPrelaunchModal}
+                campaignName={formData.name}
+                recipientCount={estimatedRecipients}
+                objective={formData.objective}
+                numberHealth={numberHealth}
+                messageSafety={messageSafety}
+                quietHoursEnabled={formData.quietHours}
+                onConfirm={handleConfirmLaunch}
+                onCancel={() => setShowPrelaunchModal(false)}
+            />
         </Card>
     );
 }

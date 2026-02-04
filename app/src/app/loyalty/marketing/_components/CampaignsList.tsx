@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight, Trash2, Edit, Eye } from 'lucide-react';
-import { format } from "date-fns";
+import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight, Trash2, Edit, Eye, Clock, Rocket } from 'lucide-react';
+import { format, formatDistanceToNow, differenceInSeconds, differenceInHours, differenceInMinutes } from "date-fns";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/components/ui/use-toast";
 
 type Campaign = {
     id: string;
@@ -36,15 +37,51 @@ interface CampaignsListProps {
     onEdit?: (campaign: Campaign) => void;
 }
 
+// Helper to format countdown as HH:MM:SS
+function formatCountdown(scheduledAt: string): { display: string; isFuture: boolean } {
+    const now = new Date();
+    const scheduled = new Date(scheduledAt);
+    const diffSeconds = differenceInSeconds(scheduled, now);
+    
+    if (diffSeconds <= 0) {
+        return { display: '', isFuture: false };
+    }
+    
+    const hours = Math.floor(diffSeconds / 3600);
+    const minutes = Math.floor((diffSeconds % 3600) / 60);
+    const seconds = diffSeconds % 60;
+    
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return { 
+        display: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
+        isFuture: true 
+    };
+}
+
 export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
+    const { toast } = useToast();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [countdownTick, setCountdownTick] = useState(0);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+
+    // Update countdown every second
+    useEffect(() => {
+        const hasScheduled = campaigns.some(c => c.scheduled_at && new Date(c.scheduled_at) > new Date());
+        if (!hasScheduled) return;
+        
+        const interval = setInterval(() => {
+            setCountdownTick(t => t + 1);
+        }, 1000);
+        
+        return () => clearInterval(interval);
+    }, [campaigns]);
 
     const fetchCampaigns = async () => {
         try {
@@ -87,6 +124,38 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
         console.log(`Action ${action} on campaign ${id}`);
         // API calls would go here
         handleRefresh();
+    };
+
+    // Handle "Run Now" for scheduled campaigns
+    const handleRunNow = async (campaign: Campaign) => {
+        try {
+            const res = await fetch(`/api/wa/marketing/campaigns/${campaign.id}/launch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ run_now: true })
+            });
+            
+            if (res.ok) {
+                toast({
+                    title: "Campaign Started! 🚀",
+                    description: `${campaign.name} is now sending to ${campaign.estimated_count} recipients`
+                });
+                handleRefresh();
+            } else {
+                const error = await res.json();
+                toast({
+                    title: "Failed to start campaign",
+                    description: error.error || "Please try again",
+                    variant: "destructive"
+                });
+            }
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to start campaign",
+                variant: "destructive"
+            });
+        }
     };
 
     // Pagination calculations
@@ -170,7 +239,12 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {paginatedCampaigns.map((c, index) => (
+                                    {paginatedCampaigns.map((c, index) => {
+                                        // Calculate countdown for scheduled campaigns
+                                        const countdown = c.scheduled_at ? formatCountdown(c.scheduled_at) : null;
+                                        const scheduledTime = c.scheduled_at ? format(new Date(c.scheduled_at), 'HH:mm:ss') : null;
+                                        
+                                        return (
                                         <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => setSelectedCampaign(c)}>
                                             <TableCell className="text-muted-foreground font-mono text-sm">
                                                 {(currentPage - 1) * pageSize + index + 1}
@@ -184,10 +258,25 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                             <TableCell className="text-sm text-muted-foreground">
                                                 {c.creator?.full_name || '-'}
                                             </TableCell>
-                                            <TableCell>{c.scheduled_at ? format(new Date(c.scheduled_at), 'MMM d, HH:mm') : '-'}</TableCell>
+                                            <TableCell>
+                                                {c.scheduled_at ? (
+                                                    <div className="space-y-1">
+                                                        <div className="font-mono text-sm">
+                                                            {format(new Date(c.scheduled_at), 'MMM d')} @ {scheduledTime}
+                                                        </div>
+                                                        {countdown?.isFuture && (
+                                                            <div className="flex items-center gap-1 text-xs text-blue-600">
+                                                                <Clock className="h-3 w-3" />
+                                                                <span className="font-mono">{countdown.display}</span>
+                                                                <span className="text-muted-foreground">remaining</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : '-'}
+                                            </TableCell>
                                             <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
                                             <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                <DropdownMenu modal={false}>
+                                                <DropdownMenu open={openMenuId === c.id} onOpenChange={(open) => setOpenMenuId(open ? c.id : null)}>
                                                     <DropdownMenuTrigger asChild>
                                                         <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
                                                             <span className="sr-only">Open menu</span>
@@ -202,7 +291,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                     >
                                                         {c.status === 'draft' && (
                                                             <DropdownMenuItem
-                                                                onClick={() => handleEditCampaign(c)}
+                                                                onClick={() => { setOpenMenuId(null); handleEditCampaign(c); }}
                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
                                                             >
                                                                 <Edit className="h-4 w-4 text-gray-600" />
@@ -210,22 +299,32 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                             </DropdownMenuItem>
                                                         )}
                                                         <DropdownMenuItem
-                                                            onClick={() => setSelectedCampaign(c)}
+                                                            onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}
                                                             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
                                                         >
                                                             <Eye className="h-4 w-4 text-gray-600" />
                                                             View
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem
-                                                            onClick={() => handleAction('duplicate', c.id)}
+                                                            onClick={() => { setOpenMenuId(null); handleAction('duplicate', c.id); }}
                                                             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
                                                         >
                                                             <Copy className="h-4 w-4 text-gray-600" />
                                                             Duplicate
                                                         </DropdownMenuItem>
+                                                        {/* Run Now for scheduled campaigns in the future */}
+                                                        {(c.status === 'scheduled' || (c.scheduled_at && countdown?.isFuture)) && (
+                                                            <DropdownMenuItem
+                                                                onClick={() => { setOpenMenuId(null); handleRunNow(c); }}
+                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-green-700 hover:bg-green-50 cursor-pointer focus:bg-green-50 rounded-md mx-1"
+                                                            >
+                                                                <Rocket className="h-4 w-4 text-green-600" />
+                                                                Run Now
+                                                            </DropdownMenuItem>
+                                                        )}
                                                         {c.status === 'sending' && (
                                                             <DropdownMenuItem
-                                                                onClick={() => handleAction('pause', c.id)}
+                                                                onClick={() => { setOpenMenuId(null); handleAction('pause', c.id); }}
                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
                                                             >
                                                                 <Pause className="h-4 w-4 text-gray-600" />
@@ -234,7 +333,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                         )}
                                                         {c.status === 'paused' && (
                                                             <DropdownMenuItem
-                                                                onClick={() => handleAction('resume', c.id)}
+                                                                onClick={() => { setOpenMenuId(null); handleAction('resume', c.id); }}
                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
                                                             >
                                                                 <Play className="h-4 w-4 text-gray-600" />
@@ -243,7 +342,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                         )}
                                                         <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
                                                         <DropdownMenuItem
-                                                            onClick={() => handleAction('archive', c.id)}
+                                                            onClick={() => { setOpenMenuId(null); handleAction('archive', c.id); }}
                                                             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
                                                         >
                                                             <Archive className="h-4 w-4 text-red-600" />
@@ -253,7 +352,8 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                 </DropdownMenu>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
+                                    );
+                                    })}
                                 </TableBody>
                             </Table>
 

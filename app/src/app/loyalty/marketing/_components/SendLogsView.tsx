@@ -475,9 +475,13 @@ export function SendLogsView() {
                         <AlertDialogAction
                             onClick={() => deleteConfirm.logId && handleDeleteLog(deleteConfirm.logId)}
                             disabled={deleting}
-                            className="bg-red-600 hover:bg-red-700"
+                            className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
                         >
-                            {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                            {deleting ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                                <Trash2 className="w-4 h-4 mr-2" />
+                            )}
                             Delete
                         </AlertDialogAction>
                     </AlertDialogFooter>

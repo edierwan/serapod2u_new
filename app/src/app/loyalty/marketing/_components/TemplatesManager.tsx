@@ -30,15 +30,26 @@ type Template = {
     is_system?: boolean;
     risk_score?: number;
     risk_flags?: string[];
+    language?: string;
 };
 
-export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Template) => void }) {
+type TemplatesManagerProps = {
+    onUseTemplate?: (tmpl: Template) => void;
+    selectedLanguage?: 'EN' | 'BM';
+    onLanguageChange?: (lang: 'EN' | 'BM') => void;
+};
+
+export function TemplatesManager({ onUseTemplate, selectedLanguage: propLanguage, onLanguageChange }: TemplatesManagerProps) {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    // Use prop language if provided, otherwise local state
+    const [localLanguage, setLocalLanguage] = useState<'EN' | 'BM'>('EN');
+    const selectedLanguage = propLanguage ?? localLanguage;
+    const setSelectedLanguage = onLanguageChange ?? setLocalLanguage;
     const [saving, setSaving] = useState(false);
 
     // Form state
@@ -68,6 +79,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                     const validation = validateTemplate(t.body || '');
                     return {
                         ...t,
+                        language: (t.language || 'EN').toUpperCase(),
                         risk_score: validation.riskScore,
                         risk_flags: validation.riskFlags.map(f => f.code)
                     };
@@ -94,13 +106,15 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
     // Filter templates based on search and category
     const filteredTemplates = useMemo(() => {
         return templates.filter(t => {
+            const templateLanguage = (t.language || 'EN').toUpperCase();
             const matchesSearch = searchQuery === '' ||
                 t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 t.body.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesCategory = selectedCategory === 'all' || t.category === selectedCategory;
-            return matchesSearch && matchesCategory;
+            const matchesLanguage = templateLanguage === selectedLanguage;
+            return matchesSearch && matchesCategory && matchesLanguage;
         });
-    }, [templates, searchQuery, selectedCategory]);
+    }, [templates, searchQuery, selectedCategory, selectedLanguage]);
 
     // Group templates by category for display
     const groupedTemplates = useMemo(() => {
@@ -115,14 +129,14 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
 
     const handleEdit = (tmpl: Template) => {
         setSelectedTemplate(tmpl);
-        setEditData({ ...tmpl });
+        setEditData({ ...tmpl, language: (tmpl.language || 'EN').toUpperCase() });
         setSafetyResult(null);  // Reset safety result
         setIsEditing(true);
     };
 
     const handleCreate = () => {
         setSelectedTemplate(null);
-        setEditData({ name: '', category: 'General', body: '' });
+        setEditData({ name: '', category: 'General', body: '', language: selectedLanguage });
         setSafetyResult(null);  // Reset safety result
         setIsEditing(true);
     };
@@ -198,7 +212,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                         {filteredTemplates.length} templates available
                     </p>
                 </div>
-                <div className="flex items-center gap-2 w-full md:w-auto">
+                    <div className="flex items-center gap-2 w-full md:w-auto">
                     <div className="relative flex-1 md:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -208,6 +222,15 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                             className="pl-9"
                         />
                     </div>
+                        <Select value={selectedLanguage} onValueChange={(value: 'EN' | 'BM') => setSelectedLanguage(value)}>
+                            <SelectTrigger className="w-[110px]">
+                                <SelectValue placeholder="Language" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="EN">EN</SelectItem>
+                                <SelectItem value="BM">BM</SelectItem>
+                            </SelectContent>
+                        </Select>
                     <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                         <SelectTrigger className="w-[150px]">
                             <Filter className="h-4 w-4 mr-2" />
@@ -351,6 +374,23 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                     </SelectContent>
                                 </Select>
                             </div>
+                            <div className="space-y-2">
+                                <Label className="text-base font-semibold">Language</Label>
+                                <Select
+                                    value={(editData.language || 'EN').toString().toUpperCase()}
+                                    onValueChange={(v) => setEditData({ ...editData, language: v })}
+                                    disabled={selectedTemplate?.is_system}
+                                >
+                                    <SelectTrigger className="h-10">
+                                        <SelectValue placeholder="Select language" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="EN">EN</SelectItem>
+                                        <SelectItem value="BM">BM</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
                                     <Label className="text-base font-semibold">Message Body</Label>

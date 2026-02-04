@@ -18,21 +18,32 @@ function MarketingPageContent() {
 
     // Default to 'campaigns' tab if not specified
     const initialTab = searchParams.get('tab') || 'campaigns';
+    const initialLang = (searchParams.get('lang') as 'EN' | 'BM') || 'EN';
     const [activeTab, setActiveTab] = useState(initialTab);
     const [editingCampaign, setEditingCampaign] = useState<any>(null);
+    const [selectedLanguage, setSelectedLanguage] = useState<'EN' | 'BM'>(initialLang);
 
     // Sync state with URL when it changes externally (e.g. back button)
     useEffect(() => {
         const tab = searchParams.get('tab');
+        const lang = searchParams.get('lang') as 'EN' | 'BM' | null;
         if (tab && tab !== activeTab) {
             setActiveTab(tab);
         }
-    }, [searchParams]); // Remove activeTab from deprecency to avoid circular update loop if not careful, but here it is fine.
+        if (lang && lang !== selectedLanguage) {
+            setSelectedLanguage(lang);
+        }
+    }, [searchParams]); // Remove activeTab from dependency to avoid circular update loop if not careful, but here it is fine.
 
     const handleTabChange = (value: string) => {
         setActiveTab(value);
         // Use replace to avoid filling history stack too much, or push to allow back navigation
-        router.push(`?tab=${value}`);
+        router.push(`?tab=${value}&lang=${selectedLanguage}`);
+    };
+
+    const handleLanguageChange = (lang: 'EN' | 'BM') => {
+        setSelectedLanguage(lang);
+        router.push(`?tab=${activeTab}&lang=${lang}`);
     };
 
     const handleEditCampaign = (campaign: any) => {
@@ -108,11 +119,17 @@ function MarketingPageContent() {
                         onCancel={() => { setEditingCampaign(null); handleTabChange('campaigns'); }}
                         onComplete={() => { setEditingCampaign(null); handleTabChange('campaigns'); }}
                         editingCampaign={editingCampaign}
+                        selectedLanguage={selectedLanguage}
+                        onLanguageChange={handleLanguageChange}
                     />
                 </TabsContent>
 
                 <TabsContent value="templates">
-                    <TemplatesManager onUseTemplate={() => handleTabChange('create')} />
+                    <TemplatesManager 
+                        onUseTemplate={() => handleTabChange('create')} 
+                        selectedLanguage={selectedLanguage}
+                        onLanguageChange={handleLanguageChange}
+                    />
                 </TabsContent>
 
                 <TabsContent value="audience">
