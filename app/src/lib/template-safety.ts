@@ -135,7 +135,7 @@ export const DEFAULT_VARIATION_CONFIG: VariationConfig = {
  * Extract all variables from template body
  */
 export function extractVariables(body: string): string[] {
-    const regex = /\{([a-zA-Z0-9_]+)\}/g;
+    const regex = /\{([a-zA-Z0-9_-]+)\}/g;
     const matches: string[] = [];
     let match;
     while ((match = regex.exec(body)) !== null) {
@@ -184,7 +184,7 @@ export function isIpAddress(domain: string): boolean {
  */
 export function isShortenerDomain(domain: string): boolean {
     const normalizedDomain = domain.toLowerCase().replace(/^www\./, '');
-    return SHORTENER_DOMAINS.some(shortener => 
+    return SHORTENER_DOMAINS.some(shortener =>
         normalizedDomain === shortener || normalizedDomain.endsWith('.' + shortener)
     );
 }
@@ -230,7 +230,7 @@ export function normalizeText(text: string): string {
     return text
         .toLowerCase()
         // Remove variables
-        .replace(/\{[a-zA-Z0-9_]+\}/g, '')
+        .replace(/\{[a-zA-Z0-9_-]+\}/g, '')
         // Remove punctuation
         .replace(/[^\w\s]/g, '')
         // Collapse whitespace
@@ -253,13 +253,13 @@ export function computeContentHash(text: string): string {
 export function calculateJaccardSimilarity(text1: string, text2: string): number {
     const tokens1 = new Set(normalizeText(text1).split(' ').filter(t => t.length > 2));
     const tokens2 = new Set(normalizeText(text2).split(' ').filter(t => t.length > 2));
-    
+
     if (tokens1.size === 0 && tokens2.size === 0) return 1;
     if (tokens1.size === 0 || tokens2.size === 0) return 0;
-    
+
     const intersection = new Set([...tokens1].filter(t => tokens2.has(t)));
     const union = new Set([...tokens1, ...tokens2]);
-    
+
     return intersection.size / union.size;
 }
 
@@ -270,7 +270,7 @@ export function detectRepeatedPhrases(text: string): string[] {
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 10);
     const seen = new Map<string, number>();
     const repeated: string[] = [];
-    
+
     for (const line of lines) {
         const normalized = line.toLowerCase();
         const count = (seen.get(normalized) || 0) + 1;
@@ -279,7 +279,7 @@ export function detectRepeatedPhrases(text: string): string[] {
             repeated.push(line);
         }
     }
-    
+
     return repeated;
 }
 
@@ -299,19 +299,20 @@ export function validateTemplate(
     const warnings: ValidationWarning[] = [];
     const riskFlags: RiskFlag[] = [];
     let riskScore = 0;
-    
+
     // Extract metadata
     const extractedVariables = extractVariables(body);
     const urls = extractUrls(body);
     const linkDomains = urls.map(extractDomain).filter(Boolean);
-    const personalizationTokens = extractedVariables.filter(v => 
+    const personalizationTokens = extractedVariables.filter(v =>
         PERSONALIZATION_VARIABLES.includes(v)
     );
-    
-    // Count {short_link} as a link
-    const hasShortLink = extractedVariables.includes('short_link');
-    const totalLinkCount = urls.length + (hasShortLink ? 1 : 0);
-    
+
+    // Count link tokens as links
+    const linkTokens = ['short_link'];
+    const linkTokenCount = extractedVariables.filter(v => linkTokens.includes(v)).length;
+    const totalLinkCount = urls.length + linkTokenCount;
+
     const emojiCount = countEmojis(body);
     const uppercasePercentage = calculateUppercasePercentage(body);
     const promoWordCount = countPromoWords(body);
@@ -319,11 +320,11 @@ export function validateTemplate(
     const contentHash = computeContentHash(body);
     const normalizedContentHash = computeContentHash(normalizedText);
     const repeatedPhrases = detectRepeatedPhrases(body);
-    
+
     // ============================================
     // VALIDATION CHECKS
     // ============================================
-    
+
     // 1. Variable validation - check for unsupported variables
     const unsupportedVars = extractedVariables.filter(v => !SUPPORTED_VARIABLES.includes(v));
     if (unsupportedVars.length > 0) {
@@ -339,7 +340,7 @@ export function validateTemplate(
         });
         riskScore += 30;
     }
-    
+
     // 2. Personalization check
     if (cfg.requiresPersonalization && personalizationTokens.length < cfg.minPersonalizationTokens) {
         const flag: RiskFlag = {
@@ -349,7 +350,7 @@ export function validateTemplate(
             suggestion: 'Add {name} or {city} to make message feel personal'
         };
         riskFlags.push(flag);
-        
+
         if (cfg.strictMode) {
             errors.push({
                 code: 'NO_PERSONALIZATION',
@@ -365,7 +366,7 @@ export function validateTemplate(
             riskScore += 15;
         }
     }
-    
+
     // 3. Link count check
     if (totalLinkCount > cfg.maxLinks) {
         errors.push({
@@ -380,11 +381,11 @@ export function validateTemplate(
         });
         riskScore += 25;
     }
-    
+
     // 4. Domain reputation checks
     for (const url of urls) {
         const domain = extractDomain(url);
-        
+
         // Check for IP address
         if (isIpAddress(domain)) {
             riskFlags.push({
@@ -395,7 +396,7 @@ export function validateTemplate(
             });
             riskScore += 20;
         }
-        
+
         // Check for shortener
         if (!cfg.allowShorteners && isShortenerDomain(domain)) {
             riskFlags.push({
@@ -412,10 +413,10 @@ export function validateTemplate(
             }
             riskScore += 15;
         }
-        
+
         // Check allowlist
         if (cfg.allowedDomains.length > 0) {
-            const isAllowed = cfg.allowedDomains.some(allowed => 
+            const isAllowed = cfg.allowedDomains.some(allowed =>
                 domain === allowed || domain.endsWith('.' + allowed)
             );
             if (!isAllowed) {
@@ -434,7 +435,7 @@ export function validateTemplate(
                 riskScore += 10;
             }
         }
-        
+
         // Check for HTTP (not HTTPS)
         if (url.toLowerCase().startsWith('http://')) {
             warnings.push({
@@ -451,7 +452,7 @@ export function validateTemplate(
             riskScore += 5;
         }
     }
-    
+
     // 5. Spam fingerprint signals
     if (emojiCount > cfg.maxEmojis) {
         riskFlags.push({
@@ -467,7 +468,7 @@ export function validateTemplate(
         });
         riskScore += 10;
     }
-    
+
     if (uppercasePercentage > cfg.maxUppercasePercentage) {
         riskFlags.push({
             code: 'ALL_CAPS_HEAVY',
@@ -482,7 +483,7 @@ export function validateTemplate(
         });
         riskScore += 10;
     }
-    
+
     if (promoWordCount > cfg.promoWordThreshold) {
         riskFlags.push({
             code: 'HIGH_PROMO_WORDS',
@@ -497,7 +498,7 @@ export function validateTemplate(
         });
         riskScore += Math.min(15, promoWordCount * 3);
     }
-    
+
     if (repeatedPhrases.length > 0) {
         riskFlags.push({
             code: 'REPEATED_PHRASES',
@@ -512,13 +513,13 @@ export function validateTemplate(
         });
         riskScore += 5 * repeatedPhrases.length;
     }
-    
+
     // Cap risk score at 100
     riskScore = Math.min(100, riskScore);
-    
+
     // Determine validity
     const isValid = errors.length === 0;
-    
+
     return {
         isValid,
         riskScore,
@@ -549,11 +550,11 @@ export function checkTemplateSimilarity(
 ): { isDuplicate: boolean; similarity: number } {
     const hash1 = computeContentHash(normalizeText(body1));
     const hash2 = computeContentHash(normalizeText(body2));
-    
+
     if (hash1 === hash2) {
         return { isDuplicate: true, similarity: 1.0 };
     }
-    
+
     const similarity = calculateJaccardSimilarity(body1, body2);
     return {
         isDuplicate: similarity > 0.95,
@@ -575,8 +576,8 @@ function seededRandom(seed: string): () => number {
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash;
     }
-    
-    return function() {
+
+    return function () {
         const x = Math.sin(hash++) * 10000;
         return x - Math.floor(x);
     };
@@ -592,23 +593,23 @@ export function applyVariation(
     config: Partial<VariationConfig> = {}
 ): { message: string; variationId: string } {
     const cfg = { ...DEFAULT_VARIATION_CONFIG, ...config };
-    
+
     if (!cfg.enabled) {
         return { message: body, variationId: 'none' };
     }
-    
+
     const seed = `${templateId}-${recipientId}`;
     const random = seededRandom(seed);
-    
+
     let result = body;
     const appliedVariations: string[] = [];
-    
+
     // Check if message starts with a greeting pattern
     const greetingPatterns = [
         /^(Hi|Hello|Salam|Hey)\s*\{name\}\s*[,!]?\s*/i,
         /^(Hi|Hello|Salam|Hey)\s*[,!]?\s*/i
     ];
-    
+
     let hasGreeting = false;
     for (const pattern of greetingPatterns) {
         if (pattern.test(result)) {
@@ -621,7 +622,7 @@ export function applyVariation(
             break;
         }
     }
-    
+
     // If no greeting, optionally add one at the start
     if (!hasGreeting && result.includes('{name}')) {
         // 50% chance to add greeting
@@ -632,12 +633,12 @@ export function applyVariation(
             appliedVariations.push(`greeting-add:${variantIndex}`);
         }
     }
-    
+
     // Check if message ends with common closing patterns
     const closingPatterns = [
         /(Terima kasih|Thanks|Thank you|Appreciate)[.!]?\s*$/i
     ];
-    
+
     let hasClosing = false;
     for (const pattern of closingPatterns) {
         if (pattern.test(result)) {
@@ -650,18 +651,18 @@ export function applyVariation(
             break;
         }
     }
-    
+
     // Add softener line with some probability (30%)
     if (cfg.softenerLine && random() > 0.7) {
         result = result.trim() + '\n\n' + cfg.softenerLine;
         appliedVariations.push('softener:added');
     }
-    
+
     // Generate variation ID
-    const variationId = appliedVariations.length > 0 
+    const variationId = appliedVariations.length > 0
         ? appliedVariations.join('|')
         : 'base';
-    
+
     return { message: result, variationId };
 }
 
@@ -673,12 +674,12 @@ export function renderTemplate(
     variables: Record<string, string | number>
 ): string {
     let result = body;
-    
+
     for (const [key, value] of Object.entries(variables)) {
         const regex = new RegExp(`\\{${key}\\}`, 'g');
         result = result.replace(regex, String(value));
     }
-    
+
     return result;
 }
 
@@ -699,10 +700,10 @@ export function renderWithVariation(
         recipientId,
         variationConfig
     );
-    
+
     // Then render variables
     const renderedMessage = renderTemplate(variedMessage, variables);
-    
+
     return { message: renderedMessage, variationId };
 }
 

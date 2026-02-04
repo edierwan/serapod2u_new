@@ -15,7 +15,8 @@ interface BannerItem {
     id: string
     image_url: string
     cropped_image_url?: string  // Optimized cropped version
-    link_to?: 'rewards' | 'products' | string
+    link_to?: 'short_link' | 'page_rewards' | 'page_product' | 'page-contactus' | 'external_url' | 'no-link' | 'rewards' | 'products' | 'contact-us' | string
+    external_url?: string
     expires_at?: string
     page?: 'home' | 'rewards' | 'products' | 'profile'  // Which page to display the banner on
     is_active?: boolean  // Whether this banner is active (defaults to true)
@@ -46,9 +47,9 @@ interface AnnouncementBannerProps {
  * - Tap to expand lightbox for full image viewing
  * - Optimized for mobile display (375-414px width phones)
  */
-export function AnnouncementBanner({ 
-    items, 
-    template, 
+export function AnnouncementBanner({
+    items,
+    template,
     onItemClick,
     className = "",
     autoSlide = true,
@@ -61,7 +62,7 @@ export function AnnouncementBanner({
     const [currentSlide, setCurrentSlide] = useState(0)
     const [isPaused, setIsPaused] = useState(false)
     const [progress, setProgress] = useState(0)
-    
+
     const sliderRef = useRef<HTMLDivElement>(null)
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
     const startTimeRef = useRef<number>(0)
@@ -69,9 +70,9 @@ export function AnnouncementBanner({
 
     // Filter out expired and inactive items
     const activeItems = items.filter(
-        item => item.image_url && 
-                item.is_active !== false && // defaults to true if not set
-                (!item.expires_at || new Date(item.expires_at) > new Date())
+        item => item.image_url &&
+            item.is_active !== false && // defaults to true if not set
+            (!item.expires_at || new Date(item.expires_at) > new Date())
     )
 
     // Handle auto-slide logic
@@ -79,15 +80,15 @@ export function AnnouncementBanner({
         if (template !== 'carousel' || !autoSlide || activeItems.length <= 1) return
 
         const interval = slideInterval * 1000
-        
+
         const startTimer = () => {
             if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
-            
+
             const stepTime = 50 // Update progress every 50ms
             const stepPercent = (stepTime / interval) * 100
-            
+
             startTimeRef.current = Date.now()
-            
+
             progressIntervalRef.current = setInterval(() => {
                 if (!isPaused) {
                     setProgress(prev => {
@@ -118,16 +119,16 @@ export function AnnouncementBanner({
             const container = sliderRef.current
             const containerRect = container.getBoundingClientRect()
             const containerCenter = containerRect.left + containerRect.width / 2
-            
+
             let closestIndex = currentSlide
             let minDistance = Infinity
-            
+
             Array.from(container.children).forEach((child, index) => {
                 const item = child as HTMLElement
                 const itemRect = item.getBoundingClientRect()
                 const itemCenter = itemRect.left + itemRect.width / 2
                 const distance = Math.abs(containerCenter - itemCenter)
-                
+
                 if (distance < minDistance) {
                     minDistance = distance
                     closestIndex = index
@@ -153,21 +154,21 @@ export function AnnouncementBanner({
             const items = container.children
             if (index >= 0 && index < items.length) {
                 const item = items[index] as HTMLElement
-                
+
                 // Use getBoundingClientRect for robust positioning calculation
                 const itemRect = item.getBoundingClientRect()
                 const containerRect = container.getBoundingClientRect()
-                
+
                 // Calculate how much we need to scroll to center the item
                 // Current position of item relative to container viewport
                 const currentOffsetFromLeft = itemRect.left - containerRect.left
-                
+
                 // Where we want the item to be (centered)
                 const desiredOffsetFromLeft = (container.clientWidth - item.offsetWidth) / 2
-                
+
                 // The difference is how much we need to adjust scroll
                 const delta = currentOffsetFromLeft - desiredOffsetFromLeft
-                
+
                 container.scrollTo({
                     left: container.scrollLeft + delta,
                     behavior: 'smooth'
@@ -190,19 +191,45 @@ export function AnnouncementBanner({
     if (activeItems.length === 0) return null
 
     const handleBannerClick = (item: BannerItem, e: React.MouseEvent) => {
-        // If there's a link, follow it
-        if (item.link_to) {
-            if (onItemClick) {
-                onItemClick(item)
-            } else if (item.link_to.startsWith('http')) {
-                window.open(item.link_to, '_blank')
-            }
-        } else {
-            // No link - open lightbox for full image view
+        const isNoLink = item.link_to === 'no-link' || !item.link_to
+        if (isNoLink) {
             const imageUrl = item.cropped_image_url || item.image_url
             setLightboxImage(imageUrl)
             setLightboxOpen(true)
+            return
         }
+
+        if (onItemClick) {
+            onItemClick(item)
+            return
+        }
+
+        const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+        const appUrl = appBaseUrl ? `${appBaseUrl}/app` : '/app'
+
+        let targetUrl = ''
+        if (item.link_to === 'short_link') {
+            targetUrl = appUrl
+        } else if (item.link_to === 'page_rewards') {
+            targetUrl = `${appUrl}?tab=rewards`
+        } else if (item.link_to === 'page_product') {
+            targetUrl = `${appUrl}?tab=products`
+        } else if (item.link_to === 'page-contactus') {
+            targetUrl = `${appUrl}?tab=contact-us`
+        } else if (item.link_to === 'external_url') {
+            targetUrl = item.external_url || ''
+        } else if (item.link_to?.startsWith('http')) {
+            targetUrl = item.link_to
+        }
+
+        if (targetUrl) {
+            window.open(targetUrl, '_blank')
+            return
+        }
+
+        const imageUrl = item.cropped_image_url || item.image_url
+        setLightboxImage(imageUrl)
+        setLightboxOpen(true)
     }
 
     const handleLongPress = (item: BannerItem) => {
@@ -218,8 +245,8 @@ export function AnnouncementBanner({
                 {template === 'grid' ? (
                     <div className="grid grid-cols-1 gap-3">
                         {activeItems.map((item) => (
-                            <BannerImage 
-                                key={item.id} 
+                            <BannerImage
+                                key={item.id}
                                 item={item}
                                 onClick={(e) => handleBannerClick(item, e)}
                                 onLongPress={() => handleLongPress(item)}
@@ -228,7 +255,7 @@ export function AnnouncementBanner({
                     </div>
                 ) : (
                     <div className="relative">
-                        <div 
+                        <div
                             ref={sliderRef}
                             className="flex overflow-x-auto gap-3 pb-2 snap-x scrollbar-hide -mx-5 px-5"
                             onScroll={handleScroll}
@@ -239,7 +266,7 @@ export function AnnouncementBanner({
                         >
                             {activeItems.map((item) => (
                                 <div key={item.id} className="min-w-[85%] snap-center flex-shrink-0">
-                                    <BannerImage 
+                                    <BannerImage
                                         item={item}
                                         onClick={(e) => handleBannerClick(item, e)}
                                         onLongPress={() => handleLongPress(item)}
@@ -253,7 +280,7 @@ export function AnnouncementBanner({
                             <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10">
                                 <div className="bg-black/30 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-2 pointer-events-none">
                                     <div className="w-12 h-1 bg-white/30 rounded-full overflow-hidden">
-                                        <div 
+                                        <div
                                             className="h-full bg-white transition-all duration-100 ease-linear"
                                             style={{ width: `${progress}%` }}
                                         />
@@ -272,11 +299,10 @@ export function AnnouncementBanner({
                                     <button
                                         key={index}
                                         onClick={() => scrollToSlide(index)}
-                                        className={`h-1.5 rounded-full transition-all duration-300 ${
-                                            currentSlide === index 
-                                                ? 'bg-orange-500 w-4' 
+                                        className={`h-1.5 rounded-full transition-all duration-300 ${currentSlide === index
+                                                ? 'bg-orange-500 w-4'
                                                 : 'bg-gray-300 w-1.5 hover:bg-gray-400'
-                                        }`}
+                                            }`}
                                         aria-label={`Go to slide ${index + 1}`}
                                     />
                                 ))}
@@ -343,10 +369,9 @@ function BannerImage({ item, onClick, onLongPress }: BannerImageProps) {
     const imageUrl = item.cropped_image_url || item.image_url
 
     return (
-        <div 
-            className={`relative w-full rounded-xl overflow-hidden shadow-sm cursor-pointer transition-transform ${
-                isPressed ? 'scale-[0.98]' : 'hover:shadow-md'
-            } ${item.link_to ? '' : ''}`}
+        <div
+            className={`relative w-full rounded-xl overflow-hidden shadow-sm cursor-pointer transition-transform ${isPressed ? 'scale-[0.98]' : 'hover:shadow-md'
+                } ${item.link_to ? '' : ''}`}
             onClick={onClick}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
@@ -354,9 +379,9 @@ function BannerImage({ item, onClick, onLongPress }: BannerImageProps) {
             onMouseUp={handleTouchEnd}
             onMouseLeave={handleTouchEnd}
         >
-            <Image 
-                src={imageUrl} 
-                alt="Promotional banner" 
+            <Image
+                src={imageUrl}
+                alt="Promotional banner"
                 width={0}
                 height={0}
                 sizes="(max-width: 768px) 100vw, 50vw"
@@ -385,8 +410,8 @@ interface BannerCropperProps {
     onWarning?: (message: string) => void
 }
 
-export function BannerCropper({ 
-    imageUrl, 
+export function BannerCropper({
+    imageUrl,
     cropData = { x: 50, y: 50, zoom: 1 },
     onChange,
     onWarning
@@ -416,14 +441,14 @@ export function BannerCropper({
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (!isDragging || !containerRef.current) return
-        
+
         const rect = containerRef.current.getBoundingClientRect()
         const dx = ((e.clientX - dragStart.x) / rect.width) * 100
         const dy = ((e.clientY - dragStart.y) / rect.height) * 100
-        
+
         const newX = Math.max(0, Math.min(100, cropData.x - dx))
         const newY = Math.max(0, Math.min(100, cropData.y - dy))
-        
+
         onChange({ ...cropData, x: newX, y: newY })
         setDragStart({ x: e.clientX, y: e.clientY })
     }, [isDragging, dragStart, cropData, onChange])
@@ -454,13 +479,13 @@ export function BannerCropper({
             {/* Preview Frame - Simulates mobile banner display */}
             <div className="bg-gray-100 rounded-lg p-4">
                 <p className="text-xs text-gray-500 mb-2 text-center">Preview (~375px mobile width)</p>
-                <div 
+                <div
                     ref={containerRef}
                     className="relative w-full max-w-[375px] mx-auto rounded-lg overflow-hidden cursor-move select-none"
                     style={{ aspectRatio: '16/9' }}
                     onMouseDown={handleMouseDown}
                 >
-                    <div 
+                    <div
                         className="absolute inset-0"
                         style={{
                             backgroundImage: `url(${imageUrl})`,
@@ -514,10 +539,10 @@ export function BannerCropper({
 
             {/* Hidden image for dimension detection */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-                src={imageUrl} 
-                alt="" 
-                className="hidden" 
+            <img
+                src={imageUrl}
+                alt=""
+                className="hidden"
                 onLoad={handleImageLoad}
             />
         </div>

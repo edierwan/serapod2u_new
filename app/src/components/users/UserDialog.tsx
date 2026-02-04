@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Upload, X, Loader2 } from 'lucide-react'
+import { Upload, X, Loader2, AlertCircle } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
+import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
 
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('en-US', {
@@ -42,6 +44,7 @@ export default function UserDialog({
   onOpenChange,
   onSave
 }: UserDialogProps) {
+  const { supabase } = useSupabaseAuth()
   const [formData, setFormData] = useState<Partial<User> & { password?: string }>(
     user || {
       email: '',
@@ -59,9 +62,100 @@ export default function UserDialog({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Phone validation state
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false)
+  const [phoneValidation, setPhoneValidation] = useState<PhoneValidationResult | null>(null)
+  const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Filter roles based on current user's role level
   // Users can only assign roles equal to or lower than their own level (higher number = lower access)
   const availableRoles = roles.filter(role => role.role_level >= currentUserRoleLevel)
+
+  // Check if phone exists in database
+  const checkPhoneAvailability = async (phone: string) => {
+    // First validate the phone format
+    const validation = validatePhoneNumber(phone)
+    setPhoneValidation(validation)
+
+    // If phone is empty, reset status
+    if (!phone || phone.trim() === '') {
+      setPhoneCheckStatus('idle')
+      setErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors.phone
+        return newErrors
+      })
+      return
+    }
+
+    // If phone format is invalid, show error and don't check availability
+    if (!validation.isValid) {
+      setPhoneCheckStatus('invalid')
+      setErrors(prev => ({
+        ...prev,
+        phone: validation.error || 'Invalid phone number format'
+      }))
+      return
+    }
+
+    const normalizedPhone = normalizePhone(phone)
+
+    if (!normalizedPhone || normalizedPhone.length < 10) {
+      setPhoneCheckStatus('idle')
+      return
+    }
+
+    // If editing and phone hasn't changed (normalized check), skip
+    if (user && user.phone && normalizePhone(user.phone) === normalizedPhone) {
+      setPhoneCheckStatus('idle')
+      setErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors.phone
+        return newErrors
+      })
+      return
+    }
+
+    setIsCheckingPhone(true)
+    setPhoneCheckStatus('checking')
+
+    try {
+      // Use RPC to check auth.users directly
+      const { data: exists, error } = await supabase
+        .rpc('check_phone_exists', {
+          p_phone: normalizedPhone,
+          p_exclude_user_id: user?.id || null
+        })
+
+      if (error) {
+        console.error('Error checking phone:', error)
+        setPhoneCheckStatus('idle')
+        setIsCheckingPhone(false)
+        return
+      }
+
+      if (exists) {
+        setPhoneCheckStatus('taken')
+        setErrors(prev => ({
+          ...prev,
+          phone: 'This phone number is already registered'
+        }))
+      } else {
+        setPhoneCheckStatus('available')
+        setErrors(prev => {
+          const newErrors = { ...prev }
+          delete newErrors.phone
+          return newErrors
+        })
+      }
+    } catch (err) {
+      console.error('Error checking phone availability:', err)
+      setPhoneCheckStatus('idle')
+    } finally {
+      setIsCheckingPhone(false)
+    }
+  }
 
   // Re-initialize form when user prop changes
   useEffect(() => {
@@ -84,6 +178,9 @@ export default function UserDialog({
       }
       setAvatarFile(null)
       setErrors({})
+      setPhoneCheckStatus('idle')
+      setIsCheckingPhone(false)
+      setPhoneValidation(null)
     }
   }, [user, open])
 
@@ -129,7 +226,7 @@ export default function UserDialog({
         return newErrors
       })
     }
-    
+
     const reader = new FileReader()
     reader.onloadend = () => {
       // Update preview with the new image
@@ -178,7 +275,26 @@ export default function UserDialog({
         return newErrors
       })
     }
+
+    // Phone availability check with debounce
+    if (field === 'phone') {
+      if (phoneCheckTimeoutRef.current) {
+        clearTimeout(phoneCheckTimeoutRef.current)
+      }
+      phoneCheckTimeoutRef.current = setTimeout(() => {
+        checkPhoneAvailability(newValue)
+      }, 500)
+    }
   }
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (phoneCheckTimeoutRef.current) {
+        clearTimeout(phoneCheckTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -234,7 +350,7 @@ export default function UserDialog({
           <h2 className="text-lg font-bold text-gray-900">
             {user ? 'Edit User' : 'Add New User'}
           </h2>
-          <button 
+          <button
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -334,12 +450,51 @@ export default function UserDialog({
 
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                placeholder="+60123456789"
-                value={formData.phone || ''}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
-              />
+              <div className="relative">
+                <Input
+                  id="phone"
+                  placeholder="e.g., 0123456789 (MY) or 13800138000 (CN)"
+                  value={formData.phone || ''}
+                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  className={`${errors.phone ? 'border-red-500' : ''} ${phoneCheckStatus === 'available' ? 'border-green-500' : ''
+                    } ${phoneCheckStatus === 'invalid' ? 'border-amber-500' : ''}`}
+                />
+                {isCheckingPhone && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                  </div>
+                )}
+                {phoneCheckStatus === 'available' && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+                {(phoneCheckStatus === 'taken' || phoneCheckStatus === 'invalid') && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <AlertCircle className={`w-5 h-5 ${phoneCheckStatus === 'taken' ? 'text-red-500' : 'text-amber-500'}`} />
+                  </div>
+                )}
+              </div>
+              {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
+              {!errors.phone && phoneCheckStatus === 'available' && phoneValidation?.country && (
+                <p className="text-xs text-green-600">
+                  ✓ Phone number is available ({phoneValidation.country === 'MY' ? '🇲🇾 Malaysia' : '🇨🇳 China'})
+                </p>
+              )}
+              {!errors.phone && phoneCheckStatus === 'idle' && formData.phone && formData.phone.trim() && (
+                <p className="text-xs text-gray-500">
+                  Supported: Malaysia (+60) and China (+86) mobile numbers
+                </p>
+              )}
+              {!formData.phone && (
+                <p className="text-xs text-gray-400">
+                  Supported: Malaysia (+60) and China (+86) mobile numbers
+                </p>
+              )}
             </div>
           </div>
 

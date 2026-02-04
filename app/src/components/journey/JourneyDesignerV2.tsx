@@ -174,7 +174,8 @@ interface JourneyConfig {
         items: Array<{
             id: string
             image_url: string
-            link_to: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
+            link_to: 'short_link' | 'page_rewards' | 'page_product' | 'page-contactus' | 'external_url' | 'no-link' | 'rewards' | 'products' | 'contact-us' | string
+            external_url?: string
             expires_at: string
             page?: 'home' | 'rewards' | 'products' | 'profile' // new: which page to show this banner
             is_active?: boolean // whether this banner is active (defaults to true)

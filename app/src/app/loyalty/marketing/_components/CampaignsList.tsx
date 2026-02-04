@@ -41,7 +41,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-    
+
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
@@ -155,173 +155,175 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                         </div>
                     ) : (
                         <>
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="w-[50px]">#</TableHead>
-                                    <TableHead>Campaign Name</TableHead>
-                                    <TableHead>Objective</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Recipients</TableHead>
-                                    <TableHead>Created By</TableHead>
-                                    <TableHead>Scheduled / Time</TableHead>
-                                    <TableHead>Updated</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {paginatedCampaigns.map((c, index) => (
-                                    <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => setSelectedCampaign(c)}>
-                                        <TableCell className="text-muted-foreground font-mono text-sm">
-                                            {(currentPage - 1) * pageSize + index + 1}
-                                        </TableCell>
-                                        <TableCell className="font-medium">
-                                            {c.name}
-                                        </TableCell>
-                                        <TableCell>{c.objective}</TableCell>
-                                        <TableCell>{getStatusBadge(c.status)}</TableCell>
-                                        <TableCell>{c.estimated_count.toLocaleString()}</TableCell>
-                                        <TableCell className="text-sm text-muted-foreground">
-                                            {c.creator?.full_name || '-'}
-                                        </TableCell>
-                                        <TableCell>{c.scheduled_at ? format(new Date(c.scheduled_at), 'MMM d, HH:mm') : '-'}</TableCell>
-                                        <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
-                                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
-                                                        <span className="sr-only">Open menu</span>
-                                                        <MoreHorizontal className="h-4 w-4 text-gray-700" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent 
-                                                    align="end" 
-                                                    className="w-40 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5"
-                                                >
-                                                    {c.status === 'draft' && (
-                                                        <DropdownMenuItem 
-                                                            onClick={() => handleEditCampaign(c)}
-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
-                                                        >
-                                                            <Edit className="h-4 w-4 text-gray-600" />
-                                                            Edit
-                                                        </DropdownMenuItem>
-                                                    )}
-                                                    <DropdownMenuItem 
-                                                        onClick={() => setSelectedCampaign(c)}
-                                                        className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
-                                                    >
-                                                        <Eye className="h-4 w-4 text-gray-600" />
-                                                        View
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem 
-                                                        onClick={() => handleAction('duplicate', c.id)}
-                                                        className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
-                                                    >
-                                                        <Copy className="h-4 w-4 text-gray-600" />
-                                                        Duplicate
-                                                    </DropdownMenuItem>
-                                                    {c.status === 'sending' && (
-                                                        <DropdownMenuItem 
-                                                            onClick={() => handleAction('pause', c.id)}
-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
-                                                        >
-                                                            <Pause className="h-4 w-4 text-gray-600" />
-                                                            Pause
-                                                        </DropdownMenuItem>
-                                                    )}
-                                                    {c.status === 'paused' && (
-                                                        <DropdownMenuItem 
-                                                            onClick={() => handleAction('resume', c.id)}
-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
-                                                        >
-                                                            <Play className="h-4 w-4 text-gray-600" />
-                                                            Resume
-                                                        </DropdownMenuItem>
-                                                    )}
-                                                    <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
-                                                    <DropdownMenuItem 
-                                                        onClick={() => handleAction('archive', c.id)}
-                                                        className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
-                                                    >
-                                                        <Archive className="h-4 w-4 text-red-600" />
-                                                        Archive
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="w-[50px]">#</TableHead>
+                                        <TableHead>Campaign Name</TableHead>
+                                        <TableHead>Objective</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Recipients</TableHead>
+                                        <TableHead>Created By</TableHead>
+                                        <TableHead>Scheduled / Time</TableHead>
+                                        <TableHead>Updated</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {paginatedCampaigns.map((c, index) => (
+                                        <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => setSelectedCampaign(c)}>
+                                            <TableCell className="text-muted-foreground font-mono text-sm">
+                                                {(currentPage - 1) * pageSize + index + 1}
+                                            </TableCell>
+                                            <TableCell className="font-medium">
+                                                {c.name}
+                                            </TableCell>
+                                            <TableCell>{c.objective}</TableCell>
+                                            <TableCell>{getStatusBadge(c.status)}</TableCell>
+                                            <TableCell>{c.estimated_count.toLocaleString()}</TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {c.creator?.full_name || '-'}
+                                            </TableCell>
+                                            <TableCell>{c.scheduled_at ? format(new Date(c.scheduled_at), 'MMM d, HH:mm') : '-'}</TableCell>
+                                            <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
+                                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                                                <DropdownMenu modal={false}>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
+                                                            <span className="sr-only">Open menu</span>
+                                                            <MoreHorizontal className="h-4 w-4 text-gray-700" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent
+                                                        align="end"
+                                                        sideOffset={5}
+                                                        className="w-40 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5 z-50"
+                                                        style={{ zIndex: 9999 }}
+                                                    >
+                                                        {c.status === 'draft' && (
+                                                            <DropdownMenuItem
+                                                                onClick={() => handleEditCampaign(c)}
+                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                            >
+                                                                <Edit className="h-4 w-4 text-gray-600" />
+                                                                Edit
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        <DropdownMenuItem
+                                                            onClick={() => setSelectedCampaign(c)}
+                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                        >
+                                                            <Eye className="h-4 w-4 text-gray-600" />
+                                                            View
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() => handleAction('duplicate', c.id)}
+                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                        >
+                                                            <Copy className="h-4 w-4 text-gray-600" />
+                                                            Duplicate
+                                                        </DropdownMenuItem>
+                                                        {c.status === 'sending' && (
+                                                            <DropdownMenuItem
+                                                                onClick={() => handleAction('pause', c.id)}
+                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                            >
+                                                                <Pause className="h-4 w-4 text-gray-600" />
+                                                                Pause
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {c.status === 'paused' && (
+                                                            <DropdownMenuItem
+                                                                onClick={() => handleAction('resume', c.id)}
+                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                            >
+                                                                <Play className="h-4 w-4 text-gray-600" />
+                                                                Resume
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
+                                                        <DropdownMenuItem
+                                                            onClick={() => handleAction('archive', c.id)}
+                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
+                                                        >
+                                                            <Archive className="h-4 w-4 text-red-600" />
+                                                            Archive
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
 
-                        {/* Pagination Controls */}
-                        {campaigns.length > 0 && (
-                            <div className="flex items-center justify-between px-2 py-4 border-t">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <span>Rows per page:</span>
-                                    <Select value={pageSize.toString()} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
-                                        <SelectTrigger className="w-[70px] h-8">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="5">5</SelectItem>
-                                            <SelectItem value="10">10</SelectItem>
-                                            <SelectItem value="20">20</SelectItem>
-                                            <SelectItem value="50">50</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <span className="ml-4">
-                                        Showing {Math.min((currentPage - 1) * pageSize + 1, campaigns.length)} - {Math.min(currentPage * pageSize, campaigns.length)} of {campaigns.length}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm"
-                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                        disabled={currentPage === 1}
-                                    >
-                                        <ChevronLeft className="h-4 w-4" />
-                                        Previous
-                                    </Button>
-                                    <div className="flex items-center gap-1">
-                                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                            let pageNum;
-                                            if (totalPages <= 5) {
-                                                pageNum = i + 1;
-                                            } else if (currentPage <= 3) {
-                                                pageNum = i + 1;
-                                            } else if (currentPage >= totalPages - 2) {
-                                                pageNum = totalPages - 4 + i;
-                                            } else {
-                                                pageNum = currentPage - 2 + i;
-                                            }
-                                            return (
-                                                <Button
-                                                    key={pageNum}
-                                                    variant={currentPage === pageNum ? "default" : "outline"}
-                                                    size="sm"
-                                                    className="w-8 h-8 p-0"
-                                                    onClick={() => setCurrentPage(pageNum)}
-                                                >
-                                                    {pageNum}
-                                                </Button>
-                                            );
-                                        })}
+                            {/* Pagination Controls */}
+                            {campaigns.length > 0 && (
+                                <div className="flex items-center justify-between px-2 py-4 border-t">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <span>Rows per page:</span>
+                                        <Select value={pageSize.toString()} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                                            <SelectTrigger className="w-[70px] h-8">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="5">5</SelectItem>
+                                                <SelectItem value="10">10</SelectItem>
+                                                <SelectItem value="20">20</SelectItem>
+                                                <SelectItem value="50">50</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <span className="ml-4">
+                                            Showing {Math.min((currentPage - 1) * pageSize + 1, campaigns.length)} - {Math.min(currentPage * pageSize, campaigns.length)} of {campaigns.length}
+                                        </span>
                                     </div>
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm"
-                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={currentPage === totalPages || totalPages === 0}
-                                    >
-                                        Next
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                        >
+                                            <ChevronLeft className="h-4 w-4" />
+                                            Previous
+                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                                let pageNum;
+                                                if (totalPages <= 5) {
+                                                    pageNum = i + 1;
+                                                } else if (currentPage <= 3) {
+                                                    pageNum = i + 1;
+                                                } else if (currentPage >= totalPages - 2) {
+                                                    pageNum = totalPages - 4 + i;
+                                                } else {
+                                                    pageNum = currentPage - 2 + i;
+                                                }
+                                                return (
+                                                    <Button
+                                                        key={pageNum}
+                                                        variant={currentPage === pageNum ? "default" : "outline"}
+                                                        size="sm"
+                                                        className="w-8 h-8 p-0"
+                                                        onClick={() => setCurrentPage(pageNum)}
+                                                    >
+                                                        {pageNum}
+                                                    </Button>
+                                                );
+                                            })}
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages || totalPages === 0}
+                                        >
+                                            Next
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
                         </>
                     )}
                 </CardContent>

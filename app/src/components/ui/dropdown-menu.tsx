@@ -49,6 +49,7 @@ DropdownMenuTrigger.displayName = "DropdownMenuTrigger"
 
 interface DropdownMenuContentProps extends React.HTMLAttributes<HTMLDivElement> {
   align?: "start" | "end"
+  sideOffset?: number
   isOpen?: boolean
   setIsOpen?: (open: boolean) => void
 }
@@ -56,7 +57,7 @@ interface DropdownMenuContentProps extends React.HTMLAttributes<HTMLDivElement> 
 const DropdownMenuContent = React.forwardRef<
   HTMLDivElement,
   DropdownMenuContentProps
->(({ align = "start", isOpen, setIsOpen, className, ...props }, ref) => {
+>(({ align = "start", sideOffset: _sideOffset, isOpen, setIsOpen, className, ...props }, ref) => {
   if (!isOpen) return null
 
   return (
@@ -67,9 +68,8 @@ const DropdownMenuContent = React.forwardRef<
       />
       <div
         ref={ref}
-        className={`absolute top-full mt-1 z-40 min-w-[160px] rounded-md border border-gray-200 bg-white shadow-md ${
-          align === "end" ? "right-0" : "left-0"
-        } ${className}`}
+        className={`absolute top-full mt-1 z-40 min-w-[160px] rounded-md border border-gray-200 bg-white shadow-md ${align === "end" ? "right-0" : "left-0"
+          } ${className}`}
         {...props}
       />
     </>
@@ -77,7 +77,7 @@ const DropdownMenuContent = React.forwardRef<
 })
 DropdownMenuContent.displayName = "DropdownMenuContent"
 
-interface DropdownMenuItemProps extends React.HTMLAttributes<HTMLDivElement> {}
+interface DropdownMenuItemProps extends React.HTMLAttributes<HTMLDivElement> { }
 
 const DropdownMenuItem = React.forwardRef<
   HTMLDivElement,
@@ -91,7 +91,7 @@ const DropdownMenuItem = React.forwardRef<
 ))
 DropdownMenuItem.displayName = "DropdownMenuItem"
 
-interface DropdownMenuSeparatorProps extends React.HTMLAttributes<HTMLDivElement> {}
+interface DropdownMenuSeparatorProps extends React.HTMLAttributes<HTMLDivElement> { }
 
 const DropdownMenuSeparator = React.forwardRef<
   HTMLDivElement,

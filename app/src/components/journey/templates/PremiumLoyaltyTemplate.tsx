@@ -119,7 +119,8 @@ interface JourneyConfig {
         items: Array<{
             id: string
             image_url: string
-            link_to?: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
+            link_to?: 'short_link' | 'page_rewards' | 'page_product' | 'page-contactus' | 'external_url' | 'no-link' | 'rewards' | 'products' | 'contact-us' | string
+            external_url?: string
             expires_at?: string
             page?: 'home' | 'rewards' | 'products' | 'profile'
             is_active?: boolean
@@ -234,15 +235,15 @@ interface PremiumLoyaltyTemplateProps {
 const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) => void }) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const [videoError, setVideoError] = useState(false)
-    
+
     useEffect(() => {
         // Reset error state when animation_url changes
         setVideoError(false)
-        
+
         if (variant.animation_url && videoRef.current) {
             const video = videoRef.current
             video.muted = true
-            
+
             // Try to play when video is ready - loop continuously
             const handleCanPlay = () => {
                 const playPromise = video.play()
@@ -252,9 +253,9 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
                     })
                 }
             }
-            
+
             video.addEventListener('canplay', handleCanPlay)
-            
+
             // No timeout - let it loop continuously
             return () => {
                 video.removeEventListener('canplay', handleCanPlay)
@@ -265,7 +266,7 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
     if (variant.animation_url && !videoError) {
         return (
             <div className="w-full h-full relative cursor-pointer" onClick={() => onClick(variant)}>
-                 <video 
+                <video
                     ref={videoRef}
                     src={getStorageUrl(variant.animation_url)}
                     className="w-full h-full object-cover"
@@ -273,17 +274,17 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
                     loop
                     playsInline
                     onError={() => setVideoError(true)}
-                 />
-                 <div className="absolute top-2 right-2 bg-black/40 rounded-full p-1.5 backdrop-blur-sm shadow-sm z-10">
-                     <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-                 </div>
+                />
+                <div className="absolute top-2 right-2 bg-black/40 rounded-full p-1.5 backdrop-blur-sm shadow-sm z-10">
+                    <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                </div>
             </div>
         )
     }
 
     if (variant.image_url) {
         return (
-             <Image
+            <Image
                 src={getStorageUrl(variant.image_url) || variant.image_url}
                 alt={variant.variant_name}
                 fill
@@ -294,7 +295,7 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
 
     return (
         <div className="w-full h-full flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22v-10"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22v-10" /></svg>
         </div>
     )
 }
@@ -1149,7 +1150,7 @@ export default function PremiumLoyaltyTemplate({
         if (!isAuthenticated || !userId) return
 
         console.log('Setting up realtime support subscription for user:', userId)
-        
+
         // Subscribe to changes in support_conversations for this user
         // This handles "admin replies" which update the user_unread_count on the conversation row
         const channel = supabase
@@ -2121,7 +2122,7 @@ export default function PremiumLoyaltyTemplate({
                 try {
                     const res = await fetch('/api/user/lookup-phone', {
                         method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone: normalizedPhone })
                     })
                     const data = await res.json()
@@ -3044,7 +3045,7 @@ export default function PremiumLoyaltyTemplate({
     const renderBanner = (location: 'home' | 'rewards' | 'products' | 'profile', currentPlacement: 'top' | 'bottom' = 'top') => {
         const individualItems = (config.banner_config?.enabled && config.banner_config.items) ? config.banner_config.items : []
         const masterItems = (masterBannerConfig?.enabled && masterBannerConfig.items) ? masterBannerConfig.items : []
-        
+
         // Combine and deduplicate items based on ID
         const allItemsRaw = [...individualItems, ...masterItems]
         const seenIds = new Set()
@@ -3070,7 +3071,7 @@ export default function PremiumLoyaltyTemplate({
         let slideInterval = 5
         let showDots = true
         let showProgress = false
-        
+
         // Use page-specific settings from master banner config if available
         if (masterBannerConfig?.pageSettings?.[location]) {
             const settings = masterBannerConfig.pageSettings[location]
@@ -3100,10 +3101,15 @@ export default function PremiumLoyaltyTemplate({
                     showDots={showDots}
                     showProgress={showProgress}
                     onItemClick={(item) => {
-                        if (item.link_to === 'rewards') setActiveTab('rewards')
-                        else if (item.link_to === 'products') setActiveTab('products')
-                        else if (item.link_to === 'contact-us') setShowFeedbackModal(true)
+                        const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+                        const appUrl = appBaseUrl ? `${appBaseUrl}/app` : '/app'
+
+                        if (item.link_to === 'rewards' || item.link_to === 'page_rewards') setActiveTab('rewards')
+                        else if (item.link_to === 'products' || item.link_to === 'page_product') setActiveTab('products')
+                        else if (item.link_to === 'contact-us' || item.link_to === 'page-contactus') setShowFeedbackModal(true)
                         else if (item.link_to === 'no-link') return
+                        else if (item.link_to === 'short_link') window.open(appUrl, '_blank')
+                        else if (item.link_to === 'external_url' && item.external_url) window.open(item.external_url, '_blank')
                         else if (item.link_to?.startsWith('http')) window.open(item.link_to, '_blank')
                     }}
                 />
@@ -4676,15 +4682,15 @@ export default function PremiumLoyaltyTemplate({
 
                         <div className="grid grid-cols-2 gap-3">
                             {selectedProduct.variants?.map((variant) => (
-                                <div 
-                                    key={variant.id} 
+                                <div
+                                    key={variant.id}
                                     className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full cursor-pointer active:scale-[0.98] transition-transform"
                                     onClick={() => setSelectedVariantForDetail({ ...variant, product: selectedProduct })}
                                 >
                                     <div className="aspect-square relative bg-gray-50">
-                                        <VariantMedia 
-                                            variant={variant} 
-                                            onClick={(v) => setSelectedVariantForDetail({ ...v, product: selectedProduct })} 
+                                        <VariantMedia
+                                            variant={variant}
+                                            onClick={(v) => setSelectedVariantForDetail({ ...v, product: selectedProduct })}
                                         />
                                     </div>
                                     <div className="p-3 flex flex-col flex-1">
@@ -5550,10 +5556,9 @@ export default function PremiumLoyaltyTemplate({
                                                     }
                                                 }}
                                                 placeholder="e.g., +60123456789"
-                                                className={`h-10 flex-1 ${
-                                                    referralCheckStatus === 'valid' ? 'border-green-500 focus-visible:ring-green-500' :
-                                                    referralCheckStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''
-                                                }`}
+                                                className={`h-10 flex-1 ${referralCheckStatus === 'valid' ? 'border-green-500 focus-visible:ring-green-500' :
+                                                        referralCheckStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''
+                                                    }`}
                                             />
                                             <Button
                                                 size="sm"
@@ -6207,24 +6212,24 @@ export default function PremiumLoyaltyTemplate({
             {/* Variant Animation Modal */}
             <Dialog open={!!selectedAnimation} onOpenChange={(open) => !open && setSelectedAnimation(null)}>
                 <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black border-none max-w-[90vw] md:max-w-[500px]">
-                     <div className="relative w-full h-full flex items-center justify-center">
-                        <button 
+                    <div className="relative w-full h-full flex items-center justify-center">
+                        <button
                             onClick={() => setSelectedAnimation(null)}
                             className="absolute top-2 right-2 z-50 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition-colors"
                         >
-                            <X className="w-5 h-5"/>
+                            <X className="w-5 h-5" />
                         </button>
                         {selectedAnimation && (
-                            <video 
-                                src={getStorageUrl(selectedAnimation)} 
-                                className="w-full h-auto aspect-video max-h-[80vh] object-contain bg-black" 
-                                controls 
-                                autoPlay 
+                            <video
+                                src={getStorageUrl(selectedAnimation)}
+                                className="w-full h-auto aspect-video max-h-[80vh] object-contain bg-black"
+                                controls
+                                autoPlay
                                 loop
                                 playsInline
                             />
                         )}
-                     </div>
+                    </div>
                 </DialogContent>
             </Dialog>
 
@@ -6235,24 +6240,24 @@ export default function PremiumLoyaltyTemplate({
                     {selectedVariantForDetail && (
                         <div className="flex flex-col h-full max-h-[90vh]">
                             {/* Close button */}
-                            <button 
+                            <button
                                 onClick={() => setSelectedVariantForDetail(null)}
                                 className="absolute top-3 right-3 z-50 bg-black/40 rounded-full p-2 text-white hover:bg-black/60 transition-colors"
                             >
-                                <X className="w-5 h-5"/>
+                                <X className="w-5 h-5" />
                             </button>
-                            
+
                             {/* Media Section */}
                             <div className="relative w-full aspect-square bg-gray-100">
                                 {selectedVariantForDetail.animation_url ? (
-                                    <video 
-                                        src={getStorageUrl(selectedVariantForDetail.animation_url)} 
-                                        className="w-full h-full object-contain bg-black" 
-                                        controls 
-                                        autoPlay 
+                                    <video
+                                        src={getStorageUrl(selectedVariantForDetail.animation_url)}
+                                        className="w-full h-full object-contain bg-black"
+                                        controls
+                                        autoPlay
                                         loop
                                         playsInline
-                                        // Note: Browser autoplay policies may block sound. User can unmute via controls.
+                                    // Note: Browser autoplay policies may block sound. User can unmute via controls.
                                     />
                                 ) : selectedVariantForDetail.image_url ? (
                                     <Image
@@ -6267,7 +6272,7 @@ export default function PremiumLoyaltyTemplate({
                                     </div>
                                 )}
                             </div>
-                            
+
                             {/* Content Section */}
                             <div className="p-4 space-y-3 flex-1 overflow-y-auto">
                                 {/* Price */}
@@ -6296,7 +6301,7 @@ export default function PremiumLoyaltyTemplate({
                                         ) : null}
                                     </div>
                                 )}
-                                
+
                                 {/* Product & Variant Name */}
                                 <div>
                                     <h2 className="text-lg font-bold text-gray-900 leading-tight">
@@ -6304,7 +6309,7 @@ export default function PremiumLoyaltyTemplate({
                                     </h2>
                                     <p className="text-sm text-gray-600 mt-1">{selectedVariantForDetail.variant_name}</p>
                                 </div>
-                                
+
                                 {/* Description */}
                                 {selectedVariantForDetail.product?.product_description && (
                                     <p className="text-sm text-gray-500">
@@ -6312,7 +6317,7 @@ export default function PremiumLoyaltyTemplate({
                                     </p>
                                 )}
                             </div>
-                            
+
                             {/* Action Buttons - Fixed at bottom */}
                             <div className="border-t border-gray-100 p-4 bg-white">
                                 <div className="flex gap-3">
@@ -6332,7 +6337,7 @@ export default function PremiumLoyaltyTemplate({
                                         <MessageSquare className="w-5 h-5" />
                                         Chat Now
                                     </button>
-                                    
+
                                     {/* Buy Now */}
                                     <button
                                         onClick={() => {
@@ -6667,8 +6672,8 @@ export default function PremiumLoyaltyTemplate({
                         className="bg-white w-full h-full sm:h-[600px] sm:max-w-md sm:rounded-2xl shadow-xl overflow-hidden flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <SupportChatWidgetV2 
-                            onClose={() => setShowFeedbackModal(false)} 
+                        <SupportChatWidgetV2
+                            onClose={() => setShowFeedbackModal(false)}
                             themeColor={config.primary_color}
                         />
                     </div>
@@ -6685,7 +6690,7 @@ export default function PremiumLoyaltyTemplate({
                         const images = (selectedRewardForDetail?.additional_images && selectedRewardForDetail.additional_images.length > 0)
                             ? selectedRewardForDetail.additional_images
                             : [selectedRewardForDetail?.item_image_url].filter(Boolean) as string[]
-                        
+
                         // Build media array: animation first (if exists), then images
                         const mediaItems: { type: 'video' | 'image'; url: string }[] = []
                         if (animationUrl) {
@@ -6754,7 +6759,7 @@ export default function PremiumLoyaltyTemplate({
                                         <Gift className="w-20 h-20 text-gray-300" />
                                     </div>
                                 )}
-                                
+
                                 {/* Media indicator dots */}
                                 {mediaItems.length > 1 && (
                                     <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
@@ -6762,11 +6767,10 @@ export default function PremiumLoyaltyTemplate({
                                             <button
                                                 key={idx}
                                                 onClick={() => setCurrentRewardImageIndex(idx)}
-                                                className={`w-2 h-2 rounded-full transition-colors ${
-                                                    idx === currentRewardImageIndex 
-                                                        ? 'bg-gray-800' 
+                                                className={`w-2 h-2 rounded-full transition-colors ${idx === currentRewardImageIndex
+                                                        ? 'bg-gray-800'
                                                         : 'bg-gray-300'
-                                                }`}
+                                                    }`}
                                             />
                                         ))}
                                     </div>

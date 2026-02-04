@@ -10,10 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Edit, Copy, Send, Loader2, Search, Filter, Sparkles, ShieldCheck, ShieldAlert, ShieldX, Link, User, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react';
-import { 
-    validateTemplate, 
-    getRiskLevel, 
-    getRiskBadgeColor, 
+import {
+    validateTemplate,
+    getRiskLevel,
+    getRiskBadgeColor,
     getRiskBadgeLabel,
     renderPreview,
     SUPPORTED_VARIABLES,
@@ -43,7 +43,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
 
     // Form state
     const [editData, setEditData] = useState<Partial<Template>>({});
-    
+
     // Safety validation state
     const [safetyResult, setSafetyResult] = useState<TemplateSafetyResult | null>(null);
     const debouncedBody = useDebounce(editData.body || '', 400);
@@ -94,7 +94,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
     // Filter templates based on search and category
     const filteredTemplates = useMemo(() => {
         return templates.filter(t => {
-            const matchesSearch = searchQuery === '' || 
+            const matchesSearch = searchQuery === '' ||
                 t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 t.body.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesCategory = selectedCategory === 'all' || t.category === selectedCategory;
@@ -233,7 +233,7 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                         <span className="font-medium text-purple-800">Ready-Made Templates</span>
                     </div>
                     <p className="text-sm text-purple-700 mt-1">
-                        We've prepared professional templates for common marketing scenarios. 
+                        We've prepared professional templates for common marketing scenarios.
                         System templates cannot be edited but you can duplicate and customize them.
                     </p>
                 </div>
@@ -258,9 +258,9 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {categoryTemplates.map(tmpl => (
-                                    <Card 
-                                        key={tmpl.id} 
-                                        className="cursor-pointer hover:border-primary hover:shadow-md transition-all group" 
+                                    <Card
+                                        key={tmpl.id}
+                                        className="cursor-pointer hover:border-primary hover:shadow-md transition-all group"
                                         onClick={() => handleEdit(tmpl)}
                                     >
                                         <CardHeader className="pb-2">
@@ -271,8 +271,8 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                                 <div className="flex items-center gap-1">
                                                     {/* Risk Badge */}
                                                     {tmpl.risk_score !== undefined && (
-                                                        <Badge 
-                                                            variant="outline" 
+                                                        <Badge
+                                                            variant="outline"
                                                             className={`text-[10px] px-1.5 py-0 flex items-center gap-1 ${getRiskBadgeColor(getRiskLevel(tmpl.risk_score))}`}
                                                         >
                                                             {getRiskIcon(tmpl.risk_score)}
@@ -331,8 +331,8 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-base font-semibold">Category</Label>
-                                <Select 
-                                    value={editData.category || 'General'} 
+                                <Select
+                                    value={editData.category || 'General'}
                                     onValueChange={(v) => setEditData({ ...editData, category: v })}
                                     disabled={selectedTemplate?.is_system}
                                 >
@@ -376,8 +376,8 @@ export function TemplatesManager({ onUseTemplate }: { onUseTemplate?: (tmpl: Tem
                                             <ShieldCheck className="h-4 w-4" />
                                             Safety Checks
                                         </Label>
-                                        <Badge 
-                                            variant="outline" 
+                                        <Badge
+                                            variant="outline"
                                             className={`flex items-center gap-1 ${getRiskBadgeColor(getRiskLevel(safetyResult.riskScore))}`}
                                         >
                                             {getRiskIcon(safetyResult.riskScore)}

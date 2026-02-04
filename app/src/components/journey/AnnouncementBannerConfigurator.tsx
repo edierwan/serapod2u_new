@@ -29,7 +29,8 @@ import { useToast } from '@/components/ui/use-toast'
 export interface BannerItem {
     id: string
     image_url: string
-    link_to: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
+    link_to: 'short_link' | 'page_rewards' | 'page_product' | 'page-contactus' | 'external_url' | 'no-link' | 'rewards' | 'products' | 'contact-us' | string
+    external_url?: string
     expires_at: string
     page?: 'home' | 'rewards' | 'products' | 'profile'
     is_active?: boolean
@@ -79,6 +80,33 @@ const pageLabels = {
     profile: 'Profile'
 }
 
+const linkOptions = [
+    { value: 'short_link', label: '{short_link} (App)' },
+    { value: 'page_rewards', label: '{page_rewards}' },
+    { value: 'page_product', label: '{page_product}' },
+    { value: 'page-contactus', label: '{page-contactus}' },
+    { value: 'external_url', label: '{External_URL}' },
+    { value: 'no-link', label: 'No Link' }
+]
+
+const getLinkSelectionValue = (item: BannerItem) => {
+    if (item.link_to === 'rewards') return 'page_rewards'
+    if (item.link_to === 'products') return 'page_product'
+    if (item.link_to === 'contact-us') return 'page-contactus'
+    if (item.link_to === 'short_link') return 'short_link'
+    if (item.link_to === 'external_url') return 'external_url'
+    if (item.link_to === 'no-link') return 'no-link'
+    if (item.link_to?.startsWith('http') || item.external_url) return 'external_url'
+    if (item.link_to === 'page_rewards' || item.link_to === 'page_product' || item.link_to === 'page-contactus') return item.link_to
+    return 'no-link'
+}
+
+const getExternalUrlValue = (item: BannerItem) => {
+    if (item.external_url) return item.external_url
+    if (item.link_to?.startsWith('http')) return item.link_to
+    return ''
+}
+
 export default function AnnouncementBannerConfigurator({ config, onChange }: AnnouncementBannerConfiguratorProps) {
     const [activeTab, setActiveTab] = useState<'home' | 'rewards' | 'products' | 'profile'>('home')
     const [uploadingImage, setUploadingImage] = useState(false)
@@ -104,7 +132,7 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
         newItems.push({
             id: crypto.randomUUID(),
             image_url: '',
-            link_to: 'rewards',
+            link_to: 'page_rewards',
             expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             page: activeTab,
             placement,
@@ -128,7 +156,7 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
     const handleImageUpload = async (file: File, callback: (url: string) => void) => {
         try {
             setUploadingImage(true)
-            
+
             // 1. Upload file
             const fileExt = file.name.split('.').pop()
             const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
@@ -162,9 +190,8 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
         const isActive = item.is_active !== false
 
         return (
-            <div className={`group relative bg-white rounded-xl border-2 transition-all duration-200 ${
-                isActive ? 'border-gray-200 hover:border-blue-300 hover:shadow-md' : 'border-gray-300 opacity-60'
-            }`}>
+            <div className={`group relative bg-white rounded-xl border-2 transition-all duration-200 ${isActive ? 'border-gray-200 hover:border-blue-300 hover:shadow-md' : 'border-gray-300 opacity-60'
+                }`}>
                 <div className="relative aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 rounded-t-xl overflow-hidden">
                     {item.image_url ? (
                         <Image
@@ -179,7 +206,7 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
                             <span className="text-sm">No image</span>
                         </div>
                     )}
-                    
+
                     <div className="absolute top-2 left-2">
                         <Badge className={isActive ? 'bg-green-500' : 'bg-gray-500'}>
                             {isActive ? 'Active' : 'Inactive'}
@@ -243,20 +270,27 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
 
                     <div className="grid grid-cols-2 gap-2">
                         <Select
-                            value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
+                            value={getLinkSelectionValue(item)}
                             onValueChange={(value: string) => {
-                                updateBannerItem(item.id, { link_to: value === 'external' ? '' : value })
+                                if (value === 'external_url') {
+                                    updateBannerItem(item.id, {
+                                        link_to: 'external_url',
+                                        external_url: getExternalUrlValue(item)
+                                    })
+                                } else {
+                                    updateBannerItem(item.id, { link_to: value, external_url: undefined })
+                                }
                             }}
                         >
                             <SelectTrigger className="text-sm">
                                 <SelectValue placeholder="Link to..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="rewards">Rewards</SelectItem>
-                                <SelectItem value="products">Products</SelectItem>
-                                <SelectItem value="contact-us">Contact Us</SelectItem>
-                                <SelectItem value="no-link">No Link</SelectItem>
-                                <SelectItem value="external">External URL</SelectItem>
+                                {linkOptions.map(option => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                         <Input
@@ -267,10 +301,10 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
                         />
                     </div>
 
-                    {!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) && (
+                    {getLinkSelectionValue(item) === 'external_url' && (
                         <Input
-                            value={item.link_to}
-                            onChange={(e) => updateBannerItem(item.id, { link_to: e.target.value })}
+                            value={getExternalUrlValue(item)}
+                            onChange={(e) => updateBannerItem(item.id, { link_to: 'external_url', external_url: e.target.value })}
                             placeholder="https://example.com"
                             className="text-sm"
                         />
@@ -301,7 +335,7 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
                         <p className="text-xs text-gray-500">{items.length} banner{items.length !== 1 ? 's' : ''}</p>
                     </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-white rounded-lg border p-1">
                         <Button
@@ -386,17 +420,17 @@ export default function AnnouncementBannerConfigurator({ config, onChange }: Ann
             <div className="space-y-2">
                 <Label>Banner Pages</Label>
                 <p className="text-sm text-gray-500">Select a page to configure its banners</p>
-                <Tabs 
-                    value={activeTab} 
-                    onValueChange={(value) => setActiveTab(value as any)} 
+                <Tabs
+                    value={activeTab}
+                    onValueChange={(value) => setActiveTab(value as any)}
                     className="w-full"
                 >
                     <TabsList className="w-full h-auto p-2 grid grid-cols-4 gap-2 bg-gray-100/50">
                         {Object.entries(pageLabels).map(([key, label]) => {
                             const count = config.items?.filter(i => (i.page || 'home') === key).length || 0
                             return (
-                                <TabsTrigger 
-                                    key={key} 
+                                <TabsTrigger
+                                    key={key}
                                     value={key}
                                     className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-600 py-3"
                                 >

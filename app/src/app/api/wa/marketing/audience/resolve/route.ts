@@ -17,7 +17,11 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const { mode, filters, segment_id, user_ids } = body;
+        const { mode, filters, segment_id, user_ids, overrides } = body;
+
+        // Extract override IDs
+        const excludeIds = new Set<string>(overrides?.exclude_ids || []);
+        const includeIds = new Set<string>(overrides?.include_ids || []);
 
         // First, get the TOTAL count of all active users
         const { count: totalAllUsers } = await supabase
@@ -40,13 +44,14 @@ export async function POST(request: NextRequest) {
         }
 
         // Determine organization types to target (support both single and multi-select)
-        const orgTypes = activeFilters.organization_types || 
-            (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all' 
-                ? [activeFilters.organization_type] 
+        const orgTypes = activeFilters.organization_types ||
+            (activeFilters.organization_type && activeFilters.organization_type !== 'All' && activeFilters.organization_type !== 'all'
+                ? [activeFilters.organization_type]
                 : []);
-        
+
         console.log('[Audience Resolve] Raw filters:', JSON.stringify(activeFilters));
         console.log('[Audience Resolve] Determined orgTypes:', orgTypes);
+        console.log('[Audience Resolve] Overrides - exclude:', excludeIds.size, 'include:', includeIds.size);
 
         // Check what we're targeting
         const hasOrgContactTypes = orgTypes.some((t: string) => ORG_CONTACT_TYPES.includes(t));
@@ -57,9 +62,9 @@ export async function POST(request: NextRequest) {
         console.log('[Audience Resolve] Flags:', { hasOrgContactTypes, hasOrgUserTypes, hasEndUsers, isAllTypes });
 
         // Location filter (support both single and multi-select)
-        const locationStates = activeFilters.states || 
-            (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any' 
-                ? [activeFilters.state] 
+        const locationStates = activeFilters.states ||
+            (activeFilters.state && activeFilters.state !== 'Any Location' && activeFilters.state !== 'any'
+                ? [activeFilters.state]
                 : []);
 
         // Results containers
@@ -70,6 +75,7 @@ export async function POST(request: NextRequest) {
         let excludedInvalidWA = 0;
         let excludedActivity = 0;
         let eligibleRecipients: any[] = [];
+        let excludedRecipients: any[] = [];
 
         // Fetch opt-outs if needed
         let optOutPhones = new Set<string>();
@@ -97,8 +103,8 @@ export async function POST(request: NextRequest) {
         });
 
         if ((hasOrgUserTypes || isAllTypes) && mode !== 'specific_users') {
-            const targetOrgUserTypes = isAllTypes 
-                ? ORG_USER_TYPES 
+            const targetOrgUserTypes = isAllTypes
+                ? ORG_USER_TYPES
                 : orgTypes.filter((t: string) => ORG_USER_TYPES.includes(t));
 
             console.log('[Audience Resolve] HQ targeting org types:', targetOrgUserTypes);
@@ -148,9 +154,9 @@ export async function POST(request: NextRequest) {
                                 .in('organization_id', targetOrgIds)
                                 .range(offset, offset + PAGE_SIZE - 1);
 
-                            console.log('[Audience Resolve] HQ users query result:', { 
-                                usersCount: usersData?.length, 
-                                totalCount: count, 
+                            console.log('[Audience Resolve] HQ users query result:', {
+                                usersCount: usersData?.length,
+                                totalCount: count,
                                 error: userError?.message,
                                 sampleUser: usersData?.[0]
                             });
@@ -180,30 +186,37 @@ export async function POST(request: NextRequest) {
                             const org = orgMap.get(u.organization_id);
                             const stateName = (org?.states as any)?.state_name || u.location;
 
+                            const userInfo = {
+                                id: u.id,
+                                user_id: u.id, // Include user_id for points balance lookup
+                                name: u.full_name || 'Unknown',
+                                phone: phone || 'No Phone',
+                                state: stateName || 'No Location',
+                                city: stateName || '', // Use state as city for token resolution
+                                location: u.location || '',
+                                organization_type: org?.org_type_code || 'Unknown',
+                                org_name: org?.org_name || 'Unknown',
+                                is_organization_user: true
+                            };
+
                             totalMatched++;
 
                             // Check for valid phone
                             if (!phone || phone.length < 8) {
                                 excludedMissingPhone++;
+                                excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Missing/Invalid Phone' });
                                 continue;
                             }
 
                             // Check opt-out
                             if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
                                 excludedOptOut++;
+                                excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Opt-out' });
                                 continue;
                             }
 
                             validPhones++;
-                            eligibleRecipients.push({
-                                id: u.id,
-                                name: u.full_name || 'Unknown',
-                                phone: phone,
-                                state: stateName || 'No Location',
-                                organization_type: org?.org_type_code || 'Unknown',
-                                org_name: org?.org_name || 'Unknown',
-                                is_organization_user: true
-                            });
+                            eligibleRecipients.push({ ...userInfo, status: 'eligible' });
                         }
                     }
                 }
@@ -220,10 +233,10 @@ export async function POST(request: NextRequest) {
         const onlyHQSelected = orgTypes.length > 0 && orgTypes.every((t: string) => ORG_USER_TYPES.includes(t));
         const shouldRunPart1 = (hasOrgContactTypes || isAllTypes) && mode !== 'specific_users' && !onlyHQSelected;
         console.log('[Audience Resolve] PART 1 will run?', shouldRunPart1, { hasOrgContactTypes, isAllTypes, onlyHQSelected });
-        
+
         if (shouldRunPart1) {
-            const targetOrgTypes = isAllTypes 
-                ? ORG_CONTACT_TYPES 
+            const targetOrgTypes = isAllTypes
+                ? ORG_CONTACT_TYPES
                 : orgTypes.filter((t: string) => ORG_CONTACT_TYPES.includes(t));
 
             console.log('[Audience Resolve] PART 1 targetOrgTypes:', targetOrgTypes);
@@ -272,6 +285,18 @@ export async function POST(request: NextRequest) {
                     const phone = org.contact_phone?.trim();
                     const stateName = (org.states as any)?.state_name;
 
+                    const orgInfo = {
+                        id: org.id,
+                        // Organizations don't have user_id - they're org contacts
+                        name: org.contact_name || org.org_name,
+                        phone: phone || 'No Phone',
+                        state: stateName || 'No Location',
+                        city: stateName || '', // Use state as city for token resolution
+                        organization_type: org.org_type_code,
+                        org_name: org.org_name,
+                        is_organization: true
+                    };
+
                     // Apply location filter
                     if (locationStates.length > 0 && stateName && !locationStates.includes(stateName)) {
                         continue; // Skip if location doesn't match
@@ -282,25 +307,19 @@ export async function POST(request: NextRequest) {
                     // Check for valid phone
                     if (!phone || phone.length < 8) {
                         excludedMissingPhone++;
+                        excludedRecipients.push({ ...orgInfo, status: 'excluded', exclusion_reason: 'Missing/Invalid Phone' });
                         continue;
                     }
 
                     // Check opt-out
                     if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
                         excludedOptOut++;
+                        excludedRecipients.push({ ...orgInfo, status: 'excluded', exclusion_reason: 'Opt-out' });
                         continue;
                     }
 
                     validPhones++;
-                    eligibleRecipients.push({
-                        id: org.id,
-                        name: org.contact_name || org.org_name,
-                        phone: phone,
-                        state: stateName || 'No Location',
-                        organization_type: org.org_type_code,
-                        org_name: org.org_name,
-                        is_organization: true
-                    });
+                    eligibleRecipients.push({ ...orgInfo, status: 'eligible' });
                 }
             }
         }
@@ -309,9 +328,9 @@ export async function POST(request: NextRequest) {
         // PART 2: Target End Users (individuals without organization)
         // Keep existing logic for End Users only
         // ============================================
-        if ((hasEndUsers || isAllTypes || mode === 'specific_users') && 
+        if ((hasEndUsers || isAllTypes || mode === 'specific_users') &&
             !((hasOrgContactTypes || hasOrgUserTypes) && !hasEndUsers && !isAllTypes)) {
-            
+
             // Check if we need point-based filtering
             const needsPointsView =
                 activeFilters.points_min != null || activeFilters.points_max != null ||
@@ -422,7 +441,7 @@ export async function POST(request: NextRequest) {
                     } else {
                         // End Users only: users with no organization_id
                         query = query.is('organization_id', null);
-                        
+
                         if (locationStates.length > 0) {
                             query = query.in('location', locationStates);
                         }
@@ -494,23 +513,40 @@ export async function POST(request: NextRequest) {
             // Process End Users
             for (const u of users) {
                 const phone = u.whatsapp_phone?.trim();
+                const userInfo = {
+                    id: u.user_id,
+                    user_id: u.user_id, // Include user_id for points balance lookup
+                    name: u.name || 'Unknown',
+                    phone: phone || 'No Phone',
+                    state: u.state || 'No Location',
+                    city: u.state || '', // Use state as city for token resolution
+                    location: u.state || '',
+                    organization_type: 'End User',
+                    org_name: 'End User',
+                    current_balance: u.current_balance,
+                    collected_system: u.collected_system
+                };
+
                 totalMatched++;
 
                 // Check for valid phone
                 if (!phone || phone.length < 8) {
                     excludedMissingPhone++;
+                    excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Missing Phone' });
                     continue;
                 }
 
                 // Check valid WhatsApp
                 if (activeFilters.only_valid_whatsapp !== false && !u.whatsapp_valid) {
                     excludedInvalidWA++;
+                    excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Invalid WhatsApp' });
                     continue;
                 }
 
                 // Check opt-out
                 if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
                     excludedOptOut++;
+                    excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Opt-out' });
                     continue;
                 }
 
@@ -520,12 +556,14 @@ export async function POST(request: NextRequest) {
 
                     if (activeFilters.never_login === true && hasScanned) {
                         excludedActivity++;
+                        excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Activity (Logged in)' });
                         continue;
                     }
 
                     if (activeFilters.never_scanned === true) {
                         if (hasScanned || u.collected_system > 0) {
                             excludedActivity++;
+                            excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Activity (Scanned)' });
                             continue;
                         }
                     }
@@ -544,6 +582,7 @@ export async function POST(request: NextRequest) {
 
                             if (trueLastActivity > cutoff) {
                                 excludedActivity++;
+                                excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Activity (Recent)' });
                                 continue;
                             }
                         }
@@ -551,18 +590,43 @@ export async function POST(request: NextRequest) {
                 }
 
                 validPhones++;
-                eligibleRecipients.push({
-                    id: u.user_id,
-                    name: u.name || 'Unknown',
-                    phone: phone,
-                    state: u.state || 'No Location',
-                    organization_type: 'End User',
-                    org_name: 'End User',
-                    current_balance: u.current_balance,
-                    collected_system: u.collected_system
-                });
+                eligibleRecipients.push({ ...userInfo, status: 'eligible' });
             }
         }
+
+        // Apply manual overrides (exclude_ids and include_ids)
+        let excludedByOverride = 0;
+
+        // Move manually excluded users from eligible to excluded
+        if (excludeIds.size > 0) {
+            const manuallyExcluded = eligibleRecipients.filter(u => excludeIds.has(u.id));
+            eligibleRecipients = eligibleRecipients.filter(u => !excludeIds.has(u.id));
+
+            manuallyExcluded.forEach(u => {
+                excludedRecipients.unshift({ ...u, status: 'excluded', exclusion_reason: 'Manually Excluded' });
+                excludedByOverride++;
+            });
+
+            validPhones -= manuallyExcluded.length;
+        }
+
+        // Move manually included users from excluded to eligible (if they have valid phone)
+        if (includeIds.size > 0) {
+            const manuallyIncluded = excludedRecipients.filter(u =>
+                includeIds.has(u.id) && u.phone && u.phone.trim() !== ''
+            );
+            excludedRecipients = excludedRecipients.filter(u => !includeIds.has(u.id));
+
+            manuallyIncluded.forEach(u => {
+                eligibleRecipients.push({ ...u, status: 'eligible', exclusion_reason: undefined });
+            });
+
+            validPhones += manuallyIncluded.length;
+        }
+
+        const offset = typeof body.offset === 'number' ? body.offset : 0;
+        const limit = typeof body.limit === 'number' ? body.limit : 20;
+        const view = body.view || 'eligible';
 
         return NextResponse.json({
             total_all_users: totalAllUsers || 0,
@@ -572,8 +636,10 @@ export async function POST(request: NextRequest) {
             excluded_opt_out: excludedOptOut,
             excluded_invalid_wa: excludedInvalidWA,
             excluded_activity: excludedActivity,
-            excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA + excludedActivity,
-            preview: eligibleRecipients.slice(0, 20),
+            excluded_by_override: excludedByOverride,
+            excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA + excludedActivity + excludedByOverride,
+            preview: view === 'eligible' ? eligibleRecipients.slice(offset, offset + limit) : [],
+            excluded_list: view === 'excluded' ? excludedRecipients.slice(offset, offset + limit) : [],
             users: body.include_all ? eligibleRecipients : undefined
         });
 

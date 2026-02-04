@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { 
-  AlertCircle, 
-  CheckCircle2, 
+import {
+  AlertCircle,
+  CheckCircle2,
   Smartphone,
   Loader2,
   Shield,
@@ -28,20 +28,20 @@ interface JourneyConfig {
   enable_scratch_card_game?: boolean
   scratch_card_require_otp?: boolean
   require_security_code?: boolean
-  
+
   // Feature Customization
   points_title?: string | null
   points_description?: string | null
   points_icon?: string
-  
+
   lucky_draw_title?: string
   lucky_draw_description?: string
   lucky_draw_icon?: string
-  
+
   redemption_title?: string
   redemption_description?: string
   redemption_icon?: string
-  
+
   scratch_card_title?: string
   scratch_card_description?: string
   scratch_card_icon?: string
@@ -61,7 +61,8 @@ interface JourneyConfig {
     items: Array<{
       id: string
       image_url: string
-      link_to?: 'rewards' | 'products' | string
+      link_to?: 'short_link' | 'page_rewards' | 'page_product' | 'page-contactus' | 'external_url' | 'no-link' | 'rewards' | 'products' | 'contact-us' | string
+      external_url?: string
       expires_at?: string
     }>
   }
@@ -93,9 +94,9 @@ interface PublicJourneyViewProps {
   }
 }
 
-export default function PublicJourneyView({ 
-  code, 
-  verificationResult 
+export default function PublicJourneyView({
+  code,
+  verificationResult
 }: PublicJourneyViewProps) {
   const [isLoading, setIsLoading] = useState(false)
   // Always show full-screen mode for consumers (no phone frame mockup)
@@ -107,7 +108,7 @@ export default function PublicJourneyView({
     const trackConsumerScan = async () => {
       // Only track for valid codes
       if (
-        verificationResult.success && 
+        verificationResult.success &&
         verificationResult.data?.is_valid
       ) {
         try {
@@ -157,7 +158,7 @@ export default function PublicJourneyView({
                 The QR code you scanned is not valid or has not been activated in our system yet.
               </p>
             </div>
-            
+
             <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4">
               <p className="text-xs font-semibold text-yellow-900 mb-2">⚠️ Caution</p>
               <p className="text-xs text-yellow-800">
@@ -203,7 +204,7 @@ export default function PublicJourneyView({
                 {data?.message || 'The QR code you scanned is not valid or has not been activated in our system yet.'}
               </p>
             </div>
-            
+
             <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4">
               <p className="text-xs font-semibold text-yellow-900 mb-2">⚠️ Caution</p>
               <p className="text-xs text-yellow-800">
@@ -252,7 +253,7 @@ export default function PublicJourneyView({
   // Always show full-screen mobile view for consumers (eliminates flash/flicker)
   // Use Premium template
   return (
-    <PremiumLoyaltyTemplate 
+    <PremiumLoyaltyTemplate
       config={journeyConfig}
       qrCode={code}
       orgId={data?.org_id}

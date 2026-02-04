@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,13 +21,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
 import { AudienceEstimator } from './AudienceEstimator';
 import { SpecificUserSelector } from './SpecificUserSelector';
-import { 
-    validateTemplate, 
-    getRiskLevel, 
-    getRiskBadgeColor, 
+import { CampaignSafetyAdvisor } from './CampaignSafetyAdvisor';
+import {
+    validateTemplate,
+    getRiskLevel,
+    getRiskBadgeColor,
     getRiskBadgeLabel,
     type TemplateSafetyResult
 } from '@/lib/template-safety.client';
+import { NumberHealth } from '@/lib/wa-safety';
+
 
 type WizardProps = {
     onCancel: () => void;
@@ -36,6 +40,8 @@ type WizardProps = {
 
 export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: WizardProps) {
     const { toast } = useToast();
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [step, setStep] = useState(1);
     const [submitting, setSubmitting] = useState(false);
     const [testing, setTesting] = useState(false);
@@ -45,7 +51,16 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
     const [segments, setSegments] = useState<any[]>([]);
     const [templates, setTemplates] = useState<any[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
-    
+
+    // Mock number health - in real app fetch from API
+    const [numberHealth] = useState<NumberHealth>({
+        riskScore: 15,
+        uptime24h: 98.5,
+        disconnects24h: 3,
+        successRate: 94.2,
+        lastIssueRecency: '2h ago',
+    });
+
     // Message safety validation
     const [messageSafety, setMessageSafety] = useState<TemplateSafetyResult | null>(null);
 
@@ -68,8 +83,13 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
         templateId: '',
         scheduleType: 'now',
         scheduledDate: undefined as Date | undefined,
-        quietHours: true
+        quietHours: true,
+
+        // Manual Overrides
+        overrideIncludeIds: [] as string[],
+        overrideExcludeIds: [] as string[]
     });
+
 
     // Load editing campaign data if provided
     useEffect(() => {
@@ -91,7 +111,9 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                 templateId: editingCampaign.template_id || '',
                 scheduleType: editingCampaign.scheduled_at ? 'schedule' : 'now',
                 scheduledDate: editingCampaign.scheduled_at ? new Date(editingCampaign.scheduled_at) : undefined,
-                quietHours: editingCampaign.quiet_hours_enabled !== false
+                quietHours: editingCampaign.quiet_hours_enabled !== false,
+                overrideIncludeIds: audienceFilters.overrides?.include_ids || [],
+                overrideExcludeIds: audienceFilters.overrides?.exclude_ids || []
             });
             setEstimatedRecipients(audienceFilters.estimated_count || 0);
         }
@@ -117,6 +139,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                 }
             })
             .catch(err => console.error('Error fetching templates:', err));
+
     }, []);
 
     // Validate message safety when it changes
@@ -158,7 +181,10 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
             const res = await fetch('/api/wa/marketing/test-send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: formData.message })
+                body: JSON.stringify({
+                    message: formData.message,
+                    test_user_id: formData.selectedUserIds?.[0]
+                })
             });
             const data = await res.json();
             if (res.ok) {
@@ -183,30 +209,30 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
         if (messageSafety) {
             // Block if risk >= 80
             if (messageSafety.riskScore >= 80) {
-                toast({ 
-                    title: "Campaign Blocked", 
-                    description: "Message has critical safety issues. Please fix them before launching.", 
-                    variant: "destructive" 
+                toast({
+                    title: "Campaign Blocked",
+                    description: "Message has critical safety issues. Please fix them before launching.",
+                    variant: "destructive"
                 });
                 return;
             }
 
             // Require acknowledgement if risk 50-79
             if (messageSafety.riskScore >= 50 && !acknowledgeRisk) {
-                toast({ 
-                    title: "Acknowledgement Required", 
-                    description: "Please acknowledge the risks before launching this campaign.", 
-                    variant: "destructive" 
+                toast({
+                    title: "Acknowledgement Required",
+                    description: "Please acknowledge the risks before launching this campaign.",
+                    variant: "destructive"
                 });
                 return;
             }
 
             // Check for blocking errors
             if (!messageSafety.isValid) {
-                toast({ 
-                    title: "Cannot Launch", 
-                    description: messageSafety.errors[0]?.message || "Message has validation errors.", 
-                    variant: "destructive" 
+                toast({
+                    title: "Cannot Launch",
+                    description: messageSafety.errors[0]?.message || "Message has validation errors.",
+                    variant: "destructive"
                 });
                 return;
             }
@@ -225,7 +251,11 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                         filters: formData.filters,
                         segment_id: formData.selectedSegmentId,
                         user_ids: formData.selectedUserIds,
-                        estimated_count: estimatedRecipients
+                        estimated_count: estimatedRecipients,
+                        overrides: {
+                            include_ids: formData.overrideIncludeIds,
+                            exclude_ids: formData.overrideExcludeIds
+                        }
                     },
                     message_body: formData.message,
                     template_id: formData.templateId,
@@ -236,11 +266,11 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
 
             if (res.ok) {
                 const campaignData = await res.json();
-                
+
                 // If "Send Now", launch the campaign immediately
                 if (formData.scheduleType === 'now' && campaignData?.id) {
                     toast({ title: "Campaign Created", description: "Now sending to recipients..." });
-                    
+
                     const launchRes = await fetch(`/api/wa/marketing/campaigns/${campaignData.id}/launch`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
@@ -248,22 +278,22 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
 
                     if (launchRes.ok) {
                         const launchData = await launchRes.json();
-                        toast({ 
-                            title: "Campaign Launched! 🚀", 
-                            description: launchData.message || `Sending to ${estimatedRecipients} recipients` 
+                        toast({
+                            title: "Campaign Launched! 🚀",
+                            description: launchData.message || `Sending to ${estimatedRecipients} recipients`
                         });
                     } else {
                         const launchError = await launchRes.json();
-                        toast({ 
-                            title: "Campaign Created", 
-                            description: `Campaign saved but launch failed: ${launchError.error}`, 
-                            variant: "destructive" 
+                        toast({
+                            title: "Campaign Created",
+                            description: `Campaign saved but launch failed: ${launchError.error}`,
+                            variant: "destructive"
                         });
                     }
                 } else {
                     toast({ title: "Success", description: "Campaign scheduled successfully!" });
                 }
-                
+
                 onComplete();
             } else {
                 const data = await res.json();
@@ -420,6 +450,25 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                 segmentId={formData.selectedSegmentId}
                                 userIds={formData.selectedUserIds}
                                 onCountChange={(count) => setEstimatedRecipients(count)}
+                                overrides={{
+                                    include_ids: formData.overrideIncludeIds,
+                                    exclude_ids: formData.overrideExcludeIds
+                                }}
+                                onOverrideChange={(action, id) => {
+                                    if (action === 'exclude') {
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            overrideExcludeIds: [...prev.overrideExcludeIds, id],
+                                            overrideIncludeIds: prev.overrideIncludeIds.filter(i => i !== id)
+                                        }));
+                                    } else if (action === 'include') {
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            overrideIncludeIds: [...prev.overrideIncludeIds, id],
+                                            overrideExcludeIds: prev.overrideExcludeIds.filter(i => i !== id)
+                                        }));
+                                    }
+                                }}
                             />
                         </div>
                     </div>
@@ -432,17 +481,15 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label>Template Category</Label>
-                                    <ScrollArea className="w-full whitespace-nowrap pb-2">
-                                        <div className="flex w-max space-x-2 p-1">
-                                            {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP'].map((cat) => {
-                                                const count = cat === 'All Categories' ? templates.length : templates.filter(t => (t.category || 'General') === cat).length;
-                                                return (
+                                    <div className="flex flex-wrap gap-2 pb-2">
+                                        {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].map((cat) => {
+                                            const count = cat === 'All Categories' ? templates.length : templates.filter(t => (t.category || 'General') === cat).length;
+                                            return (
                                                 <Badge
                                                     key={cat}
                                                     variant={selectedCategory === cat ? "default" : "outline"}
-                                                    className={`cursor-pointer px-3 py-1 font-normal transition-colors ${
-                                                        selectedCategory === cat ? '' : 'hover:bg-muted'
-                                                    } ${getCategoryBadgeColor(cat)}`}
+                                                    className={`cursor-pointer px-3 py-1 font-normal transition-colors ${selectedCategory === cat ? '' : 'hover:bg-muted'
+                                                        } ${getCategoryBadgeColor(cat)}`}
                                                     onClick={() => {
                                                         setSelectedCategory(cat);
                                                     }}
@@ -455,9 +502,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                                     )}
                                                 </Badge>
                                             );
-                                            })}
-                                        </div>
-                                    </ScrollArea>
+                                        })}
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
@@ -529,9 +575,23 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                         </SelectContent>
                                     </Select>
                                 </div>
+
                             </div>
                             <div className="flex-1 flex flex-col gap-2 min-h-0">
-                                <Label>Message Body</Label>
+                                <div className="flex items-center justify-between">
+                                    <Label>Message Body</Label>
+                                    <button
+                                        type="button"
+                                        className="text-xs text-blue-600 hover:underline"
+                                        onClick={() => {
+                                            const params = new URLSearchParams(searchParams.toString());
+                                            params.set('tab', 'message-setup');
+                                            router.push(`?${params.toString()}`);
+                                        }}
+                                    >
+                                        Manage Message Setup →
+                                    </button>
+                                </div>
                                 <Textarea
                                     className="flex-1 resize-none font-mono text-sm"
                                     placeholder="Type your message here..."
@@ -589,15 +649,23 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                     </div>
                                 </div>
 
+                                {/* Safety Advisor - Shows recommended preset and estimated runtime */}
+                                {estimatedRecipients > 0 && (
+                                    <CampaignSafetyAdvisor
+                                        recipientCount={estimatedRecipients}
+                                        health={numberHealth}
+                                        compact={true}
+                                    />
+                                )}
+
                                 {/* Template Safety Badge */}
                                 {messageSafety && (
-                                    <div className={`p-4 rounded-lg border ${
-                                        messageSafety.riskScore >= 80 
-                                            ? 'bg-red-50 border-red-200' 
-                                            : messageSafety.riskScore >= 50 
-                                                ? 'bg-amber-50 border-amber-200' 
-                                                : 'bg-green-50 border-green-200'
-                                    }`}>
+                                    <div className={`p-4 rounded-lg border ${messageSafety.riskScore >= 80
+                                        ? 'bg-red-50 border-red-200'
+                                        : messageSafety.riskScore >= 50
+                                            ? 'bg-amber-50 border-amber-200'
+                                            : 'bg-green-50 border-green-200'
+                                        }`}>
                                         <div className="flex items-center gap-2 mb-2">
                                             {messageSafety.riskScore >= 80 ? (
                                                 <ShieldX className="w-5 h-5 text-red-500" />
@@ -609,20 +677,20 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                             <h4 className="font-medium text-sm">
                                                 Message Safety: {getRiskBadgeLabel(getRiskLevel(messageSafety.riskScore))}
                                             </h4>
-                                            <Badge 
-                                                variant="outline" 
+                                            <Badge
+                                                variant="outline"
                                                 className={`ml-auto ${getRiskBadgeColor(getRiskLevel(messageSafety.riskScore))}`}
                                             >
                                                 Score: {messageSafety.riskScore}
                                             </Badge>
                                         </div>
-                                        
+
                                         {messageSafety.riskScore >= 80 && (
                                             <p className="text-xs text-red-700 mb-2">
                                                 ⛔ This message cannot be sent due to critical safety issues.
                                             </p>
                                         )}
-                                        
+
                                         {messageSafety.errors.length > 0 && (
                                             <div className="space-y-1 mb-2">
                                                 {messageSafety.errors.map((e, i) => (
@@ -630,7 +698,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                                 ))}
                                             </div>
                                         )}
-                                        
+
                                         {messageSafety.warnings.length > 0 && messageSafety.riskScore < 80 && (
                                             <div className="space-y-1">
                                                 {messageSafety.warnings.map((w, i) => (
@@ -638,11 +706,11 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                                                 ))}
                                             </div>
                                         )}
-                                        
+
                                         {/* Acknowledge checkbox for medium risk */}
                                         {messageSafety.riskScore >= 50 && messageSafety.riskScore < 80 && (
                                             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-amber-200">
-                                                <Checkbox 
+                                                <Checkbox
                                                     id="acknowledge-risk"
                                                     checked={acknowledgeRisk}
                                                     onCheckedChange={(checked) => setAcknowledgeRisk(checked === true)}
@@ -718,10 +786,10 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign }: 
                         Next Step <ChevronRight className="w-4 h-4 ml-2" />
                     </Button>
                 ) : (
-                    <Button 
-                        onClick={handleLaunch} 
-                        disabled={submitting || (messageSafety?.riskScore ?? 0) >= 80 || ((messageSafety?.riskScore ?? 0) >= 50 && !acknowledgeRisk)} 
-                        size="lg" 
+                    <Button
+                        onClick={handleLaunch}
+                        disabled={submitting || (messageSafety?.riskScore ?? 0) >= 80 || ((messageSafety?.riskScore ?? 0) >= 50 && !acknowledgeRisk)}
+                        size="lg"
                         className="px-6 shadow-sm"
                     >
                         {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}

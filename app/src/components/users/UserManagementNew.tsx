@@ -194,9 +194,9 @@ export default function UserManagementNew({
 
         // Filter by organization for non-power users
         if (!isPowerUser) {
-           // Allow users to see their own organization AND independent users (null organization)
-           // This is important for HQ/Managers (Level 40) managing independent consumers (Level 50)
-           query = query.or(`organization_id.eq.${userProfile.organization_id},organization_id.is.null`);
+          // Allow users to see their own organization AND independent users (null organization)
+          // This is important for HQ/Managers (Level 40) managing independent consumers (Level 50)
+          query = query.or(`organization_id.eq.${userProfile.organization_id},organization_id.is.null`);
         }
 
         const { data, error, count } = await query;
@@ -221,7 +221,7 @@ export default function UserManagementNew({
 
       const visibleUsers = (data || []).filter((u: any) => {
         const userRoleLevel = u.roles?.role_level || 999;
-        
+
         // Debug visibility logic
         // if (u.email.includes('indep') || u.role_code === 'USER') {
         //   console.log(`Checking visibility for ${u.email}: Level ${userRoleLevel} vs My Level ${currentUserLevel}`)
@@ -323,22 +323,22 @@ export default function UserManagementNew({
     // Validate levels before proceeding
     const currentUserLevel = userProfile.roles?.role_level || 999;
     const ids = Array.from(selectedUsers);
-    
+
     // Check if any selected user has higher privileges (lower role level number)
     // Note: lower role_level = higher privilege (e.g. 1 is Super Admin)
     const usersToDelete = users.filter(u => ids.includes(u.id));
     const unauthorized = usersToDelete.filter(u => {
-        const level = (u as any).roles?.role_level || 999;
-        return level < currentUserLevel;
+      const level = (u as any).roles?.role_level || 999;
+      return level < currentUserLevel;
     });
 
     if (unauthorized.length > 0) {
-        toast({
-            title: "Permission Denied",
-            description: `You cannot delete ${unauthorized.length} users because they have higher privileges than you.`,
-            variant: "destructive"
-        });
-        return;
+      toast({
+        title: "Permission Denied",
+        description: `You cannot delete ${unauthorized.length} users because they have higher privileges than you.`,
+        variant: "destructive"
+      });
+      return;
     }
 
     const confirmed = confirm(
@@ -480,7 +480,7 @@ export default function UserManagementNew({
 
       if (editingUser) {
         // UPDATE existing user
-        
+
         // Check if allow to edit this user
         // We need to look up the level of the user being edited.
         // The editingUser object comes from state, let's see if it has the nested role info
@@ -490,7 +490,7 @@ export default function UserManagementNew({
         const targetUserLevel = targetUserRole?.role_level || 999;
 
         if (targetUserLevel < currentUserLevel) {
-           throw new Error("You cannot edit a user with a higher role level than your own.");
+          throw new Error("You cannot edit a user with a higher role level than your own.");
         }
 
         let updateData: any = {
@@ -863,12 +863,12 @@ export default function UserManagementNew({
     const currentUserLevel = userProfile.roles?.role_level || 999;
     const targetUser = users.find(u => u.id === userId);
     const targetUserLevel = (targetUser as any)?.roles?.role_level || 999;
-    
+
     if (targetUserLevel < currentUserLevel) {
       toast({
-         title: "Permission Denied",
-         description: "You cannot delete a user with a higher role level than your own.",
-         variant: "destructive"
+        title: "Permission Denied",
+        description: "You cannot delete a user with a higher role level than your own.",
+        variant: "destructive"
       });
       return;
     }
@@ -912,11 +912,23 @@ export default function UserManagementNew({
   const filteredUsers = useMemo(() => {
     return users
       .filter((user) => {
-        // Search filter
+        // Search filter with phone normalization
+        const normalizePhoneForSearch = (p: string) => {
+          if (!p) return '';
+          // Strip all non-digits for comparison
+          return p.replace(/\D/g, '');
+        };
+
+        const searchLower = searchQuery.toLowerCase();
+        const searchDigits = normalizePhoneForSearch(searchQuery);
+        const userPhoneDigits = normalizePhoneForSearch(user.phone || '');
+
         const matchesSearch =
-          user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.phone?.includes(searchQuery);
+          user.full_name?.toLowerCase().includes(searchLower) ||
+          user.email.toLowerCase().includes(searchLower) ||
+          user.phone?.includes(searchQuery) ||
+          // Also match normalized phone (digits only)
+          (searchDigits.length >= 8 && userPhoneDigits.includes(searchDigits));
 
         // Role filter
         const matchesRole = !roleFilter || user.role_code === roleFilter;

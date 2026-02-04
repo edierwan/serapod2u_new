@@ -4,7 +4,7 @@ import { validateTemplate } from '@/lib/template-safety';
 
 export async function GET(request: Request) {
   const supabase = await createClient();
-  
+
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  
+
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -61,12 +61,12 @@ export async function POST(request: Request) {
 
     // Server-side validation (never trust client)
     const validation = validateTemplate(templateBody || '');
-    
+
     // Block if template has critical errors
     if (!validation.isValid) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Template validation failed',
-        errors: validation.errors 
+        errors: validation.errors
       }, { status: 400 });
     }
 

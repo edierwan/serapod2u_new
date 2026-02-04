@@ -10,7 +10,6 @@ import { Loader2, ChevronDown, ChevronUp, Coins, Activity, X, Check } from 'luci
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-// import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"; // REPLACED due to potential CSP/eval issues
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -28,7 +27,7 @@ function FilterList({
 }) {
     const [search, setSearch] = useState('');
     const filtered = items.filter(i => i.toLowerCase().includes(search.toLowerCase()));
-
+    
     return (
         <div className="flex flex-col gap-2 p-2">
             <Input 
@@ -119,7 +118,7 @@ function RangeInput({
     // Ensure values are safe for render
     const safeMin = (typeof minValue === 'number' || typeof minValue === 'string') ? minValue : '';
     const safeMax = (typeof maxValue === 'number' || typeof maxValue === 'string') ? maxValue : '';
-
+    
     return (
         <div className="space-y-2">
             <Label className="text-sm font-medium">{label}</Label>
@@ -128,7 +127,7 @@ function RangeInput({
                     type="number" 
                     placeholder="Min"
                     value={safeMin}
-                    onChange={(e) => onMinChange(e.target.value ? Number(e.target.value) : null)}
+                    onChange={(e) => onMinChange(e.target.value ? Number(e.target.value) : null)} 
                     className="w-24"
                 />
                 <span className="text-muted-foreground">to</span>
@@ -136,7 +135,7 @@ function RangeInput({
                     type="number" 
                     placeholder="Max"
                     value={safeMax}
-                    onChange={(e) => onMaxChange(e.target.value ? Number(e.target.value) : null)}
+                    onChange={(e) => onMaxChange(e.target.value ? Number(e.target.value) : null)} 
                     className="w-24"
                 />
             </div>
@@ -162,11 +161,11 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
     }
 
     // Default to object if null/undefined or array (since we expect object structure below)
-    const safeFilters = (filters && !Array.isArray(filters)) ? filters : {};
-
+    const safeFilters = (filters && !Array.isArray(filters)) ? filters : ({} as any);
+    
     // TEMP: Defensive checks
     if (!safeFilters) console.error("AudienceFilterBuilder: safeFilters is null/undefined");
-
+    
     // Get selected values (defensively)
     const getSafeArray = (arr: any) => Array.isArray(arr) ? arr.filter(i => typeof i === 'string') : [];
     
@@ -176,7 +175,7 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
     
     const selectedOrgTypes = rawOrgTypes 
         ? getSafeArray(rawOrgTypes)
-        : (legacyOrgType && legacyOrgType !== 'all' && legacyOrgType !== 'All')
+        : (legacyOrgType && legacyOrgType !== 'all' && legacyOrgType !== 'All') 
             ? [legacyOrgType]
             : [];
 
@@ -185,7 +184,7 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
 
     const selectedStates = rawStates
         ? getSafeArray(rawStates)
-        : (legacyState && legacyState !== 'any' && legacyState !== 'Any Location')
+        : (legacyState && legacyState !== 'any' && legacyState !== 'Any Location') 
             ? [legacyState]
             : [];
 
@@ -200,7 +199,7 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
             try {
                 const rawTypes = (orgData?.organization_types as string[]) || [];
                 const safeTypes = Array.isArray(rawTypes) 
-                    ? rawTypes.filter(t => typeof t === 'string' && t.length > 0) 
+                    ? rawTypes.filter(t => typeof t === 'string' && t.length > 0)
                     : [];
                 
                 const types = new Set<string>(safeTypes);
@@ -268,13 +267,13 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
         filters.migration_points_min != null || filters.migration_points_max != null ||
         filters.total_redeemed_min != null || filters.total_redeemed_max != null ||
         filters.transactions_count_min != null || filters.transactions_count_max != null;
-
+    
     // Check if any activity filters are active
     const hasActivityFilters = filters.last_activity_after != null || filters.last_activity_before != null ||
         filters.inactive_days != null || filters.never_scanned === true || filters.never_login === true;
-
+    
     if (loading) return <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading options...</div>;
-
+    
     return (
         <div className="space-y-6">
             {/* Basic Filters */}

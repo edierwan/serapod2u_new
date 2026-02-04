@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils';
 
 export async function POST(
     request: NextRequest,
@@ -9,7 +11,7 @@ export async function POST(
         const { id: campaignId } = await params;
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
-        
+
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
@@ -20,7 +22,7 @@ export async function POST(
             .select('organization_id, full_name')
             .eq('id', user.id)
             .single();
-        
+
         const orgId = userProfile?.organization_id;
         if (!orgId) {
             return NextResponse.json({ error: 'No organization found' }, { status: 400 });
@@ -44,9 +46,10 @@ export async function POST(
 
         // Resolve recipients
         const audienceFilters = campaign.audience_filters || {};
-        const audienceRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/wa/marketing/audience/resolve`, {
+        const audienceUrl = `${request.nextUrl.origin}/api/wa/marketing/audience/resolve`;
+        const audienceRes = await fetch(audienceUrl, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'Cookie': request.headers.get('cookie') || ''
             },
@@ -55,6 +58,7 @@ export async function POST(
                 filters: audienceFilters.filters,
                 segment_id: audienceFilters.segment_id,
                 user_ids: audienceFilters.user_ids,
+                overrides: audienceFilters.overrides,
                 include_all: true
             })
         });
@@ -73,7 +77,7 @@ export async function POST(
         // Update campaign status to 'sending'
         await (supabase as any)
             .from('marketing_campaigns')
-            .update({ 
+            .update({
                 status: 'sending',
                 sent_at: new Date().toISOString(),
                 total_recipients: recipients.length
@@ -94,31 +98,53 @@ export async function POST(
             created_at: new Date().toISOString()
         }));
 
+        let supabaseAdmin: any;
+        try {
+            supabaseAdmin = createAdminClient();
+        } catch {
+            supabaseAdmin = supabase;
+        }
+
         // Insert logs in batches
         const BATCH_SIZE = 500;
         for (let i = 0; i < sendLogs.length; i += BATCH_SIZE) {
             const batch = sendLogs.slice(i, i + BATCH_SIZE);
-            await (supabase as any).from('marketing_send_logs').insert(batch);
+            const { error: insertError } = await (supabaseAdmin as any).from('marketing_send_logs').insert(batch);
+            if (insertError) {
+                console.error('Error inserting send logs:', insertError);
+                await (supabase as any)
+                    .from('marketing_campaigns')
+                    .update({ status: 'failed' })
+                    .eq('id', campaignId);
+                return NextResponse.json({ error: 'Failed to create delivery logs' }, { status: 500 });
+            }
         }
 
-        // Get WhatsApp gateway URL from environment
-        const gatewayUrl = process.env.WA_GATEWAY_URL;
-        const gatewayKey = process.env.WA_GATEWAY_KEY;
+        // Get WhatsApp config using shared utility (same as test-send)
+        const waConfig = await getWhatsAppConfig(supabase, orgId);
+        if (!waConfig || !waConfig.baseUrl) {
+            await (supabase as any)
+                .from('marketing_campaigns')
+                .update({ status: 'failed' })
+                .eq('id', campaignId);
+            return NextResponse.json({
+                error: 'WhatsApp configuration not found. Please configure it in Settings > Notification Providers.'
+            }, { status: 400 });
+        }
 
         // Send messages in background (don't await)
         // The actual sending is done async to not block the response
         sendMessagesAsync(
-            supabase,
+            supabaseAdmin,
             campaignId,
             campaign.message_body,
             recipients,
-            gatewayUrl,
-            gatewayKey,
+            waConfig,
             orgId
         );
 
-        return NextResponse.json({ 
-            success: true, 
+        return NextResponse.json({
+            success: true,
             message: `Campaign launched! Sending to ${recipients.length} recipients.`,
             total_recipients: recipients.length
         });
@@ -135,87 +161,89 @@ async function sendMessagesAsync(
     campaignId: string,
     messageBody: string,
     recipients: any[],
-    gatewayUrl: string | undefined,
-    gatewayKey: string | undefined,
+    waConfig: { baseUrl: string; apiKey: string | undefined; tenantId: string },
     companyId: string
 ) {
     let sentCount = 0;
     let failedCount = 0;
     let deliveredCount = 0;
 
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://serapod2u.com';
+    const appUrl = `${appBaseUrl}/app`;
+
     for (const recipient of recipients) {
         try {
             // Update status to 'sending'
             await supabase
                 .from('marketing_send_logs')
-                .update({ 
+                .update({
                     status: 'sending',
                     sent_at: new Date().toISOString()
                 })
                 .eq('campaign_id', campaignId)
                 .eq('recipient_phone', recipient.phone);
 
-            // Personalize message
-            const personalizedMessage = messageBody
-                .replace(/{{name}}/gi, recipient.name || 'Customer')
-                .replace(/{{org_name}}/gi, recipient.org_name || '')
-                .replace(/{{phone}}/gi, recipient.phone || '');
-
-            // Send via gateway
-            if (gatewayUrl) {
-                const sendRes = await fetch(`${gatewayUrl}/send-message`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-API-Key': gatewayKey || ''
-                    },
-                    body: JSON.stringify({
-                        phone: recipient.phone,
-                        message: personalizedMessage
-                    })
-                });
-
-                if (sendRes.ok) {
-                    const sendData = await sendRes.json();
-                    
-                    // Update log with success
-                    await supabase
-                        .from('marketing_send_logs')
-                        .update({ 
-                            status: sendData.delivered ? 'delivered' : 'delivered',
-                            delivered_at: new Date().toISOString()
-                        })
-                        .eq('campaign_id', campaignId)
-                        .eq('recipient_phone', recipient.phone);
-                    
-                    deliveredCount++;
-                    sentCount++;
-                } else {
-                    const errorData = await sendRes.json().catch(() => ({}));
-                    
-                    // Update log with failure
-                    await supabase
-                        .from('marketing_send_logs')
-                        .update({ 
-                            status: 'failed',
-                            error_message: errorData.error || 'Failed to send'
-                        })
-                        .eq('campaign_id', campaignId)
-                        .eq('recipient_phone', recipient.phone);
-                    
-                    failedCount++;
+            // Get user's points balance if available
+            let pointsBalance = '0';
+            if (recipient.user_id) {
+                const { data: pointsData } = await supabase
+                    .from('v_consumer_points_balance')
+                    .select('current_balance')
+                    .eq('user_id', recipient.user_id)
+                    .single();
+                if (pointsData?.current_balance !== undefined && pointsData?.current_balance !== null) {
+                    pointsBalance = Number(pointsData.current_balance || 0).toLocaleString();
                 }
-            } else {
-                // No gateway configured, mark as failed
+            }
+
+            // Personalize message - use single braces {name} to match templates
+            const personalizedMessage = messageBody
+                .replace(/{name}/g, recipient.name || 'Customer')
+                .replace(/{city}/g, recipient.city || recipient.location || '')
+                .replace(/{points_balance}/g, pointsBalance)
+                .replace(/{short_link}/g, appUrl)
+                .replace(/{org_name}/g, recipient.org_name || '')
+                .replace(/{phone}/g, recipient.phone || '');
+
+            // Send via gateway using shared utility (same as test-send)
+            const phone = recipient.phone.replace(/[^\d]/g, '');
+
+            const result = await callGateway(
+                waConfig.baseUrl,
+                waConfig.apiKey,
+                'POST',
+                '/messages/send',
+                {
+                    to: phone,
+                    text: personalizedMessage,
+                },
+                waConfig.tenantId
+            );
+
+            if (result.ok !== false && !result.error) {
+                // Update log with success
                 await supabase
                     .from('marketing_send_logs')
-                    .update({ 
-                        status: 'failed',
-                        error_message: 'WhatsApp gateway not configured'
+                    .update({
+                        status: 'delivered',
+                        delivered_at: new Date().toISOString()
                     })
                     .eq('campaign_id', campaignId)
                     .eq('recipient_phone', recipient.phone);
-                
+
+                deliveredCount++;
+                sentCount++;
+            } else {
+                // Update log with failure
+                await supabase
+                    .from('marketing_send_logs')
+                    .update({
+                        status: 'failed',
+                        error_message: result.error || 'Failed to send'
+                    })
+                    .eq('campaign_id', campaignId)
+                    .eq('recipient_phone', recipient.phone);
+
                 failedCount++;
             }
 
@@ -224,16 +252,16 @@ async function sendMessagesAsync(
 
         } catch (error: any) {
             console.error(`Error sending to ${recipient.phone}:`, error);
-            
+
             await supabase
                 .from('marketing_send_logs')
-                .update({ 
+                .update({
                     status: 'failed',
                     error_message: error.message || 'Unknown error'
                 })
                 .eq('campaign_id', campaignId)
                 .eq('recipient_phone', recipient.phone);
-            
+
             failedCount++;
         }
     }
@@ -242,7 +270,7 @@ async function sendMessagesAsync(
     const finalStatus = failedCount === recipients.length ? 'failed' : 'completed';
     await supabase
         .from('marketing_campaigns')
-        .update({ 
+        .update({
             status: finalStatus,
             completed_at: new Date().toISOString(),
             sent_count: sentCount,

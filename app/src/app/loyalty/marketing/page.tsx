@@ -10,11 +10,12 @@ import { TemplatesManager } from './_components/TemplatesManager';
 import { SafetyComplianceSettings } from './_components/SafetySettings';
 import { SendLogsView } from './_components/SendLogsView';
 import { AudienceSegmentsManager } from './_components/AudienceSegmentsManager';
+import { MessageSetupManager } from './_components/MessageSetupManager';
 
 function MarketingPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    
+
     // Default to 'campaigns' tab if not specified
     const initialTab = searchParams.get('tab') || 'campaigns';
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -51,47 +52,53 @@ function MarketingPageContent() {
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
                 <TabsList className="bg-white border w-full justify-start h-auto p-1 overflow-x-auto rounded-md shadow-sm">
-                    <TabsTrigger 
-                        value="campaigns" 
+                    <TabsTrigger
+                        value="campaigns"
                         className="px-4 py-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary data-[state=active]:font-bold data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none"
                     >
                         Campaigns
                     </TabsTrigger>
-                    <TabsTrigger 
-                        value="create" 
+                    <TabsTrigger
+                        value="create"
                         className="px-4 py-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary data-[state=active]:font-bold data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none"
                     >
                         Create Campaign
                     </TabsTrigger>
-                    <TabsTrigger 
-                        value="templates" 
+                    <TabsTrigger
+                        value="templates"
                         className="px-4 py-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary data-[state=active]:font-bold data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none"
                     >
                         Templates
                     </TabsTrigger>
-                    <TabsTrigger 
-                        value="audience" 
+                    <TabsTrigger
+                        value="audience"
                         className="px-4 py-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary data-[state=active]:font-bold data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none"
                     >
                         Audience Segments
                     </TabsTrigger>
-                    <TabsTrigger 
-                        value="logs" 
+                    <TabsTrigger
+                        value="logs"
                         className="px-4 py-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary data-[state=active]:font-bold data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none"
                     >
                         Send Logs
                     </TabsTrigger>
-                    <TabsTrigger 
-                        value="safety" 
+                    <TabsTrigger
+                        value="safety"
                         className="px-4 py-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary data-[state=active]:font-bold data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none"
                     >
                         Safety
                     </TabsTrigger>
+                    <TabsTrigger
+                        value="message-setup"
+                        className="px-4 py-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary data-[state=active]:font-bold data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none shadow-none"
+                    >
+                        Message Setup
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="campaigns" className="min-h-[400px]">
-                    <CampaignsList 
-                        onNew={() => { setEditingCampaign(null); handleTabChange('create'); }} 
+                    <CampaignsList
+                        onNew={() => { setEditingCampaign(null); handleTabChange('create'); }}
                         onEdit={handleEditCampaign}
                     />
                 </TabsContent>
@@ -118,6 +125,10 @@ function MarketingPageContent() {
 
                 <TabsContent value="safety">
                     <SafetyComplianceSettings />
+                </TabsContent>
+
+                <TabsContent value="message-setup">
+                    <MessageSetupManager />
                 </TabsContent>
             </Tabs>
         </div>

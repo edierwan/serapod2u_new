@@ -85,6 +85,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // Extract estimated_count from audience_filters
+    const estimatedCount = audience_filters?.estimated_count || 0;
+
     const { data, error } = await supabase
       .from('marketing_campaigns' as any)
       .insert({
@@ -93,6 +96,7 @@ export async function POST(request: Request) {
         objective,
         status: 'draft',
         audience_filters: audience_filters || {},
+        estimated_count: estimatedCount,
         message_body,
         template_id: safeTemplateId,
         scheduled_at,

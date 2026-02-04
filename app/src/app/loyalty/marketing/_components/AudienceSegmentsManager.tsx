@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Users, Edit, Trash2, Copy, Loader2, Save, ArrowLeft, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { AudienceFilterBuilder, AudienceFilters } from './AudienceFilterBuilder';
+import { AudienceFilterBuilder, type AudienceFilters } from './AudienceFilterBuilder';
 import { AudienceEstimator } from './AudienceEstimator';
 
 type Segment = {
@@ -19,7 +19,7 @@ type Segment = {
     estimated_count: number;
     filters: AudienceFilters;
     updated_at: string;
-    created_at?: string;
+    created_at: string;
     creator?: {
         id: string;
         full_name: string;
@@ -28,14 +28,12 @@ type Segment = {
 
 type ViewMode = 'list' | 'create' | 'edit';
 
-function makeDefaultFilters(): AudienceFilters {
-    return {
-        organization_type: 'all',
-        state: 'any',
-        opt_in_only: true,
-        only_valid_whatsapp: true
-    };
-}
+const defaultFilters: AudienceFilters = {
+    organization_type: 'all',
+    state: 'any',
+    opt_in_only: true,
+    only_valid_whatsapp: true
+};
 
 export function AudienceSegmentsManager() {
     const { toast } = useToast();
@@ -45,10 +43,6 @@ export function AudienceSegmentsManager() {
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
-    // Pagination state
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
-
     // View mode state
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
@@ -57,14 +51,29 @@ export function AudienceSegmentsManager() {
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        filters: makeDefaultFilters(),
+        filters: defaultFilters,
         estimated_count: 0
     });
 
-    // Memoized callback to prevent re-render loops in AudienceEstimator
-    const handleCountChange = useCallback((count: number) => {
-        setFormData(prev => ({ ...prev, estimated_count: count }));
-    }, []);
+    // Manual Overrides State
+    const [overrideIncludeIds, setOverrideIncludeIds] = useState<string[]>([]);
+    const [overrideExcludeIds, setOverrideExcludeIds] = useState<string[]>([]);
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
+    // Pagination calculations
+    const totalPages = Math.ceil(segments.length / pageSize);
+    const paginatedSegments = useMemo(() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        return segments.slice(startIndex, startIndex + pageSize);
+    }, [segments, currentPage, pageSize]);
+
+    // Reset to page 1 when segments change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [segments.length]);
 
     const fetchSegments = async () => {
         setLoading(true);
@@ -85,58 +94,23 @@ export function AudienceSegmentsManager() {
     const handleDownload = async (segment: Segment) => {
         setDownloadingId(segment.id);
         try {
-            const res = await fetch('/api/wa/marketing/audience/resolve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    mode: 'segment',
-                    segment_id: segment.id,
-                    include_all: true
-                })
-            });
+            const res = await fetch(`/api/wa/marketing/segments/${segment.id}/export`);
+            if (!res.ok) throw new Error('Download failed');
 
-            if (!res.ok) throw new Error("Failed to fetch segment data");
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `segment-${segment.name.toLowerCase().replace(/\s+/g, '-')}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
 
-            const data = await res.json();
-            const users = data.users || [];
-
-            if (users.length === 0) {
-                toast({ title: "Info", description: "No users in this segment to download." });
-                return;
-            }
-
-            // Convert to CSV
-            const headers = ["User ID", "Name", "Phone", "State", "Org Type", "Org Name", "Balance", "Collected System", "Tx Count"];
-            const csvRows = [headers.join(",")];
-
-            users.forEach((u: any) => {
-                const row = [
-                    u.id,
-                    `"${(u.name || '').replace(/"/g, '""')}"`,
-                    u.phone,
-                    u.state || '',
-                    u.organization_type,
-                    `"${(u.org_name || '').replace(/"/g, '""')}"`,
-                    u.current_balance,
-                    u.collected_system,
-                    u.transactions_count
-                ];
-                csvRows.push(row.join(","));
-            });
-
-            const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csvRows.join("\n");
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `${segment.name.replace(/\s+/g, '_')}_users.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            toast({ title: "Success", description: "Segment data downloaded." });
-        } catch (error) {
-            console.error(error);
-            toast({ title: "Error", description: "Failed to download segment data", variant: "destructive" });
+            toast({ title: 'Success', description: 'Segment downloaded successfully' });
+        } catch (err) {
+            console.error(err);
+            toast({ title: 'Error', description: 'Failed to download segment', variant: 'destructive' });
         } finally {
             setDownloadingId(null);
         }
@@ -147,16 +121,10 @@ export function AudienceSegmentsManager() {
     }, []);
 
     const handleNew = () => {
-        const newFilters = makeDefaultFilters();
-        // Temporary debug log as requested
-        console.log('DEBUG: handleNew defaultFilters check', {
-            type: typeof newFilters,
-            isArray: Array.isArray(newFilters),
-            value: newFilters
-        });
-        
         setEditingSegment(null);
-        setFormData({ name: '', description: '', filters: newFilters, estimated_count: 0 });
+        setFormData({ name: '', description: '', filters: { ...defaultFilters }, estimated_count: 0 });
+        setOverrideIncludeIds([]);
+        setOverrideExcludeIds([]);
         setViewMode('create');
     };
 
@@ -165,16 +133,21 @@ export function AudienceSegmentsManager() {
         setFormData({
             name: seg.name,
             description: seg.description,
-            filters: seg.filters || makeDefaultFilters(),
+            filters: seg.filters || defaultFilters,
             estimated_count: seg.estimated_count
         });
+        // In real impl, we would load existing overrides here from segment data
+        setOverrideIncludeIds([]);
+        setOverrideExcludeIds([]);
         setViewMode('edit');
     };
 
     const handleCancel = () => {
         setViewMode('list');
+        setOverrideIncludeIds([]);
+        setOverrideExcludeIds([]);
         setEditingSegment(null);
-        setFormData({ name: '', description: '', filters: makeDefaultFilters(), estimated_count: 0 });
+        setFormData({ name: '', description: '', filters: defaultFilters, estimated_count: 0 });
     };
 
     const handleSave = async () => {
@@ -193,11 +166,17 @@ export function AudienceSegmentsManager() {
             const res = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
+                body: JSON.stringify({
+                    ...formData,
+                    overrides: {
+                        include_ids: overrideIncludeIds,
+                        exclude_ids: overrideExcludeIds
+                    }
+                })
             });
 
             if (res.ok) {
-                toast({ title: 'Success', description: 'Segment saved successfully' });
+                toast({ title: 'Success', description: 'Segment saved successfully with overrides' });
                 setViewMode('list');
                 setEditingSegment(null);
                 fetchSegments();
@@ -285,12 +264,12 @@ export function AudienceSegmentsManager() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                    {/* Left Column: Form & Filters - 3/5 = 60% */}
-                    <div className="lg:col-span-3 space-y-6 order-2 lg:order-1">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[600px]">
+                    {/* Left Column: Form & Filters */}
+                    <div className="space-y-6">
                         <Card>
-                            <CardHeader className="pb-4">
-                                <CardTitle className="text-lg">Segment Details</CardTitle>
+                            <CardHeader>
+                                <CardTitle>Segment Details</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
@@ -313,8 +292,8 @@ export function AudienceSegmentsManager() {
                         </Card>
 
                         <Card>
-                            <CardHeader className="pb-4">
-                                <CardTitle className="text-lg">Audience Filters</CardTitle>
+                            <CardHeader>
+                                <CardTitle>Audience Filters</CardTitle>
                                 <CardDescription>Refine your audience based on their profile and behavior.</CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -326,36 +305,31 @@ export function AudienceSegmentsManager() {
                         </Card>
                     </div>
 
-                    {/* Right Column: Preview - 2/5 = 40% */}
-                    <div className="lg:col-span-2 order-1 lg:order-2">
-                        <div className="lg:sticky lg:top-6 space-y-4">
-                            <Card className="border-l-4 border-l-primary">
-                                <CardContent className="pt-6">
-                                    <AudienceEstimator
-                                        mode="filters"
-                                        filters={formData.filters}
-                                        onCountChange={handleCountChange}
-                                    />
-                                </CardContent>
-                            </Card>
-                        </div>
+                    {/* Right Column: Preview */}
+                    <div className="h-full min-h-[600px]">
+                        <AudienceEstimator
+                            mode="filters"
+                            filters={formData.filters}
+                            onCountChange={(count: number) => setFormData(prev => ({ ...prev, estimated_count: count }))}
+                            overrides={{
+                                include_ids: overrideIncludeIds,
+                                exclude_ids: overrideExcludeIds
+                            }}
+                            onOverrideChange={(action, id) => {
+                                if (action === 'exclude') {
+                                    setOverrideExcludeIds(prev => [...prev, id]);
+                                    setOverrideIncludeIds(prev => prev.filter(i => i !== id));
+                                } else if (action === 'include') {
+                                    setOverrideIncludeIds(prev => [...prev, id]);
+                                    setOverrideExcludeIds(prev => prev.filter(i => i !== id));
+                                }
+                            }}
+                        />
                     </div>
                 </div>
             </div>
         );
     }
-
-    // Pagination calculations
-    const totalPages = Math.ceil(segments.length / pageSize);
-    const paginatedSegments = useMemo(() => {
-        const startIndex = (currentPage - 1) * pageSize;
-        return segments.slice(startIndex, startIndex + pageSize);
-    }, [segments, currentPage, pageSize]);
-
-    // Reset to page 1 when segments change
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [segments.length]);
 
     // Render List View
     return (
@@ -413,7 +387,7 @@ export function AudienceSegmentsManager() {
                                             {(currentPage - 1) * pageSize + index + 1}
                                         </TableCell>
                                         <TableCell className="font-medium">{segment.name}</TableCell>
-                                        <TableCell className="text-muted-foreground max-w-[200px] truncate">{segment.description}</TableCell>
+                                        <TableCell className="text-muted-foreground">{segment.description}</TableCell>
                                         <TableCell>
                                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
                                                 {segment.estimated_count.toLocaleString()} users
@@ -422,15 +396,15 @@ export function AudienceSegmentsManager() {
                                         <TableCell className="text-sm text-muted-foreground">
                                             {segment.creator?.full_name || '-'}
                                         </TableCell>
-                                        <TableCell className="text-sm">{new Date(segment.updated_at).toLocaleDateString()}</TableCell>
+                                        <TableCell>{new Date(segment.updated_at).toLocaleDateString()}</TableCell>
                                         <TableCell className="text-right">
-                                            <div className="flex justify-end gap-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownload(segment)} disabled={downloadingId === segment.id} title="Download">
+                                            <div className="flex justify-end gap-2">
+                                                <Button variant="ghost" size="icon" onClick={() => handleDownload(segment)} disabled={downloadingId === segment.id}>
                                                     {downloadingId === segment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                                                 </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(segment)} title="Edit"><Edit className="h-4 w-4" /></Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(segment)} title="Duplicate"><Copy className="h-4 w-4" /></Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(segment.id)} disabled={deletingId === segment.id} title="Delete">
+                                                <Button variant="ghost" size="icon" onClick={() => handleEdit(segment)}><Edit className="h-4 w-4" /></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => handleDuplicate(segment)}><Copy className="h-4 w-4" /></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(segment.id)} disabled={deletingId === segment.id}>
                                                     {deletingId === segment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-red-500" />}
                                                 </Button>
                                             </div>
@@ -462,8 +436,8 @@ export function AudienceSegmentsManager() {
                                 </span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <Button 
-                                    variant="outline" 
+                                <Button
+                                    variant="outline"
                                     size="sm"
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                     disabled={currentPage === 1}
@@ -496,8 +470,8 @@ export function AudienceSegmentsManager() {
                                         );
                                     })}
                                 </div>
-                                <Button 
-                                    variant="outline" 
+                                <Button
+                                    variant="outline"
                                     size="sm"
                                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                     disabled={currentPage === totalPages || totalPages === 0}

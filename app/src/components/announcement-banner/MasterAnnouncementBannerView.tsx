@@ -33,7 +33,8 @@ import {
 interface BannerItem {
     id: string
     image_url: string
-    link_to: 'rewards' | 'products' | 'contact-us' | 'no-link' | string
+    link_to: 'short_link' | 'page_rewards' | 'page_product' | 'page-contactus' | 'external_url' | 'no-link' | 'rewards' | 'products' | 'contact-us' | string
+    external_url?: string
     expires_at: string
     page?: 'home' | 'rewards' | 'products' | 'profile'
     is_active?: boolean
@@ -102,6 +103,33 @@ const pageLabels = {
     rewards: { name: 'Rewards', icon: '🎁' },
     products: { name: 'Products', icon: '📦' },
     profile: { name: 'Profile', icon: '👤' }
+}
+
+const linkOptions = [
+    { value: 'short_link', label: '{short_link} (App)' },
+    { value: 'page_rewards', label: '{page_rewards}' },
+    { value: 'page_product', label: '{page_product}' },
+    { value: 'page-contactus', label: '{page-contactus}' },
+    { value: 'external_url', label: '{External_URL}' },
+    { value: 'no-link', label: 'No Link' }
+]
+
+const getLinkSelectionValue = (item: BannerItem) => {
+    if (item.link_to === 'rewards') return 'page_rewards'
+    if (item.link_to === 'products') return 'page_product'
+    if (item.link_to === 'contact-us') return 'page-contactus'
+    if (item.link_to === 'short_link') return 'short_link'
+    if (item.link_to === 'external_url') return 'external_url'
+    if (item.link_to === 'no-link') return 'no-link'
+    if (item.link_to?.startsWith('http') || item.external_url) return 'external_url'
+    if (item.link_to === 'page_rewards' || item.link_to === 'page_product' || item.link_to === 'page-contactus') return item.link_to
+    return 'no-link'
+}
+
+const getExternalUrlValue = (item: BannerItem) => {
+    if (item.external_url) return item.external_url
+    if (item.link_to?.startsWith('http')) return item.link_to
+    return ''
 }
 
 export default function MasterAnnouncementBannerView({ userProfile }: { userProfile: UserProfile }) {
@@ -267,7 +295,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
         newItems.push({
             id: crypto.randomUUID(),
             image_url: '',
-            link_to: 'rewards',
+            link_to: 'page_rewards',
             expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             page: activeBannerTab,
             placement,
@@ -310,9 +338,8 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
         const isActive = item.is_active !== false
 
         return (
-            <div className={`group relative bg-white rounded-xl border-2 transition-all duration-200 ${
-                isActive ? 'border-gray-200 hover:border-blue-300 hover:shadow-md' : 'border-gray-300 opacity-60'
-            }`}>
+            <div className={`group relative bg-white rounded-xl border-2 transition-all duration-200 ${isActive ? 'border-gray-200 hover:border-blue-300 hover:shadow-md' : 'border-gray-300 opacity-60'
+                }`}>
                 <div className="relative aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 rounded-t-xl overflow-hidden">
                     {item.image_url ? (
                         <Image
@@ -327,7 +354,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                             <span className="text-sm">No image</span>
                         </div>
                     )}
-                    
+
                     <div className="absolute top-2 left-2">
                         <Badge className={isActive ? 'bg-green-500' : 'bg-gray-500'}>
                             {isActive ? 'Active' : 'Inactive'}
@@ -391,20 +418,27 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
 
                     <div className="grid grid-cols-2 gap-2">
                         <Select
-                            value={['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) ? item.link_to : 'external'}
+                            value={getLinkSelectionValue(item)}
                             onValueChange={(value: string) => {
-                                updateBannerItem(item.id, { link_to: value === 'external' ? '' : value })
+                                if (value === 'external_url') {
+                                    updateBannerItem(item.id, {
+                                        link_to: 'external_url',
+                                        external_url: getExternalUrlValue(item)
+                                    })
+                                } else {
+                                    updateBannerItem(item.id, { link_to: value, external_url: undefined })
+                                }
                             }}
                         >
                             <SelectTrigger className="text-sm">
                                 <SelectValue placeholder="Link to..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="rewards">Rewards</SelectItem>
-                                <SelectItem value="products">Products</SelectItem>
-                                <SelectItem value="contact-us">Contact Us</SelectItem>
-                                <SelectItem value="no-link">No Link</SelectItem>
-                                <SelectItem value="external">External URL</SelectItem>
+                                {linkOptions.map(option => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                         <Input
@@ -415,10 +449,10 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                         />
                     </div>
 
-                    {!['rewards', 'products', 'contact-us', 'no-link'].includes(item.link_to) && (
+                    {getLinkSelectionValue(item) === 'external_url' && (
                         <Input
-                            value={item.link_to}
-                            onChange={(e) => updateBannerItem(item.id, { link_to: e.target.value })}
+                            value={getExternalUrlValue(item)}
+                            onChange={(e) => updateBannerItem(item.id, { link_to: 'external_url', external_url: e.target.value })}
                             placeholder="https://example.com"
                             className="text-sm"
                         />
@@ -449,7 +483,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                         <p className="text-xs text-gray-500">{items.length} banner{items.length !== 1 ? 's' : ''}</p>
                     </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-white rounded-lg border p-1">
                         <Button
@@ -575,7 +609,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                             <div>
                                 <h3 className="font-semibold text-lg">Master Banner System</h3>
                                 <p className="text-sm text-gray-600">
-                                    {masterConfig.banner_config.enabled 
+                                    {masterConfig.banner_config.enabled
                                         ? 'Banners will display on consumer journeys without custom banners'
                                         : 'No banners will be displayed by default'}
                                 </p>
@@ -629,7 +663,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                     <BannerSection
                                         title="Top Banners (Before Content)"
                                         placement="top"
-                                        items={masterConfig.banner_config.items.filter(i => 
+                                        items={masterConfig.banner_config.items.filter(i =>
                                             (i.page || 'home') === page && i.placement !== 'bottom'
                                         )}
                                         template={getPageSettings(page).topTemplate}
@@ -640,7 +674,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                     <BannerSection
                                         title="Bottom Banners (After Content)"
                                         placement="bottom"
-                                        items={masterConfig.banner_config.items.filter(i => 
+                                        items={masterConfig.banner_config.items.filter(i =>
                                             (i.page || 'home') === page && i.placement === 'bottom'
                                         )}
                                         template={getPageSettings(page).bottomTemplate}
