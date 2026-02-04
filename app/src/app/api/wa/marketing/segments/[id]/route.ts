@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await params;
     const supabase = await createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -15,7 +16,7 @@ export async function GET(
     const { data, error } = await supabase
         .from('marketing_segments' as any)
         .select('*')
-        .eq('id', params.id)
+        .eq('id', id)
         .single();
 
     if (error) {
@@ -27,8 +28,9 @@ export async function GET(
 
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await params;
     const supabase = await createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -46,11 +48,11 @@ export async function DELETE(
     try {
         // Check if user is super admin - can delete any segment
         const isSuperAdmin = userProfile?.role_code === 'SUPER_ADMIN';
-        
+
         let deleteQuery = supabase
             .from('marketing_segments' as any)
             .delete()
-            .eq('id', params.id);
+            .eq('id', id);
 
         // Only restrict by org_id for non-super admins
         if (!isSuperAdmin && userProfile?.organization_id) {
@@ -73,8 +75,9 @@ export async function DELETE(
 
 export async function PUT(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await params;
     const supabase = await createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -106,7 +109,7 @@ export async function PUT(
                 estimated_count,
                 updated_at: new Date().toISOString()
             })
-            .eq('id', params.id)
+            .eq('id', id)
             .eq('org_id', userProfile.organization_id)
             .select()
             .single();

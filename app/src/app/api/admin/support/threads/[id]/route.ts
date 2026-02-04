@@ -17,9 +17,10 @@ function getAdminClient() {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabaseAdmin = getAdminClient()
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -30,16 +31,15 @@ export async function PATCH(
 
     // Check admin role
     const { data: userData, error: userError } = await supabaseAdmin
-        .from('users')
-        .select('role_code')
-        .eq('id', user.id)
-        .single()
-        
+      .from('users')
+      .select('role_code')
+      .eq('id', user.id)
+      .single()
+
     if (userError || !userData || !['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)) {
-         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { id } = params
     const body = await request.json()
     const { status, priority, assigned_admin_user_id } = body
 
