@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight, Trash2, Edit, Eye, Clock, Rocket } from 'lucide-react';
-import { format, formatDistanceToNow, differenceInSeconds, differenceInHours, differenceInMinutes } from "date-fns";
+import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight, Trash2, Edit, Eye, Clock, Rocket, AlertTriangle } from 'lucide-react';
+import { format, differenceInSeconds } from "date-fns";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 type Campaign = {
     id: string;
@@ -38,13 +39,13 @@ interface CampaignsListProps {
 }
 
 // Helper to format countdown as HH:MM:SS
-function formatCountdown(scheduledAt: string): { display: string; isFuture: boolean } {
+function formatCountdown(scheduledAt: string): { display: string; isFuture: boolean; isOverdue: boolean } {
     const now = new Date();
     const scheduled = new Date(scheduledAt);
     const diffSeconds = differenceInSeconds(scheduled, now);
     
     if (diffSeconds <= 0) {
-        return { display: '', isFuture: false };
+        return { display: '00:00:00', isFuture: false, isOverdue: true };
     }
     
     const hours = Math.floor(diffSeconds / 3600);
@@ -54,7 +55,8 @@ function formatCountdown(scheduledAt: string): { display: string; isFuture: bool
     const pad = (n: number) => n.toString().padStart(2, '0');
     return { 
         display: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
-        isFuture: true 
+        isFuture: true,
+        isOverdue: false
     };
 }
 
@@ -66,18 +68,30 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [countdownTick, setCountdownTick] = useState(0);
+    const [runNowConfirm, setRunNowConfirm] = useState<{ show: boolean; campaign: Campaign | null }>({ show: false, campaign: null });
+    const [runningNow, setRunningNow] = useState(false);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
 
-    // Update countdown every second
+    // Update countdown every second for scheduled campaigns
     useEffect(() => {
-        const hasScheduled = campaigns.some(c => c.scheduled_at && new Date(c.scheduled_at) > new Date());
+        const hasScheduled = campaigns.some(c => c.scheduled_at);
         if (!hasScheduled) return;
         
         const interval = setInterval(() => {
             setCountdownTick(t => t + 1);
+            
+            // Auto-refresh when a campaign's scheduled time just passed (within 5 seconds)
+            const justPassed = campaigns.some(c => {
+                if (!c.scheduled_at || c.status !== 'scheduled') return false;
+                const diff = differenceInSeconds(new Date(c.scheduled_at), new Date());
+                return diff <= 0 && diff > -5;
+            });
+            if (justPassed) {
+                setTimeout(() => fetchCampaigns(), 5000);
+            }
         }, 1000);
         
         return () => clearInterval(interval);
@@ -126,13 +140,20 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
         handleRefresh();
     };
 
-    // Handle "Run Now" for scheduled campaigns
-    const handleRunNow = async (campaign: Campaign) => {
+    // Handle "Run Now" for scheduled campaigns - shows confirmation first
+    const showRunNowConfirm = (campaign: Campaign) => {
+        setRunNowConfirm({ show: true, campaign });
+    };
+
+    const handleRunNowConfirmed = async () => {
+        const campaign = runNowConfirm.campaign;
+        if (!campaign) return;
+        
+        setRunningNow(true);
         try {
-            const res = await fetch(`/api/wa/marketing/campaigns/${campaign.id}/launch`, {
+            const res = await fetch(`/api/wa/marketing/campaigns/${campaign.id}/run-now`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ run_now: true })
+                headers: { 'Content-Type': 'application/json' }
             });
             
             if (res.ok) {
@@ -140,12 +161,13 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                     title: "Campaign Started! 🚀",
                     description: `${campaign.name} is now sending to ${campaign.estimated_count} recipients`
                 });
+                setRunNowConfirm({ show: false, campaign: null });
                 handleRefresh();
             } else {
                 const error = await res.json();
                 toast({
                     title: "Failed to start campaign",
-                    description: error.error || "Please try again",
+                    description: error.error || "Campaign is not eligible to run now",
                     variant: "destructive"
                 });
             }
@@ -155,6 +177,8 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                 description: "Failed to start campaign",
                 variant: "destructive"
             });
+        } finally {
+            setRunningNow(false);
         }
     };
 
@@ -264,13 +288,19 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                         <div className="font-mono text-sm">
                                                             {format(new Date(c.scheduled_at), 'MMM d')} @ {scheduledTime}
                                                         </div>
-                                                        {countdown?.isFuture && (
+                                                        {countdown?.isFuture ? (
                                                             <div className="flex items-center gap-1 text-xs text-blue-600">
                                                                 <Clock className="h-3 w-3" />
                                                                 <span className="font-mono">{countdown.display}</span>
                                                                 <span className="text-muted-foreground">remaining</span>
                                                             </div>
-                                                        )}
+                                                        ) : countdown?.isOverdue && c.status === 'scheduled' ? (
+                                                            <div className="flex items-center gap-1 text-xs text-amber-600">
+                                                                <AlertTriangle className="h-3 w-3" />
+                                                                <span className="font-mono">{countdown.display}</span>
+                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-400 text-amber-600">Overdue</Badge>
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                 ) : '-'}
                                             </TableCell>
@@ -312,10 +342,10 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                             <Copy className="h-4 w-4 text-gray-600" />
                                                             Duplicate
                                                         </DropdownMenuItem>
-                                                        {/* Run Now for scheduled campaigns in the future */}
-                                                        {(c.status === 'scheduled' || (c.scheduled_at && countdown?.isFuture)) && (
+                                                        {/* Run Now only for scheduled campaigns */}
+                                                        {c.status === 'scheduled' && c.scheduled_at && (
                                                             <DropdownMenuItem
-                                                                onClick={() => { setOpenMenuId(null); handleRunNow(c); }}
+                                                                onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-green-700 hover:bg-green-50 cursor-pointer focus:bg-green-50 rounded-md mx-1"
                                                             >
                                                                 <Rocket className="h-4 w-4 text-green-600" />
@@ -497,6 +527,56 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                     )}
                 </SheetContent>
             </Sheet>
+
+            {/* Run Now Confirmation Modal */}
+            <AlertDialog open={runNowConfirm.show} onOpenChange={(open) => !open && setRunNowConfirm({ show: false, campaign: null })}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <Rocket className="h-5 w-5 text-green-600" />
+                            Run Campaign Now?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-3">
+                                <p>
+                                    You are about to start sending <strong>{runNowConfirm.campaign?.name}</strong> immediately.
+                                </p>
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
+                                    <div className="flex items-start gap-2">
+                                        <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                        <div>
+                                            <div className="font-medium">This action cannot be undone</div>
+                                            <div className="text-amber-700 mt-1">
+                                                Messages will be sent to <strong>{runNowConfirm.campaign?.estimated_count?.toLocaleString()}</strong> recipients.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={runningNow}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleRunNowConfirmed}
+                            disabled={runningNow}
+                            className="bg-green-600 hover:bg-green-700"
+                        >
+                            {runningNow ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    Starting...
+                                </>
+                            ) : (
+                                <>
+                                    <Rocket className="h-4 w-4 mr-2" />
+                                    Run Now
+                                </>
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 }

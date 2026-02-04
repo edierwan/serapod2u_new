@@ -151,26 +151,26 @@ export async function GET(request: NextRequest) {
 
       pointsBalance = balanceData?.current_balance || 0
     } else if (!userProfile.organization_id) {
-      // Independent Consumer - Use shop_points_ledger which includes all point sources
-      // (consumer_qr_scans + points_transactions for migration/manual adjustments)
-      const { data: ledgerData, error: ledgerError } = await supabaseAdmin
-        .from('shop_points_ledger')
-        .select('points_change')
-        .eq('consumer_id', user.id)
+      // Independent Consumer - Prefer the consolidated view used by Admin monitor
+      const { data: balanceData, error: balanceError } = await supabaseAdmin
+        .from('v_consumer_points_balance')
+        .select('current_balance')
+        .eq('user_id', user.id)
+        .maybeSingle()
 
-      if (!ledgerError && ledgerData && ledgerData.length > 0) {
-        pointsBalance = ledgerData.reduce((sum, row) => sum + (row.points_change || 0), 0)
-        console.log(`💰 Points balance for consumer ${user.id} from ledger: ${pointsBalance}`)
+      if (!balanceError && balanceData?.current_balance !== undefined && balanceData?.current_balance !== null) {
+        pointsBalance = balanceData.current_balance
+        console.log(`💰 Points balance for consumer ${user.id} from view: ${pointsBalance}`)
       } else {
-        // Fallback: Try v_consumer_points_balance view
-        const { data: balanceData } = await supabaseAdmin
-          .from('v_consumer_points_balance')
-          .select('current_balance')
-          .eq('user_id', user.id)
-          .maybeSingle()
+        // Fallback: Use shop_points_ledger if view is unavailable
+        const { data: ledgerData, error: ledgerError } = await supabaseAdmin
+          .from('shop_points_ledger')
+          .select('points_change')
+          .eq('consumer_id', user.id)
 
-        if (balanceData?.current_balance) {
-          pointsBalance = balanceData.current_balance
+        if (!ledgerError && ledgerData && ledgerData.length > 0) {
+          pointsBalance = ledgerData.reduce((sum, row) => sum + (row.points_change || 0), 0)
+          console.log(`💰 Points balance for consumer ${user.id} from ledger: ${pointsBalance}`)
         } else {
           // Final fallback: Query consumer_qr_scans directly
           const { data: scans } = await supabaseAdmin

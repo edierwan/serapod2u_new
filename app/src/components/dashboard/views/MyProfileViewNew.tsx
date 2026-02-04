@@ -98,6 +98,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   })
   const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
   const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
+  const [referralName, setReferralName] = useState('')
   const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const referralCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [banks, setBanks] = useState<MsiaBank[]>([])
@@ -265,34 +266,48 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     }
   }
 
-  const checkReferralPhone = async (phone: string) => {
-    if (!phone || !phone.trim()) {
+  const checkReferralPhone = async (value: string) => {
+    const rawValue = value?.trim() || ''
+    if (!rawValue) {
       setReferralCheckStatus('idle')
+      setReferralName('')
       return
     }
 
-    const validation = validatePhoneNumber(phone)
-    if (!validation.isValid) {
-      setReferralCheckStatus('invalid')
-      setValidationErrors(prev => ({ ...prev, referral_phone: 'Invalid phone format' }))
-      return
+    const isEmail = rawValue.includes('@')
+    if (isEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(rawValue)) {
+        setReferralCheckStatus('invalid')
+        setReferralName('')
+        setValidationErrors(prev => ({ ...prev, referral_phone: 'Invalid email format' }))
+        return
+      }
+    } else {
+      const validation = validatePhoneNumber(rawValue)
+      if (!validation.isValid) {
+        setReferralCheckStatus('invalid')
+        setReferralName('')
+        setValidationErrors(prev => ({ ...prev, referral_phone: 'Invalid phone format' }))
+        return
+      }
     }
 
-    const normalizedPhone = normalizePhone(phone)
+    const normalizedPhone = isEmail ? rawValue : normalizePhone(rawValue)
     setReferralCheckStatus('checking')
 
     try {
-      const { data: isValid, error } = await supabase
-        .rpc('check_serapod_user_phone', {
-          p_phone: normalizedPhone
-        })
+      const res = await fetch('/api/user/lookup-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: normalizedPhone })
+      })
 
-      if (error) throw error
+      const data = await res.json()
 
-        console.log("isValid", isValid)
-
-      if (isValid) {
+      if (res.ok && data?.success) {
         setReferralCheckStatus('valid')
+        setReferralName(data?.name || '')
         setValidationErrors(prev => {
           const newErrors = { ...prev }
           delete newErrors.referral_phone
@@ -300,11 +315,13 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         })
       } else {
         setReferralCheckStatus('invalid')
-        setValidationErrors(prev => ({ ...prev, referral_phone: 'Referral not found or not a Serapod representative' }))
+        setReferralName('')
+        setValidationErrors(prev => ({ ...prev, referral_phone: 'Referred user not found' }))
       }
     } catch (error) {
       console.error('Error checking referral:', error)
       setReferralCheckStatus('idle')
+      setReferralName('')
     }
   }
 
@@ -466,31 +483,47 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         }
       }
 
-      // Validate referral phone if provided
+      // Validate referred by if provided (phone or email)
       if (formData.referral_phone && formData.referral_phone.trim()) {
-        const validation = validatePhoneNumber(formData.referral_phone)
-        if (!validation.isValid) {
-          toast({
-            title: "Invalid Reference",
-            description: validation.error || "Please enter a valid phone number for the reference.",
-            variant: "destructive",
-          })
-          setIsSaving(false)
-          return
+        const rawReferral = formData.referral_phone.trim()
+        const isEmail = rawReferral.includes('@')
+        if (isEmail) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          if (!emailRegex.test(rawReferral)) {
+            toast({
+              title: "Invalid Referred By",
+              description: "Please enter a valid email for the referred user.",
+              variant: "destructive",
+            })
+            setIsSaving(false)
+            return
+          }
+        } else {
+          const validation = validatePhoneNumber(rawReferral)
+          if (!validation.isValid) {
+            toast({
+              title: "Invalid Referred By",
+              description: validation.error || "Please enter a valid phone number for the referred user.",
+              variant: "destructive",
+            })
+            setIsSaving(false)
+            return
+          }
         }
 
-        const normalizedReferral = normalizePhone(formData.referral_phone)
-        const { data: isValid, error: checkError } = await supabase
-          .rpc('check_serapod_user_phone', {
-            p_phone: normalizedReferral
-          })
-        
-        if (checkError) throw checkError
+        const lookupValue = isEmail ? rawReferral : normalizePhone(rawReferral)
+        const lookupRes = await fetch('/api/user/lookup-phone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: lookupValue })
+        })
 
-        if (!isValid) {
+        const lookupData = await lookupRes.json()
+
+        if (!lookupRes.ok || !lookupData?.success) {
           toast({
-            title: "Invalid Reference",
-            description: "Repsonible person not found or is not a Serapod representative.",
+            title: "Invalid Referred By",
+            description: "Referred user not found.",
             variant: "destructive",
           })
           setIsSaving(false)
@@ -899,7 +932,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   </div>
 
                   <div>
-                    <Label htmlFor="referral_phone" className="text-sm font-medium">Reference (Serapod Representative)</Label>
+                    <Label htmlFor="referral_phone" className="text-sm font-medium">Referred By</Label>
                     <div className="relative">
                       <Input
                         id="referral_phone"
@@ -908,13 +941,14 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                           const val = e.target.value
                           setFormData({ ...formData, referral_phone: val })
                           setReferralCheckStatus('idle')
+                          setReferralName('')
                           
                           if (referralCheckTimeoutRef.current) clearTimeout(referralCheckTimeoutRef.current)
                           referralCheckTimeoutRef.current = setTimeout(() => {
                              checkReferralPhone(val)
                           }, 500)
                         }}
-                        placeholder="Enter Serapod representative phone number"
+                        placeholder="Enter phone number or email"
                         disabled={isSaving}
                         className={`mt-1 pr-10 ${validationErrors.referral_phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                       />
@@ -924,7 +958,11 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                         {referralCheckStatus === 'invalid' && <XCircle className="h-4 w-4 text-red-500" />}
                       </div>
                     </div>
-                    {referralCheckStatus === 'valid' && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Valid Serapod Reference</p>}
+                    {referralCheckStatus === 'valid' && referralName && (
+                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" /> Representative found: {referralName}
+                      </p>
+                    )}
                     {validationErrors.referral_phone && <p className="text-xs text-red-500 mt-1">{validationErrors.referral_phone}</p>}
                   </div>
                   <div>

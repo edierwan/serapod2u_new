@@ -4,6 +4,8 @@ import { validateTemplate } from '@/lib/template-safety';
 
 export async function GET(request: Request) {
   const supabase = await createClient();
+  const url = new URL(request.url)
+  const language = url.searchParams.get('language')
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
@@ -24,11 +26,17 @@ export async function GET(request: Request) {
   }
 
   // Fetch system templates + org templates
-  const { data, error } = await supabase
+  let query = supabase
     .from('marketing_templates' as any)
     .select('*')
     .or(`org_id.eq.${orgId},is_system.eq.true`)
     .order('created_at', { ascending: false });
+
+  if (language) {
+    query = query.eq('language', language)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -57,7 +65,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, category, body: templateBody, variables, risk_score, risk_flags } = body;
+    const { name, category, body: templateBody, variables, risk_score, risk_flags, language } = body;
 
     // Server-side validation (never trust client)
     const validation = validateTemplate(templateBody || '');
@@ -84,7 +92,8 @@ export async function POST(request: Request) {
         link_domains: validation.metadata.linkDomains,
         personalization_tokens: validation.metadata.personalizationTokens,
         content_hash: validation.metadata.normalizedContentHash,
-        created_by: user.id
+        created_by: user.id,
+        language: (language || 'EN').toString().toUpperCase()
       })
       .select()
       .single();
