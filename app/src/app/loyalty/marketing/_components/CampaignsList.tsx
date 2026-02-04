@@ -342,8 +342,8 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                             <Copy className="h-4 w-4 text-gray-600" />
                                                             Duplicate
                                                         </DropdownMenuItem>
-                                                        {/* Run Now only for scheduled campaigns */}
-                                                        {c.status === 'scheduled' && c.scheduled_at && (
+                                                        {/* Run Now for scheduled or draft campaigns */}
+                                                        {(c.status === 'scheduled' || c.status === 'draft') && c.scheduled_at && (
                                                             <DropdownMenuItem
                                                                 onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-green-700 hover:bg-green-50 cursor-pointer focus:bg-green-50 rounded-md mx-1"

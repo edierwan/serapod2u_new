@@ -40,10 +40,10 @@ export async function POST(
             return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
         }
 
-        // Server-side validation: Only "scheduled" status campaigns can be run now
-        if (campaign.status !== 'scheduled') {
+        // Server-side validation: Only "scheduled" or "draft" status campaigns can be run now
+        if (campaign.status !== 'scheduled' && campaign.status !== 'draft') {
             return NextResponse.json({ 
-                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled campaigns can be run immediately.` 
+                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled or draft campaigns can be run immediately.` 
             }, { status: 400 });
         }
 
