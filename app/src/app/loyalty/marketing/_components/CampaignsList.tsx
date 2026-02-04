@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { Send, Loader2, RefreshCw, Archive, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight, Trash2, Edit, Eye, Clock, Rocket, AlertTriangle } from 'lucide-react';
+import { Send, Loader2, RefreshCw, Play, Pause, Copy, MoreHorizontal, FileText, ChevronLeft, ChevronRight, Trash2, Edit, Eye, Clock, Rocket, AlertTriangle } from 'lucide-react';
 import { format, differenceInSeconds } from "date-fns";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -134,9 +134,41 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     };
 
     const handleAction = async (action: string, id: string) => {
-        // Implement action logic
+        if (action === 'delete') {
+            try {
+                const res = await fetch(`/api/wa/marketing/campaigns/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (res.ok) {
+                    setCampaigns(prev => prev.filter(c => c.id !== id));
+                    if (selectedCampaign?.id === id) {
+                        setSelectedCampaign(null);
+                    }
+                    toast({
+                        title: 'Campaign deleted',
+                        description: 'The campaign has been removed.'
+                    });
+                } else {
+                    const error = await res.json().catch(() => ({}));
+                    toast({
+                        title: 'Delete failed',
+                        description: error.error || 'Unable to delete campaign.',
+                        variant: 'destructive'
+                    });
+                }
+            } catch (err) {
+                toast({
+                    title: 'Delete failed',
+                    description: 'Unable to delete campaign.',
+                    variant: 'destructive'
+                });
+            }
+            return;
+        }
+
+        // Implement action logic for other actions
         console.log(`Action ${action} on campaign ${id}`);
-        // API calls would go here
         handleRefresh();
     };
 
@@ -202,6 +234,12 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
             setSelectedCampaign(campaign);
         }
     };
+
+    useEffect(() => {
+        if (selectedCampaign) {
+            setOpenMenuId(null);
+        }
+    }, [selectedCampaign]);
 
     if (loading) {
         return (
@@ -269,7 +307,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                         const scheduledTime = c.scheduled_at ? format(new Date(c.scheduled_at), 'hh:mm:ss a') : null;
                                         
                                         return (
-                                        <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => setSelectedCampaign(c)}>
+                                        <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}>
                                             <TableCell className="text-muted-foreground font-mono text-sm">
                                                 {(currentPage - 1) * pageSize + index + 1}
                                             </TableCell>
@@ -372,11 +410,11 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                         )}
                                                         <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
                                                         <DropdownMenuItem
-                                                            onClick={() => { setOpenMenuId(null); handleAction('archive', c.id); }}
+                                                            onClick={() => { setOpenMenuId(null); handleAction('delete', c.id); }}
                                                             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
                                                         >
-                                                            <Archive className="h-4 w-4 text-red-600" />
-                                                            Archive
+                                                            <Trash2 className="h-4 w-4 text-red-600" />
+                                                            Delete
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
@@ -536,7 +574,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                             <Rocket className="h-5 w-5 text-green-600" />
                             Run Campaign Now?
                         </AlertDialogTitle>
-                        <AlertDialogDescription asChild>
+                        <AlertDialogDescription>
                             <div className="space-y-3">
                                 <p>
                                     You are about to start sending <strong>{runNowConfirm.campaign?.name}</strong> immediately.

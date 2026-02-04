@@ -81,7 +81,7 @@ const AlertDialogDescription = React.forwardRef<
   HTMLDivElement,
   AlertDialogDescriptionProps
 >(({ className, ...props }, ref) => (
-  <p
+  <div
     ref={ref}
     className={`text-sm text-gray-600 ${className}`}
     {...props}
