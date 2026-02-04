@@ -180,7 +180,12 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         // If enabling, use default channels from type
         const type = notificationTypes.find(t => t.event_code === eventCode)
         if (type) {
-          setting.channels_enabled = type.available_channels
+          // Default to only whatsapp if available
+          if (type.available_channels.includes('whatsapp')) {
+            setting.channels_enabled = ['whatsapp']
+          } else {
+            setting.channels_enabled = type.available_channels
+          }
         }
       }
       newSettings.set(eventCode, setting)
