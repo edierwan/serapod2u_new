@@ -1088,13 +1088,13 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button onClick={() => handleBulkAction('assign')}>
-                      Assign to Department
+                      Assign to {selectedDepartment?.dept_name || 'Department'}
                     </Button>
                     <Button variant="outline" onClick={() => handleBulkAction('move')}>
-                      Move to Department
+                      Move to {selectedDepartment?.dept_name || 'Department'}
                     </Button>
                     <Button variant="ghost" onClick={() => handleBulkAction('remove')}>
-                      Remove from Department
+                      Remove from {selectedDepartment?.dept_name || 'Department'}
                     </Button>
                   </div>
                 </div>
