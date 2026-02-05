@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Upload, X, Loader2, ImageIcon, AlertCircle } from 'lucide-react'
+import { Upload, X, Loader2, ImageIcon, AlertCircle, Building2, UserCheck } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
@@ -18,6 +18,19 @@ interface Bank {
   min_account_length: number
   max_account_length: number
   is_numeric_only: boolean
+}
+
+interface Department {
+  id: string
+  dept_code: string | null
+  dept_name: string
+  is_active: boolean
+}
+
+interface OrgUser {
+  id: string
+  full_name: string | null
+  email: string
 }
 
 // Image compression utility for avatars
@@ -90,6 +103,12 @@ interface UserDialogNewProps {
   open: boolean
   isSaving?: boolean
   currentUserRoleLevel?: number
+  lockOrganization?: boolean
+  defaultValues?: {
+    organization_id?: string
+    department_id?: string
+    role_code?: string
+  }
   onOpenChange: (open: boolean) => void
   onSave: (userData: Partial<User>, avatarFile?: File | null, resetPassword?: { password: string }) => void
 }
@@ -101,11 +120,15 @@ export default function UserDialogNew({
   open,
   isSaving = false,
   currentUserRoleLevel = 100,
+  lockOrganization = false,
+  defaultValues,
   onOpenChange,
   onSave
 }: UserDialogNewProps) {
   const { supabase } = useSupabaseAuth()
   const [banks, setBanks] = useState<Bank[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
   const [orgTypeFilter, setOrgTypeFilter] = useState<string>('')
   const [formData, setFormData] = useState<Partial<User> & {
     password?: string;
@@ -113,6 +136,8 @@ export default function UserDialogNew({
     bank_id?: string;
     bank_account_number?: string;
     bank_account_holder_name?: string;
+    department_id?: string;
+    manager_user_id?: string;
   }>(
     user || {
       email: '',
@@ -120,13 +145,15 @@ export default function UserDialogNew({
       phone: '',
       password: '',
       confirmPassword: '',
-      role_code: '',
-      organization_id: '',
+      role_code: defaultValues?.role_code || '',
+      organization_id: defaultValues?.organization_id || '',
       is_active: true,
       avatar_url: null,
       bank_id: '',
       bank_account_number: '',
-      bank_account_holder_name: ''
+      bank_account_holder_name: '',
+      department_id: defaultValues?.department_id || '',
+      manager_user_id: ''
     }
   )
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null)
@@ -172,6 +199,51 @@ export default function UserDialogNew({
       fetchBanks()
     }
   }, [open, supabase])
+
+  // Fetch departments and users when organization changes
+  useEffect(() => {
+    const fetchDepartmentsAndUsers = async () => {
+      const orgId = formData.organization_id
+      if (!orgId) {
+        setDepartments([])
+        setOrgUsers([])
+        return
+      }
+
+      // Fetch departments for the organization
+      const { data: deptData } = await supabase
+        .from('departments')
+        .select('id, dept_code, dept_name, is_active')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('dept_name', { ascending: true })
+
+      if (deptData) {
+        setDepartments(deptData)
+      }
+
+      // Fetch users for the organization (for manager picker)
+      const { data: userData } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('full_name', { ascending: true })
+
+      if (userData) {
+        // Exclude current user from manager options
+        const filteredUsers = user?.id
+          ? userData.filter((u: any) => u.id !== user.id)
+          : userData
+        setOrgUsers(filteredUsers)
+      }
+    }
+
+    if (open && formData.organization_id) {
+      fetchDepartmentsAndUsers()
+    }
+  }, [open, formData.organization_id, supabase, user?.id])
 
   // Check if email exists in database
   const checkEmailAvailability = async (email: string) => {
@@ -309,7 +381,11 @@ export default function UserDialogNew({
   useEffect(() => {
     if (open) {
       if (user) {
-        setFormData(user)
+        setFormData({
+          ...user,
+          department_id: (user as any).department_id || '',
+          manager_user_id: (user as any).manager_user_id || ''
+        })
         // Clean avatar URL (remove cache-busting params for display)
         setAvatarPreview(user.avatar_url ? user.avatar_url.split('?')[0] : null)
       } else {
@@ -325,7 +401,9 @@ export default function UserDialogNew({
           avatar_url: null,
           bank_id: '',
           bank_account_number: '',
-          bank_account_holder_name: ''
+          bank_account_holder_name: '',
+          department_id: '',
+          manager_user_id: ''
         })
         setAvatarPreview(null)
       }
@@ -880,41 +958,52 @@ export default function UserDialogNew({
                 <Label htmlFor="organization_id">Organization</Label>
 
                 {/* Organization Type Filter */}
-                <div className="mb-2">
-                  <Select
-                    value={orgTypeFilter}
-                    onValueChange={(value) => {
-                      setOrgTypeFilter(value)
-                      // Clear selected organization if it doesn't match the new type
-                      if (value && value !== 'ALL' && formData.organization_id) {
-                        const selectedOrg = organizations.find(o => o.id === formData.organization_id)
-                        if (selectedOrg && selectedOrg.org_type_code !== value) {
-                          handleInputChange('organization_id', '')
+                {!lockOrganization && (
+                  <div className="mb-2">
+                    <Select
+                      value={orgTypeFilter}
+                      onValueChange={(value) => {
+                        setOrgTypeFilter(value)
+                        // Clear selected organization if it doesn't match the new type
+                        if (value && value !== 'ALL' && formData.organization_id) {
+                          const selectedOrg = organizations.find(o => o.id === formData.organization_id)
+                          if (selectedOrg && selectedOrg.org_type_code !== value) {
+                            handleInputChange('organization_id', '')
+                          }
                         }
-                      }
-                    }}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Filter by Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All Types</SelectItem>
-                      {Array.from(new Set(organizations.map(org => org.org_type_code)))
-                        .filter((t): t is string => !!t)
-                        .map(typeCode => (
-                          <SelectItem key={typeCode} value={typeCode}>
-                            {getOrgTypeName(typeCode)}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                      }}
+                      disabled={isSaving}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Filter by Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Types</SelectItem>
+                        {Array.from(new Set(organizations.map(org => org.org_type_code)))
+                          .filter((t): t is string => !!t)
+                          .map(typeCode => (
+                            <SelectItem key={typeCode} value={typeCode}>
+                              {getOrgTypeName(typeCode)}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <Select
                   value={formData.organization_id || ''}
-                  onValueChange={(value) => handleInputChange('organization_id', value)}
-                  disabled={isSaving}
+                  onValueChange={(value) => {
+                    handleInputChange('organization_id', value)
+                    // Clear department and manager when org changes
+                    setFormData(prev => ({
+                      ...prev,
+                      organization_id: value,
+                      department_id: '',
+                      manager_user_id: ''
+                    }))
+                  }}
+                  disabled={isSaving || lockOrganization}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select an organization" />
@@ -931,6 +1020,61 @@ export default function UserDialogNew({
                 </Select>
               </div>
             </div>
+
+            {/* Department & Reporting Line (HR Foundation) */}
+            {formData.organization_id && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="department_id" className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-gray-500" />
+                    Department
+                  </Label>
+                  <Select
+                    value={formData.department_id || ''}
+                    onValueChange={(value) => handleInputChange('department_id', value === 'none' ? '' : value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Department</SelectItem>
+                      {departments.map(dept => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.dept_code ? `${dept.dept_code} - ` : ''}{dept.dept_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500">Assign user to a department for org chart</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="manager_user_id" className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-gray-500" />
+                    Reports To (Manager)
+                  </Label>
+                  <Select
+                    value={formData.manager_user_id || ''}
+                    onValueChange={(value) => handleInputChange('manager_user_id', value === 'none' ? '' : value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select manager (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Manager</SelectItem>
+                      {orgUsers.map(u => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.full_name || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500">Direct supervisor for approval routing</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Bank Account (Shop Only) */}

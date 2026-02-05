@@ -20,6 +20,7 @@ import DocumentTemplateTab from './DocumentTemplateTab'
 import DocSequenceTab from './DocSequenceTab'
 import AccountingTab from './AccountingTab'
 import AuthorizationTab from './AuthorizationTab'
+import DepartmentsTab from './DepartmentsTab'
 import {
   Settings,
   User,
@@ -114,6 +115,7 @@ interface OrganizationSettings {
 
 export default function SettingsView({ userProfile }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState('profile')
+  const [orgSubTab, setOrgSubTab] = useState<'info' | 'departments'>('info')
   const [loading, setLoading] = useState(false)
   const { theme, setTheme } = useTheme()
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -737,8 +739,43 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
           </Card>
         )}
 
-        {/* Organization Settings */}
+        {/* Organization Settings with Sub-tabs */}
         {activeTab === 'organization' && (
+          <div className="space-y-6">
+            {/* Sub-tab navigation for Organization */}
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-4">
+                <button
+                  onClick={() => setOrgSubTab('info')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    orgSubTab === 'info'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4" />
+                    Organization Information
+                  </div>
+                </button>
+                <button
+                  onClick={() => setOrgSubTab('departments')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    orgSubTab === 'departments'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Database className="w-4 h-4" />
+                    Departments
+                  </div>
+                </button>
+              </nav>
+            </div>
+
+            {/* Organization Information Sub-tab */}
+            {orgSubTab === 'info' && (
           <Card>
             <CardHeader>
               <CardTitle>Organization Information</CardTitle>
@@ -1062,10 +1099,18 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
               )}
             </CardContent>
           </Card>
-        )}
+            )}
+
+            {/* Departments Sub-tab */}
+            {orgSubTab === 'departments' && (
+              <DepartmentsTab
+                organizationId={userProfile.organizations.id}
+                canEdit={canEditOrganization}
+              />
+            )}
 
         {/* System Branding Settings (Only for Super Admin) */}
-        {activeTab === 'organization' && userProfile.roles.role_level === 1 && (
+        {orgSubTab === 'info' && userProfile.roles.role_level === 1 && (
           <Card className="mt-6 border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
             <CardHeader className="border-b border-blue-200">
               <CardTitle className="flex items-center gap-2">
@@ -1463,6 +1508,8 @@ export default function SettingsView({ userProfile }: SettingsViewProps) {
 
             </CardContent>
           </Card>
+        )}
+          </div>
         )}
 
         {/* Security Settings - Placeholder for future security features */}

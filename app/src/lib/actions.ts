@@ -109,6 +109,8 @@ export async function updateUserWithAuth(userId: string, userData: {
   bank_id?: string
   bank_account_number?: string
   bank_account_holder_name?: string
+  department_id?: string | null
+  manager_user_id?: string | null
 }, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()

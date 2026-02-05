@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   User, Mail, Building2, Shield, Calendar, Phone, Edit2, Save, X,
-  Loader2, Camera, CheckCircle, XCircle, Clock, MapPin, AlertCircle, CreditCard, Landmark, Home
+  Loader2, Camera, CheckCircle, XCircle, Clock, MapPin, AlertCircle, CreditCard, Landmark, Home, UserCheck, Briefcase
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import SignatureUpload from '@/components/profile/SignatureUpload'
@@ -45,6 +45,9 @@ interface UserProfile {
   bank_account_number: string | null
   bank_account_holder_name: string | null
   referral_phone: string | null
+  // HR Foundation fields
+  department_id?: string | null
+  manager_user_id?: string | null
   organizations?: {
     id: string
     org_name: string
@@ -59,6 +62,17 @@ interface UserProfile {
     id: string
     short_name: string
   }
+  // Joined data for display
+  departments?: {
+    id: string
+    dept_code: string | null
+    dept_name: string
+  } | null
+  manager?: {
+    id: string
+    full_name: string | null
+    email: string
+  } | null
 }
 
 interface MsiaBank {
@@ -152,7 +166,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         targetUserId = user.id
       }
 
-      // Fetch complete user profile with related data
+      // Fetch complete user profile with related data including HR Foundation fields
       const { data: profile, error } = await supabase
         .from('users')
         .select(`
@@ -170,6 +184,16 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           msia_banks:bank_id (
             id,
             short_name
+          ),
+          departments:department_id (
+            id,
+            dept_code,
+            dept_name
+          ),
+          manager:manager_user_id (
+            id,
+            full_name,
+            email
           )
         `)
         .eq('id', targetUserId)
@@ -189,7 +213,13 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             : (profile as any).roles,
           msia_banks: Array.isArray((profile as any).msia_banks)
             ? (profile as any).msia_banks[0]
-            : (profile as any).msia_banks
+            : (profile as any).msia_banks,
+          departments: Array.isArray((profile as any).departments)
+            ? (profile as any).departments[0]
+            : (profile as any).departments,
+          manager: Array.isArray((profile as any).manager)
+            ? (profile as any).manager[0]
+            : (profile as any).manager
         }
 
         setUserProfile(transformedProfile)
@@ -1263,6 +1293,50 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     {getOrgTypeName(userProfile.organizations?.org_type_code || '')}
                   </Badge>
                 </div>
+              </div>
+            </div>
+
+            {/* Department (HR Foundation) */}
+            <div className="flex items-start gap-3 text-gray-700">
+              <Briefcase className="h-5 w-5 text-gray-400 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-500 font-medium">Department</p>
+                {userProfile.departments ? (
+                  <>
+                    <p className="text-base font-medium text-gray-900 mt-1">
+                      {userProfile.departments.dept_name}
+                    </p>
+                    {userProfile.departments.dept_code && (
+                      <Badge variant="outline" className="text-xs mt-1">
+                        {userProfile.departments.dept_code}
+                      </Badge>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
+                )}
+              </div>
+            </div>
+
+            {/* Reports To (HR Foundation) */}
+            <div className="flex items-start gap-3 text-gray-700">
+              <UserCheck className="h-5 w-5 text-gray-400 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-500 font-medium">Reports To</p>
+                {userProfile.manager ? (
+                  <>
+                    <p className="text-base font-medium text-gray-900 mt-1">
+                      {userProfile.manager.full_name || userProfile.manager.email}
+                    </p>
+                    {userProfile.manager.full_name && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {userProfile.manager.email}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
+                )}
               </div>
             </div>
           </CardContent>

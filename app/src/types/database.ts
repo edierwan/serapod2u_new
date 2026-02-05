@@ -239,6 +239,71 @@ export type Database = {
           },
         ]
       }
+      departments: {
+        Row: {
+          id: string
+          organization_id: string
+          dept_code: string | null
+          dept_name: string
+          manager_user_id: string | null
+          sort_order: number | null
+          is_active: boolean
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          dept_code?: string | null
+          dept_name: string
+          manager_user_id?: string | null
+          sort_order?: number | null
+          is_active?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          dept_code?: string | null
+          dept_name?: string
+          manager_user_id?: string | null
+          sort_order?: number | null
+          is_active?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "departments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "departments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_hq_inventory"
+            referencedColumns: ["hq_org_id"]
+          },
+          {
+            foreignKeyName: "departments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_org_hierarchy_validation"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "departments_manager_user_id_fkey"
+            columns: ["manager_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       consumer_activations: {
         Row: {
           activated_at: string | null
@@ -6433,6 +6498,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string | null
+          department_id: string | null
           email: string
           email_verified_at: string | null
           full_name: string | null
@@ -6441,6 +6507,7 @@ export type Database = {
           is_verified: boolean | null
           last_login_at: string | null
           last_login_ip: unknown
+          manager_user_id: string | null
           organization_id: string | null
           phone: string | null
           phone_verified_at: string | null
@@ -6452,6 +6519,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           created_at?: string | null
+          department_id?: string | null
           email: string
           email_verified_at?: string | null
           full_name?: string | null
@@ -6460,6 +6528,7 @@ export type Database = {
           is_verified?: boolean | null
           last_login_at?: string | null
           last_login_ip?: unknown
+          manager_user_id?: string | null
           organization_id?: string | null
           phone?: string | null
           phone_verified_at?: string | null
@@ -6471,6 +6540,7 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           created_at?: string | null
+          department_id?: string | null
           email?: string
           email_verified_at?: string | null
           full_name?: string | null
@@ -6479,6 +6549,7 @@ export type Database = {
           is_verified?: boolean | null
           last_login_at?: string | null
           last_login_ip?: unknown
+          manager_user_id?: string | null
           organization_id?: string | null
           phone?: string | null
           phone_verified_at?: string | null
@@ -6488,6 +6559,20 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_users_department"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_users_manager"
+            columns: ["manager_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fk_users_organization"
             columns: ["organization_id"]
@@ -7858,6 +7943,15 @@ export type Database = {
       format_doc_no_from_order: {
         Args: { p_order_no: string; p_prefix: string }
         Returns: string
+      }
+      get_next_approver: {
+        Args: { p_user_id: string }
+        Returns: {
+          approver_user_id: string
+          approver_type: string
+          approver_name: string | null
+          approver_email: string
+        }
       }
       generate_doc_number: {
         Args: { p_company_id: string; p_order_type: string; p_prefix: string }

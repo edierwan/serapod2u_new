@@ -11,6 +11,21 @@ export interface User {
   updated_at: string
   avatar_url: string | null
   last_login_at: string | null
+  // HR Foundation fields
+  department_id?: string | null
+  manager_user_id?: string | null
+}
+
+export interface Department {
+  id: string
+  organization_id: string
+  dept_code: string | null
+  dept_name: string
+  manager_user_id: string | null
+  sort_order: number | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface UserFormData extends Omit<User, 'created_at' | 'updated_at' | 'last_login_at'> {
