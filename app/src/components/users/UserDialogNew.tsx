@@ -677,8 +677,17 @@ export default function UserDialogNew({
 
   if (!open) return null
 
+  // Determine if Department & Reports To fields should be shown
+  // Only for roles with level 1, 10, 20, 30, 40 and when org is Serapod Technology (org_code contains 'SERA')
+  const selectedRole = roles.find(r => r.role_code === formData.role_code)
+  const selectedRoleLevel = selectedRole?.role_level
+  const eligibleRoleLevels = [1, 10, 20, 30, 40]
+  const isEligibleRole = selectedRoleLevel !== undefined && eligibleRoleLevels.includes(selectedRoleLevel)
+  const isSeraOrg = selectedOrg?.org_code?.toUpperCase().includes('SERA') || selectedOrg?.org_name?.toLowerCase().includes('serapod')
+  const showDepartmentFields = formData.organization_id && isEligibleRole && isSeraOrg
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg max-h-screen overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-bold text-gray-900">
@@ -1022,7 +1031,8 @@ export default function UserDialogNew({
             </div>
 
             {/* Department & Reporting Line (HR Foundation) */}
-            {formData.organization_id && (
+            {/* Only show for roles 1, 10, 20, 30, 40 and Serapod Technology org */}
+            {showDepartmentFields && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                 <div className="space-y-2">
                   <Label htmlFor="department_id" className="flex items-center gap-2">

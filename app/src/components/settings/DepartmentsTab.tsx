@@ -1104,28 +1104,26 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
         </DialogContent>
       </Dialog>
 
-      {/* Create User Dialog */}
-      {createUserOpen && (
-        <UserDialogNew
-          user={null}
-          roles={roles as any[]}
-          organizations={currentOrg ? [currentOrg] : []}
-          open={createUserOpen}
-          isSaving={creatingUser}
-          currentUserRoleLevel={(userProfile as any)?.roles?.role_level || 100}
-          lockOrganization={true}
-          defaultValues={{
-            organization_id: organizationId,
-            department_id: selectedDepartment?.id
-          }}
-          onOpenChange={setCreateUserOpen}
-          onSave={handleSaveUser}
-        />
-      )}
+      {/* Create User Dialog - rendered outside of the members modal to avoid z-index issues */}
+      <UserDialogNew
+        user={null}
+        roles={roles as any[]}
+        organizations={currentOrg ? [currentOrg] : []}
+        open={createUserOpen}
+        isSaving={creatingUser}
+        currentUserRoleLevel={(userProfile as any)?.roles?.role_level || 100}
+        lockOrganization={true}
+        defaultValues={{
+          organization_id: organizationId,
+          department_id: selectedDepartment?.id
+        }}
+        onOpenChange={setCreateUserOpen}
+        onSave={handleSaveUser}
+      />
 
-      {/* Bulk confirm dialog */}
+      {/* Bulk confirm dialog - higher z-index to appear above other dialogs */}
       <AlertDialog open={!!bulkAction} onOpenChange={() => setBulkAction(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <ArrowRight className="h-5 w-5 text-blue-600" />
