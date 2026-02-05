@@ -97,7 +97,23 @@ export async function GET(request: NextRequest) {
       if ((mfgOrg as any)?.warranty_bonus) warrantyBonusPercent = Number((mfgOrg as any).warranty_bonus)
     }
 
-    let totalProcessed = batch.receiving_progress || 0
+    // For resumable processing: get ACTUAL count of already-received codes from DB
+    // This handles scenarios where progress counter is out of sync (e.g., worker crash)
+    const { count: actualReceivedCount } = await supabase
+      .from('qr_codes')
+      .select('*', { count: 'exact', head: true })
+      .eq('batch_id', batch.id)
+      .eq('status', 'received_warehouse')
+      .eq('is_buffer', false)
+    
+    let totalProcessed = actualReceivedCount || 0
+    
+    // Log if there's a mismatch between stored and actual progress
+    if (batch.receiving_progress && Math.abs(totalProcessed - batch.receiving_progress) > 100) {
+      console.log(`⚠️ [${workerId}] Progress mismatch detected: stored=${batch.receiving_progress}, actual=${totalProcessed}`)
+    }
+    
+    console.log(`📊 [${workerId}] Starting with actual progress: ${totalProcessed} already received`)
 
     // Step 3: Process Master Codes (if not done)
     const masterResult = await processMasterCodes(supabase, batch.id, warehouseOrgId, manufacturerOrgId, companyId, orderId, receivedBy)
@@ -143,17 +159,45 @@ export async function GET(request: NextRequest) {
       }
 
       // Fetch next chunk of unique codes (only IDs and variant_id for counting)
-      const { data: uniqueCodes, error: fetchError } = await supabase
-        .from('qr_codes')
-        .select('id, variant_id')
-        .eq('batch_id', batch.id)
-        .eq('status', 'ready_to_ship')
-        .eq('is_buffer', false)
-        .order('id', { ascending: true })
-        .limit(CHUNK_SIZE)
+      // Retry logic for transient errors (e.g., statement timeouts)
+      let uniqueCodes: any[] | null = null
+      let fetchError: any = null
+      
+      for (let fetchRetry = 0; fetchRetry < MAX_RETRIES; fetchRetry++) {
+        if (fetchRetry > 0) {
+          const delay = RETRY_DELAY_MS * Math.pow(2, fetchRetry - 1)
+          console.log(`  🔄 [${workerId}] Fetch retry ${fetchRetry}/${MAX_RETRIES} after ${delay}ms delay...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+        
+        const result = await supabase
+          .from('qr_codes')
+          .select('id, variant_id')
+          .eq('batch_id', batch.id)
+          .eq('status', 'ready_to_ship')
+          .eq('is_buffer', false)
+          .order('id', { ascending: true })
+          .limit(CHUNK_SIZE)
+        
+        if (!result.error) {
+          uniqueCodes = result.data
+          fetchError = null
+          break
+        }
+        
+        fetchError = result.error
+        
+        // For statement timeout, retry; for other errors, break
+        if (fetchError.code !== '57014' && !fetchError.message?.includes('timeout')) {
+          break
+        }
+        console.warn(`  ⚠️ [${workerId}] Statement timeout on fetch (retry ${fetchRetry + 1}/${MAX_RETRIES})`)
+      }
 
       if (fetchError) {
-        console.error(`❌ [${workerId}] Error fetching codes:`, fetchError)
+        console.error(`❌ [${workerId}] Error fetching codes after ${MAX_RETRIES} retries:`, fetchError)
+        // Update progress before marking failed so we don't lose track
+        await updateHeartbeat(supabase, batch.id, workerId, totalProcessed)
         await markFailed(supabase, batch.id, `Fetch error: ${fetchError.message}`)
         return NextResponse.json({ error: fetchError.message }, { status: 500 })
       }
@@ -492,13 +536,15 @@ async function updateHeartbeat(supabase: any, batchId: string, workerId: string,
 
 /**
  * Mark batch as failed with error message
+ * Preserves progress and heartbeat for debugging
  */
 async function markFailed(supabase: any, batchId: string, error: string) {
   await supabase
     .from('qr_batches')
     .update({ 
       receiving_status: 'failed',
-      last_error: error.substring(0, 500) // Truncate long errors
+      receiving_heartbeat: new Date().toISOString(), // Update heartbeat on failure for tracking
+      last_error: `${error.substring(0, 450)} [${new Date().toISOString()}]`
     })
     .eq('id', batchId)
 }
