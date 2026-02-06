@@ -8,6 +8,7 @@ export interface MenuAccessRule {
   maxRoleLevel?: number  // Maximum role level allowed
   allowedEmails?: string[]  // Specific email addresses that can access this menu
   requiredPermission?: string // Permission required to access this menu
+  requiredPermissionsAny?: string[] // Any of these permissions grants access
 }
 
 export interface MenuItem {
@@ -92,16 +93,21 @@ export function hasMenuAccess(
   }
 
   // 1. Permission Check
-  // Only enforce if requiredPermission is set
+  // Only enforce if requiredPermission/requiredPermissionsAny is set
   let permOk = true
-  if (access.requiredPermission) {
-    console.log('[hasMenuAccess] Checking required permission:', access.requiredPermission)
+  if (access.requiredPermission || (access.requiredPermissionsAny && access.requiredPermissionsAny.length > 0)) {
     if (checkPermission) {
-      permOk = checkPermission(access.requiredPermission)
-      console.log('[hasMenuAccess] Permission result:', access.requiredPermission, '=', permOk)
+      if (access.requiredPermission) {
+        console.log('[hasMenuAccess] Checking required permission:', access.requiredPermission)
+        permOk = checkPermission(access.requiredPermission)
+        console.log('[hasMenuAccess] Permission result:', access.requiredPermission, '=', permOk)
+      }
+
+      if (!permOk && access.requiredPermissionsAny && access.requiredPermissionsAny.length > 0) {
+        permOk = access.requiredPermissionsAny.some(permission => checkPermission(permission))
+      }
     } else {
-      // If permission required but no check function, deny
-      console.log('[hasMenuAccess] ✗ No checkPermission function, denying:', access.requiredPermission)
+      console.log('[hasMenuAccess] ✗ No checkPermission function, denying permissions')
       permOk = false
     }
   }
@@ -135,15 +141,15 @@ export function hasMenuAccess(
   }
 
   const isVisible = permOk && orgOk && roleCodeOk && levelOk
-  
+
   // Debug log for troubleshooting access denials
   if (!isVisible && access.requiredPermission === 'view_users') {
-      console.log('[hasMenuAccess] Denied user view_users access. Status:', {
-          permOk, orgOk, roleCodeOk, levelOk,
-          userRoleLevel,
-          userOrgType,
-          requiredPermission: access.requiredPermission
-      })
+    console.log('[hasMenuAccess] Denied user view_users access. Status:', {
+      permOk, orgOk, roleCodeOk, levelOk,
+      userRoleLevel,
+      userOrgType,
+      requiredPermission: access.requiredPermission
+    })
   }
 
   return isVisible

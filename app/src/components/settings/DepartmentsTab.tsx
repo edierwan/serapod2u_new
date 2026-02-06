@@ -54,7 +54,8 @@ import {
   AlertTriangle,
   Search,
   UserX,
-  ArrowRight
+  ArrowRight,
+  Network
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import UserDialogNew from '@/components/users/UserDialogNew'
@@ -82,10 +83,12 @@ import {
   type CreateDepartmentPayload,
   type UpdateDepartmentPayload
 } from '@/lib/actions/departments'
+import DepartmentDetailDrawer from './DepartmentDetailDrawer'
 
 interface DepartmentsTabProps {
   organizationId: string
   canEdit: boolean
+  onNavigateToOrgChart?: () => void
 }
 
 interface OrgUser {
@@ -94,7 +97,7 @@ interface OrgUser {
   email: string
 }
 
-export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsTabProps) {
+export default function DepartmentsTab({ organizationId, canEdit, onNavigateToOrgChart }: DepartmentsTabProps) {
   const { isReady, supabase, userProfile } = useSupabaseAuth()
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null)
   const [departments, setDepartments] = useState<Department[]>([])
@@ -119,13 +122,18 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
   const [bulkAction, setBulkAction] = useState<{ type: 'assign' | 'move' | 'remove'; count: number } | null>(null)
   const [createUserOpen, setCreateUserOpen] = useState(false)
   const [creatingUser, setCreatingUser] = useState(false)
+  
+  // Department Detail Drawer state
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
+  const [detailDepartmentId, setDetailDepartmentId] = useState<string | null>(null)
 
   // Form state
   const [formData, setFormData] = useState({
     dept_code: '',
     dept_name: '',
     manager_user_id: '',
-    sort_order: ''
+    sort_order: '',
+    parent_department_id: ''
   })
 
   const { toast } = useToast()
@@ -221,7 +229,8 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
         dept_code: dept.dept_code || '',
         dept_name: dept.dept_name,
         manager_user_id: dept.manager_user_id || '',
-        sort_order: dept.sort_order?.toString() || ''
+        sort_order: dept.sort_order?.toString() || '',
+        parent_department_id: (dept as any).parent_department_id || ''
       })
     } else {
       setEditingDept(null)
@@ -229,7 +238,8 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
         dept_code: '',
         dept_name: '',
         manager_user_id: '',
-        sort_order: ''
+        sort_order: '',
+        parent_department_id: ''
       })
     }
     setDialogOpen(true)
@@ -254,7 +264,8 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
           dept_code: formData.dept_code || null,
           dept_name: formData.dept_name,
           manager_user_id: formData.manager_user_id || null,
-          sort_order: formData.sort_order ? parseInt(formData.sort_order) : null
+          sort_order: formData.sort_order ? parseInt(formData.sort_order) : null,
+          parent_department_id: formData.parent_department_id || null
         }
 
         const result = await updateDepartment(editingDept.id, payload)
@@ -279,7 +290,8 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
           dept_code: formData.dept_code || null,
           dept_name: formData.dept_name,
           manager_user_id: formData.manager_user_id || null,
-          sort_order: formData.sort_order ? parseInt(formData.sort_order) : null
+          sort_order: formData.sort_order ? parseInt(formData.sort_order) : null,
+          parent_department_id: formData.parent_department_id || null
         }
 
         const result = await createDepartment(organizationId, payload)
@@ -642,7 +654,7 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
                     <TableHead className="text-center w-[90px]">Users</TableHead>
                     <TableHead className="text-center w-[80px]">Order</TableHead>
                     <TableHead className="text-center w-[80px]">Status</TableHead>
-                    {canEdit && <TableHead className="w-[140px]">Actions</TableHead>}
+                    {canEdit && <TableHead className="w-[180px]">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -651,7 +663,17 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
                       <TableCell className="font-mono text-sm">
                         {dept.dept_code || '-'}
                       </TableCell>
-                      <TableCell className="font-medium">{dept.dept_name}</TableCell>
+                      <TableCell>
+                        <button
+                          className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                          onClick={() => {
+                            setDetailDepartmentId(dept.id)
+                            setDetailDrawerOpen(true)
+                          }}
+                        >
+                          {dept.dept_name}
+                        </button>
+                      </TableCell>
                       <TableCell>
                         {dept.manager ? (
                           <div className="flex items-center gap-2">
@@ -720,6 +742,16 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
                                 <ToggleLeft className="h-4 w-4 text-gray-400" />
                               )}
                             </Button>
+                            {onNavigateToOrgChart && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onNavigateToOrgChart()}
+                                title="View in Org Chart"
+                              >
+                                <Network className="h-4 w-4 text-blue-500" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       )}
@@ -820,6 +852,37 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
               </Select>
               <p className="text-xs text-gray-500">
                 The manager will be used as fallback approver for users in this department
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="parent_department">
+                Parent Department
+                <span className="text-gray-400 text-xs ml-1">(optional - for org chart hierarchy)</span>
+              </Label>
+              <Select
+                value={formData.parent_department_id}
+                onValueChange={(value) => setFormData({ ...formData, parent_department_id: value === 'none' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select parent department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No parent (root level)</SelectItem>
+                  {departments
+                    .filter(d => d.is_active && d.id !== editingDept?.id)
+                    .map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <span>{dept.dept_code ? `${dept.dept_code} - ` : ''}{dept.dept_name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Set a parent to create department hierarchy in the org chart
               </p>
             </div>
           </div>
@@ -1180,6 +1243,20 @@ export default function DepartmentsTab({ organizationId, canEdit }: DepartmentsT
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Department Detail Drawer */}
+      <DepartmentDetailDrawer
+        departmentId={detailDepartmentId}
+        organizationId={organizationId}
+        open={detailDrawerOpen}
+        onClose={() => {
+          setDetailDrawerOpen(false)
+          setDetailDepartmentId(null)
+        }}
+        canEdit={canEdit}
+        onNavigateToChart={onNavigateToOrgChart}
+        onRefresh={loadDepartments}
+      />
     </div>
   )
 }

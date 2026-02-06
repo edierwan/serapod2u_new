@@ -27,7 +27,7 @@ const DEFAULT_PERMISSIONS: Record<number, string[]> = {
         'view_accounting', 'manage_chart_of_accounts', 'post_journal_entries', 'view_gl_reports', 'manage_fiscal_years',
         'view_organizations', 'create_organizations', 'edit_organizations',
         'view_users', 'create_users', 'edit_users', 'delete_users', 'manage_roles',
-        'view_settings', 'edit_org_settings', 'manage_notifications', 'data_migration',
+        'view_settings', 'edit_org_settings', 'manage_org_chart', 'manage_notifications', 'data_migration',
     ],
     20: [
         'view_dashboard', 'view_reports', 'export_reports',
@@ -39,7 +39,7 @@ const DEFAULT_PERMISSIONS: Record<number, string[]> = {
         'view_accounting', 'manage_chart_of_accounts', 'post_journal_entries', 'view_gl_reports', 'manage_fiscal_years',
         'view_organizations', 'create_organizations', 'edit_organizations',
         'view_users', 'create_users', 'edit_users',
-        'view_settings', 'edit_org_settings', 'manage_notifications', 'data_migration',
+        'view_settings', 'edit_org_settings', 'manage_org_chart', 'manage_notifications', 'data_migration',
     ],
     30: [
         'view_dashboard', 'view_reports',
@@ -73,10 +73,29 @@ const DEFAULT_PERMISSIONS: Record<number, string[]> = {
     ],
 }
 
-export function usePermissions(roleLevel?: number, roleCode?: string): UsePermissionsResult {
+export function usePermissions(roleLevel?: number, roleCode?: string, departmentId?: string | null): UsePermissionsResult {
     const { supabase, isReady } = useSupabaseAuth()
     const [permissions, setPermissions] = useState<RolePermissions>({})
     const [loading, setLoading] = useState(true)
+    const [deniedPermissions, setDeniedPermissions] = useState<Set<string>>(new Set())
+
+    const applyDepartmentOverrides = useCallback((basePerms: RolePermissions, overrides: any) => {
+        const allow = Array.isArray(overrides?.allow) ? overrides.allow.filter(Boolean) : []
+        const deny = Array.isArray(overrides?.deny) ? overrides.deny.filter(Boolean) : []
+        const allowSet = new Set<string>(allow)
+        const denySet = new Set<string>(deny)
+
+        const merged: RolePermissions = { ...basePerms }
+        allowSet.forEach(key => {
+            merged[key] = true
+        })
+        denySet.forEach(key => {
+            merged[key] = false
+        })
+
+        setDeniedPermissions(denySet)
+        return merged
+    }, [])
 
     const loadPermissions = useCallback(async () => {
         if (!isReady || roleLevel === undefined) {
@@ -114,7 +133,18 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
                 } else {
                     defaults.forEach(p => perms[p] = true)
                 }
-                setPermissions(perms)
+                let merged = perms
+                if (departmentId) {
+                    const { data: deptData } = await supabase
+                        .from('departments')
+                        .select('permission_overrides')
+                        .eq('id', departmentId)
+                        .single()
+                    merged = applyDepartmentOverrides(perms, deptData?.permission_overrides)
+                } else {
+                    setDeniedPermissions(new Set())
+                }
+                setPermissions(merged)
             } else {
                 // Use database permissions with proper type handling
                 const dbPerms = roleData.permissions
@@ -128,13 +158,35 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
                     })
                     console.log('[usePermissions] Valid permissions set:', validPerms)
 
-                    setPermissions(validPerms)
+                    let merged = validPerms
+                    if (departmentId) {
+                        const { data: deptData } = await supabase
+                            .from('departments')
+                            .select('permission_overrides')
+                            .eq('id', departmentId)
+                            .single()
+                        merged = applyDepartmentOverrides(validPerms, deptData?.permission_overrides)
+                    } else {
+                        setDeniedPermissions(new Set())
+                    }
+                    setPermissions(merged)
                 } else {
                     // Fall back to defaults
                     const defaults = DEFAULT_PERMISSIONS[roleLevel] || DEFAULT_PERMISSIONS[50]
                     const fallbackPerms: RolePermissions = {}
                     defaults.forEach(p => fallbackPerms[p] = true)
-                    setPermissions(fallbackPerms)
+                    let merged = fallbackPerms
+                    if (departmentId) {
+                        const { data: deptData } = await supabase
+                            .from('departments')
+                            .select('permission_overrides')
+                            .eq('id', departmentId)
+                            .single()
+                        merged = applyDepartmentOverrides(fallbackPerms, deptData?.permission_overrides)
+                    } else {
+                        setDeniedPermissions(new Set())
+                    }
+                    setPermissions(merged)
                 }
             }
         } catch (err) {
@@ -143,11 +195,22 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
             const defaults = DEFAULT_PERMISSIONS[roleLevel] || DEFAULT_PERMISSIONS[50]
             const perms: RolePermissions = {}
             defaults.forEach(p => perms[p] = true)
-            setPermissions(perms)
+            let merged = perms
+            if (departmentId) {
+                const { data: deptData } = await supabase
+                    .from('departments')
+                    .select('permission_overrides')
+                    .eq('id', departmentId)
+                    .single()
+                merged = applyDepartmentOverrides(perms, deptData?.permission_overrides)
+            } else {
+                setDeniedPermissions(new Set())
+            }
+            setPermissions(merged)
         } finally {
             setLoading(false)
         }
-    }, [isReady, roleLevel, supabase])
+    }, [isReady, roleLevel, supabase, departmentId, applyDepartmentOverrides])
 
     useEffect(() => {
         loadPermissions()
@@ -163,11 +226,15 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
             return false
         }
 
+        if (deniedPermissions.has(permissionId)) {
+            return false
+        }
+
         // Check if permission exists in the loaded permissions
         const result = permissions[permissionId] === true
         console.log('[hasPermission]', permissionId, '=', result, 'permissions keys:', Object.keys(permissions))
         return result
-    }, [permissions, roleLevel, loading])
+    }, [permissions, roleLevel, loading, deniedPermissions])
 
     return {
         hasPermission,
@@ -178,8 +245,8 @@ export function usePermissions(roleLevel?: number, roleCode?: string): UsePermis
 }
 
 // Convenience hook for checking a single permission
-export function useHasPermission(permissionId: string, roleLevel?: number): boolean {
-    const { hasPermission, loading } = usePermissions(roleLevel)
+export function useHasPermission(permissionId: string, roleLevel?: number, departmentId?: string | null): boolean {
+    const { hasPermission, loading } = usePermissions(roleLevel, undefined, departmentId)
 
     if (loading) {
         // Return default based on role level during loading

@@ -82,8 +82,8 @@ interface MsiaBank {
 }
 
 const MALAYSIA_STATES = [
-  "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan", 
-  "Pahang", "Penang", "Perak", "Perlis", "Sabah", "Sarawak", 
+  "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
+  "Pahang", "Penang", "Perak", "Perlis", "Sabah", "Sarawak",
   "Selangor", "Terengganu", "Kuala Lumpur", "Labuan", "Putrajaya"
 ]
 
@@ -126,7 +126,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   useEffect(() => {
     loadUserProfile()
     loadBanks()
-    
+
     return () => {
       if (phoneCheckTimeoutRef.current) clearTimeout(phoneCheckTimeoutRef.current)
       if (referralCheckTimeoutRef.current) clearTimeout(referralCheckTimeoutRef.current)
@@ -149,7 +149,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const loadUserProfile = async () => {
     try {
       setIsLoading(true)
-      
+
       let targetUserId = initialProfile?.id
 
       // If no initial profile or ID, fall back to current session user
@@ -185,12 +185,12 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             id,
             short_name
           ),
-          departments:department_id (
+          departments:department_id!users_department_id_fkey (
             id,
             dept_code,
             dept_name
           ),
-          manager:manager_user_id (
+          manager:manager_user_id!users_manager_user_id_fkey (
             id,
             full_name,
             email
@@ -257,7 +257,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     }
 
     const normalizedPhone = normalizePhone(phone)
-    
+
     // If same as current user's phone, it's valid (their own)
     if (userProfile.phone && normalizePhone(userProfile.phone) === normalizedPhone) {
       setPhoneCheckStatus('available')
@@ -941,10 +941,10 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                           const val = e.target.value
                           setFormData({ ...formData, phone: val })
                           setPhoneCheckStatus('idle')
-                          
+
                           if (phoneCheckTimeoutRef.current) clearTimeout(phoneCheckTimeoutRef.current)
                           phoneCheckTimeoutRef.current = setTimeout(() => {
-                             checkPhoneAvailability(val)
+                            checkPhoneAvailability(val)
                           }, 500)
                         }}
                         placeholder="Enter your phone number"
@@ -972,10 +972,10 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                           setFormData({ ...formData, referral_phone: val })
                           setReferralCheckStatus('idle')
                           setReferralName('')
-                          
+
                           if (referralCheckTimeoutRef.current) clearTimeout(referralCheckTimeoutRef.current)
                           referralCheckTimeoutRef.current = setTimeout(() => {
-                             checkReferralPhone(val)
+                            checkReferralPhone(val)
                           }, 500)
                         }}
                         placeholder="Enter phone number or email"

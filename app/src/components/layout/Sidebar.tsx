@@ -39,7 +39,8 @@ import {
   ListTree,
   Database,
   Calculator,
-  Receipt
+  Receipt,
+  Briefcase,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
@@ -47,6 +48,8 @@ interface SidebarProps {
   userProfile: any
   currentView: string
   onViewChange: (view: string) => void
+  onCollapseChange?: (collapsed: boolean) => void
+  initialCollapsed?: boolean
 }
 
 // Main navigation menu items with access control
@@ -367,6 +370,18 @@ const navigationItems: MenuItem[] = [
     ]
   },
   {
+    id: 'hr',
+    label: 'HR',
+    icon: Briefcase,
+    description: 'People & organization structure',
+    access: {
+      requiredPermissionsAny: ['view_users', 'view_settings'],
+      maxRoleLevel: 60
+    },
+    // HR submenu moved to HR top-nav bar (src/modules/hr/hrNav.ts)
+    // Sidebar now shows HR as a single module entry → navigates to /hr
+  },
+  {
     id: 'quality-issues',
     label: 'Quality Issues',
     icon: ShieldCheck,
@@ -488,9 +503,28 @@ const secondaryItems: MenuItem[] = [
   }
 ]
 
-export default function Sidebar({ userProfile, currentView, onViewChange }: SidebarProps) {
-  const { hasPermission, loading: permissionsLoading, permissions } = usePermissions(userProfile?.roles?.role_level)
-  const [isCollapsed, setIsCollapsed] = useState(false)
+export default function Sidebar({ userProfile, currentView, onViewChange, onCollapseChange, initialCollapsed }: SidebarProps) {
+  const { hasPermission, loading: permissionsLoading, permissions } = usePermissions(
+    userProfile?.roles?.role_level,
+    userProfile?.role_code,
+    userProfile?.department_id
+  )
+  const [isCollapsed, setIsCollapsedRaw] = useState(() => {
+    if (typeof initialCollapsed === 'boolean') return initialCollapsed
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('ui.sidebarCollapsed') === 'true'
+    }
+    return false
+  })
+
+  const setIsCollapsed = (v: boolean | ((prev: boolean) => boolean)) => {
+    setIsCollapsedRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v
+      if (typeof window !== 'undefined') localStorage.setItem('ui.sidebarCollapsed', String(next))
+      onCollapseChange?.(next)
+      return next
+    })
+  }
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
   const [expandedNestedMenu, setExpandedNestedMenu] = useState<string | null>(null)
@@ -504,6 +538,13 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
   })
   const router = useRouter()
   const supabase = createClient()
+
+  const resolveHrPath = (id: string) => {
+    if (id === 'hr') return '/hr'
+    if (id.startsWith('hr/')) return `/${id}`
+    if (id.startsWith('hr-')) return `/hr/${id.replace('hr-', '')}`
+    return null
+  }
 
   // Set mounted flag after client-side hydration
   useEffect(() => {
@@ -923,6 +964,8 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                 const Icon = item.icon
                 // Check if current view matches any submenu or nested submenu
                 const isActive = currentView === item.id ||
+                  // HR module: highlight when on any HR sub-route
+                  (item.id === 'hr' && currentView.startsWith('hr/')) ||
                   (item.submenu?.some((sub: any) =>
                     sub.id === currentView ||
                     sub.targetView === currentView ||
@@ -939,8 +982,14 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                         if (item.submenu) {
                           setExpandedMenu(isMenuOpen ? null : item.id)
                         } else {
-                          onViewChange(item.id)
-                          setIsMobileMenuOpen(false) // Close mobile menu on navigation
+                          const hrPath = resolveHrPath(item.id)
+                          if (hrPath) {
+                            router.push(hrPath)
+                            setIsMobileMenuOpen(false)
+                          } else {
+                            onViewChange(item.id)
+                            setIsMobileMenuOpen(false) // Close mobile menu on navigation
+                          }
                         }
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
@@ -981,8 +1030,14 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                                   if (hasNestedSubmenu) {
                                     setExpandedNestedMenu(isNestedMenuOpen ? null : subitem.id)
                                   } else {
-                                    onViewChange(subitem.id)
-                                    setIsMobileMenuOpen(false)
+                                    const hrPath = resolveHrPath(subitem.id)
+                                    if (hrPath) {
+                                      router.push(hrPath)
+                                      setIsMobileMenuOpen(false)
+                                    } else {
+                                      onViewChange(subitem.id)
+                                      setIsMobileMenuOpen(false)
+                                    }
                                   }
                                 }}
                                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isSubitemActive
@@ -1009,7 +1064,12 @@ export default function Sidebar({ userProfile, currentView, onViewChange }: Side
                                       <button
                                         key={nestedItem.id}
                                         onClick={() => {
-                                          onViewChange(targetView)
+                                          const hrPath = resolveHrPath(targetView)
+                                          if (hrPath) {
+                                            router.push(hrPath)
+                                          } else {
+                                            onViewChange(targetView)
+                                          }
                                           setIsMobileMenuOpen(false)
                                         }}
                                         className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isNestedActive

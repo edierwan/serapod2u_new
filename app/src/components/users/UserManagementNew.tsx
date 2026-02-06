@@ -44,6 +44,7 @@ import UserDialogNew from "./UserDialogNew";
 import type { User as UserType, Role, Organization } from "@/types/user";
 import { getStorageUrl } from "@/lib/utils";
 import { compressAvatar, formatFileSize } from "@/lib/utils/imageCompression";
+import { updateUserHr } from "@/lib/api/hr";
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
 
@@ -149,6 +150,17 @@ export default function UserManagementNew({
   const { isReady, supabase } = useSupabaseAuth();
   const { toast } = useToast();
 
+  const resolveCurrentUserLevel = () => {
+    const roleLevel = userProfile?.roles?.role_level;
+    if (typeof roleLevel === "number") return roleLevel;
+    const roleCode = userProfile?.role_code?.toUpperCase();
+    if (roleCode === "SUPERADMIN" || roleCode === "SUPER" || roleCode === "SA") return 1;
+    if (roleCode === "HQ_ADMIN" || roleCode === "HQ") return 10;
+    return 999;
+  };
+
+  const currentUserLevel = resolveCurrentUserLevel();
+
   useEffect(() => {
     if (isReady) {
       loadUsers();
@@ -166,7 +178,7 @@ export default function UserManagementNew({
       setLoading(true);
 
       // Get current user's role level - users can only see same level and below (higher numbers)
-      const currentUserLevel = userProfile?.roles?.role_level || 999;
+      const currentUserLevel = resolveCurrentUserLevel();
       // Super Admin and HQ Admin can see all users, others see filtered by level
       const isPowerUser = currentUserLevel <= 20;
 
@@ -321,7 +333,7 @@ export default function UserManagementNew({
     if (selectedUsers.size === 0) return;
 
     // Validate levels before proceeding
-    const currentUserLevel = userProfile.roles?.role_level || 999;
+    const currentUserLevel = resolveCurrentUserLevel();
     const ids = Array.from(selectedUsers);
 
     // Check if any selected user has higher privileges (lower role level number)
@@ -468,7 +480,18 @@ export default function UserManagementNew({
   ) => {
     try {
       setIsSaving(true);
-      const currentUserLevel = userProfile.roles?.role_level || 999;
+      const currentUserLevel = resolveCurrentUserLevel();
+
+      const buildHrPayload = () => {
+        const payload: Record<string, any> = {}
+        if ("department_id" in userData) payload.department_id = userData.department_id || null;
+        if ("position_id" in userData) payload.position_id = (userData as any).position_id || null;
+        if ("manager_user_id" in userData) payload.manager_user_id = (userData as any).manager_user_id || null;
+        if ("employment_type" in userData) payload.employment_type = (userData as any).employment_type || null;
+        if ("join_date" in userData) payload.join_date = (userData as any).join_date || null;
+        if ("employment_status" in userData) payload.employment_status = (userData as any).employment_status || null;
+        return payload;
+      };
 
       // Validate Role Level permissions
       if (userData.role_code) {
@@ -646,6 +669,18 @@ export default function UserManagementNew({
         if (!result.success)
           throw new Error(result.error || "Failed to update user");
 
+        const hrPayload = buildHrPayload();
+        if (Object.keys(hrPayload).length > 0) {
+          const hrResult = await updateUserHr(editingUser.id, hrPayload);
+          if (!hrResult.success) {
+            toast({
+              title: "HR Fields Update Failed",
+              description: hrResult.error || "Failed to update HR fields",
+              variant: "destructive",
+            });
+          }
+        }
+
         toast({
           title: "Success",
           description: `${userData.full_name} updated successfully`,
@@ -687,6 +722,18 @@ export default function UserManagementNew({
           }
 
           throw new Error(errorMessage);
+        }
+
+        const hrPayload = buildHrPayload();
+        if (Object.keys(hrPayload).length > 0) {
+          const hrResult = await updateUserHr(result.user_id, hrPayload);
+          if (!hrResult.success) {
+            toast({
+              title: "HR Fields Update Failed",
+              description: hrResult.error || "Failed to update HR fields",
+              variant: "destructive",
+            });
+          }
         }
 
         // Handle Bank Details Update (if provided)
@@ -821,7 +868,7 @@ export default function UserManagementNew({
     try {
       setIsSaving(true);
 
-      const currentUserLevel = userProfile.roles?.role_level || 999;
+      const currentUserLevel = resolveCurrentUserLevel();
       const targetUser = users.find(u => u.id === userId);
       // Access nested roles safely
       const targetUserLevel = (targetUser as any)?.roles?.role_level || 999;
@@ -860,7 +907,7 @@ export default function UserManagementNew({
 
   const handleDeleteUser = async (userId: string, userName: string) => {
     // Check permission before confirm
-    const currentUserLevel = userProfile.roles?.role_level || 999;
+    const currentUserLevel = resolveCurrentUserLevel();
     const targetUser = users.find(u => u.id === userId);
     const targetUserLevel = (targetUser as any)?.roles?.role_level || 999;
 
@@ -1112,7 +1159,7 @@ export default function UserManagementNew({
         organizations={organizations}
         open={dialogOpen}
         isSaving={isSaving}
-        currentUserRoleLevel={userProfile?.roles?.role_level || 100}
+        currentUserRoleLevel={currentUserLevel}
         onOpenChange={setDialogOpen}
         onSave={handleSaveUser}
       />

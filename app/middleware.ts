@@ -299,6 +299,11 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
+    // HR routes require auth — fast redirect before server components run
+    if (!user && request.nextUrl.pathname.startsWith('/hr')) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
     // Handle login redirect for authenticated users
     if (user && request.nextUrl.pathname === '/login') {
       return NextResponse.redirect(new URL('/dashboard', request.url))

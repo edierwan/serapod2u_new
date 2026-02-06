@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
+import { checkPermissionForUser } from '@/lib/server/permissions'
 
 export async function createUserWithAuth(userData: {
   email: string
@@ -15,9 +16,20 @@ export async function createUserWithAuth(userData: {
   phone?: string
 }) {
   try {
+    const supabase = await createClient()
+    const { data: { user }, error: sessionAuthError } = await supabase.auth.getUser()
+    if (sessionAuthError || !user) {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    const permissionCheck = await checkPermissionForUser(user.id, 'create_users')
+    if (!permissionCheck.allowed) {
+      return { success: false, error: 'Forbidden' }
+    }
+
     // Step 1: Create auth user using admin API
     const adminClient = createAdminClient()
-    
+
     if (!adminClient) {
       return {
         success: false,
@@ -53,8 +65,6 @@ export async function createUserWithAuth(userData: {
     }
 
     // Step 2: Sync user profile to public.users table using the sync function
-    const supabase = await createClient()
-    
     const { data: syncResult, error: syncError } = await supabase
       .rpc('sync_user_profile', {
         p_user_id: authUser.user.id,
@@ -72,7 +82,7 @@ export async function createUserWithAuth(userData: {
       } catch (deleteError) {
         console.error('Failed to rollback auth user:', deleteError)
       }
-      
+
       return {
         success: false,
         error: `Failed to sync user profile: ${syncError.message}`
@@ -111,137 +121,117 @@ export async function updateUserWithAuth(userId: string, userData: {
   bank_account_holder_name?: string
   department_id?: string | null
   manager_user_id?: string | null
+  position_id?: string | null
 }, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
 
     // Use server client to get current user from cookies
     const supabase = await createClient()
-    
-    // Check permissions: Current user must be admin OR updating themselves
+
+    // Check permissions: Current user must have edit_users OR updating themselves
     const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
-    
+
     let isAuthorized = false
     let isSelfUpdate = false
-    
+
     // If session check fails, try to use caller info passed from client
     if (!currentUser || authError) {
       console.log('Server action: Session not found via cookies, checking caller info...')
-      
+
       if (callerInfo) {
-        // Validate caller info by checking against database
-        const { data: callerProfile } = await adminClient
-          .from('users')
-          .select('id, role_code, roles(role_level)')
-          .eq('id', callerInfo.id)
-          .single()
-        
-        if (callerProfile) {
-          isSelfUpdate = callerInfo.id === userId
-          const roleCode = callerProfile.role_code
-          const roleLevel = (callerProfile.roles as any)?.role_level
-          const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
-          isAuthorized = isSelfUpdate || isAdmin
-          console.log('Server action: Caller validated from DB -', { roleCode, roleLevel, isAdmin, isSelfUpdate })
-        }
+        const permissionCheck = await checkPermissionForUser(callerInfo.id, 'edit_users')
+        isSelfUpdate = callerInfo.id === userId
+        isAuthorized = isSelfUpdate || permissionCheck.allowed
+        console.log('Server action: Caller validated from DB -', { isAuthorized, isSelfUpdate })
       }
-      
+
       if (!isAuthorized) {
         console.log('Server action: Not authorized, no valid session or caller info')
         return { success: false, error: 'Not authenticated. Please refresh the page and try again.' }
       }
     } else {
       // Session exists - check permissions normally
-      // Fetch current user role to check if admin (include roles relation for role_level)
-      const { data: currentUserProfile } = await supabase
-        .from('users')
-        .select('role_code, roles(role_level)')
-        .eq('id', currentUser.id)
-        .single()
-      
       isSelfUpdate = currentUser.id === userId
-      // Check by role_code OR role_level (level 1 = superadmin, level 10 = HQ_ADMIN)
-      const roleCode = currentUserProfile?.role_code
-      const roleLevel = (currentUserProfile?.roles as any)?.role_level
-      const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
-      isAuthorized = isSelfUpdate || isAdmin
+      const permissionCheck = await checkPermissionForUser(currentUser.id, 'edit_users')
+      isAuthorized = isSelfUpdate || permissionCheck.allowed
     }
-    
+
     if (!isAuthorized) {
-       return { success: false, error: 'Unauthorized' }
+      return { success: false, error: 'Unauthorized' }
     }
 
     // Update Auth User metadata (full_name/display_name) - sync to Supabase Auth user_metadata
     if (userData.full_name !== undefined) {
-        try {
-          const { error: authMetaError } = await adminClient.auth.admin.updateUserById(userId, {
-              user_metadata: { full_name: userData.full_name }
-          })
-          
-          if (authMetaError) {
-              console.error('Auth user_metadata update failed:', authMetaError.message)
-              // Don't fail the whole operation for metadata sync failure
-              console.warn('Continuing despite metadata sync failure...')
-          } else {
-              console.log('✅ Auth user_metadata.full_name synced to:', userData.full_name)
-          }
-        } catch (metaErr) {
-          console.error('Auth metadata update exception:', metaErr)
+      try {
+        const { error: authMetaError } = await adminClient.auth.admin.updateUserById(userId, {
+          user_metadata: { full_name: userData.full_name }
+        })
+
+        if (authMetaError) {
+          console.error('Auth user_metadata update failed:', authMetaError.message)
           // Don't fail the whole operation for metadata sync failure
+          console.warn('Continuing despite metadata sync failure...')
+        } else {
+          console.log('✅ Auth user_metadata.full_name synced to:', userData.full_name)
         }
+      } catch (metaErr) {
+        console.error('Auth metadata update exception:', metaErr)
+        // Don't fail the whole operation for metadata sync failure
+      }
     }
 
     // Update Auth User (Phone) - handle both setting and clearing phone
     // We make this BLOCKING to ensure consistency between Auth and Database
     if (userData.phone !== undefined) {
-        try {
-          if (userData.phone && userData.phone.trim()) {
-            // Setting/updating phone number
-            const phone = normalizePhone(userData.phone) // Returns E.164 with + prefix
-            
-            const { data: authData, error: authError } = await adminClient.auth.admin.updateUserById(userId, {
-                phone: phone,
-                phone_confirm: true
-            })
-            
-            if (authError) {
-                console.error('Auth phone update failed:', authError.message)
-                return { success: false, error: `Failed to update phone in Auth: ${authError.message}` }
-            }
-            
-            // Verify the update actually happened
-            if (authData?.user?.phone !== phone) {
-                console.warn(`Auth phone mismatch after update. Expected: ${phone}, Got: ${authData?.user?.phone}`)
-                
-                // Check if digits match (ignoring formatting differences)
-                const expectedDigits = phone.replace(/\D/g, '')
-                const gotDigits = (authData?.user?.phone || '').replace(/\D/g, '')
-                
-                if (expectedDigits !== gotDigits) {
-                     console.error('Auth phone update failed silently (digits mismatch)')
-                     return { success: false, error: 'Failed to update phone in Auth (Silent Failure). Please try again.' }
-                }
-            }
-            
-            console.log('✅ Auth phone updated to:', phone)
-          } else {
-            // Clearing/removing phone number - set to empty string or null
-            const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
-                phone: '',
-                phone_confirm: false
-            })
-            
-            if (authError) {
-                console.error('Auth phone clear failed:', authError.message)
-                return { success: false, error: `Failed to clear phone in Auth: ${authError.message}` }
-            } else {
-                console.log('✅ Auth phone cleared')
+      try {
+        if (userData.phone && userData.phone.trim()) {
+          // Setting/updating phone number
+          const phone = normalizePhone(userData.phone) // Returns E.164 with + prefix
+
+          const { data: authData, error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+            phone: phone,
+            phone_confirm: true
+          })
+
+          if (authError) {
+            console.error('Auth phone update failed:', authError.message)
+            return { success: false, error: `Failed to update phone in Auth: ${authError.message}` }
+          }
+
+          // Verify the update actually happened
+          if (authData?.user?.phone !== phone) {
+            console.warn(`Auth phone mismatch after update. Expected: ${phone}, Got: ${authData?.user?.phone}`)
+
+            // Check if digits match (ignoring formatting differences)
+            const expectedDigits = phone.replace(/\D/g, '')
+            const gotDigits = (authData?.user?.phone || '').replace(/\D/g, '')
+
+            if (expectedDigits !== gotDigits) {
+              console.error('Auth phone update failed silently (digits mismatch)')
+              return { success: false, error: 'Failed to update phone in Auth (Silent Failure). Please try again.' }
             }
           }
-        } catch (authErr) {
-          console.error('Auth phone update exception:', authErr)
-          return { success: false, error: `Auth phone update exception: ${authErr}` }
+
+          console.log('✅ Auth phone updated to:', phone)
+        } else {
+          // Clearing/removing phone number - set to empty string or null
+          const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+            phone: '',
+            phone_confirm: false
+          })
+
+          if (authError) {
+            console.error('Auth phone clear failed:', authError.message)
+            return { success: false, error: `Failed to clear phone in Auth: ${authError.message}` }
+          } else {
+            console.log('✅ Auth phone cleared')
+          }
         }
+      } catch (authErr) {
+        console.error('Auth phone update exception:', authErr)
+        return { success: false, error: `Auth phone update exception: ${authErr}` }
+      }
     }
 
     // Update Public User - prepare data for database update
@@ -255,24 +245,74 @@ export async function updateUserWithAuth(userId: string, userData: {
       updateData.phone = null // Explicitly set to null when cleared
       updateData.phone_verified_at = null
     }
-    
+
+    if (updateData.department_id || updateData.manager_user_id || updateData.position_id) {
+      const { data: targetUser, error: targetError } = await adminClient
+        .from('users')
+        .select('id, organization_id')
+        .eq('id', userId)
+        .single()
+
+      if (targetError || !targetUser) {
+        return { success: false, error: 'User not found' }
+      }
+
+      const targetOrgId = targetUser.organization_id
+
+      if (updateData.department_id) {
+        const { data: dept } = await adminClient
+          .from('departments')
+          .select('id, organization_id')
+          .eq('id', updateData.department_id)
+          .single()
+
+        if (!dept || dept.organization_id !== targetOrgId) {
+          return { success: false, error: 'Invalid department for this organization' }
+        }
+      }
+
+      if (updateData.manager_user_id) {
+        const { data: manager } = await adminClient
+          .from('users')
+          .select('id, organization_id')
+          .eq('id', updateData.manager_user_id)
+          .single()
+
+        if (!manager || manager.organization_id !== targetOrgId) {
+          return { success: false, error: 'Invalid manager for this organization' }
+        }
+      }
+
+      if (updateData.position_id) {
+        const { data: position } = await adminClient
+          .from('hr_positions')
+          .select('id, organization_id')
+          .eq('id', updateData.position_id)
+          .single()
+
+        if (!position || position.organization_id !== targetOrgId) {
+          return { success: false, error: 'Invalid position for this organization' }
+        }
+      }
+    }
+
     // Use adminClient to ensure update happens even if RLS is tricky (though RLS should allow self update)
     const { error: dbError } = await adminClient
-        .from('users')
-        .update(updateData)
-        .eq('id', userId)
+      .from('users')
+      .update(updateData)
+      .eq('id', userId)
 
     if (dbError) {
-        console.error('Database update error:', dbError)
-        return { success: false, error: `Failed to update database user: ${dbError.message}` }
+      console.error('Database update error:', dbError)
+      return { success: false, error: `Failed to update database user: ${dbError.message}` }
     }
 
     revalidatePath('/dashboard')
     return { success: true }
 
   } catch (error) {
-      console.error('Error updating user:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    console.error('Error updating user:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 
@@ -297,15 +337,15 @@ export async function login(formData: FormData) {
     try {
       // Capture client IP address from headers
       let clientIp: string | null = null
-      
+
       // Note: In server actions, we can't directly access request headers
       // The IP will be captured via middleware or we'll use a client-side approach
       // For now, we'll set a placeholder and update it via a client-side call
       // after successful login
-      
+
       await supabase
         .from('users')
-        .update({ 
+        .update({
           last_login_at: new Date().toISOString(),
           last_login_ip: clientIp // Will be updated by client-side IP capture
         })
@@ -343,7 +383,7 @@ export async function signup(formData: FormData) {
 export async function deleteUserWithAuth(userId: string, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
-    
+
     if (!adminClient) {
       return {
         success: false,
@@ -352,37 +392,21 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
     }
 
     const supabase = await createClient()
-    
+
     // Verify caller has permission to delete users
     let isAuthorized = false
-    
+
     // Try to get current user from session first
     const { data: { user: currentUser } } = await supabase.auth.getUser()
-    
+
     if (currentUser) {
-      // Check if current user is admin
-      const { data: currentUserProfile } = await adminClient
-        .from('users')
-        .select('role_code, roles(role_level)')
-        .eq('id', currentUser.id)
-        .single()
-      
-      const roleLevel = (currentUserProfile?.roles as any)?.role_level
-      isAuthorized = roleLevel === 1 || roleLevel === 10 // Super Admin or HQ Admin
+      const permissionCheck = await checkPermissionForUser(currentUser.id, 'delete_users')
+      isAuthorized = permissionCheck.allowed
     } else if (callerInfo) {
-      // Fallback to caller info for validation
-      const { data: callerProfile } = await adminClient
-        .from('users')
-        .select('id, role_code, roles(role_level)')
-        .eq('id', callerInfo.id)
-        .single()
-      
-      if (callerProfile) {
-        const roleLevel = (callerProfile.roles as any)?.role_level
-        isAuthorized = roleLevel === 1 || roleLevel === 10
-      }
+      const permissionCheck = await checkPermissionForUser(callerInfo.id, 'delete_users')
+      isAuthorized = permissionCheck.allowed
     }
-    
+
     if (!isAuthorized) {
       return {
         success: false,
@@ -414,7 +438,7 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
       .from('points_transactions')
       .delete()
       .eq('user_id', userId)
-    
+
     if (pointsError) {
       console.error('Failed to delete points_transactions:', pointsError)
       // Continue anyway
@@ -426,7 +450,7 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
         .from('consumer_activations')
         .delete()
         .eq('consumer_email', targetUser.email)
-      
+
       if (activationsEmailError) {
         console.error('Failed to delete consumer_activations by email:', activationsEmailError)
       }
@@ -437,7 +461,7 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
         .from('consumer_activations')
         .delete()
         .eq('consumer_phone', targetUser.phone)
-      
+
       if (activationsPhoneError) {
         console.error('Failed to delete consumer_activations by phone:', activationsPhoneError)
       }
@@ -448,7 +472,7 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
       .from('consumer_qr_scans')
       .update({ consumer_id: null })
       .eq('consumer_id', userId)
-    
+
     if (scansError) {
       console.error('Failed to nullify consumer_qr_scans:', scansError)
     }
@@ -557,11 +581,11 @@ export async function registerConsumer(userData: {
       console.warn('Manual sync_user_profile failed, relying on trigger:', syncError)
       // Don't fail the registration, as the trigger might still work
     } else if (userData.location) {
-        // Update location if provided (since sync_user_profile might not handle it yet)
-        await adminClient
-            .from('users')
-            .update({ location: userData.location })
-            .eq('id', authUser.user.id)
+      // Update location if provided (since sync_user_profile might not handle it yet)
+      await adminClient
+        .from('users')
+        .update({ location: userData.location })
+        .eq('id', authUser.user.id)
     }
 
     return {

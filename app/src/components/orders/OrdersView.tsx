@@ -43,6 +43,7 @@ interface UserProfile {
   email: string
   role_code: string
   organization_id: string
+  department_id?: string | null
   organizations: {
     id: string
     org_name: string
@@ -84,7 +85,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const { toast } = useToast()
 
   // Permission check for creating orders
-  const { hasPermission, loading: permissionsLoading } = usePermissions(userProfile.roles.role_level, userProfile.role_code)
+  const { hasPermission, loading: permissionsLoading } = usePermissions(
+    userProfile.roles.role_level,
+    userProfile.role_code,
+    userProfile.department_id
+  )
   const canCreateOrders = hasPermission('create_orders')
 
   // Debug: Log permission state

@@ -33,6 +33,12 @@ interface OrgUser {
   email: string
 }
 
+interface PositionOption {
+  id: string
+  name: string
+  is_active: boolean
+}
+
 // Image compression utility for avatars
 // Avatars are displayed very small (40-80px), so we aggressively compress to ~10KB
 const compressImage = (file: File): Promise<File> => {
@@ -129,6 +135,7 @@ export default function UserDialogNew({
   const [banks, setBanks] = useState<Bank[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
+  const [positions, setPositions] = useState<PositionOption[]>([])
   const [orgTypeFilter, setOrgTypeFilter] = useState<string>('')
   const [formData, setFormData] = useState<Partial<User> & {
     password?: string;
@@ -138,6 +145,10 @@ export default function UserDialogNew({
     bank_account_holder_name?: string;
     department_id?: string;
     manager_user_id?: string;
+    position_id?: string;
+    employment_type?: string;
+    join_date?: string;
+    employment_status?: string;
   }>(
     user || {
       email: '',
@@ -153,7 +164,11 @@ export default function UserDialogNew({
       bank_account_number: '',
       bank_account_holder_name: '',
       department_id: defaultValues?.department_id || '',
-      manager_user_id: ''
+      manager_user_id: '',
+      position_id: '',
+      employment_type: '',
+      join_date: '',
+      employment_status: 'active'
     }
   )
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null)
@@ -237,6 +252,18 @@ export default function UserDialogNew({
           ? userData.filter((u: any) => u.id !== user.id)
           : userData
         setOrgUsers(filteredUsers)
+      }
+
+      // Fetch positions for the organization
+      const { data: positionData } = await supabase
+        .from('hr_positions')
+        .select('id, name, is_active')
+        .eq('organization_id', orgId)
+        .order('level', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true })
+
+      if (positionData) {
+        setPositions(positionData)
       }
     }
 
@@ -384,7 +411,11 @@ export default function UserDialogNew({
         setFormData({
           ...user,
           department_id: (user as any).department_id || '',
-          manager_user_id: (user as any).manager_user_id || ''
+          manager_user_id: (user as any).manager_user_id || '',
+          position_id: (user as any).position_id || '',
+          employment_type: (user as any).employment_type || '',
+          join_date: (user as any).join_date || '',
+          employment_status: (user as any).employment_status || 'active'
         })
         // Clean avatar URL (remove cache-busting params for display)
         setAvatarPreview(user.avatar_url ? user.avatar_url.split('?')[0] : null)
@@ -403,7 +434,11 @@ export default function UserDialogNew({
           bank_account_number: '',
           bank_account_holder_name: '',
           department_id: '',
-          manager_user_id: ''
+          manager_user_id: '',
+          position_id: '',
+          employment_type: '',
+          join_date: '',
+          employment_status: 'active'
         })
         setAvatarPreview(null)
       }
@@ -1060,6 +1095,31 @@ export default function UserDialogNew({
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="position_id" className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-gray-500" />
+                    Position (Job Title)
+                  </Label>
+                  <Select
+                    value={formData.position_id || ''}
+                    onValueChange={(value) => handleInputChange('position_id', value === 'none' ? '' : value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select position (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Position</SelectItem>
+                      {positions.filter(p => p.is_active).map(position => (
+                        <SelectItem key={position.id} value={position.id}>
+                          {position.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500">Assign job title for HR and org chart</p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="manager_user_id" className="flex items-center gap-2">
                     <UserCheck className="w-4 h-4 text-gray-500" />
                     Reports To (Manager)
@@ -1082,6 +1142,64 @@ export default function UserDialogNew({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500">Direct supervisor for approval routing</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="employment_type" className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-gray-500" />
+                    Employment Type
+                  </Label>
+                  <Select
+                    value={(formData as any).employment_type || ''}
+                    onValueChange={(value) => handleInputChange('employment_type', value === 'none' ? '' : value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select employment type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not set</SelectItem>
+                      <SelectItem value="Full-time">Full-time</SelectItem>
+                      <SelectItem value="Part-time">Part-time</SelectItem>
+                      <SelectItem value="Contract">Contract</SelectItem>
+                      <SelectItem value="Intern">Intern</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="join_date" className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-gray-500" />
+                    Join Date
+                  </Label>
+                  <Input
+                    id="join_date"
+                    type="date"
+                    value={(formData as any).join_date || ''}
+                    onChange={(e) => handleInputChange('join_date', e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="employment_status" className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-gray-500" />
+                    Employment Status
+                  </Label>
+                  <Select
+                    value={(formData as any).employment_status || 'active'}
+                    onValueChange={(value) => handleInputChange('employment_status', value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="resigned">Resigned</SelectItem>
+                      <SelectItem value="terminated">Terminated</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             )}

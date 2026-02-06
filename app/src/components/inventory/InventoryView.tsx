@@ -75,7 +75,11 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
 
   const { isReady, supabase } = useSupabaseAuth()
-  const { hasPermission } = usePermissions(userProfile?.roles?.role_level)
+  const { hasPermission } = usePermissions(
+    userProfile?.roles?.role_level,
+    userProfile?.role_code,
+    userProfile?.department_id
+  )
   const itemsPerPage = 15
 
   const formatNumber = (value?: number | null) => {
@@ -1208,8 +1212,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
                             className={`h-2 rounded-full ${item.quantity_available === 0 ? 'bg-red-500' :
-                                item.quantity_available <= item.reorder_point * 0.5 ? 'bg-red-500' :
-                                  item.quantity_available <= item.reorder_point ? 'bg-orange-500' : 'bg-green-500'
+                              item.quantity_available <= item.reorder_point * 0.5 ? 'bg-red-500' :
+                                item.quantity_available <= item.reorder_point ? 'bg-orange-500' : 'bg-green-500'
                               }`}
                             style={{
                               width: `${getStockPercentage(item.quantity_available, item.reorder_point)}%`

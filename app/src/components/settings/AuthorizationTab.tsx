@@ -1,13 +1,41 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from '@/components/ui/use-toast'
+import {
+    getAuthorizationDepartments,
+    resetDepartmentPermissionOverrides,
+    saveRolePermissions,
+    searchAuthorizationUsers,
+    testPermissionAccess,
+    updateDepartmentPermissionOverrides
+} from '@/lib/actions/authorization'
 import {
     Shield,
     Users,
@@ -52,6 +80,7 @@ interface UserProfile {
     phone?: string | null
     role_code: string
     organization_id: string
+    department_id?: string | null
     is_active: boolean
     organizations: {
         id: string
@@ -76,6 +105,33 @@ interface Role {
     role_level: number
     permissions: Record<string, any>
     is_active: boolean
+}
+
+interface PermissionOverrides {
+    allow: string[]
+    deny: string[]
+}
+
+interface DepartmentAuthorizationRecord {
+    id: string
+    dept_code: string | null
+    dept_name: string
+    permission_overrides: PermissionOverrides
+    organization_id: string
+    is_active: boolean
+}
+
+interface AuthorizationUserOption {
+    id: string
+    full_name: string | null
+    email: string
+    role_code: string | null
+    role_level: number | null
+    department_id: string | null
+    department?: {
+        dept_code: string | null
+        dept_name: string | null
+    } | null
 }
 
 interface PermissionCategory {
@@ -219,6 +275,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
         permissions: [
             { id: 'view_settings', name: 'View Settings', description: 'Access settings page', category: 'settings', defaultLevels: [1, 10, 20, 30, 40], sensitivity: 'low' },
             { id: 'edit_org_settings', name: 'Edit Org Settings', description: 'Modify organization settings', category: 'settings', defaultLevels: [1, 10, 20], sensitivity: 'medium' },
+            { id: 'manage_org_chart', name: 'Manage Org Chart', description: 'Edit org chart hierarchy and reporting lines', category: 'settings', defaultLevels: [1, 10, 20], sensitivity: 'medium' },
             { id: 'manage_notifications', name: 'Manage Notifications', description: 'Configure notification settings', category: 'settings', defaultLevels: [1, 10, 20], sensitivity: 'medium' },
             { id: 'manage_branding', name: 'Manage Branding', description: 'White-label configuration', category: 'settings', defaultLevels: [1], sensitivity: 'high' },
             { id: 'data_migration', name: 'Data Migration', description: 'Import/Export data', category: 'settings', defaultLevels: [1, 10, 20], sensitivity: 'critical' },
@@ -239,6 +296,11 @@ const ROLE_LEVELS = [
 
 export default function AuthorizationTab({ userProfile }: AuthorizationTabProps) {
     const { supabase, isReady } = useSupabaseAuth()
+    const { hasPermission: hasAuthorizationPermission, loading: permissionsLoading } = usePermissions(
+        userProfile.roles.role_level,
+        userProfile.role_code,
+        userProfile.department_id
+    )
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [roles, setRoles] = useState<Role[]>([])
@@ -246,12 +308,59 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
     const [rolePermissions, setRolePermissions] = useState<Record<number, Record<string, boolean>>>({})
     const [hasChanges, setHasChanges] = useState(false)
     const [expandedCategories, setExpandedCategories] = useState<string[]>(['inventory', 'orders'])
+    const [scopeMode, setScopeMode] = useState<'role' | 'department'>('role')
+    const [departments, setDepartments] = useState<DepartmentAuthorizationRecord[]>([])
+    const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null)
+    const [departmentOverrides, setDepartmentOverrides] = useState<Record<string, PermissionOverrides>>({})
+    const [originalDepartmentOverrides, setOriginalDepartmentOverrides] = useState<Record<string, PermissionOverrides>>({})
+    const [deptLoading, setDeptLoading] = useState(false)
+    const [deptSaving, setDeptSaving] = useState(false)
+    const [referenceRoleLevel, setReferenceRoleLevel] = useState<number>(40)
+    const [testerQuery, setTesterQuery] = useState('')
+    const [testerUsers, setTesterUsers] = useState<AuthorizationUserOption[]>([])
+    const [testerUserId, setTesterUserId] = useState<string>('')
+    const [testerPermissionKey, setTesterPermissionKey] = useState('')
+    const [testerLoading, setTesterLoading] = useState(false)
+    const [testerResult, setTesterResult] = useState<{
+        allowed: boolean
+        reason: string
+        allowedCount: number
+        deniedCount: number
+    } | null>(null)
 
     useEffect(() => {
         if (isReady) {
             loadRoles()
         }
     }, [isReady])
+
+    const permissionKeys = useMemo(
+        () => PERMISSION_CATEGORIES.flatMap(category => category.permissions.map(perm => perm.id)),
+        []
+    )
+
+    const canManageAuthorization = userProfile.roles.role_level === 1 || (!permissionsLoading && hasAuthorizationPermission('manage_authorization'))
+
+    useEffect(() => {
+        if (isReady && canManageAuthorization) {
+            loadDepartments()
+        }
+    }, [isReady, canManageAuthorization])
+
+    useEffect(() => {
+        const handler = setTimeout(async () => {
+            if (!canManageAuthorization) return
+            const result = await searchAuthorizationUsers(testerQuery)
+            if (result.success) {
+                setTesterUsers(result.data || [])
+                if (!testerUserId && result.data && result.data.length > 0) {
+                    setTesterUserId(result.data[0].id)
+                }
+            }
+        }, 250)
+
+        return () => clearTimeout(handler)
+    }, [testerQuery, canManageAuthorization, testerUserId])
 
     const loadRoles = async () => {
         try {
@@ -309,6 +418,126 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
             setLoading(false)
         }
     }
+
+    const loadDepartments = async () => {
+        try {
+            setDeptLoading(true)
+            const result = await getAuthorizationDepartments()
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to load departments')
+            }
+
+            const deptList = result.data || []
+            setDepartments(deptList)
+
+            const overridesMap: Record<string, PermissionOverrides> = {}
+            deptList.forEach(dept => {
+                overridesMap[dept.id] = dept.permission_overrides || { allow: [], deny: [] }
+            })
+            setDepartmentOverrides(overridesMap)
+            setOriginalDepartmentOverrides(overridesMap)
+
+            if (!selectedDepartmentId && deptList.length > 0) {
+                setSelectedDepartmentId(deptList[0].id)
+            }
+        } catch (error: any) {
+            console.error('Error loading departments:', error)
+            toast({
+                title: 'Error',
+                description: error.message || 'Failed to load departments',
+                variant: 'destructive'
+            })
+        } finally {
+            setDeptLoading(false)
+        }
+    }
+
+    const getDepartmentOverrides = (deptId?: string | null): PermissionOverrides => {
+        if (!deptId) return { allow: [], deny: [] }
+        return departmentOverrides[deptId] || { allow: [], deny: [] }
+    }
+
+    const isOverridesEqual = (a?: PermissionOverrides, b?: PermissionOverrides) => {
+        const aAllow = (a?.allow || []).slice().sort()
+        const aDeny = (a?.deny || []).slice().sort()
+        const bAllow = (b?.allow || []).slice().sort()
+        const bDeny = (b?.deny || []).slice().sort()
+        return JSON.stringify(aAllow) === JSON.stringify(bAllow) && JSON.stringify(aDeny) === JSON.stringify(bDeny)
+    }
+
+    const updateDepartmentOverride = (permissionId: string, enabled: boolean) => {
+        if (!selectedDepartmentId) return
+        setDepartmentOverrides(prev => {
+            const current = prev[selectedDepartmentId] || { allow: [], deny: [] }
+            const allowSet = new Set(current.allow)
+            const denySet = new Set(current.deny)
+
+            if (enabled) {
+                allowSet.add(permissionId)
+                denySet.delete(permissionId)
+            } else {
+                denySet.add(permissionId)
+                allowSet.delete(permissionId)
+            }
+
+            return {
+                ...prev,
+                [selectedDepartmentId]: {
+                    allow: Array.from(allowSet),
+                    deny: Array.from(denySet)
+                }
+            }
+        })
+    }
+
+    const saveDepartmentOverrides = async () => {
+        if (!selectedDepartmentId) return
+        try {
+            setDeptSaving(true)
+            const overrides = getDepartmentOverrides(selectedDepartmentId)
+            const result = await updateDepartmentPermissionOverrides(selectedDepartmentId, overrides)
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to update department overrides')
+            }
+
+            setOriginalDepartmentOverrides(prev => ({
+                ...prev,
+                [selectedDepartmentId]: overrides
+            }))
+            toast({ title: 'Success', description: 'Department overrides saved', variant: 'success' })
+        } catch (error: any) {
+            console.error('Error saving department overrides:', error)
+            toast({ title: 'Error', description: error.message || 'Failed to save overrides', variant: 'destructive' })
+        } finally {
+            setDeptSaving(false)
+        }
+    }
+
+    const resetDepartmentOverrides = async () => {
+        if (!selectedDepartmentId) return
+        try {
+            setDeptSaving(true)
+            const result = await resetDepartmentPermissionOverrides(selectedDepartmentId)
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to reset department overrides')
+            }
+
+            setDepartmentOverrides(prev => ({
+                ...prev,
+                [selectedDepartmentId]: { allow: [], deny: [] }
+            }))
+            setOriginalDepartmentOverrides(prev => ({
+                ...prev,
+                [selectedDepartmentId]: { allow: [], deny: [] }
+            }))
+            toast({ title: 'Success', description: 'Department overrides cleared', variant: 'success' })
+        } catch (error: any) {
+            console.error('Error resetting department overrides:', error)
+            toast({ title: 'Error', description: error.message || 'Failed to reset overrides', variant: 'destructive' })
+        } finally {
+            setDeptSaving(false)
+        }
+    }
     const togglePermission = (roleLevel: number, permissionId: string) => {
         setRolePermissions(prev => {
             const newPerms = { ...prev }
@@ -327,37 +556,14 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
     const savePermissions = async () => {
         try {
             setSaving(true)
-            let updateCount = 0
+            const updates = roles.map(role => ({
+                roleId: role.id,
+                permissions: rolePermissions[role.role_level] || {}
+            }))
 
-            for (const role of roles) {
-                const permissions = rolePermissions[role.role_level] || {}
-
-                console.log(`[savePermissions] Saving role ${role.role_level} permissions:`, permissions)
-
-                const { data, error } = await supabase
-                    .from('roles')
-                    .update({
-                        permissions
-                    })
-                    .eq('id', role.id)
-                    .select()
-
-                if (error) {
-                    console.error(`[savePermissions] Error updating role ${role.role_level}:`, error)
-                    throw error
-                }
-                
-                // Check if update actually happened (RLS might block it)
-                console.log(`[savePermissions] Role ${role.role_level} update result:`, data)
-                if (data && data.length > 0) {
-                    updateCount++
-                } else {
-                    throw new Error(`Failed to update role ${role.role_name}. You may not have permission to modify roles.`)
-                }
-            }
-            
-            if (updateCount === 0) {
-                throw new Error('No roles were updated. You may not have permission to modify roles.')
+            const result = await saveRolePermissions(updates)
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to update roles')
             }
 
             toast({
@@ -408,21 +614,63 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
         return rolePermissions[roleLevel]?.[permId] ?? false
     }
 
-    const isSuperAdmin = userProfile.roles.role_level === 1
+    const selectedDepartment = departments.find(dept => dept.id === selectedDepartmentId) || null
+    const selectedDeptOverrides = getDepartmentOverrides(selectedDepartmentId)
+    const selectedDeptOriginal = selectedDepartmentId ? originalDepartmentOverrides[selectedDepartmentId] : undefined
+    const hasDeptChanges = selectedDepartmentId
+        ? !isOverridesEqual(selectedDeptOverrides, selectedDeptOriginal)
+        : false
 
-    if (!isSuperAdmin) {
+    const selectedTesterUser = testerUsers.find(user => user.id === testerUserId) || null
+
+    const runPermissionTest = async () => {
+        if (!testerUserId || !testerPermissionKey) return
+        try {
+            setTesterLoading(true)
+            const result = await testPermissionAccess(testerUserId, testerPermissionKey)
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to test permission')
+            }
+            setTesterResult(result.data)
+        } catch (error: any) {
+            console.error('Permission test error:', error)
+            toast({
+                title: 'Error',
+                description: error.message || 'Failed to test permission',
+                variant: 'destructive'
+            })
+        } finally {
+            setTesterLoading(false)
+        }
+    }
+
+    const isSuperAdmin = userProfile.roles.role_level === 1
+    const isAuthorized = canManageAuthorization
+
+    if (permissionsLoading) {
         return (
             <Card>
                 <CardContent className="py-12 text-center">
-                    <Lock className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Restricted</h3>
-                    <p className="text-gray-600">Only Super Admins can manage authorization settings.</p>
+                    <RefreshCw className="w-8 h-8 mx-auto text-blue-600 animate-spin mb-4" />
+                    <p className="text-gray-600">Checking permissions...</p>
                 </CardContent>
             </Card>
         )
     }
 
-    if (loading) {
+    if (!isAuthorized) {
+        return (
+            <Card>
+                <CardContent className="py-12 text-center">
+                    <Lock className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Restricted</h3>
+                    <p className="text-gray-600">You need the Manage Authorization permission to access this page.</p>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (loading || (scopeMode === 'department' && deptLoading)) {
         return (
             <Card>
                 <CardContent className="py-12 text-center">
@@ -434,257 +682,547 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <Card>
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                                <Shield className="w-5 h-5 text-purple-600" />
-                            </div>
-                            <div>
-                                <CardTitle>Authorization Management</CardTitle>
-                                <CardDescription>
-                                    Configure role-based access control for all system features
-                                </CardDescription>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={resetToDefaults}
-                                disabled={saving}
-                            >
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                                Reset to Defaults
-                            </Button>
-                            <Button
-                                size="sm"
-                                onClick={savePermissions}
-                                disabled={saving || !hasChanges}
-                                className="bg-blue-600 hover:bg-blue-700"
-                            >
-                                <Save className="w-4 h-4 mr-2" />
-                                {saving ? 'Saving...' : 'Save Changes'}
-                            </Button>
-                        </div>
-                    </div>
-                </CardHeader>
-            </Card>
-
-            {/* Role Selection & Permission Matrix */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Role Selection Panel */}
-                <Card className="lg:col-span-1">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base">User Roles</CardTitle>
-                        <CardDescription className="text-xs">
-                            Select a role to configure
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        {ROLE_LEVELS.map((role) => (
-                            <button
-                                key={role.level}
-                                onClick={() => setSelectedRole(role.level)}
-                                className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${selectedRole === role.level
-                                        ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                    }`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${role.color}`}>
-                                        {role.level}
-                                    </div>
-                                    <div className="text-left">
-                                        <div className="font-medium text-sm">{role.name}</div>
-                                        <div className="text-xs text-gray-500">Level {role.level}</div>
-                                    </div>
+        <Tabs value={scopeMode} onValueChange={(value) => setScopeMode(value as 'role' | 'department')}>
+            <div className="space-y-6">
+                {/* Header */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                                    <Shield className="w-5 h-5 text-purple-600" />
                                 </div>
-                                {selectedRole === role.level && (
-                                    <CheckCircle className="w-4 h-4 text-blue-600" />
-                                )}
-                            </button>
-                        ))}
-                    </CardContent>
-                </Card>
-
-                {/* Permissions Panel */}
-                <Card className="lg:col-span-3">
-                    <CardHeader className="pb-3 border-b">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    Permissions for {ROLE_LEVELS.find(r => r.level === selectedRole)?.name}
-                                    <Badge variant="outline" className={ROLE_LEVELS.find(r => r.level === selectedRole)?.color}>
-                                        Level {selectedRole}
-                                    </Badge>
-                                </CardTitle>
-                                <CardDescription className="text-xs mt-1">
-                                    Toggle permissions for this role. Changes apply to all users with this role.
-                                </CardDescription>
+                                <div>
+                                    <CardTitle>Authorization Management</CardTitle>
+                                    <CardDescription>
+                                        Configure role-based access control for all system features
+                                    </CardDescription>
+                                </div>
                             </div>
-                            {hasChanges && (
-                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                    <AlertCircle className="w-3 h-3 mr-1" />
-                                    Unsaved Changes
-                                </Badge>
-                            )}
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                                <TabsList>
+                                    <TabsTrigger value="role">Role</TabsTrigger>
+                                    <TabsTrigger value="department">Department</TabsTrigger>
+                                </TabsList>
+                                {scopeMode === 'role' ? (
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={resetToDefaults}
+                                            disabled={saving}
+                                        >
+                                            <RefreshCw className="w-4 h-4 mr-2" />
+                                            Reset to Defaults
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={savePermissions}
+                                            disabled={saving || !hasChanges}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            <Save className="w-4 h-4 mr-2" />
+                                            {saving ? 'Saving...' : 'Save Changes'}
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="outline" size="sm" disabled={deptSaving || !selectedDepartmentId}>
+                                                    <RefreshCw className="w-4 h-4 mr-2" />
+                                                    Reset to Defaults
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Reset overrides?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will clear all allow/deny overrides for the selected department.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={resetDepartmentOverrides}>Reset</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                        <Button
+                                            size="sm"
+                                            onClick={saveDepartmentOverrides}
+                                            disabled={deptSaving || !hasDeptChanges}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            <Save className="w-4 h-4 mr-2" />
+                                            {deptSaving ? 'Saving...' : 'Save Changes'}
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </CardHeader>
-                    <CardContent className="p-0">
-                        <Accordion type="multiple" value={expandedCategories} onValueChange={setExpandedCategories}>
-                            {PERMISSION_CATEGORIES.map((category) => {
-                                const Icon = category.icon
-                                const enabledCount = category.permissions.filter(
-                                    p => getPermissionStatus(p.id, selectedRole)
-                                ).length
-
-                                return (
-                                    <AccordionItem key={category.id} value={category.id} className="border-b last:border-b-0">
-                                        <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 hover:no-underline">
-                                            <div className="flex items-center gap-3 w-full">
-                                                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                                                    <Icon className="w-4 h-4 text-gray-600" />
-                                                </div>
-                                                <div className="flex-1 text-left">
-                                                    <div className="font-medium text-sm">{category.name}</div>
-                                                    <div className="text-xs text-gray-500">{category.description}</div>
-                                                </div>
-                                                <Badge variant="outline" className="mr-2">
-                                                    {enabledCount}/{category.permissions.length}
-                                                </Badge>
-                                            </div>
-                                        </AccordionTrigger>
-                                        <AccordionContent>
-                                            <div className="px-4 pb-4 pt-2 space-y-3">
-                                                {category.permissions.map((permission) => (
-                                                    <div
-                                                        key={permission.id}
-                                                        className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <TooltipProvider>
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <Badge
-                                                                            variant="outline"
-                                                                            className={`text-xs ${getSensitivityBadge(permission.sensitivity)}`}
-                                                                        >
-                                                                            {permission.sensitivity === 'critical' && <Lock className="w-3 h-3 mr-1" />}
-                                                                            {permission.sensitivity}
-                                                                        </Badge>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p className="text-xs">Data sensitivity level</p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                            </TooltipProvider>
-                                                            <div>
-                                                                <div className="font-medium text-sm">{permission.name}</div>
-                                                                <div className="text-xs text-gray-500">{permission.description}</div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-3">
-                                                            <Switch
-                                                                checked={getPermissionStatus(permission.id, selectedRole)}
-                                                                onCheckedChange={() => togglePermission(selectedRole, permission.id)}
-                                                                className="data-[state=checked]:bg-blue-600"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                )
-                            })}
-                        </Accordion>
-                    </CardContent>
                 </Card>
-            </div>
 
-            {/* Permission Matrix Overview */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Permission Matrix Overview</CardTitle>
-                    <CardDescription>Quick view of all permissions across roles</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b">
-                                    <th className="text-left py-2 px-3 font-medium text-gray-600 w-48">Permission</th>
-                                    {ROLE_LEVELS.map(role => (
-                                        <th key={role.level} className="text-center py-2 px-2 font-medium">
-                                            <div className="flex flex-col items-center gap-1">
-                                                <Badge variant="outline" className={`text-xs ${role.color}`}>
-                                                    L{role.level}
-                                                </Badge>
-                                                <span className="text-xs text-gray-500">{role.name}</span>
+                <TabsContent value="role" className="space-y-6">
+                    {/* Role Selection & Permission Matrix */}
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        {/* Role Selection Panel */}
+                        <Card className="lg:col-span-1">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base">User Roles</CardTitle>
+                                <CardDescription className="text-xs">
+                                    Select a role to configure
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-2">
+                                {ROLE_LEVELS.map((role) => (
+                                    <button
+                                        key={role.level}
+                                        onClick={() => setSelectedRole(role.level)}
+                                        className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${selectedRole === role.level
+                                            ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${role.color}`}>
+                                                {role.level}
                                             </div>
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {PERMISSION_CATEGORIES.flatMap(category =>
-                                    category.permissions.slice(0, 3).map((perm, idx) => (
-                                        <tr key={perm.id} className={idx === 0 ? 'border-t-2 border-gray-200' : ''}>
-                                            <td className="py-2 px-3">
-                                                <div className="flex items-center gap-2">
-                                                    {idx === 0 && (
-                                                        <span className="text-xs text-gray-400 font-medium">{category.name}:</span>
-                                                    )}
-                                                    <span className={idx === 0 ? 'font-medium' : ''}>{perm.name}</span>
-                                                </div>
-                                            </td>
+                                            <div className="text-left">
+                                                <div className="font-medium text-sm">{role.name}</div>
+                                                <div className="text-xs text-gray-500">Level {role.level}</div>
+                                            </div>
+                                        </div>
+                                        {selectedRole === role.level && (
+                                            <CheckCircle className="w-4 h-4 text-blue-600" />
+                                        )}
+                                    </button>
+                                ))}
+                            </CardContent>
+                        </Card>
+
+                        {/* Permissions Panel */}
+                        <Card className="lg:col-span-3">
+                            <CardHeader className="pb-3 border-b">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle className="text-base flex items-center gap-2">
+                                            Permissions for {ROLE_LEVELS.find(r => r.level === selectedRole)?.name}
+                                            <Badge variant="outline" className={ROLE_LEVELS.find(r => r.level === selectedRole)?.color}>
+                                                Level {selectedRole}
+                                            </Badge>
+                                        </CardTitle>
+                                        <CardDescription className="text-xs mt-1">
+                                            Toggle permissions for this role. Changes apply to all users with this role.
+                                        </CardDescription>
+                                    </div>
+                                    {hasChanges && (
+                                        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                            <AlertCircle className="w-3 h-3 mr-1" />
+                                            Unsaved Changes
+                                        </Badge>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <Accordion type="multiple" value={expandedCategories} onValueChange={setExpandedCategories}>
+                                    {PERMISSION_CATEGORIES.map((category) => {
+                                        const Icon = category.icon
+                                        const enabledCount = category.permissions.filter(
+                                            p => getPermissionStatus(p.id, selectedRole)
+                                        ).length
+
+                                        return (
+                                            <AccordionItem key={category.id} value={category.id} className="border-b last:border-b-0">
+                                                <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 hover:no-underline">
+                                                    <div className="flex items-center gap-3 w-full">
+                                                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                                                            <Icon className="w-4 h-4 text-gray-600" />
+                                                        </div>
+                                                        <div className="flex-1 text-left">
+                                                            <div className="font-medium text-sm">{category.name}</div>
+                                                            <div className="text-xs text-gray-500">{category.description}</div>
+                                                        </div>
+                                                        <Badge variant="outline" className="mr-2">
+                                                            {enabledCount}/{category.permissions.length}
+                                                        </Badge>
+                                                    </div>
+                                                </AccordionTrigger>
+                                                <AccordionContent>
+                                                    <div className="px-4 pb-4 pt-2 space-y-3">
+                                                        {category.permissions.map((permission) => (
+                                                            <div
+                                                                key={permission.id}
+                                                                className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100"
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <TooltipProvider>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <Badge
+                                                                                    variant="outline"
+                                                                                    className={`text-xs ${getSensitivityBadge(permission.sensitivity)}`}
+                                                                                >
+                                                                                    {permission.sensitivity === 'critical' && <Lock className="w-3 h-3 mr-1" />}
+                                                                                    {permission.sensitivity}
+                                                                                </Badge>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p className="text-xs">Data sensitivity level</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                    <div>
+                                                                        <div className="font-medium text-sm">{permission.name}</div>
+                                                                        <div className="text-xs text-gray-500">{permission.description}</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <Switch
+                                                                        checked={getPermissionStatus(permission.id, selectedRole)}
+                                                                        onCheckedChange={() => togglePermission(selectedRole, permission.id)}
+                                                                        className="data-[state=checked]:bg-blue-600"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </AccordionContent>
+                                            </AccordionItem>
+                                        )
+                                    })}
+                                </Accordion>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Permission Matrix Overview */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">Permission Matrix Overview</CardTitle>
+                            <CardDescription>Quick view of all permissions across roles</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b">
+                                            <th className="text-left py-2 px-3 font-medium text-gray-600 w-48">Permission</th>
                                             {ROLE_LEVELS.map(role => (
-                                                <td key={role.level} className="text-center py-2 px-2">
-                                                    {getPermissionStatus(perm.id, role.level) ? (
-                                                        <CheckCircle className="w-4 h-4 text-green-600 mx-auto" />
-                                                    ) : (
-                                                        <EyeOff className="w-4 h-4 text-gray-300 mx-auto" />
-                                                    )}
-                                                </td>
+                                                <th key={role.level} className="text-center py-2 px-2 font-medium">
+                                                    <div className="flex flex-col items-center gap-1">
+                                                        <Badge variant="outline" className={`text-xs ${role.color}`}>
+                                                            L{role.level}
+                                                        </Badge>
+                                                        <span className="text-xs text-gray-500">{role.name}</span>
+                                                    </div>
+                                                </th>
                                             ))}
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-4 text-center">
-                        Showing top 3 permissions per category. Use the panel above for complete control.
-                    </p>
-                </CardContent>
-            </Card>
-
-            {/* Information Card */}
-            <Card className="bg-blue-50 border-blue-200">
-                <CardContent className="py-4">
-                    <div className="flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm text-blue-900">
-                            <p className="font-semibold mb-1">How Authorization Works</p>
-                            <ul className="space-y-1 text-blue-800">
-                                <li>• <strong>Super Admin (Level 1)</strong> has full access to all features including this settings page</li>
-                                <li>• <strong>HQ Admin (Level 10)</strong> can manage most organizational settings</li>
-                                <li>• <strong>Power User (Level 20)</strong> has access to accounting and advanced features</li>
-                                <li>• <strong>Manager (Level 30)</strong> can approve orders and manage teams</li>
-                                <li>• <strong>User (Level 40)</strong> has standard operational access</li>
-                                <li>• <strong>Guest (Level 50)</strong> has read-only access to basic features</li>
-                            </ul>
-                            <p className="mt-2 text-blue-700">
-                                Changes to permissions take effect immediately after saving. Users may need to refresh their browser to see updated access.
+                                    </thead>
+                                    <tbody>
+                                        {PERMISSION_CATEGORIES.flatMap(category =>
+                                            category.permissions.slice(0, 3).map((perm, idx) => (
+                                                <tr key={perm.id} className={idx === 0 ? 'border-t-2 border-gray-200' : ''}>
+                                                    <td className="py-2 px-3">
+                                                        <div className="flex items-center gap-2">
+                                                            {idx === 0 && (
+                                                                <span className="text-xs text-gray-400 font-medium">{category.name}:</span>
+                                                            )}
+                                                            <span className={idx === 0 ? 'font-medium' : ''}>{perm.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    {ROLE_LEVELS.map(role => (
+                                                        <td key={role.level} className="text-center py-2 px-2">
+                                                            {getPermissionStatus(perm.id, role.level) ? (
+                                                                <CheckCircle className="w-4 h-4 text-green-600 mx-auto" />
+                                                            ) : (
+                                                                <EyeOff className="w-4 h-4 text-gray-300 mx-auto" />
+                                                            )}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-4 text-center">
+                                Showing top 3 permissions per category. Use the panel above for complete control.
                             </p>
-                        </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Information Card */}
+                    <Card className="bg-blue-50 border-blue-200">
+                        <CardContent className="py-4">
+                            <div className="flex items-start gap-3">
+                                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                                <div className="text-sm text-blue-900">
+                                    <p className="font-semibold mb-1">How Authorization Works</p>
+                                    <ul className="space-y-1 text-blue-800">
+                                        <li>• <strong>Super Admin (Level 1)</strong> has full access to all features including this settings page</li>
+                                        <li>• <strong>HQ Admin (Level 10)</strong> can manage most organizational settings</li>
+                                        <li>• <strong>Power User (Level 20)</strong> has access to accounting and advanced features</li>
+                                        <li>• <strong>Manager (Level 30)</strong> can approve orders and manage teams</li>
+                                        <li>• <strong>User (Level 40)</strong> has standard operational access</li>
+                                        <li>• <strong>Guest (Level 50)</strong> has read-only access to basic features</li>
+                                    </ul>
+                                    <p className="mt-2 text-blue-700">
+                                        Changes to permissions take effect immediately after saving. Users may need to refresh their browser to see updated access.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="department" className="space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        <Card className="lg:col-span-1">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base">Departments</CardTitle>
+                                <CardDescription className="text-xs">Select a department to override</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-2">
+                                {departments.length === 0 && (
+                                    <p className="text-xs text-gray-500">No departments found.</p>
+                                )}
+                                {departments.map((dept) => (
+                                    <button
+                                        key={dept.id}
+                                        onClick={() => setSelectedDepartmentId(dept.id)}
+                                        className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${selectedDepartmentId === dept.id
+                                            ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        <div className="text-left">
+                                            <div className="font-medium text-sm">{dept.dept_code || 'DEPT'}</div>
+                                            <div className="text-xs text-gray-500">{dept.dept_name}</div>
+                                        </div>
+                                        {selectedDepartmentId === dept.id && (
+                                            <CheckCircle className="w-4 h-4 text-blue-600" />
+                                        )}
+                                    </button>
+                                ))}
+                            </CardContent>
+                        </Card>
+
+                        <Card className="lg:col-span-3">
+                            <CardHeader className="pb-3 border-b">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <CardTitle className="text-base">Department Overrides</CardTitle>
+                                        <CardDescription className="text-xs mt-1">
+                                            {selectedDepartment ? `${selectedDepartment.dept_code || 'DEPT'} - ${selectedDepartment.dept_name}` : 'Select a department'}
+                                        </CardDescription>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500">Reference Role</span>
+                                        <Select value={String(referenceRoleLevel)} onValueChange={(value) => setReferenceRoleLevel(Number(value))}>
+                                            <SelectTrigger className="w-[180px]">
+                                                <SelectValue placeholder="Select role" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {roles.map(role => (
+                                                    <SelectItem key={role.id} value={String(role.role_level)}>
+                                                        {role.role_name} (L{role.role_level})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <Accordion type="multiple" value={expandedCategories} onValueChange={setExpandedCategories}>
+                                    {PERMISSION_CATEGORIES.map((category) => {
+                                        const Icon = category.icon
+                                        const enabledCount = category.permissions.filter(permission => {
+                                            const inherited = rolePermissions[referenceRoleLevel]?.[permission.id] ?? false
+                                            const overrideAllow = selectedDeptOverrides.allow.includes(permission.id)
+                                            const overrideDeny = selectedDeptOverrides.deny.includes(permission.id)
+                                            return overrideDeny ? false : overrideAllow ? true : inherited
+                                        }).length
+
+                                        return (
+                                            <AccordionItem key={category.id} value={category.id} className="border-b last:border-b-0">
+                                                <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 hover:no-underline">
+                                                    <div className="flex items-center gap-3 w-full">
+                                                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                                                            <Icon className="w-4 h-4 text-gray-600" />
+                                                        </div>
+                                                        <div className="flex-1 text-left">
+                                                            <div className="font-medium text-sm">{category.name}</div>
+                                                            <div className="text-xs text-gray-500">{category.description}</div>
+                                                        </div>
+                                                        <Badge variant="outline" className="mr-2">
+                                                            {enabledCount}/{category.permissions.length}
+                                                        </Badge>
+                                                    </div>
+                                                </AccordionTrigger>
+                                                <AccordionContent>
+                                                    <div className="px-4 pb-4 pt-2 space-y-3">
+                                                        {category.permissions.map((permission) => {
+                                                            const inherited = rolePermissions[referenceRoleLevel]?.[permission.id] ?? false
+                                                            const overrideAllow = selectedDeptOverrides.allow.includes(permission.id)
+                                                            const overrideDeny = selectedDeptOverrides.deny.includes(permission.id)
+                                                            const effective = overrideDeny ? false : overrideAllow ? true : inherited
+
+                                                            return (
+                                                                <div
+                                                                    key={permission.id}
+                                                                    className="flex flex-col gap-2 rounded-lg bg-gray-50 border border-gray-100 p-3"
+                                                                >
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <TooltipProvider>
+                                                                                <Tooltip>
+                                                                                    <TooltipTrigger asChild>
+                                                                                        <Badge
+                                                                                            variant="outline"
+                                                                                            className={`text-xs ${getSensitivityBadge(permission.sensitivity)}`}
+                                                                                        >
+                                                                                            {permission.sensitivity === 'critical' && <Lock className="w-3 h-3 mr-1" />}
+                                                                                            {permission.sensitivity}
+                                                                                        </Badge>
+                                                                                    </TooltipTrigger>
+                                                                                    <TooltipContent>
+                                                                                        <p className="text-xs">Data sensitivity level</p>
+                                                                                    </TooltipContent>
+                                                                                </Tooltip>
+                                                                            </TooltipProvider>
+                                                                            <div>
+                                                                                <div className="font-medium text-sm">{permission.name}</div>
+                                                                                <div className="text-xs text-gray-500">{permission.description}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <Switch
+                                                                            checked={effective}
+                                                                            onCheckedChange={(checked) => updateDepartmentOverride(permission.id, checked)}
+                                                                            className="data-[state=checked]:bg-blue-600"
+                                                                            disabled={!selectedDepartmentId}
+                                                                        />
+                                                                    </div>
+                                                                    <div className="flex flex-wrap gap-2 text-xs">
+                                                                        {overrideAllow && (
+                                                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                                                                Override ALLOW
+                                                                            </Badge>
+                                                                        )}
+                                                                        {overrideDeny && (
+                                                                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                                                                Override DENY
+                                                                            </Badge>
+                                                                        )}
+                                                                        {!overrideAllow && !overrideDeny && (
+                                                                            <Badge variant="outline" className={inherited ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-50 text-gray-600 border-gray-200'}>
+                                                                                Inherited {inherited ? 'ON' : 'OFF'}
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </AccordionContent>
+                                            </AccordionItem>
+                                        )
+                                    })}
+                                </Accordion>
+                            </CardContent>
+                        </Card>
                     </div>
-                </CardContent>
-            </Card>
-        </div>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">Test Access</CardTitle>
+                            <CardDescription>Check effective permissions for any user</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-600">Search User</label>
+                                    <Input
+                                        value={testerQuery}
+                                        onChange={(event) => setTesterQuery(event.target.value)}
+                                        placeholder="Search by name or email"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-600">Select User</label>
+                                    <Select value={testerUserId} onValueChange={setTesterUserId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select user" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {testerUsers.map(user => (
+                                                <SelectItem key={user.id} value={user.id}>
+                                                    {user.full_name || user.email}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-600">Permission Key</label>
+                                    <Input
+                                        list="permission-keys"
+                                        value={testerPermissionKey}
+                                        onChange={(event) => setTesterPermissionKey(event.target.value)}
+                                        placeholder="e.g. view_orders"
+                                    />
+                                    <datalist id="permission-keys">
+                                        {permissionKeys.map(key => (
+                                            <option key={key} value={key} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                            </div>
+
+                            {selectedTesterUser && (
+                                <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                                    <span>Role: {selectedTesterUser.role_code || 'N/A'} (L{selectedTesterUser.role_level ?? '--'})</span>
+                                    <span>Department: {selectedTesterUser.department?.dept_name || 'None'}</span>
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-3">
+                                <Button
+                                    size="sm"
+                                    onClick={runPermissionTest}
+                                    disabled={!testerUserId || !testerPermissionKey || testerLoading}
+                                >
+                                    {testerLoading ? 'Testing...' : 'Test Access'}
+                                </Button>
+                                {testerResult && (
+                                    <div className={`text-sm font-medium ${testerResult.allowed ? 'text-green-700' : 'text-red-700'}`}>
+                                        {testerResult.allowed ? 'Allowed' : 'Denied'}
+                                    </div>
+                                )}
+                            </div>
+
+                            {testerResult && (
+                                <div className="grid grid-cols-1 gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm lg:grid-cols-3">
+                                    <div>
+                                        <div className="text-xs text-gray-500">Reason</div>
+                                        <div className="font-medium text-gray-800">{testerResult.reason}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs text-gray-500">Allowed Keys</div>
+                                        <div className="font-medium text-gray-800">{testerResult.allowedCount}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs text-gray-500">Denied Keys</div>
+                                        <div className="font-medium text-gray-800">{testerResult.deniedCount}</div>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </div>
+        </Tabs>
     )
 }
