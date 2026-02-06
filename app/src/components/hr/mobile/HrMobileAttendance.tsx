@@ -87,11 +87,11 @@ export default function HrMobileAttendance() {
         supabase
           .from('hr_attendance_entries')
           .select('*')
-          .eq('employee_id', userProfile.id)
+          .eq('user_id', userProfile.id)
           .order('clock_in_at', { ascending: false })
           .limit(10),
         supabase
-          .from('hr_attendance_shifts')
+          .from('hr_shifts')
           .select('id, name, start_time, end_time')
           .eq('organization_id', organizationId)
           .eq('is_active', true),
@@ -150,7 +150,7 @@ export default function HrMobileAttendance() {
         const { error } = await supabase
           .from('hr_attendance_entries')
           .insert({
-            employee_id: userProfile.id,
+            user_id: userProfile.id,
             organization_id: organizationId,
             clock_in_at: now,
             shift_id: selectedShift !== 'none' ? selectedShift : null,
@@ -189,11 +189,11 @@ export default function HrMobileAttendance() {
       const { error } = await supabase
         .from('hr_attendance_corrections')
         .insert({
-          employee_id: userProfile.id,
+          requested_by: userProfile.id,
           organization_id: organizationId,
+          entry_id: openEntry?.id || null,
           reason: correctionReason,
           status: 'pending',
-          requested_at: new Date().toISOString(),
         })
       if (error) throw error
       toast({

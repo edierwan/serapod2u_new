@@ -107,7 +107,7 @@ export default function HrMobileHome() {
       const { data: entries } = await supabase
         .from('hr_attendance_entries')
         .select('id, clock_in_at, clock_out_at')
-        .eq('employee_id', userProfile.id)
+        .eq('user_id', userProfile.id)
         .gte('clock_in_at', today + 'T00:00:00')
         .order('clock_in_at', { ascending: false })
         .limit(1)

@@ -31,7 +31,7 @@ interface PayslipSummary {
   epf_employee: number
   socso_employee: number
   eis_employee: number
-  pcb_tax: number
+  pcb_amount: number
   status: string
 }
 
@@ -98,12 +98,12 @@ export default function HrMobilePayslip() {
           gross_amount,
           deductions_amount,
           net_amount,
-          allowances_json,
-          deductions_json,
+          allowances_amount,
+          other_allowances,
           epf_employee,
           socso_employee,
           eis_employee,
-          pcb_tax,
+          pcb_amount,
           hr_payroll_runs!inner(
             id, period_start, period_end, status
           )
@@ -120,24 +120,8 @@ export default function HrMobilePayslip() {
         const item = data[0] as any
         const run = item.hr_payroll_runs
 
-        // Sum allowances from JSON
-        let totalAllowances = 0
-        if (item.allowances_json) {
-          try {
-            const arr =
-              typeof item.allowances_json === 'string'
-                ? JSON.parse(item.allowances_json)
-                : item.allowances_json
-            if (Array.isArray(arr)) {
-              totalAllowances = arr.reduce(
-                (s: number, a: any) => s + (a.amount || 0),
-                0,
-              )
-            }
-          } catch {
-            /* ignore parse errors */
-          }
-        }
+        // Allowances is a numeric column now
+        const totalAllowances = (item.allowances_amount || 0) + (item.other_allowances || 0)
 
         setPayslip({
           id: item.id,
@@ -151,7 +135,7 @@ export default function HrMobilePayslip() {
           epf_employee: item.epf_employee || 0,
           socso_employee: item.socso_employee || 0,
           eis_employee: item.eis_employee || 0,
-          pcb_tax: item.pcb_tax || 0,
+          pcb_amount: item.pcb_amount || 0,
           status: run.status,
         })
       } else {
@@ -297,8 +281,8 @@ export default function HrMobilePayslip() {
             {payslip.eis_employee > 0 && (
               <Row label="EIS (Employee)" amount={payslip.eis_employee} />
             )}
-            {payslip.pcb_tax > 0 && (
-              <Row label="PCB / Income Tax" amount={payslip.pcb_tax} />
+            {payslip.pcb_amount > 0 && (
+              <Row label="PCB / Income Tax" amount={payslip.pcb_amount} />
             )}
             <div className="border-t border-border pt-2">
               <Row
