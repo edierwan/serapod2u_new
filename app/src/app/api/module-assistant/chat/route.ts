@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
         const admin = createAdminClient()
         const resolvedConfig = await resolveProviderConfig(admin, orgId, requestedProvider)
         // Strict enforcement: only use the DB-selected provider, never silently
-        // fall back to another provider (like OpenClaw) that may incur costs.
+        // fall back to another provider that may incur costs.
         const aiAvailable = resolvedConfig.enabled
 
         // ── If module-specific message → fetch DB context first ────────
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
         logAiUsage({
             organizationId: orgId,
             userId,
-            provider: resolvedConfig.provider ?? 'openclaw',
+            provider: resolvedConfig.provider ?? 'ollama',
             module: moduleId,
             model: resolvedConfig.model,
             responseMs: Date.now() - startMs,

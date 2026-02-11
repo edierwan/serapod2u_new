@@ -19,17 +19,6 @@ function envRequired(key: string, context: string): string {
 
 // ─── Provider configs ──────────────────────────────────────────────
 
-export function getOpenClawConfig(): AiProviderConfig {
-  const baseUrl = env('OPENCLAW_BASE_URL')
-  const token = env('OPENCLAW_TOKEN')
-  return {
-    provider: 'openclaw',
-    baseUrl: baseUrl.replace(/\/+$/, ''), // strip trailing slash
-    token,
-    enabled: !!baseUrl,
-  }
-}
-
 export function getMoltbotConfig(): AiProviderConfig {
   const baseUrl = env('MOLTBOT_ADAPTER_URL')
   const token = env('MOLTBOT_ADAPTER_TOKEN')
@@ -62,10 +51,7 @@ export function getOllamaConfig(): AiProviderConfig {
  */
 export function getDefaultProvider(): AiProvider {
   const explicit = env('AI_DEFAULT_PROVIDER') as AiProvider
-  if (explicit === 'openclaw' || explicit === 'moltbot' || explicit === 'ollama') return explicit
-
-  const oc = getOpenClawConfig()
-  if (oc.enabled) return 'openclaw'
+  if (explicit === 'moltbot' || explicit === 'ollama') return explicit
 
   const ol = getOllamaConfig()
   if (ol.enabled) return 'ollama'
@@ -73,16 +59,15 @@ export function getDefaultProvider(): AiProvider {
   const mb = getMoltbotConfig()
   if (mb.enabled) return 'moltbot'
 
-  return 'openclaw' // fallback (will surface "provider unavailable")
+  return 'ollama' // fallback — Ollama is the only supported provider
 }
 
 export function getProviderConfig(provider?: AiProvider): AiProviderConfig {
   const p = provider ?? getDefaultProvider()
   if (p === 'moltbot') return getMoltbotConfig()
-  if (p === 'ollama') return getOllamaConfig()
-  return getOpenClawConfig()
+  return getOllamaConfig()
 }
 
 export function isAnyProviderAvailable(): boolean {
-  return getOpenClawConfig().enabled || getMoltbotConfig().enabled || getOllamaConfig().enabled
+  return getMoltbotConfig().enabled || getOllamaConfig().enabled
 }

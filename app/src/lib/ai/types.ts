@@ -4,7 +4,7 @@
 
 // ─── Provider Config ───────────────────────────────────────────────
 
-export type AiProvider = 'openclaw' | 'moltbot' | 'ollama'
+export type AiProvider = 'ollama' | 'moltbot'
 
 export interface AiProviderConfig {
   provider: AiProvider

@@ -119,7 +119,7 @@ export default function HrAiAssistant() {
           if (json.ok) {
             // Any provider is authenticated/ok
             setStatus('online')
-          } else if (json.providers?.openclaw?.authenticated || json.providers?.ollama?.ok) {
+          } else if (json.providers?.ollama?.ok) {
             setStatus('online')
           } else if (json.anyProviderAvailable) {
             // Server reachable but auth failed → DB mode is fine

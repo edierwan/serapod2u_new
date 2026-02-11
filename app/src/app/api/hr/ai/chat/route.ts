@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     let resolvedConfig = await resolveProviderConfig(admin, ctx.organizationId, requestedProvider)
 
     // STRICT: No provider swapping. If admin selected Ollama in DB settings,
-    // we use Ollama only. No fallback to OpenClaw (which costs money).
+    // we use Ollama only.
 
     const effectiveProvider = resolvedConfig.provider
 

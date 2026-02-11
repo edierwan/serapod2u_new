@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getOpenClawConfig, getMoltbotConfig, getOllamaConfig, getDefaultProvider } from '@/lib/ai/config'
-import { checkOpenClawHealth } from '@/lib/ai/providers/openclaw'
+import { getMoltbotConfig, getOllamaConfig, getDefaultProvider } from '@/lib/ai/config'
 import { checkOllamaHealth } from '@/lib/ai/providers/ollama'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -20,9 +19,7 @@ export async function GET() {
   const defaultProvider = getDefaultProvider()
 
   // Try to resolve org-specific settings from DB
-  let resolvedOpenclawCfg = getOpenClawConfig()
   let resolvedOllamaCfg = getOllamaConfig()
-  let settingsSource: 'db' | 'env' = 'env'
   let ollamaSettingsSource: 'db' | 'env' = 'env'
 
   try {
@@ -30,13 +27,6 @@ export async function GET() {
     const authResult = await getHrAuthContext(supabase)
     if (authResult.success && authResult.data?.organizationId) {
       const admin = createAdminClient()
-
-      // Resolve OpenClaw config
-      const dbConfig = await resolveProviderConfig(admin, authResult.data.organizationId, 'openclaw')
-      if (dbConfig.enabled && dbConfig.baseUrl) {
-        resolvedOpenclawCfg = dbConfig
-        settingsSource = 'db'
-      }
 
       // Resolve Ollama config
       const dbOllamaConfig = await resolveProviderConfig(admin, authResult.data.organizationId, 'ollama')
@@ -50,35 +40,6 @@ export async function GET() {
   }
 
   const moltbotCfg = getMoltbotConfig()
-
-  // --- OpenClaw health ---
-  let openclaw: {
-    configured: boolean
-    ok: boolean
-    authenticated: boolean
-    hint: string
-    baseUrl: string | null
-    source: string
-  } = {
-    configured: resolvedOpenclawCfg.enabled,
-    ok: false,
-    authenticated: false,
-    hint: 'Not configured',
-    baseUrl: resolvedOpenclawCfg.baseUrl || null,
-    source: settingsSource,
-  }
-
-  if (resolvedOpenclawCfg.enabled) {
-    const health = await checkOpenClawHealth(resolvedOpenclawCfg)
-    openclaw = {
-      configured: true,
-      ok: health.ok,
-      authenticated: health.authenticated,
-      hint: health.hint,
-      baseUrl: resolvedOpenclawCfg.baseUrl || null,
-      source: settingsSource,
-    }
-  }
 
   // --- Ollama health ---
   let ollama: {
@@ -120,21 +81,19 @@ export async function GET() {
     baseUrl: moltbotCfg.baseUrl || null,
   }
 
-  const anyAvailable = resolvedOpenclawCfg.enabled || moltbotCfg.enabled || resolvedOllamaCfg.enabled
+  const anyAvailable = moltbotCfg.enabled || resolvedOllamaCfg.enabled
 
   // Overall status — check the currently selected default provider
   const overallOk =
-    (defaultProvider === 'openclaw' && openclaw.ok) ||
     (defaultProvider === 'moltbot' && moltbot.ok) ||
     (defaultProvider === 'ollama' && ollama.ok) ||
-    (openclaw.ok || moltbot.ok || ollama.ok)
+    (moltbot.ok || ollama.ok)
 
   return NextResponse.json({
     ok: overallOk,
     defaultProvider,
     anyProviderAvailable: anyAvailable,
     providers: {
-      openclaw,
       moltbot,
       ollama,
     },

@@ -7,12 +7,11 @@
  *
  * STRICT PROVIDER ENFORCEMENT:
  *   If the admin selected a provider in the DB settings, we MUST use that
- *   provider exclusively. No silent fallback to another provider (e.g.
- *   OpenClaw) is allowed — that would incur unexpected API costs.
+ *   provider exclusively. No silent fallback to another provider is allowed
+ *   — that would incur unexpected API costs.
  */
 import { type AiChatRequest, type AiResponse, type AiProvider } from './types'
 import { getProviderConfig, getDefaultProvider } from './config'
-import { callOpenClaw } from './providers/openclaw'
 import { callMoltbot } from './providers/moltbot'
 import { callOllama } from './providers/ollama'
 
@@ -116,10 +115,8 @@ export async function sendToAi(
   try {
     if (provider === 'moltbot') {
       response = await callMoltbot(config, enrichedRequest)
-    } else if (provider === 'ollama') {
-      response = await callOllama(config, enrichedRequest)
     } else {
-      response = await callOpenClaw(config, enrichedRequest)
+      response = await callOllama(config, enrichedRequest)
     }
   } catch (err: any) {
     response = {
@@ -147,7 +144,7 @@ export async function sendToAi(
  */
 export function buildOfflineResponse(auditMessage: string): AiResponse {
   return {
-    provider: 'ollama', // Use the actual default, not hardcoded 'openclaw'
+    provider: 'ollama',
     message: auditMessage,
     suggested_actions: [
       { key: 'retry', label: 'Retry AI connection', confirm_required: false },

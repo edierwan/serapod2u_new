@@ -3,13 +3,13 @@
  *
  * Priority:
  *   1. DB row in `ai_provider_settings` for the org (if enabled)
- *   2. Fallback to .env values (OPENCLAW_BASE_URL, OPENCLAW_TOKEN, etc.)
+ *   2. Fallback to .env values (OLLAMA_BASE_URL, etc.)
  *
  * Token is decrypted server-side and NEVER returned to the client.
  */
 import 'server-only'
 import { type AiProviderConfig, type AiProvider } from '@/lib/ai/types'
-import { getOpenClawConfig, getMoltbotConfig, getOllamaConfig, getDefaultProvider } from '@/lib/ai/config'
+import { getMoltbotConfig, getOllamaConfig, getDefaultProvider } from '@/lib/ai/config'
 import { decryptSecret } from './secrets'
 
 export interface DbProviderRow {
@@ -117,8 +117,7 @@ export async function resolveProviderConfig(
   // Fallback to .env — but ONLY for the SAME provider, never swap
   console.log(`[AI Settings] No DB config for ${targetProvider}, falling back to .env`)
   if (targetProvider === 'moltbot') return getMoltbotConfig()
-  if (targetProvider === 'ollama') return getOllamaConfig()
-  return getOpenClawConfig()
+  return getOllamaConfig()
 }
 
 /**
@@ -180,13 +179,13 @@ export async function getProviderSettings(
     }
   }
 
-  const envConfig = targetProvider === 'moltbot' ? getMoltbotConfig() : getOpenClawConfig()
+  const envConfig = targetProvider === 'moltbot' ? getMoltbotConfig() : getOllamaConfig()
   if (envConfig.enabled) {
     return {
       provider: targetProvider,
       baseUrl: envConfig.baseUrl || null,
       tokenHint: envConfig.token ? '****' + envConfig.token.slice(-4) : null,
-      chatPath: process.env.OPENCLAW_CHAT_PATH || null,
+      chatPath: null,
       model: null,
       enabled: true,
       updatedAt: null,

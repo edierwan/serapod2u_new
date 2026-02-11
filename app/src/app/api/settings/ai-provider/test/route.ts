@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getHrAuthContext, canManageHr } from '@/lib/server/hrAccess'
-import { checkOpenClawHealth } from '@/lib/ai/providers/openclaw'
 import { checkOllamaHealth } from '@/lib/ai/providers/ollama'
 import { decryptSecret } from '@/lib/server/ai/secrets'
 
@@ -85,33 +84,6 @@ export async function POST(request: Request) {
                 models: health.models,
                 baseUrl: testUrl,
                 model: testModel,
-            })
-        }
-
-        // ── OpenClaw test ────────────────────────────────────────────
-        if (provider === 'openclaw') {
-            const testUrl = (baseUrl || '').replace(/\/+$/, '')
-            if (!testUrl) {
-                return NextResponse.json({
-                    ok: false,
-                    provider: 'openclaw',
-                    hint: 'Base URL is required for OpenClaw.',
-                })
-            }
-
-            const health = await checkOpenClawHealth({
-                provider: 'openclaw',
-                baseUrl: testUrl,
-                token: resolvedToken,
-                enabled: true,
-            })
-
-            return NextResponse.json({
-                ok: health.ok,
-                provider: 'openclaw',
-                hint: health.hint,
-                authenticated: health.authenticated,
-                baseUrl: testUrl,
             })
         }
 

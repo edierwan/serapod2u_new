@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
     logAiUsage({
       organizationId: ctx.organizationId,
       userId: ctx.userId,
-      provider: resolvedConfig.provider ?? 'openclaw',
+      provider: resolvedConfig.provider ?? 'ollama',
       module: 'hr',
       model: resolvedConfig.model,
       responseMs: Date.now() - startMs,

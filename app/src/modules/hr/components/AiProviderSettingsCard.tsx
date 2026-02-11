@@ -41,13 +41,6 @@ interface ProviderSettings {
 interface HealthStatus {
   ok: boolean
   providers: {
-    openclaw: {
-      configured: boolean
-      ok: boolean
-      authenticated: boolean
-      hint: string
-      source?: string
-    }
     ollama?: {
       configured: boolean
       ok: boolean
@@ -67,7 +60,7 @@ export default function AiProviderSettingsCard({
   canEdit,
 }: AiProviderSettingsCardProps) {
   // Form state
-  const [provider, setProvider] = useState('openclaw')
+  const [provider, setProvider] = useState('ollama')
   const [baseUrl, setBaseUrl] = useState('')
   const [token, setToken] = useState('')
   const [chatPath, setChatPath] = useState('')
@@ -97,7 +90,7 @@ export default function AiProviderSettingsCard({
         throw new Error('Failed to load AI settings')
       }
       const data: ProviderSettings = await res.json()
-      setProvider(data.provider ?? 'openclaw')
+      setProvider(data.provider ?? 'ollama')
       setBaseUrl(data.baseUrl ?? '')
       setChatPath(data.chatPath ?? '')
       setModel(data.model ?? 'qwen2.5:3b')
@@ -141,46 +134,29 @@ export default function AiProviderSettingsCard({
       const data = await res.json()
 
       // Update health state for display
-      if (provider === 'ollama') {
-        setHealth({
-          ok: data.ok,
-          defaultProvider: 'ollama',
-          providers: {
-            openclaw: { configured: false, ok: false, authenticated: false, hint: '' },
-            ollama: {
-              configured: true,
-              ok: data.ok,
-              hint: data.hint ?? '',
-              model: data.model,
-              models: data.models ?? [],
-              source: 'test',
-            },
+      setHealth({
+        ok: data.ok,
+        defaultProvider: 'ollama',
+        providers: {
+          ollama: {
+            configured: true,
+            ok: data.ok,
+            hint: data.hint ?? '',
+            model: data.model,
+            models: data.models ?? [],
+            source: 'test',
           },
-        })
-      } else {
-        setHealth({
-          ok: data.ok,
-          defaultProvider: 'openclaw',
-          providers: {
-            openclaw: {
-              configured: true,
-              ok: data.ok,
-              authenticated: data.authenticated ?? false,
-              hint: data.hint ?? '',
-              source: 'test',
-            },
-          },
-        })
-      }
+        },
+      })
 
       if (data.ok) {
         toast({
-          title: `${provider === 'ollama' ? 'Ollama' : 'OpenClaw'} Connection Successful`,
+          title: 'Ollama Connection Successful',
           description: data.hint,
         })
       } else {
         toast({
-          title: `${provider === 'ollama' ? 'Ollama' : 'OpenClaw'} Connection Failed`,
+          title: 'Ollama Connection Failed',
           description: data.hint ?? 'Cannot reach provider.',
           variant: 'destructive',
         })
@@ -188,9 +164,7 @@ export default function AiProviderSettingsCard({
     } catch (err: any) {
       setHealth({
         ok: false,
-        providers: {
-          openclaw: { configured: false, ok: false, authenticated: false, hint: err.message },
-        },
+        providers: {},
         defaultProvider: provider,
       })
       toast({
@@ -304,12 +278,8 @@ export default function AiProviderSettingsCard({
     )
   }
 
-  const statusOk = provider === 'ollama'
-    ? health?.providers?.ollama?.ok
-    : health?.ok
-  const providerHealth = provider === 'ollama'
-    ? health?.providers?.ollama
-    : health?.providers?.openclaw
+  const statusOk = health?.providers?.ollama?.ok
+  const providerHealth = health?.providers?.ollama
   const ollamaHealth = health?.providers?.ollama
 
   return (
@@ -358,95 +328,18 @@ export default function AiProviderSettingsCard({
               setModel('qwen2.5:3b')
               setToken('')
               setTokenHint(null)
-            } else if (v === 'openclaw') {
-              setBaseUrl('')
-              setModel('')
             }
           }} disabled={!canEdit}>
             <SelectTrigger id="ai-provider" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="openclaw">OpenClaw</SelectItem>
               <SelectItem value="ollama">Ollama (Local LLM)</SelectItem>
               <SelectItem value="openai" disabled>OpenAI (coming soon)</SelectItem>
               <SelectItem value="moltbot" disabled>Moltbot (coming soon)</SelectItem>
             </SelectContent>
           </Select>
         </div>
-
-        {/* ── OpenClaw-specific fields ──────────────────────────── */}
-        {provider === 'openclaw' && (
-          <>
-            {/* Base URL */}
-            <div className="space-y-2">
-              <Label htmlFor="ai-base-url">Base URL</Label>
-              <Input
-                id="ai-base-url"
-                type="url"
-                placeholder="http://72.62.253.182:50448"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                disabled={!canEdit}
-              />
-              <p className="text-xs text-muted-foreground">
-                The full base URL of your OpenClaw server (no trailing slash).
-              </p>
-            </div>
-
-            {/* Token */}
-            <div className="space-y-2">
-              <Label htmlFor="ai-token">Gateway Token</Label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    id="ai-token"
-                    type={showToken ? 'text' : 'password'}
-                    placeholder={tokenHint ? `Current: ${tokenHint}` : 'Paste your OpenClaw gateway token'}
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    disabled={!canEdit}
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowToken(!showToken)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {tokenHint && canEdit && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleClearToken}
-                    disabled={saving}
-                    title="Clear stored token"
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                )}
-              </div>
-              <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <span>Token is stored encrypted server-side. It is never sent back to the browser after saving.</span>
-              </div>
-            </div>
-
-            {/* Chat path (advanced) */}
-            <div className="space-y-2">
-              <Label htmlFor="ai-chat-path">Chat Endpoint Path <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input
-                id="ai-chat-path"
-                placeholder="/api/chat (default)"
-                value={chatPath}
-                onChange={(e) => setChatPath(e.target.value)}
-                disabled={!canEdit}
-              />
-            </div>
-          </>
-        )}
 
         {/* ── Ollama-specific fields ──────────────────────────── */}
         {provider === 'ollama' && (
@@ -578,9 +471,6 @@ export default function AiProviderSettingsCard({
               <span>{providerHealth.hint}</span>
             </div>
             <div className="text-xs text-muted-foreground space-y-0.5">
-              {provider === 'openclaw' && 'authenticated' in providerHealth && (
-                <p>Authenticated: {(providerHealth as any).authenticated ? 'Yes' : 'No'}</p>
-              )}
               {provider === 'ollama' && ollamaHealth?.models && ollamaHealth.models.length > 0 && (
                 <p>Models: {ollamaHealth.models.join(', ')}</p>
               )}

@@ -35,7 +35,7 @@ export async function GET() {
 
     if (!settings) {
       return NextResponse.json({
-        provider: 'openclaw',
+        provider: 'ollama',
         baseUrl: null,
         tokenHint: null,
         chatPath: null,
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const {
-      provider = 'openclaw',
+      provider = 'ollama',
       baseUrl,
       token,
       chatPath,
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     }
 
     // Validate provider
-    const validProviders = ['openclaw', 'moltbot', 'openai', 'ollama']
+    const validProviders = ['moltbot', 'openai', 'ollama']
     if (!validProviders.includes(provider)) {
       return NextResponse.json({ error: 'Invalid provider' }, { status: 400 })
     }
