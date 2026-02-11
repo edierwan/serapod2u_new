@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     // Fetch all usage logs for the period
     const { data: logs, error: logsError } = await (admin as any)
       .from('ai_usage_logs')
-      .select('id, user_id, provider, module, model, tokens_used, response_ms, status, created_at')
+      .select('id, user_id, provider, module, model, tokens_used, response_ms, status, error_message, created_at')
       .eq('organization_id', ctx.organizationId)
       .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
@@ -146,6 +146,22 @@ export async function GET(request: NextRequest) {
     }
     const providerStats = Object.values(byProvider)
 
+    // Collect error logs for error-detail modal
+    const errorLogs = rows
+      .filter((r: any) => r.status === 'error' || r.status === 'offline')
+      .map((r: any) => ({
+        id: r.id,
+        provider: r.provider,
+        module: r.module || 'unknown',
+        model: r.model,
+        errorMessage: r.error_message || 'Unknown error',
+        status: r.status,
+        responseMs: r.response_ms,
+        userId: r.user_id,
+        userName: userMap[r.user_id] || r.user_id?.slice(0, 8),
+        createdAt: r.created_at,
+      }))
+
     return NextResponse.json({
       period,
       days,
@@ -163,6 +179,7 @@ export async function GET(request: NextRequest) {
       moduleStats,
       userStats,
       providerStats,
+      errorLogs,
     })
   } catch (err: any) {
     console.error('[AI Usage GET]', err.message)

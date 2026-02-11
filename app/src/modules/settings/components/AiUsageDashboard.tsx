@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Activity, Users, Zap, Clock, BarChart3, TrendingUp,
   Bot, AlertCircle, CheckCircle2, Loader2, RefreshCw,
-  ArrowUpRight, ArrowDownRight, Minus,
+  ArrowUpRight, ArrowDownRight, Minus, X, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -63,6 +63,19 @@ interface ProviderStat {
   errors: number
 }
 
+interface ErrorLog {
+  id: string
+  provider: string
+  module: string
+  model: string | null
+  errorMessage: string
+  status: string
+  responseMs: number
+  userId: string
+  userName: string
+  createdAt: string
+}
+
 interface UsageData {
   period: string
   days: number
@@ -71,6 +84,7 @@ interface UsageData {
   moduleStats: ModuleStat[]
   userStats: UserStat[]
   providerStats: ProviderStat[]
+  errorLogs: ErrorLog[]
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -133,6 +147,10 @@ export default function AiUsageDashboard({ organizationId }: AiUsageDashboardPro
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('30d')
   const [data, setData] = useState<UsageData | null>(null)
+  const [showErrorModal, setShowErrorModal] = useState(false)
+  const [errorFilter, setErrorFilter] = useState<string | null>(null) // provider or null for all
+  const [errorPage, setErrorPage] = useState(1)
+  const ERRORS_PER_PAGE = 10
 
   const loadUsage = useCallback(async () => {
     try {
@@ -179,6 +197,14 @@ export default function AiUsageDashboard({ organizationId }: AiUsageDashboardPro
 
   const { summary, dailyStats, moduleStats, userStats, providerStats } = data
   const maxRequests = getMaxValue(dailyStats, 'requests')
+  const errorLogs = data.errorLogs ?? []
+
+  // Filtered errors for modal
+  const filteredErrors = errorFilter
+    ? errorLogs.filter(e => e.provider === errorFilter)
+    : errorLogs
+  const totalErrorPages = Math.max(1, Math.ceil(filteredErrors.length / ERRORS_PER_PAGE))
+  const pagedErrors = filteredErrors.slice((errorPage - 1) * ERRORS_PER_PAGE, errorPage * ERRORS_PER_PAGE)
 
   return (
     <div className="space-y-6">
@@ -369,7 +395,17 @@ export default function AiUsageDashboard({ organizationId }: AiUsageDashboardPro
                           {successRate}% success
                         </Badge>
                         {prov.errors > 0 && (
-                          <span className="text-xs text-red-500">{prov.errors} errors</span>
+                          <button
+                            onClick={() => {
+                              setErrorFilter(prov.provider)
+                              setErrorPage(1)
+                              setShowErrorModal(true)
+                            }}
+                            className="text-xs text-red-500 hover:text-red-700 hover:underline cursor-pointer font-medium transition-colors"
+                            title={`View ${prov.errors} error details`}
+                          >
+                            {prov.errors} errors
+                          </button>
                         )}
                       </div>
                     </div>
@@ -432,7 +468,17 @@ export default function AiUsageDashboard({ organizationId }: AiUsageDashboardPro
                         </td>
                         <td className="py-2.5 text-right">
                           {user.errors > 0 ? (
-                            <span className="text-red-500 font-mono">{user.errors}</span>
+                            <button
+                              onClick={() => {
+                                setErrorFilter(null)
+                                setErrorPage(1)
+                                setShowErrorModal(true)
+                              }}
+                              className="text-red-500 hover:text-red-700 hover:underline cursor-pointer font-mono transition-colors"
+                              title="View error details"
+                            >
+                              {user.errors}
+                            </button>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -467,6 +513,151 @@ export default function AiUsageDashboard({ organizationId }: AiUsageDashboardPro
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {/* View All Errors button (if there are errors) */}
+      {errorLogs.length > 0 && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+            onClick={() => {
+              setErrorFilter(null)
+              setErrorPage(1)
+              setShowErrorModal(true)
+            }}
+          >
+            <AlertCircle className="h-4 w-4" />
+            View All Errors ({errorLogs.length})
+          </Button>
+        </div>
+      )}
+
+      {/* ── Error Detail Modal ──────────────────────────────────── */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowErrorModal(false)}>
+          <div className="bg-background border rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <div>
+                <h3 className="font-semibold text-base flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500" />
+                  Error Details
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {filteredErrors.length} error{filteredErrors.length !== 1 ? 's' : ''}
+                  {errorFilter ? ` from ${PROVIDER_LABELS[errorFilter] ?? errorFilter}` : ' across all providers'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Provider filter tabs */}
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => { setErrorFilter(null); setErrorPage(1) }}
+                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      !errorFilter ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {[...new Set(errorLogs.map(e => e.provider))].map(p => (
+                    <button
+                      key={p}
+                      onClick={() => { setErrorFilter(p); setErrorPage(1) }}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                        errorFilter === p ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {PROVIDER_LABELS[p] ?? p}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setShowErrorModal(false)} className="ml-2 p-1 rounded-md hover:bg-muted transition-colors">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {pagedErrors.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No errors found for this filter.</p>
+              ) : (
+                <div className="space-y-3">
+                  {pagedErrors.map((err, i) => (
+                    <div key={err.id} className="rounded-lg border border-red-100 dark:border-red-900/30 bg-red-50/50 dark:bg-red-900/10 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                              {err.status === 'offline' ? 'OFFLINE' : 'ERROR'}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {PROVIDER_LABELS[err.provider] ?? err.provider}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {MODULE_LABELS[err.module] ?? err.module}
+                            </Badge>
+                            {err.model && (
+                              <span className="text-[10px] text-muted-foreground">model: {err.model}</span>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium text-red-700 dark:text-red-400 break-words">
+                            {err.errorMessage}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            {formatDateTime(err.createdAt)}
+                          </p>
+                          {err.responseMs > 0 && (
+                            <p className="text-[10px] text-muted-foreground">{formatMs(err.responseMs)}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-1.5 text-[11px] text-muted-foreground">
+                        User: {err.userName}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer — Pagination */}
+            {totalErrorPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-3 border-t">
+                <p className="text-xs text-muted-foreground">
+                  Showing {(errorPage - 1) * ERRORS_PER_PAGE + 1}–{Math.min(errorPage * ERRORS_PER_PAGE, filteredErrors.length)} of {filteredErrors.length}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled={errorPage <= 1}
+                    onClick={() => setErrorPage(p => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="text-xs font-medium px-2">
+                    {errorPage} / {totalErrorPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled={errorPage >= totalErrorPages}
+                    onClick={() => setErrorPage(p => Math.min(totalErrorPages, p + 1))}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

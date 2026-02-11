@@ -127,7 +127,7 @@ export default function AiProviderSettingsCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider,
-          baseUrl: baseUrl || (provider === 'ollama' ? 'http://127.0.0.1:11434' : ''),
+          baseUrl: baseUrl || (provider === 'ollama' ? 'https://bot.serapod2u.com/ollama' : ''),
           model: provider === 'ollama' ? model : undefined,
           token: token || undefined,
         }),
@@ -354,7 +354,7 @@ export default function AiProviderSettingsCard({
             setHealth(null)
             // Reset base URL to appropriate default when switching providers
             if (v === 'ollama') {
-              setBaseUrl('http://127.0.0.1:11434')
+              setBaseUrl('https://bot.serapod2u.com/ollama')
               setModel('qwen2.5:3b')
               setToken('')
               setTokenHint(null)
@@ -457,14 +457,54 @@ export default function AiProviderSettingsCard({
               <Input
                 id="ai-base-url"
                 type="url"
-                placeholder="http://127.0.0.1:11434"
+                placeholder="https://bot.serapod2u.com/ollama"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 disabled={!canEdit}
               />
               <p className="text-xs text-muted-foreground">
-                Ollama server address. Default: http://127.0.0.1:11434 (localhost on VPS).
+                Ollama proxy URL. Use <strong>https://bot.serapod2u.com/ollama</strong> for production (Vercel → VPS proxy). Use http://127.0.0.1:11434 only when running locally on VPS.
               </p>
+            </div>
+
+            {/* Proxy Token */}
+            <div className="space-y-2">
+              <Label htmlFor="ai-ollama-token">Proxy Auth Token</Label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    id="ai-ollama-token"
+                    type={showToken ? 'text' : 'password'}
+                    placeholder={tokenHint ? `Current: ${tokenHint}` : 'Paste the x-ollama-key proxy token'}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    disabled={!canEdit}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {tokenHint && canEdit && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleClearToken}
+                    disabled={saving}
+                    title="Clear stored token"
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>Required when using the HTTPS proxy. The token is sent as <code className="text-[10px] bg-muted px-1 rounded">x-ollama-key</code> header for authentication.</span>
+              </div>
             </div>
 
             {/* Model */}
@@ -499,10 +539,10 @@ export default function AiProviderSettingsCard({
               </div>
             )}
 
-            {/* No token needed info */}
+            {/* Architecture info */}
             <div className="flex items-start gap-1.5 text-xs text-muted-foreground rounded-lg border p-3 bg-blue-50 dark:bg-blue-900/10">
               <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-600" />
-              <span>Ollama runs locally on your VPS — no API key or token required. Requests are made server-to-server (backend → localhost).</span>
+              <span>This app runs on Vercel. An authenticated HTTPS proxy on your VPS forwards requests to the local Ollama instance. Set the proxy URL and token above.</span>
             </div>
           </>
         )}
