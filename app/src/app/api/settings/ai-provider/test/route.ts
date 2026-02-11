@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getHrAuthContext, canManageHr } from '@/lib/server/hrAccess'
 import { checkOpenClawHealth } from '@/lib/ai/providers/openclaw'
 import { checkOllamaHealth } from '@/lib/ai/providers/ollama'
+import { decryptSecret } from '@/lib/server/ai/secrets'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/settings/ai-provider/test
  *
- * Test connection using the form values sent from the UI,
- * NOT the saved DB config. This lets users test before saving.
+ * Test connection using the form values sent from the UI.
+ * If no token is provided in the form, falls back to the saved
+ * encrypted token from the DB (so "Test Connection" works after saving).
  */
 export async function POST(request: Request) {
     try {
@@ -42,15 +45,35 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Provider is required' }, { status: 400 })
         }
 
+        // If no token provided in form, try to retrieve saved token from DB
+        let resolvedToken = token || ''
+        if (!resolvedToken) {
+            try {
+                const admin = createAdminClient()
+                const { data: row } = await (admin as any)
+                    .from('ai_provider_settings')
+                    .select('token_encrypted')
+                    .eq('organization_id', ctx.organizationId)
+                    .eq('provider', provider)
+                    .maybeSingle()
+
+                if (row?.token_encrypted) {
+                    resolvedToken = decryptSecret(row.token_encrypted)
+                }
+            } catch (e: any) {
+                console.warn('[AI Provider Test] Could not load saved token:', e.message)
+            }
+        }
+
         // ── Ollama test ──────────────────────────────────────────────
         if (provider === 'ollama') {
-            const testUrl = (baseUrl || 'http://127.0.0.1:11434').replace(/\/+$/, '')
+            const testUrl = (baseUrl || 'https://bot.serapod2u.com/ollama').replace(/\/+$/, '')
             const testModel = model || 'qwen2.5:3b'
 
             const health = await checkOllamaHealth({
                 provider: 'ollama',
                 baseUrl: testUrl,
-                token: token || '',  // Proxy auth token (x-ollama-key)
+                token: resolvedToken,  // Proxy auth token (x-ollama-key) — from form or DB
                 enabled: true,
                 model: testModel,
             })
@@ -79,7 +102,7 @@ export async function POST(request: Request) {
             const health = await checkOpenClawHealth({
                 provider: 'openclaw',
                 baseUrl: testUrl,
-                token: token || '',
+                token: resolvedToken,
                 enabled: true,
             })
 
