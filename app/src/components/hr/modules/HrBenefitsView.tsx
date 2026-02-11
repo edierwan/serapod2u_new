@@ -159,7 +159,7 @@ export default function HrBenefitsView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Benefits Administration</CardTitle>
+                            <CardTitle className="text-lg">Benefits Administration</CardTitle>
                             <CardDescription>Manage benefits enrollment, eligibility, and renewals.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -202,7 +202,7 @@ export default function HrBenefitsView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Benefit Plans</CardTitle>
+                    <CardTitle className="text-base">Benefit Plans</CardTitle>
                     <CardDescription>Plans available to employees with contribution details.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -230,7 +230,7 @@ export default function HrBenefitsView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Finance Integration</CardTitle>
+                    <CardTitle className="text-base">Finance Integration</CardTitle>
                     <CardDescription>Map benefit contributions to GL accounts for payroll posting.</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">

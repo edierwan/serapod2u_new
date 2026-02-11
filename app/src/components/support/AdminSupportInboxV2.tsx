@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,29 +19,20 @@ import {
     Search,
     RefreshCw,
     Send,
-    Image as ImageIcon,
     Megaphone,
     Loader2,
     User,
-    ArrowLeft,
     X,
-    Tag,
     StickyNote,
     Clock,
     CheckCircle2,
     AlertCircle,
-    ChevronDown,
     MoreHorizontal,
-    UserPlus,
-    Flag,
-    Filter,
     Archive,
     Inbox,
     Users,
     AlertTriangle,
     MessageCircle,
-    Eye,
-    EyeOff,
     Paperclip,
     Phone,
     Smartphone,
@@ -50,18 +41,22 @@ import {
     Zap,
     Globe,
     PanelRightClose,
-    PanelRightOpen
+    PanelRightOpen,
+    ChevronLeft,
+    ChevronRight,
+    MailOpen
 } from 'lucide-react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns'
 import { cn } from '@/lib/utils'
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-// Types
+// ─── Types ─────────────────────────────────────────────────
 interface Conversation {
     id: string
     case_number: string
@@ -85,6 +80,8 @@ interface Conversation {
     }
     tags?: Array<{ id: string; name: string; color: string }>
     is_unread: boolean
+    primary_channel?: string
+    whatsapp_user_phone?: string
 }
 
 interface Message {
@@ -96,7 +93,6 @@ interface Message {
     created_at: string
     read_by_user_at?: string
     read_by_admin_at?: string
-    // WhatsApp sync fields
     channel?: 'app' | 'whatsapp' | 'admin_web' | 'ai'
     direction?: 'inbound' | 'outbound'
     sender_phone?: string
@@ -126,63 +122,90 @@ interface Tag {
     color: string
 }
 
-// Channel configuration for badges
+// ─── Config ────────────────────────────────────────────────
 const CHANNEL_CONFIG = {
-    app: { label: 'App', color: 'bg-blue-100 text-blue-700', icon: Smartphone },
-    whatsapp: { label: 'WhatsApp', color: 'bg-green-100 text-green-700', icon: Phone },
-    admin_web: { label: 'Web', color: 'bg-purple-100 text-purple-700', icon: Globe },
-    ai: { label: 'AI', color: 'bg-amber-100 text-amber-700', icon: Bot }
+    app: { label: 'App', color: 'bg-blue-50 text-blue-600 border-blue-200', icon: Smartphone },
+    whatsapp: { label: 'WhatsApp', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', icon: Phone },
+    admin_web: { label: 'Web', color: 'bg-violet-50 text-violet-600 border-violet-200', icon: Globe },
+    ai: { label: 'AI Bot', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: Bot }
 }
 
-// Status configuration
-const STATUS_CONFIG = {
-    open: { label: 'Open', color: 'bg-blue-100 text-blue-800', icon: Inbox },
-    pending_user: { label: 'Pending User', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-    pending_admin: { label: 'Pending Admin', color: 'bg-orange-100 text-orange-800', icon: AlertCircle },
-    resolved: { label: 'Resolved', color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
-    closed: { label: 'Closed', color: 'bg-gray-100 text-gray-800', icon: Archive },
-    spam: { label: 'Spam', color: 'bg-red-100 text-red-800', icon: AlertTriangle }
+const STATUS_CONFIG: Record<string, { label: string; color: string; dotColor: string; icon: any }> = {
+    open: { label: 'Open', color: 'bg-sky-50 text-sky-700 border-sky-200', dotColor: 'bg-sky-500', icon: Inbox },
+    pending_user: { label: 'Awaiting User', color: 'bg-amber-50 text-amber-700 border-amber-200', dotColor: 'bg-amber-500', icon: Clock },
+    pending_admin: { label: 'Needs Reply', color: 'bg-orange-50 text-orange-700 border-orange-200', dotColor: 'bg-orange-500', icon: AlertCircle },
+    resolved: { label: 'Resolved', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dotColor: 'bg-emerald-500', icon: CheckCircle2 },
+    closed: { label: 'Closed', color: 'bg-slate-100 text-slate-600 border-slate-200', dotColor: 'bg-slate-400', icon: Archive },
+    spam: { label: 'Spam', color: 'bg-red-50 text-red-700 border-red-200', dotColor: 'bg-red-500', icon: AlertTriangle }
 }
 
-const PRIORITY_CONFIG = {
-    low: { label: 'Low', color: 'bg-gray-100 text-gray-600' },
-    normal: { label: 'Normal', color: 'bg-blue-100 text-blue-600' },
-    high: { label: 'High', color: 'bg-orange-100 text-orange-600' },
-    urgent: { label: 'Urgent', color: 'bg-red-100 text-red-600' }
+const PRIORITY_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
+    low: { label: 'Low', color: 'text-slate-500', dot: 'bg-slate-300' },
+    normal: { label: 'Normal', color: 'text-blue-500', dot: 'bg-blue-400' },
+    high: { label: 'High', color: 'text-orange-500', dot: 'bg-orange-400' },
+    urgent: { label: 'Urgent', color: 'text-red-600', dot: 'bg-red-500' }
 }
 
-// Main Component
+// ─── Helpers ───────────────────────────────────────────────
+function smartDate(dateStr: string): string {
+    const d = new Date(dateStr)
+    if (isToday(d)) return format(d, 'HH:mm')
+    if (isYesterday(d)) return 'Yesterday'
+    return format(d, 'MMM d')
+}
+
+function getInitials(name: string): string {
+    return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
+}
+
+const AVATAR_COLORS = [
+    'from-blue-500 to-indigo-600',
+    'from-emerald-500 to-teal-600',
+    'from-violet-500 to-purple-600',
+    'from-rose-500 to-pink-600',
+    'from-amber-500 to-orange-600',
+    'from-cyan-500 to-sky-600',
+]
+
+function avatarColor(name: string): string {
+    const hash = (name || 'U').charCodeAt(0) + (name || 'U').length
+    return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function formatDateDivider(dateStr: string): string {
+    const d = new Date(dateStr)
+    if (isToday(d)) return 'Today'
+    if (isYesterday(d)) return 'Yesterday'
+    return format(d, 'EEEE, MMMM d')
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════
 export function AdminSupportInboxV2() {
-    // Two-column layout - always show list + detail side by side
     const [conversations, setConversations] = useState<Conversation[]>([])
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
     const [loading, setLoading] = useState(false)
     const [showBlastModal, setShowBlastModal] = useState(false)
-    const [showSidebar, setShowSidebar] = useState(false) // Collapsible drawer state - hidden by default
+    const [showSidebar, setShowSidebar] = useState(false)
 
-    // Filters
     const [statusFilter, setStatusFilter] = useState('all')
     const [priorityFilter, setPriorityFilter] = useState('all')
     const [assignedFilter, setAssignedFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
 
-    // Pagination
     const [currentPage, setCurrentPage] = useState(1)
-    const [rowsPerPage, setRowsPerPage] = useState(20)
+    const [rowsPerPage] = useState(20)
     const [totalCount, setTotalCount] = useState(0)
 
-    // Data for dropdowns
     const [admins, setAdmins] = useState<Admin[]>([])
     const [tags, setTags] = useState<Tag[]>([])
 
-    // Global AI Auto Mode State (from Settings)
     const [globalAiEnabled, setGlobalAiEnabled] = useState(true)
-    // Global Inbox WhatsApp Reply Setting
     const [inboxWhatsAppEnabled, setInboxWhatsAppEnabled] = useState(false)
 
     const totalPages = Math.ceil(totalCount / rowsPerPage)
 
-    // Fetch conversations
     const fetchConversations = useCallback(async () => {
         setLoading(true)
         try {
@@ -196,7 +219,6 @@ export function AdminSupportInboxV2() {
 
             const res = await fetch(`/api/admin/support/conversations?${params.toString()}`)
             const data = await res.json()
-
             if (data.conversations) {
                 setConversations(data.conversations)
                 setTotalCount(data.total || data.conversations.length)
@@ -208,47 +230,33 @@ export function AdminSupportInboxV2() {
         }
     }, [statusFilter, priorityFilter, assignedFilter, searchQuery, currentPage, rowsPerPage])
 
-    // Fetch admin list
     const fetchAdmins = async () => {
         try {
             const res = await fetch('/api/admin/support/admins')
             const data = await res.json()
             if (data.admins) setAdmins(data.admins)
-        } catch (error) {
-            console.error('Failed to fetch admins', error)
-        }
+        } catch (error) { console.error('Failed to fetch admins', error) }
     }
 
-    // Fetch tags
     const fetchTags = async () => {
         try {
             const res = await fetch('/api/admin/support/tags')
             const data = await res.json()
             if (data.tags) setTags(data.tags)
-        } catch (error) {
-            console.error('Failed to fetch tags', error)
-        }
+        } catch (error) { console.error('Failed to fetch tags', error) }
     }
 
-    // Fetch global settings
     const fetchGlobalSettings = async () => {
         try {
-            // AI Mode
             const aiRes = await fetch('/api/admin/whatsapp/ai-mode')
             const aiData = await aiRes.json()
-            if (aiData.ok) {
-                setGlobalAiEnabled(aiData.mode === 'auto')
-            }
-
-            // WhatsApp Config
+            if (aiData.ok) setGlobalAiEnabled(aiData.mode === 'auto')
             const waRes = await fetch('/api/admin/whatsapp/config')
             if (waRes.ok) {
                 const waData = await waRes.json()
                 setInboxWhatsAppEnabled(waData.config?.config_public?.inbox_reply_via_whatsapp === true)
             }
-        } catch (err) {
-            console.error('Failed to fetch global settings:', err)
-        }
+        } catch (err) { console.error('Failed to fetch global settings:', err) }
     }
 
     useEffect(() => {
@@ -256,85 +264,67 @@ export function AdminSupportInboxV2() {
         fetchAdmins()
         fetchTags()
         fetchGlobalSettings()
-
-        // Realtime Subscription for Conversation List (Unread counts, new chats, etc)
         const supabase = createClient()
         const channel = supabase
             .channel('admin_inbox_updates')
-            .on('postgres_changes', {
-                event: '*', // Listen to INSERT (new chat) and UPDATE (new message/unread count)
-                schema: 'public',
-                table: 'support_conversations'
-            }, (payload) => {
-                // Throttle or debounce could be added here if high volume
-                fetchConversations()
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_conversations' }, () => fetchConversations())
             .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
-        }
+        return () => { supabase.removeChannel(channel) }
     }, [fetchConversations])
 
-    const handleConversationClick = (conv: Conversation) => {
-        setActiveConversation(conv)
-    }
+    const handleSearch = () => { setCurrentPage(1); fetchConversations() }
 
-    const handleSearch = () => {
-        setCurrentPage(1)
-        fetchConversations()
-    }
-
-    const handleStatusChange = async (convId: string, newStatus: string) => {
-        try {
-            await fetch(`/api/admin/support/conversations/${convId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus })
-            })
-            fetchConversations()
-        } catch (error) {
-            console.error('Failed to update status', error)
-        }
-    }
-
-    const handleAssign = async (convId: string, adminId: string | null) => {
-        try {
-            await fetch(`/api/admin/support/conversations/${convId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assigned_admin_id: adminId })
-            })
-            fetchConversations()
-        } catch (error) {
-            console.error('Failed to assign', error)
-        }
-    }
+    const filterTabs = [
+        { key: 'all', label: 'All' },
+        { key: 'open', label: 'Open' },
+        { key: 'pending_admin', label: 'Needs Reply' },
+        { key: 'resolved', label: 'Resolved' },
+    ]
 
     return (
-        <div className="h-[calc(100vh-120px)] flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* LEFT PANEL - Conversation List */}
-            <div className="w-[380px] min-w-[320px] border-r border-gray-200 flex flex-col bg-white h-full">
+        <div className="h-[calc(100vh-100px)] flex bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+            {/* LEFT: Conversation List */}
+            <div className="w-[360px] min-w-[340px] border-r border-slate-200/80 flex flex-col bg-white h-full">
                 {/* Header */}
-                <div className="px-4 py-3 border-b border-gray-100 bg-white">
-                    <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-lg font-semibold text-gray-900">Inbox</h2>
-                        <div className="flex items-center gap-2">
-                            <Button onClick={fetchConversations} variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-                            </Button>
-                            <Button onClick={() => setShowBlastModal(true)} variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <Megaphone className="w-4 h-4" />
-                            </Button>
+                <div className="px-5 pt-5 pb-3">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                                <Inbox className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                                <h2 className="text-base font-semibold text-slate-900 leading-tight">Inbox</h2>
+                                <p className="text-[11px] text-slate-400">{totalCount} conversations</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button onClick={fetchConversations} variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-slate-600">
+                                            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom"><p className="text-xs">Refresh</p></TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button onClick={() => setShowBlastModal(true)} variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-purple-600">
+                                            <Megaphone className="w-3.5 h-3.5" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom"><p className="text-xs">Broadcast</p></TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
                     </div>
-
-                    {/* Search */}
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                         <Input
                             placeholder="Search conversations..."
-                            className="pl-9 h-9 bg-gray-50 border-gray-200 text-sm"
+                            className="pl-9 h-9 bg-slate-50/80 border-slate-200 text-sm rounded-lg"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -343,64 +333,44 @@ export function AdminSupportInboxV2() {
                 </div>
 
                 {/* Filter Tabs */}
-                <div className="px-2 py-2 border-b border-gray-100 flex items-center gap-1 bg-gray-50/50">
-                    <Button
-                        variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="h-7 text-xs rounded-full"
-                        onClick={() => { setStatusFilter('all'); setCurrentPage(1) }}
-                    >
-                        All
-                    </Button>
-                    <Button
-                        variant={statusFilter === 'open' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="h-7 text-xs rounded-full"
-                        onClick={() => { setStatusFilter('open'); setCurrentPage(1) }}
-                    >
-                        Open
-                    </Button>
-                    <Button
-                        variant={statusFilter === 'pending_admin' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="h-7 text-xs rounded-full"
-                        onClick={() => { setStatusFilter('pending_admin'); setCurrentPage(1) }}
-                    >
-                        Pending
-                    </Button>
-                    <Button
-                        variant={statusFilter === 'resolved' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="h-7 text-xs rounded-full"
-                        onClick={() => { setStatusFilter('resolved'); setCurrentPage(1) }}
-                    >
-                        Resolved
-                    </Button>
+                <div className="px-3 pb-2 flex items-center gap-1 border-b border-slate-100">
+                    {filterTabs.map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => { setStatusFilter(tab.key); setCurrentPage(1) }}
+                            className={cn(
+                                "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                                statusFilter === tab.key ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                            )}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Conversation List - Scrollable container */}
+                {/* List */}
                 <ScrollArea className="flex-1 overflow-hidden">
                     {loading ? (
-                        <div className="flex flex-col items-center justify-center py-12">
-                            <Loader2 className="w-6 h-6 animate-spin text-gray-400 mb-2" />
-                            <span className="text-sm text-gray-500">Loading...</span>
+                        <div className="flex flex-col items-center justify-center py-16">
+                            <Loader2 className="w-5 h-5 animate-spin text-indigo-400 mb-2" />
+                            <span className="text-xs text-slate-400">Loading...</span>
                         </div>
                     ) : conversations.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-                            <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                                <MessageSquare className="w-6 h-6 text-gray-400" />
+                        <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+                            <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-4">
+                                <MailOpen className="w-7 h-7 text-slate-300" />
                             </div>
-                            <p className="text-sm font-medium text-gray-600 mb-1">No conversations</p>
-                            <p className="text-xs text-gray-400">Conversations will appear here</p>
+                            <p className="text-sm font-medium text-slate-500 mb-1">No conversations</p>
+                            <p className="text-xs text-slate-400">New messages will appear here</p>
                         </div>
                     ) : (
-                        <div>
+                        <div className="py-1">
                             {conversations.map((conv) => (
                                 <ConversationListItem
                                     key={conv.id}
                                     conversation={conv}
                                     isActive={activeConversation?.id === conv.id}
-                                    onClick={() => handleConversationClick(conv)}
+                                    onClick={() => setActiveConversation(conv)}
                                 />
                             ))}
                         </div>
@@ -409,24 +379,25 @@ export function AdminSupportInboxV2() {
 
                 {/* Pagination */}
                 {!loading && conversations.length > 0 && (
-                    <div className="px-3 py-2 border-t border-gray-100 bg-white flex items-center justify-between">
-                        <span className="text-[11px] text-gray-400">
+                    <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-400 tabular-nums">
                             {(currentPage - 1) * rowsPerPage + 1}–{Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount}
                         </span>
-                        <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-6 px-2 text-[10px]">
-                                ←
+                        <div className="flex items-center gap-0.5">
+                            <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-7 w-7 p-0">
+                                <ChevronLeft className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-6 px-2 text-[10px]">
-                                →
+                            <span className="text-[11px] text-slate-500 tabular-nums px-1">{currentPage}/{totalPages || 1}</span>
+                            <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-7 w-7 p-0">
+                                <ChevronRight className="w-3.5 h-3.5" />
                             </Button>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* RIGHT PANEL - Chat Detail */}
-            <div className="flex-1 flex flex-col bg-gray-50/30 h-full overflow-hidden">
+            {/* RIGHT: Chat Detail */}
+            <div className="flex-1 flex flex-col bg-slate-50/30 h-full overflow-hidden">
                 {activeConversation ? (
                     <ConversationDetailView
                         conversation={activeConversation}
@@ -441,13 +412,11 @@ export function AdminSupportInboxV2() {
                     />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                        <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                            <MessageSquare className="w-10 h-10 text-gray-300" />
+                        <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center mb-5 shadow-inner">
+                            <MessageSquare className="w-10 h-10 text-slate-300" />
                         </div>
-                        <h3 className="text-lg font-medium text-gray-600 mb-2">Select a conversation</h3>
-                        <p className="text-sm text-gray-400 max-w-sm">
-                            Choose a conversation from the list to view messages and respond to customers
-                        </p>
+                        <h3 className="text-lg font-semibold text-slate-600 mb-1.5">Select a conversation</h3>
+                        <p className="text-sm text-slate-400 max-w-xs">Choose a conversation from the list to view messages and respond</p>
                     </div>
                 )}
             </div>
@@ -457,256 +426,73 @@ export function AdminSupportInboxV2() {
     )
 }
 
-// NEW: Compact Conversation List Item for two-column layout
-function ConversationListItem({
-    conversation,
-    isActive,
-    onClick
-}: {
-    conversation: Conversation & { primary_channel?: string; whatsapp_user_phone?: string }
-    isActive: boolean
-    onClick: () => void
-}) {
+// ═══════════════════════════════════════════════════════════
+// CONVERSATION LIST ITEM — modern compact card
+// ═══════════════════════════════════════════════════════════
+function ConversationListItem({ conversation, isActive, onClick }: { conversation: Conversation; isActive: boolean; onClick: () => void }) {
     const isWhatsApp = conversation.primary_channel === 'whatsapp' || !!conversation.whatsapp_user_phone
     const hasUnread = conversation.admin_unread_count > 0
+    const name = conversation.created_by?.full_name || 'Unknown'
+    const priorityCfg = PRIORITY_CONFIG[conversation.priority]
 
     return (
         <div
             onClick={onClick}
             className={cn(
-                "px-3 py-3 cursor-pointer transition-all border-l-3",
+                "mx-2 my-0.5 px-3 py-3 cursor-pointer transition-all rounded-xl group",
                 isActive
-                    ? "bg-blue-50 border-l-blue-500"
+                    ? "bg-indigo-50/80 ring-1 ring-indigo-200/60"
                     : hasUnread
-                        ? "bg-blue-50/50 border-l-transparent hover:bg-gray-50"
-                        : "border-l-transparent hover:bg-gray-50",
-                isWhatsApp && !isActive && "border-l-green-400"
+                        ? "bg-blue-50/30 hover:bg-slate-50"
+                        : "hover:bg-slate-50"
             )}
         >
             <div className="flex items-start gap-3">
-                {/* Avatar with unread badge */}
                 <div className="relative flex-shrink-0">
                     <div className={cn(
-                        "w-11 h-11 rounded-full flex items-center justify-center text-sm font-medium",
-                        hasUnread ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"
+                        "w-10 h-10 rounded-xl flex items-center justify-center text-xs font-semibold text-white bg-gradient-to-br",
+                        isActive ? 'from-indigo-500 to-indigo-600' : avatarColor(name)
                     )}>
-                        {conversation.created_by?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                        {getInitials(name)}
                     </div>
                     {isWhatsApp && (
-                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
-                            <Phone className="w-2.5 h-2.5 text-white" />
+                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-white flex items-center justify-center">
+                            <Phone className="w-2 h-2 text-white" />
                         </div>
                     )}
                     {hasUnread && (
-                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-[10px] text-white font-bold">
-                            {conversation.admin_unread_count > 9 ? '9+' : conversation.admin_unread_count}
+                        <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-indigo-600 flex items-center justify-center text-[9px] text-white font-bold px-1">
+                            {conversation.admin_unread_count > 99 ? '99+' : conversation.admin_unread_count}
                         </div>
                     )}
                 </div>
-
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                        <span className={cn(
-                            "text-sm truncate max-w-[160px]",
-                            hasUnread ? "font-semibold text-gray-900" : "font-medium text-gray-700"
-                        )}>
-                            {conversation.created_by?.full_name || 'Unknown'}
-                        </span>
-                        <span className="text-[10px] text-gray-400 flex-shrink-0">
-                            {format(new Date(conversation.last_message_at), 'MMM d, HH:mm')}
-                        </span>
+                        <span className={cn("text-[13px] truncate max-w-[160px]", hasUnread ? "font-semibold text-slate-900" : "font-medium text-slate-700")}>{name}</span>
+                        <span className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums">{smartDate(conversation.last_message_at)}</span>
                     </div>
-                    <p className={cn(
-                        "text-xs truncate mb-1",
-                        hasUnread ? "text-gray-700" : "text-gray-500"
-                    )}>
-                        {conversation.subject}
-                    </p>
-                    <p className="text-[11px] text-gray-400 truncate">
-                        {conversation.last_message_sender_type === 'admin' && 'You: '}
-                        {conversation.last_message_preview || 'No messages'}
-                    </p>
+                    <p className={cn("text-xs truncate mb-1", hasUnread ? "text-slate-700 font-medium" : "text-slate-500")}>{conversation.subject}</p>
+                    <div className="flex items-center gap-1.5">
+                        <p className="text-[11px] text-slate-400 truncate flex-1">
+                            {conversation.last_message_sender_type === 'admin' && <span className="text-indigo-500">You: </span>}
+                            {conversation.last_message_preview || 'No messages yet'}
+                        </p>
+                        {conversation.priority !== 'normal' && <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", priorityCfg.dot)} />}
+                    </div>
                 </div>
             </div>
         </div>
     )
 }
 
-// OLD Conversation Row Component (keeping for compatibility but not used in new layout)
-function ConversationRow({
-    conversation,
-    index,
-    onClick,
-    onStatusChange,
-    onAssign,
-    admins
-}: {
-    conversation: Conversation & { primary_channel?: string; whatsapp_user_phone?: string }
-    index: number
-    onClick: () => void
-    onStatusChange: (id: string, status: string) => void
-    onAssign: (id: string, adminId: string | null) => void
-    admins: Admin[]
-}) {
-    const statusConfig = STATUS_CONFIG[conversation.status]
-    const priorityConfig = PRIORITY_CONFIG[conversation.priority]
-    const StatusIcon = statusConfig.icon
-    const isWhatsAppConversation = conversation.primary_channel === 'whatsapp' || !!conversation.whatsapp_user_phone
-
-    return (
-        <div
-            onClick={onClick}
-            className={cn(
-                "px-4 py-3 hover:bg-gray-50 cursor-pointer transition-all border-b border-gray-100",
-                conversation.is_unread && "bg-blue-50/40",
-                isWhatsAppConversation && "border-l-2 border-l-green-500"
-            )}
-        >
-            <div className="flex items-start gap-3">
-                {/* Unread indicator / Avatar placeholder */}
-                <div className={cn(
-                    "flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium",
-                    conversation.is_unread
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-gray-100 text-gray-600"
-                )}>
-                    {conversation.admin_unread_count > 0 ? (
-                        <span className="font-bold">{conversation.admin_unread_count}</span>
-                    ) : (
-                        <User className="w-4 h-4" />
-                    )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                    {/* Header row - prioritize customer name and case */}
-                    <div className="flex items-center justify-between mb-0.5">
-                        <div className="flex items-center gap-2">
-                            <h4 className={cn(
-                                "text-sm truncate max-w-[180px]",
-                                conversation.is_unread ? "text-gray-900 font-semibold" : "text-gray-700 font-medium"
-                            )}>
-                                {conversation.created_by?.full_name || 'Unknown User'}
-                            </h4>
-                            {isWhatsAppConversation && (
-                                <Phone className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                            )}
-                        </div>
-                        <span className="text-[11px] text-gray-400 whitespace-nowrap">
-                            {format(new Date(conversation.last_message_at), 'MMM d, HH:mm')}
-                        </span>
-                    </div>
-
-                    {/* Subject line */}
-                    <p className={cn(
-                        "text-sm truncate mb-1",
-                        conversation.is_unread ? "text-gray-800" : "text-gray-600"
-                    )}>
-                        {conversation.subject}
-                    </p>
-
-                    {/* Preview - muted */}
-                    <p className="text-xs text-gray-400 truncate mb-1.5">
-                        {conversation.last_message_sender_type === 'admin' && (
-                            <span className="text-gray-500">You: </span>
-                        )}
-                        {conversation.last_message_preview || 'No messages'}
-                    </p>
-
-                    {/* Meta row - minimal badges */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-mono text-gray-400 border-gray-200">
-                            {conversation.case_number}
-                        </Badge>
-                        <Badge className={cn("text-[10px] h-5 px-1.5", statusConfig.color)}>
-                            {statusConfig.label}
-                        </Badge>
-                        {conversation.priority !== 'normal' && (
-                            <Badge className={cn("text-[10px] h-5 px-1.5", priorityConfig.color)}>
-                                {priorityConfig.label}
-                            </Badge>
-                        )}
-                        {conversation.assigned_to && (
-                            <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                                <UserPlus className="w-3 h-3" />
-                                {conversation.assigned_to.full_name}
-                            </span>
-                        )}
-                        {conversation.tags && conversation.tags.length > 0 && (
-                            <div className="flex items-center gap-1">
-                                {conversation.tags.slice(0, 2).map(tag => (
-                                    <span
-                                        key={tag.id}
-                                        className="px-1.5 py-0.5 rounded text-[9px]"
-                                        style={{ backgroundColor: tag.color + '15', color: tag.color }}
-                                    >
-                                        {tag.name}
-                                    </span>
-                                ))}
-                                {conversation.tags.length > 2 && (
-                                    <span className="text-[9px] text-gray-400">+{conversation.tags.length - 2}</span>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Quick actions */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Quick Actions</div>
-                        <DropdownMenuItem onClick={() => onStatusChange(conversation.id, 'resolved')}>
-                            <CheckCircle2 className="w-4 h-4 mr-2" /> Mark Resolved
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onStatusChange(conversation.id, 'closed')}>
-                            <Archive className="w-4 h-4 mr-2" /> Close
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onStatusChange(conversation.id, 'spam')}>
-                            <AlertTriangle className="w-4 h-4 mr-2" /> Mark as Spam
-                        </DropdownMenuItem>
-                        <div className="border-t border-gray-100 my-1"></div>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Assign to</div>
-                        <DropdownMenuItem onClick={() => onAssign(conversation.id, null)}>
-                            <User className="w-4 h-4 mr-2" /> Unassigned
-                        </DropdownMenuItem>
-                        {admins.slice(0, 5).map(admin => (
-                            <DropdownMenuItem key={admin.id} onClick={() => onAssign(conversation.id, admin.id)}>
-                                <User className="w-4 h-4 mr-2" /> {admin.full_name}
-                            </DropdownMenuItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-        </div>
-    )
-}
-
-// Conversation Detail View
+// ═══════════════════════════════════════════════════════════
+// CONVERSATION DETAIL VIEW — modern chat interface
+// ═══════════════════════════════════════════════════════════
 function ConversationDetailView({
-    conversation,
-    admins,
-    tags,
-    onBack,
-    onUpdate,
-    showSidebar,
-    setShowSidebar,
-    globalAiEnabled,
-    inboxWhatsAppEnabled
+    conversation, admins, tags, onBack, onUpdate, showSidebar, setShowSidebar, globalAiEnabled, inboxWhatsAppEnabled
 }: {
-    conversation: Conversation
-    admins: Admin[]
-    tags: Tag[]
-    onBack: () => void
-    onUpdate: () => void
-    showSidebar: boolean
-    setShowSidebar: (show: boolean) => void
-    globalAiEnabled: boolean
-    inboxWhatsAppEnabled: boolean
+    conversation: Conversation; admins: Admin[]; tags: Tag[]; onBack: () => void; onUpdate: () => void
+    showSidebar: boolean; setShowSidebar: (show: boolean) => void; globalAiEnabled: boolean; inboxWhatsAppEnabled: boolean
 }) {
     const [messages, setMessages] = useState<Message[]>([])
     const [notes, setNotes] = useState<ConversationNote[]>([])
@@ -718,724 +504,340 @@ function ConversationDetailView({
     const [convDetails, setConvDetails] = useState(conversation)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [activeTab, setActiveTab] = useState('chat')
-
-    // WhatsApp reply config (Fetched from settings)
     const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
 
-    // AI Assist
+    // AI
     const [aiLoading, setAiLoading] = useState(false)
     const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
     const [showAiPanel, setShowAiPanel] = useState(false)
-
-    // AI Bot Mode (for Moltbot integration)
     const [botMode, setBotMode] = useState<'auto' | 'takeover'>('auto')
     const [botModeLoading, setBotModeLoading] = useState(false)
     const [pendingDraft, setPendingDraft] = useState<string | null>(null)
     const [draftLoading, setDraftLoading] = useState(false)
 
-    // Check if conversation has WhatsApp
     const hasWhatsApp = !!(convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone
-
-    // Get user phone for Moltbot API
     const userPhone = (convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone
-
-    // AI is enabled only when botMode is 'auto' - hide ALL AI UI when 'takeover'
-    // Also respects global AI setting
     const isAiEnabled = botMode === 'auto' && globalAiEnabled
-
-    // Derived State: Should we reply via WhatsApp?
     const replyViaWhatsApp = inboxWhatsAppEnabled && hasWhatsApp
 
-    // Fetch bot mode from Moltbot
     const fetchBotMode = async () => {
         if (!userPhone) return
-
         try {
             const res = await fetch(`/api/support/bot/mode/${encodeURIComponent(userPhone)}`)
-            if (res.ok) {
-                const data = await res.json()
-                if (data.ok) {
-                    setBotMode(data.mode || 'auto')
-                    setPendingDraft(data.draftPreview || null)
-                }
-            }
-        } catch (error) {
-            console.error('Failed to fetch bot mode', error)
-        }
+            if (res.ok) { const data = await res.json(); if (data.ok) { setBotMode(data.mode || 'auto'); setPendingDraft(data.draftPreview || null) } }
+        } catch (error) { console.error('Failed to fetch bot mode', error) }
     }
 
-    // Toggle bot mode
     const handleBotModeToggle = async (newMode: 'auto' | 'takeover') => {
         if (!userPhone || botModeLoading) return
-
         setBotModeLoading(true)
         try {
-            const res = await fetch(`/api/support/bot/mode/${encodeURIComponent(userPhone)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: newMode })
-            })
-
-            if (res.ok) {
-                const data = await res.json()
-                setBotMode(data.mode || newMode)
-            }
-        } catch (error) {
-            console.error('Failed to update bot mode', error)
-        } finally {
-            setBotModeLoading(false)
-        }
+            const res = await fetch(`/api/support/bot/mode/${encodeURIComponent(userPhone)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: newMode }) })
+            if (res.ok) { const data = await res.json(); setBotMode(data.mode || newMode) }
+        } catch (error) { console.error('Failed to update bot mode', error) }
+        finally { setBotModeLoading(false) }
     }
 
-    // Generate AI draft via Moltbot
     const handleGenerateDraft = async () => {
         if (!userPhone || draftLoading) return
-
-        setDraftLoading(true)
-        setError(null)
-
+        setDraftLoading(true); setError(null)
         try {
-            const res = await fetch(`/api/support/bot/draft/${encodeURIComponent(userPhone)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ instruction: '' })
-            })
-
+            const res = await fetch(`/api/support/bot/draft/${encodeURIComponent(userPhone)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instruction: '' }) })
             const data = await res.json()
-
-            if (data.ok && data.draft) {
-                setPendingDraft(data.draft)
-                setShowAiPanel(true)
-                setAiSuggestion(data.draft)
-            } else {
-                setError(data.error || 'Failed to generate draft')
-            }
-        } catch (error) {
-            setError('Failed to generate AI draft')
-        } finally {
-            setDraftLoading(false)
-        }
+            if (data.ok && data.draft) { setPendingDraft(data.draft); setShowAiPanel(true); setAiSuggestion(data.draft) }
+            else setError(data.error || 'Failed to generate draft')
+        } catch { setError('Failed to generate AI draft') }
+        finally { setDraftLoading(false) }
     }
 
-    // Send pending draft
     const handleSendDraft = async () => {
         if (!userPhone || !pendingDraft) return
-
-        setSending(true)
-        setError(null)
-
+        setSending(true); setError(null)
         try {
-            const res = await fetch(`/api/support/bot/draft/${encodeURIComponent(userPhone)}/send`, {
-                method: 'POST'
-            })
-
-            if (res.ok) {
-                setPendingDraft(null)
-                setAiSuggestion(null)
-                setShowAiPanel(false)
-                fetchMessages()
-            } else {
-                const data = await res.json()
-                setError(data.error || 'Failed to send draft')
-            }
-        } catch (error) {
-            setError('Failed to send draft')
-        } finally {
-            setSending(false)
-        }
+            const res = await fetch(`/api/support/bot/draft/${encodeURIComponent(userPhone)}/send`, { method: 'POST' })
+            if (res.ok) { setPendingDraft(null); setAiSuggestion(null); setShowAiPanel(false); fetchMessages() }
+            else { const data = await res.json(); setError(data.error || 'Failed to send draft') }
+        } catch { setError('Failed to send draft') }
+        finally { setSending(false) }
     }
 
-    // Fetch messages
     const fetchMessages = async () => {
         try {
             const res = await fetch(`/api/admin/support/conversations/${conversation.id}/messages?limit=100`)
             const data = await res.json()
-            if (data.messages) {
-                setMessages(data.messages.reverse())
-                setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-            }
-        } catch (error) {
-            console.error('Failed to fetch messages', error)
-        } finally {
-            setLoadingMessages(false)
-        }
+            if (data.messages) { setMessages(data.messages.reverse()); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100) }
+        } catch (error) { console.error('Failed to fetch messages', error) }
+        finally { setLoadingMessages(false) }
     }
 
-    // Fetch notes
     const fetchNotes = async () => {
-        try {
-            const res = await fetch(`/api/admin/support/conversations/${conversation.id}/notes`)
-            const data = await res.json()
-            if (data.notes) setNotes(data.notes)
-        } catch (error) {
-            console.error('Failed to fetch notes', error)
-        }
+        try { const res = await fetch(`/api/admin/support/conversations/${conversation.id}/notes`); const data = await res.json(); if (data.notes) setNotes(data.notes) }
+        catch (error) { console.error('Failed to fetch notes', error) }
     }
 
-    // Fetch conversation details
     const fetchDetails = async () => {
         try {
             const res = await fetch(`/api/admin/support/conversations/${conversation.id}`)
             const data = await res.json()
-            if (data.conversation) {
-                setConvDetails(data.conversation)
-                if (data.conversation.notes) setNotes(data.conversation.notes)
-            }
-        } catch (error) {
-            console.error('Failed to fetch details', error)
-        }
+            if (data.conversation) { setConvDetails(data.conversation); if (data.conversation.notes) setNotes(data.conversation.notes) }
+        } catch (error) { console.error('Failed to fetch details', error) }
     }
 
     useEffect(() => {
-        fetchMessages()
-        fetchDetails()
-        fetchBotMode()
-
-        // Realtime Subscription for new messages
+        fetchMessages(); fetchDetails(); fetchBotMode()
         const supabase = createClient()
         const channel = supabase
             .channel(`admin_support_messages:${conversation.id}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'support_messages',
-                filter: `thread_id=eq.${conversation.id}`
-            }, (payload) => {
-                // When new message arrives, re-fetch messages to get full data (sender info etc)
-                fetchMessages()
-                // Update the conversation details (last message, unread status)
-                fetchDetails()
-                // Notify parent to update the list
-                onUpdate()
-            })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages', filter: `thread_id=eq.${conversation.id}` }, () => { fetchMessages(); fetchDetails(); onUpdate() })
             .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
-        }
+        return () => { supabase.removeChannel(channel) }
     }, [conversation.id])
 
-    // Send message
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault()
         const msg = newMessage.trim()
         if (!msg) return
-
-        setError(null)
-        setSending(true)
-
+        setError(null); setSending(true)
         try {
-            // If WhatsApp reply mode is enabled and user has WhatsApp
             if (replyViaWhatsApp && hasWhatsApp) {
                 setSendingWhatsApp(true)
-                const waRes = await fetch('/api/support/whatsapp/send', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        threadId: conversation.id,
-                        toPhoneE164: (convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone,
-                        text: msg
-                    })
-                })
-
-                const waData = await waRes.json()
-                setSendingWhatsApp(false)
-
-                if (!waRes.ok) {
-                    // Still saved in DB, show warning
-                    if (waData.storedInDb) {
-                        setError(`WhatsApp delivery failed: ${waData.error}. Message saved in app.`)
-                    } else {
-                        throw new Error(waData.error || 'Failed to send via WhatsApp')
-                    }
-                }
-
-                setNewMessage('')
-                setAiSuggestion(null)
-                fetchMessages()
-                onUpdate()
+                const waRes = await fetch('/api/support/whatsapp/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ threadId: conversation.id, toPhoneE164: (convDetails as any).whatsapp_user_phone || convDetails.created_by?.phone, text: msg }) })
+                const waData = await waRes.json(); setSendingWhatsApp(false)
+                if (!waRes.ok) { if (waData.storedInDb) setError(`WhatsApp delivery failed: ${waData.error}. Saved in app.`); else throw new Error(waData.error || 'Failed to send via WhatsApp') }
+                setNewMessage(''); setAiSuggestion(null); fetchMessages(); onUpdate()
             } else {
-                // Normal app message
-                const res = await fetch(`/api/admin/support/conversations/${conversation.id}/messages`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg })
-                })
-
-                if (!res.ok) {
-                    const data = await res.json()
-                    throw new Error(data.error || 'Failed to send message')
-                }
-
-                setNewMessage('')
-                setAiSuggestion(null)
-                fetchMessages()
-                onUpdate()
+                const res = await fetch(`/api/admin/support/conversations/${conversation.id}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) })
+                if (!res.ok) { const data = await res.json(); throw new Error(data.error || 'Failed to send message') }
+                setNewMessage(''); setAiSuggestion(null); fetchMessages(); onUpdate()
             }
-        } catch (err: any) {
-            if (err.message === 'User not found') {
-                setError('Failed: Admin profile missing. Please contact developer.')
-            } else {
-                setError(err.message)
-            }
-        } finally {
-            setSending(false)
-            setSendingWhatsApp(false)
-        }
+        } catch (err: any) { setError(err.message === 'User not found' ? 'Admin profile missing. Contact developer.' : err.message) }
+        finally { setSending(false); setSendingWhatsApp(false) }
     }
 
-    // AI Assist handler
     const handleAiAssist = async () => {
-        setAiLoading(true)
-        setError(null)
-        setShowAiPanel(true)
-
+        setAiLoading(true); setError(null); setShowAiPanel(true)
         try {
-            const res = await fetch('/api/agent/assist', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    conversationId: conversation.id,
-                    tone: 'friendly'
-                })
-            })
-
+            const res = await fetch('/api/agent/assist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversationId: conversation.id, tone: 'friendly' }) })
             const data = await res.json()
-
-            if (data.ok && data.suggestedReply) {
-                setAiSuggestion(data.suggestedReply)
-            } else {
-                // Handle "User not found" gracefully - likely auth sync issue
-                if (data.error === 'User not found') {
-                    console.warn('AI Assist: Admin user not found in DB')
-                    // Show a milder error or suppress it for AI panel
-                    setError('AI Assistant unavailable (Admin profile missing)')
-                } else {
-                    setError(data.error || 'AI assist unavailable')
-                }
-            }
-        } catch (err: any) {
-            setError('Failed to get AI suggestion')
-        } finally {
-            setAiLoading(false)
-        }
+            if (data.ok && data.suggestedReply) setAiSuggestion(data.suggestedReply)
+            else setError(data.error === 'User not found' ? 'AI unavailable (profile missing)' : data.error || 'AI unavailable')
+        } catch { setError('Failed to get AI suggestion') }
+        finally { setAiLoading(false) }
     }
 
-    // Use AI suggestion
-    const useAiSuggestion = () => {
-        if (aiSuggestion) {
-            setNewMessage(aiSuggestion)
-            setShowAiPanel(false)
-        }
-    }
+    const useAiSuggestion = () => { if (aiSuggestion) { setNewMessage(aiSuggestion); setShowAiPanel(false) } }
 
-    // Add note
     const handleAddNote = async () => {
-        const note = newNote.trim()
-        if (!note) return
-
-        try {
-            const res = await fetch(`/api/admin/support/conversations/${conversation.id}/notes`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ note_text: note })
-            })
-
-            if (res.ok) {
-                setNewNote('')
-                fetchNotes()
-            }
-        } catch (error) {
-            console.error('Failed to add note', error)
-        }
+        const note = newNote.trim(); if (!note) return
+        try { const res = await fetch(`/api/admin/support/conversations/${conversation.id}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note_text: note }) }); if (res.ok) { setNewNote(''); fetchNotes() } }
+        catch (error) { console.error('Failed to add note', error) }
     }
 
-    // Update status
     const handleStatusChange = async (newStatus: string) => {
-        try {
-            await fetch(`/api/admin/support/conversations/${conversation.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus })
-            })
-            setConvDetails(prev => ({ ...prev, status: newStatus as any }))
-            onUpdate()
-        } catch (error) {
-            console.error('Failed to update status', error)
-        }
+        try { await fetch(`/api/admin/support/conversations/${conversation.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); setConvDetails(prev => ({ ...prev, status: newStatus as any })); onUpdate() }
+        catch (error) { console.error('Failed to update status', error) }
     }
 
-    // Update priority
     const handlePriorityChange = async (newPriority: string) => {
-        try {
-            await fetch(`/api/admin/support/conversations/${conversation.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ priority: newPriority })
-            })
-            setConvDetails(prev => ({ ...prev, priority: newPriority as any }))
-        } catch (error) {
-            console.error('Failed to update priority', error)
-        }
+        try { await fetch(`/api/admin/support/conversations/${conversation.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: newPriority }) }); setConvDetails(prev => ({ ...prev, priority: newPriority as any })) }
+        catch (error) { console.error('Failed to update priority', error) }
     }
 
-    // Update assignment
     const handleAssignChange = async (adminId: string | null) => {
         try {
-            await fetch(`/api/admin/support/conversations/${conversation.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assigned_admin_id: adminId })
-            })
+            await fetch(`/api/admin/support/conversations/${conversation.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigned_admin_id: adminId }) })
             const admin = admins.find(a => a.id === adminId)
-            setConvDetails(prev => ({
-                ...prev,
-                assigned_to: admin ? { id: admin.id, email: admin.email, full_name: admin.full_name } : undefined
-            }))
-            onUpdate()
-        } catch (error) {
-            console.error('Failed to update assignment', error)
-        }
+            setConvDetails(prev => ({ ...prev, assigned_to: admin ? { id: admin.id, email: admin.email, full_name: admin.full_name } : undefined })); onUpdate()
+        } catch (error) { console.error('Failed to update assignment', error) }
     }
 
     const statusConfig = STATUS_CONFIG[convDetails.status]
+    const name = convDetails.created_by?.full_name || 'Unknown'
+
+    // Group messages by date
+    const groupedMessages = useMemo(() => {
+        const groups: { date: string; messages: Message[] }[] = []
+        let currentDate = ''
+        messages.forEach(msg => {
+            const d = format(new Date(msg.created_at), 'yyyy-MM-dd')
+            if (d !== currentDate) { currentDate = d; groups.push({ date: d, messages: [msg] }) }
+            else groups[groups.length - 1].messages.push(msg)
+        })
+        return groups
+    }, [messages])
 
     return (
         <div className="flex h-full overflow-hidden">
-            {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-                {/* Header - Professional, clean design for two-column layout */}
-                <div className="px-4 py-3 border-b flex items-center justify-between bg-white">
+                {/* Chat Header */}
+                <div className="px-5 py-3 border-b border-slate-200/80 flex items-center justify-between bg-white">
                     <div className="flex items-center gap-3">
-                        {/* Avatar */}
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
-                            {convDetails.created_by?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-xs font-semibold text-white bg-gradient-to-br", avatarColor(name))}>
+                            {getInitials(name)}
                         </div>
-                        <div className="flex flex-col">
+                        <div>
                             <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-gray-900">{convDetails.created_by?.full_name || 'Unknown'}</h3>
-                                {hasWhatsApp && (
-                                    <Badge className="h-5 px-1.5 bg-green-50 text-green-700 border border-green-200 text-[10px]">
-                                        <Phone className="w-3 h-3 mr-0.5" />
-                                        WhatsApp
-                                    </Badge>
-                                )}
+                                <h3 className="font-semibold text-slate-900 text-sm">{name}</h3>
+                                {hasWhatsApp && <Badge variant="outline" className="h-5 px-1.5 bg-emerald-50 text-emerald-600 border-emerald-200 text-[10px] font-medium"><Phone className="w-2.5 h-2.5 mr-0.5" />WhatsApp</Badge>}
+                                <Badge variant="outline" className={cn("h-5 px-1.5 text-[10px] font-medium", statusConfig.color)}>{statusConfig.label}</Badge>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <span>{convDetails.subject}</span>
-                                <span className="text-gray-300">•</span>
-                                <span className="font-mono text-gray-400">{convDetails.case_number}</span>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                <span className="truncate max-w-[200px]">{convDetails.subject}</span>
+                                <span className="text-slate-300">|</span>
+                                <span className="font-mono">{convDetails.case_number}</span>
                             </div>
                         </div>
                     </div>
-
-                    {/* Right side controls - Only show AI controls when AI is enabled */}
-                    <div className="flex items-center gap-3">
-                        {/* Manual Mode indicator with toggle to enable AI - shown when AI is OFF */}
-                        {globalAiEnabled && hasWhatsApp && userPhone && !isAiEnabled && (
-                            <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div className="flex items-center gap-2">
-                                            <Switch
-                                                id="ai-auto-mode-off"
-                                                checked={false}
-                                                onCheckedChange={(checked) => handleBotModeToggle(checked ? 'auto' : 'takeover')}
-                                                disabled={botModeLoading}
-                                            />
-                                            <Label
-                                                htmlFor="ai-auto-mode-off"
-                                                className="text-xs cursor-pointer flex items-center gap-1.5 text-gray-400"
-                                            >
-                                                {botModeLoading && <Loader2 className="w-3 h-3 animate-spin" />}
-                                                <User className="w-3.5 h-3.5" />
-                                                Manual
-                                            </Label>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>AI is off. Toggle to enable auto-reply.</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
+                    <div className="flex items-center gap-2">
+                        {globalAiEnabled && hasWhatsApp && userPhone && (
+                            <div className="flex items-center gap-2 mr-1">
+                                {isAiEnabled ? (
+                                    <div className="flex items-center gap-2 bg-emerald-50 rounded-lg px-3 py-1.5 border border-emerald-200">
+                                        <Bot className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span className="text-[11px] font-semibold text-emerald-700">AI Auto</span>
+                                        <Switch checked={true} onCheckedChange={() => handleBotModeToggle('takeover')} disabled={botModeLoading} className="data-[state=checked]:bg-emerald-500 h-4 w-7" />
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
+                                        <User className="w-3.5 h-3.5 text-slate-500" />
+                                        <span className="text-[11px] font-medium text-slate-600">Manual</span>
+                                        <Switch checked={false} onCheckedChange={() => handleBotModeToggle('auto')} disabled={botModeLoading} className="h-4 w-7" />
+                                    </div>
+                                )}
+                            </div>
                         )}
-
-                        {/* AI Bot Mode Controls - ONLY show when AI is enabled */}
-                        {globalAiEnabled && hasWhatsApp && userPhone && isAiEnabled && (
-                            <>
-                                {/* Mode Badge */}
-                                <Badge className="text-xs font-medium bg-green-100 text-green-700 hover:bg-green-100">
-                                    <Bot className="w-3 h-3 mr-1" />
-                                    AUTO
-                                </Badge>
-
-                                {/* AI Auto Toggle */}
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <div className="flex items-center gap-2">
-                                                <Switch
-                                                    id="ai-auto-mode"
-                                                    checked={true}
-                                                    onCheckedChange={(checked) => handleBotModeToggle(checked ? 'auto' : 'takeover')}
-                                                    disabled={botModeLoading}
-                                                />
-                                                <Label
-                                                    htmlFor="ai-auto-mode"
-                                                    className="text-xs cursor-pointer flex items-center gap-1 text-green-600 font-medium"
-                                                >
-                                                    {botModeLoading && <Loader2 className="w-3 h-3 animate-spin" />}
-                                                    AI Auto
-                                                </Label>
-                                            </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>Bot auto-replies to messages</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                            </>
-                        )}
-
-                        {/* Sidebar Toggle Button */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400"><MoreHorizontal className="w-4 h-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem onClick={() => handleStatusChange('resolved')}><CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" /> Mark Resolved</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange('closed')}><Archive className="w-3.5 h-3.5 mr-2 text-slate-500" /> Close</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleStatusChange('spam')}><AlertTriangle className="w-3.5 h-3.5 mr-2 text-red-500" /> Mark Spam</DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                         <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 p-0"
-                                        onClick={() => setShowSidebar(!showSidebar)}
-                                    >
-                                        {showSidebar ? (
-                                            <PanelRightClose className="w-4 h-4 text-gray-500" />
-                                        ) : (
-                                            <PanelRightOpen className="w-4 h-4 text-gray-500" />
-                                        )}
+                                    <Button variant="ghost" size="sm" className={cn("h-8 w-8 p-0", showSidebar ? "text-indigo-600" : "text-slate-400")} onClick={() => setShowSidebar(!showSidebar)}>
+                                        {showSidebar ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
                                     </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>{showSidebar ? 'Hide Details' : 'Show Details'}</p>
-                                </TooltipContent>
+                                <TooltipContent><p className="text-xs">{showSidebar ? 'Hide' : 'Details'}</p></TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
                     </div>
                 </div>
 
-                {/* Error Display */}
+                {/* Error */}
                 {error && (
-                    <div className="bg-red-50 border-b border-red-100 px-4 py-2 text-sm text-red-600 flex items-center justify-between">
-                        <span>{error}</span>
-                        <Button variant="ghost" size="sm" onClick={() => setError(null)} className="h-6 text-red-600 hover:text-red-800">
-                            <X className="w-4 h-4" />
-                        </Button>
+                    <div className="bg-red-50 border-b border-red-100 px-5 py-2 text-sm text-red-600 flex items-center justify-between">
+                        <div className="flex items-center gap-2"><AlertCircle className="w-3.5 h-3.5" /><span>{error}</span></div>
+                        <Button variant="ghost" size="sm" onClick={() => setError(null)} className="h-6 w-6 p-0 text-red-400"><X className="w-3.5 h-3.5" /></Button>
                     </div>
                 )}
 
-                {/* Messages - Scrollable area */}
-                <ScrollArea className="flex-1 p-4 bg-gray-50/30 overflow-y-auto">
-                    <div className="space-y-4 pb-4">
+                {/* Messages */}
+                <ScrollArea className="flex-1 overflow-y-auto">
+                    <div className="max-w-3xl mx-auto px-5 py-4">
                         {loadingMessages ? (
-                            <div className="flex justify-center py-8">
-                                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                            </div>
+                            <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
                         ) : (
-                            messages.map((msg) => {
-                                const isAdmin = msg.sender_type === 'admin'
-                                const isSystem = msg.sender_type === 'system'
-                                const channel = msg.channel || 'app'
-                                const channelConfig = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG] || CHANNEL_CONFIG.app
-                                const ChannelIcon = channelConfig.icon
-                                const isWhatsApp = channel === 'whatsapp'
-                                const isAIMessage = channel === 'ai'
-
-                                if (isSystem) {
-                                    return (
-                                        <div key={msg.id} className="flex justify-center my-4">
-                                            <span className="bg-gray-100 text-gray-500 text-xs px-3 py-1.5 rounded-full">
-                                                {msg.body_text}
-                                            </span>
-                                        </div>
-                                    )
-                                }
-
-                                return (
-                                    <div key={msg.id} className={cn("flex", isAdmin ? "justify-end" : "justify-start")}>
-                                        <div className={cn(
-                                            "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm relative",
-                                            isAdmin
-                                                // Admin messages - WhatsApp style outgoing (teal/green)
-                                                ? "bg-emerald-500 text-white rounded-br-sm"
-                                                // User messages - WhatsApp style incoming (light green)
-                                                : "bg-green-100 text-gray-900 rounded-bl-sm"
-                                        )}>
-                                            {/* Channel badge - only show WhatsApp indicator, hide AI badge when AI is off */}
-                                            {isWhatsApp && (
-                                                <div className={cn(
-                                                    "flex items-center gap-1 text-[10px] mb-1.5 font-medium",
-                                                    isAdmin ? "text-white/80" : "text-green-600"
-                                                )}>
-                                                    <Phone className="w-3 h-3" />
-                                                    via WhatsApp
-                                                </div>
-                                            )}
-                                            {/* Only show AI Generated badge if AI mode is enabled */}
-                                            {isAIMessage && isAiEnabled && (
-                                                <div className={cn(
-                                                    "flex items-center gap-1 text-[10px] mb-1.5 font-medium",
-                                                    isAdmin ? "text-white/80" : "text-amber-600"
-                                                )}>
-                                                    <Bot className="w-3 h-3" />
-                                                    AI Generated
-                                                </div>
-                                            )}
-
-                                            <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.body_text}</p>
-                                            {msg.attachments && msg.attachments.length > 0 && (
-                                                <div className="mt-2 pt-2 border-t border-white/20 space-y-1">
-                                                    {msg.attachments.map((att: any, i: number) => (
-                                                        <a
-                                                            key={i}
-                                                            href={att.url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className={cn(
-                                                                "flex items-center gap-1.5 text-xs hover:underline",
-                                                                isAdmin ? "text-white/90" : "text-blue-600"
-                                                            )}
-                                                        >
-                                                            <Paperclip className="w-3 h-3" />
-                                                            {att.name || 'Attachment'}
-                                                        </a>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            <div className={cn(
-                                                "text-[10px] mt-2 flex items-center justify-end gap-1.5",
-                                                isAdmin ? "text-white/60" : "text-gray-400"
-                                            )}>
-                                                {format(new Date(msg.created_at), 'HH:mm')}
-                                                {isAdmin && msg.read_by_user_at && (
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                )}
-                                            </div>
+                            groupedMessages.map((group) => (
+                                <div key={group.date}>
+                                    <div className="flex items-center justify-center py-3">
+                                        <div className="bg-white text-[11px] text-slate-400 px-3 py-1 rounded-full border border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                                            {formatDateDivider(group.date)}
                                         </div>
                                     </div>
-                                )
-                            })
+                                    {group.messages.map((msg) => {
+                                        const isAdmin = msg.sender_type === 'admin'
+                                        const isSystem = msg.sender_type === 'system'
+                                        const channel = msg.channel || 'app'
+                                        const channelCfg = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG] || CHANNEL_CONFIG.app
+                                        const ChannelIcon = channelCfg.icon
+                                        const isWhatsAppMsg = channel === 'whatsapp'
+                                        const isAIMsg = channel === 'ai'
+
+                                        if (isSystem) return (
+                                            <div key={msg.id} className="flex justify-center py-2">
+                                                <span className="bg-slate-100/80 text-slate-500 text-[10px] px-3 py-1 rounded-full">{msg.body_text}</span>
+                                            </div>
+                                        )
+
+                                        return (
+                                            <div key={msg.id} className={cn("flex mb-2.5", isAdmin ? "justify-end" : "justify-start")}>
+                                                <div className={cn(
+                                                    "max-w-[65%] rounded-2xl px-4 py-2.5 relative",
+                                                    isAdmin ? "bg-indigo-600 text-white rounded-br-md shadow-sm" : "bg-white text-slate-800 border border-slate-100 rounded-bl-md shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                                                )}>
+                                                    {(isWhatsAppMsg || (isAIMsg && isAiEnabled)) && (
+                                                        <div className={cn("flex items-center gap-1 text-[10px] mb-1 font-medium", isAdmin ? "text-white/70" : isAIMsg ? "text-amber-500" : "text-emerald-500")}>
+                                                            <ChannelIcon className="w-2.5 h-2.5" />
+                                                            {isAIMsg ? 'AI Bot' : 'WhatsApp'}
+                                                        </div>
+                                                    )}
+                                                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.body_text}</p>
+                                                    {msg.attachments && msg.attachments.length > 0 && (
+                                                        <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
+                                                            {msg.attachments.map((att: any, i: number) => (
+                                                                <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className={cn("flex items-center gap-1.5 text-xs hover:underline", isAdmin ? "text-white/80" : "text-indigo-600")}>
+                                                                    <Paperclip className="w-3 h-3" />{att.name || 'Attachment'}
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    <div className={cn("text-[9px] mt-1.5 flex items-center justify-end gap-1", isAdmin ? "text-white/50" : "text-slate-400")}>
+                                                        {format(new Date(msg.created_at), 'HH:mm')}
+                                                        {isAdmin && msg.read_by_user_at && <CheckCircle2 className="w-2.5 h-2.5" />}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            ))
                         )}
                         <div ref={scrollRef} />
                     </div>
                 </ScrollArea>
 
                 {/* Reply Input */}
-                <div className="p-4 border-t bg-gray-50/50">
-                    {/* AI Suggestion Panel - ONLY show when AI is enabled */}
+                <div className="p-4 border-t border-slate-200/80 bg-white">
                     {isAiEnabled && showAiPanel && (
-                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="mb-3 p-3 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/80 rounded-xl">
                             <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2 text-amber-700 text-sm font-medium">
-                                    <Sparkles className="w-4 h-4" />
-                                    AI Suggestion
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 text-amber-600 hover:text-amber-800"
-                                    onClick={() => setShowAiPanel(false)}
-                                >
-                                    <X className="w-4 h-4" />
-                                </Button>
+                                <div className="flex items-center gap-1.5 text-amber-700 text-xs font-semibold"><Sparkles className="w-3.5 h-3.5" />AI Suggestion</div>
+                                <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-amber-500" onClick={() => setShowAiPanel(false)}><X className="w-3.5 h-3.5" /></Button>
                             </div>
                             {aiLoading ? (
-                                <div className="flex items-center gap-2 text-amber-600 text-sm py-2">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Generating suggestion...
-                                </div>
+                                <div className="flex items-center gap-2 text-amber-600 text-xs py-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Generating...</div>
                             ) : aiSuggestion ? (
                                 <>
-                                    <p className="text-sm text-gray-700 whitespace-pre-wrap mb-2">{aiSuggestion}</p>
-                                    <Button
-                                        size="sm"
-                                        className="bg-amber-500 hover:bg-amber-600 text-white"
-                                        onClick={useAiSuggestion}
-                                    >
-                                        <Zap className="w-3 h-3 mr-1" /> Use This Reply
-                                    </Button>
+                                    <p className="text-[13px] text-slate-700 whitespace-pre-wrap mb-2 leading-relaxed">{aiSuggestion}</p>
+                                    <div className="flex gap-2">
+                                        <Button size="sm" className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded-lg" onClick={useAiSuggestion}><Zap className="w-3 h-3 mr-1" /> Use Reply</Button>
+                                        {pendingDraft && <Button size="sm" className="h-7 text-xs bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg" onClick={handleSendDraft} disabled={sending}>{sending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Send className="w-3 h-3 mr-1" />}Send via WA</Button>}
+                                    </div>
                                 </>
-                            ) : (
-                                <p className="text-sm text-gray-500">No suggestion available</p>
-                            )}
+                            ) : <p className="text-xs text-slate-400">No suggestion available</p>}
                         </div>
                     )}
 
-                    {/* AI Buttons - AI buttons ONLY show when AI is enabled */}
-                    <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-4">
-                            {/* WhatsApp Indicator (Stateless) - Show if enabled */}
-                            {replyViaWhatsApp && (
-                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                                    <Phone className="w-3 h-3 mr-1" />
-                                    via WhatsApp
-                                </Badge>
-                            )}
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            {replyViaWhatsApp && <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-600 border-emerald-200 font-medium"><Phone className="w-2.5 h-2.5 mr-1" />via WhatsApp</Badge>}
                         </div>
-
-                        {/* AI Buttons - ONLY show when AI is enabled */}
                         {isAiEnabled && (
-                            <div className="flex items-center gap-2">
-                                {/* AI Draft Button (Moltbot) */}
+                            <div className="flex items-center gap-1.5">
                                 {hasWhatsApp && userPhone && (
-                                    <>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={handleGenerateDraft}
-                                            disabled={draftLoading}
-                                            className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8"
-                                        >
-                                            {draftLoading ? (
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                                            ) : (
-                                                <Bot className="w-3.5 h-3.5 mr-1.5" />
-                                            )}
-                                            AI Draft
-                                        </Button>
-
-                                        {/* Send Draft Button */}
-                                        {pendingDraft && (
-                                            <Button
-                                                variant="default"
-                                                size="sm"
-                                                onClick={handleSendDraft}
-                                                disabled={sending}
-                                                className="bg-green-600 hover:bg-green-700 text-white h-8"
-                                            >
-                                                {sending ? (
-                                                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                                                ) : (
-                                                    <Send className="w-3.5 h-3.5 mr-1.5" />
-                                                )}
-                                                Send Draft
-                                            </Button>
-                                        )}
-                                    </>
+                                    <Button variant="outline" size="sm" onClick={handleGenerateDraft} disabled={draftLoading} className="h-7 text-[11px] text-indigo-600 border-indigo-200 hover:bg-indigo-50 rounded-lg">
+                                        {draftLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Bot className="w-3 h-3 mr-1" />}AI Draft
+                                    </Button>
                                 )}
-
-                                {/* AI Assist Button */}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleAiAssist}
-                                    disabled={aiLoading}
-                                    className="text-amber-600 border-amber-200 hover:bg-amber-50 h-8"
-                                >
-                                    {aiLoading ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                                    ) : (
-                                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                                    )}
-                                    AI Assist
+                                <Button variant="outline" size="sm" onClick={handleAiAssist} disabled={aiLoading} className="h-7 text-[11px] text-amber-600 border-amber-200 hover:bg-amber-50 rounded-lg">
+                                    {aiLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />}AI Assist
                                 </Button>
                             </div>
                         )}
@@ -1445,189 +847,101 @@ function ConversationDetailView({
                         <Textarea
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder={replyViaWhatsApp ? "Type your WhatsApp reply..." : "Type your reply..."}
-                            className={cn(
-                                "flex-1 resize-none min-h-[56px] max-h-[120px] bg-white text-sm",
-                                replyViaWhatsApp && "border-green-300 focus:border-green-500 focus:ring-green-500/20"
-                            )}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault()
-                                    handleSend(e)
-                                }
-                            }}
+                            placeholder={replyViaWhatsApp ? "Type WhatsApp reply..." : "Type your reply..."}
+                            className={cn("flex-1 resize-none min-h-[48px] max-h-[120px] bg-slate-50 text-[13px] rounded-xl border-slate-200", replyViaWhatsApp && "border-emerald-200")}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e) } }}
                         />
-                        <Button
-                            type="submit"
-                            disabled={!newMessage.trim() || sending}
-                            className={cn(
-                                "px-5 h-auto min-h-[56px] font-medium",
-                                replyViaWhatsApp
-                                    ? "bg-green-600 hover:bg-green-700"
-                                    : "bg-slate-700 hover:bg-slate-800"
-                            )}
-                        >
-                            {sending ? (
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                            ) : (
-                                <Send className="w-5 h-5" />
-                            )}
+                        <Button type="submit" disabled={!newMessage.trim() || sending} className={cn("px-4 h-auto min-h-[48px] rounded-xl", replyViaWhatsApp ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700")}>
+                            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                         </Button>
                     </form>
-                    <p className="text-[10px] text-gray-400 mt-2">
-                        {replyViaWhatsApp
-                            ? 'Message will be sent via WhatsApp'
-                            : 'Press Enter to send, Shift+Enter for new line'
-                        }
-                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1.5">Enter to send, Shift+Enter for new line</p>
                 </div>
             </div>
 
-            {/* Right Sidebar - Collapsible Drawer */}
-            <div className={cn(
-                "border-l bg-gray-50/50 flex flex-col overflow-hidden transition-all duration-300 ease-in-out",
-                showSidebar ? "w-80 opacity-100" : "w-0 opacity-0"
-            )}>
+            {/* Sidebar */}
+            <div className={cn("border-l border-slate-200/80 bg-white flex flex-col overflow-hidden transition-all duration-300", showSidebar ? "w-72 opacity-100" : "w-0 opacity-0")}>
                 {showSidebar && (
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full w-80">
-                        <TabsList className="w-full justify-start rounded-none border-b bg-white px-2">
-                            <TabsTrigger value="chat" className="text-xs">Details</TabsTrigger>
-                            <TabsTrigger value="notes" className="text-xs">Notes ({notes.length})</TabsTrigger>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full w-72">
+                        <TabsList className="w-full justify-start rounded-none border-b border-slate-100 bg-white px-3 h-11">
+                            <TabsTrigger value="chat" className="text-xs rounded-lg">Details</TabsTrigger>
+                            <TabsTrigger value="notes" className="text-xs rounded-lg">Notes ({notes.length})</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="chat" className="flex-1 overflow-auto m-0 p-4 space-y-4">
-                            {/* Status */}
                             <div>
-                                <Label className="text-xs text-gray-500 mb-1.5 block">Status</Label>
+                                <Label className="text-[11px] text-slate-400 mb-1.5 block uppercase tracking-wider font-medium">Status</Label>
                                 <Select value={convDetails.status} onValueChange={handleStatusChange}>
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
+                                    <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 text-sm rounded-lg"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-                                            <SelectItem key={key} value={key}>
-                                                <div className="flex items-center gap-2">
-                                                    <config.icon className="w-3.5 h-3.5" />
-                                                    {config.label}
-                                                </div>
-                                            </SelectItem>
+                                            <SelectItem key={key} value={key}><div className="flex items-center gap-2"><div className={cn("w-2 h-2 rounded-full", config.dotColor)} />{config.label}</div></SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
-
-                            {/* Priority */}
                             <div>
-                                <Label className="text-xs text-gray-500 mb-1.5 block">Priority</Label>
+                                <Label className="text-[11px] text-slate-400 mb-1.5 block uppercase tracking-wider font-medium">Priority</Label>
                                 <Select value={convDetails.priority} onValueChange={handlePriorityChange}>
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
+                                    <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 text-sm rounded-lg"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-                                            <SelectItem key={key} value={key}>
-                                                <Badge className={cn("text-xs", config.color)}>{config.label}</Badge>
-                                            </SelectItem>
+                                            <SelectItem key={key} value={key}><div className="flex items-center gap-2"><div className={cn("w-2 h-2 rounded-full", config.dot)} />{config.label}</div></SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
-
-                            {/* Assignment */}
                             <div>
-                                <Label className="text-xs text-gray-500 mb-1.5 block">Assigned To</Label>
-                                <Select
-                                    value={convDetails.assigned_to?.id || 'unassigned'}
-                                    onValueChange={(v) => handleAssignChange(v === 'unassigned' ? null : v)}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue placeholder="Unassigned" />
-                                    </SelectTrigger>
+                                <Label className="text-[11px] text-slate-400 mb-1.5 block uppercase tracking-wider font-medium">Assigned To</Label>
+                                <Select value={convDetails.assigned_to?.id || 'unassigned'} onValueChange={(v) => handleAssignChange(v === 'unassigned' ? null : v)}>
+                                    <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 text-sm rounded-lg"><SelectValue placeholder="Unassigned" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="unassigned">Unassigned</SelectItem>
-                                        {admins.map(admin => (
-                                            <SelectItem key={admin.id} value={admin.id}>
-                                                {admin.full_name}
-                                            </SelectItem>
-                                        ))}
+                                        {admins.map(admin => <SelectItem key={admin.id} value={admin.id}>{admin.full_name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
-
-                            {/* Tags */}
                             <div>
-                                <Label className="text-xs text-gray-500 mb-1.5 block">Tags</Label>
-                                <div className="flex flex-wrap gap-1">
-                                    {convDetails.tags && convDetails.tags.length > 0 ? (
-                                        convDetails.tags.map(tag => (
-                                            <Badge
-                                                key={tag.id}
-                                                style={{ backgroundColor: tag.color + '20', color: tag.color }}
-                                                className="text-xs"
-                                            >
-                                                {tag.name}
-                                            </Badge>
-                                        ))
-                                    ) : (
-                                        <span className="text-xs text-gray-400">No tags</span>
-                                    )}
+                                <Label className="text-[11px] text-slate-400 mb-1.5 block uppercase tracking-wider font-medium">Tags</Label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {convDetails.tags && convDetails.tags.length > 0 ? convDetails.tags.map(tag => (
+                                        <Badge key={tag.id} variant="outline" style={{ backgroundColor: tag.color + '12', color: tag.color, borderColor: tag.color + '30' }} className="text-[10px]">{tag.name}</Badge>
+                                    )) : <span className="text-xs text-slate-400">No tags</span>}
                                 </div>
                             </div>
-
-                            {/* User Info */}
-                            <div className="pt-4 border-t">
-                                <Label className="text-xs text-gray-500 mb-2 block">User Information</Label>
-                                <div className="space-y-2 text-sm">
-                                    <div className="flex items-center gap-2">
-                                        <User className="w-4 h-4 text-gray-400" />
-                                        <span>{convDetails.created_by?.full_name || 'Unknown'}</span>
+                            <div className="pt-3 border-t border-slate-100">
+                                <Label className="text-[11px] text-slate-400 mb-2.5 block uppercase tracking-wider font-medium">Contact</Label>
+                                <div className="space-y-2.5">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-semibold text-white bg-gradient-to-br", avatarColor(name))}>{getInitials(name)}</div>
+                                        <div>
+                                            <p className="text-sm font-medium text-slate-700">{name}</p>
+                                            <p className="text-[11px] text-slate-400">{convDetails.created_by?.email || ''}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <MessageCircle className="w-4 h-4 text-gray-400" />
-                                        <span className="text-blue-600">{convDetails.created_by?.phone || 'No phone'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                        <Clock className="w-4 h-4 text-gray-400" />
-                                        <span>Created {formatDistanceToNow(new Date(convDetails.created_at), { addSuffix: true })}</span>
-                                    </div>
+                                    {convDetails.created_by?.phone && <div className="flex items-center gap-2 text-xs text-slate-500"><Phone className="w-3 h-3 text-slate-400" />{convDetails.created_by.phone}</div>}
+                                    <div className="flex items-center gap-2 text-[11px] text-slate-400"><Clock className="w-3 h-3" /><span>Created {formatDistanceToNow(new Date(convDetails.created_at), { addSuffix: true })}</span></div>
                                 </div>
                             </div>
                         </TabsContent>
 
                         <TabsContent value="notes" className="flex-1 overflow-auto m-0 p-4 flex flex-col">
-                            {/* Add Note */}
-                            <div className="mb-4">
-                                <Textarea
-                                    value={newNote}
-                                    onChange={(e) => setNewNote(e.target.value)}
-                                    placeholder="Add internal note..."
-                                    className="resize-none min-h-[80px] text-sm"
-                                />
-                                <Button
-                                    size="sm"
-                                    className="mt-2 w-full"
-                                    onClick={handleAddNote}
-                                    disabled={!newNote.trim()}
-                                >
-                                    <StickyNote className="w-3.5 h-3.5 mr-1.5" /> Add Note
+                            <div className="mb-3">
+                                <Textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Add internal note..." className="resize-none min-h-[70px] text-sm rounded-lg bg-slate-50" />
+                                <Button size="sm" className="mt-2 w-full h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs" onClick={handleAddNote} disabled={!newNote.trim()}>
+                                    <StickyNote className="w-3 h-3 mr-1.5" /> Add Note
                                 </Button>
                             </div>
-
-                            {/* Notes List */}
-                            <div className="flex-1 space-y-3">
-                                {notes.length === 0 ? (
-                                    <p className="text-xs text-gray-400 text-center py-4">No internal notes yet</p>
-                                ) : (
-                                    notes.map(note => (
-                                        <div key={note.id} className="bg-yellow-50 border border-yellow-100 rounded-lg p-3">
-                                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.note_text}</p>
-                                            <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
-                                                <span>{note.admin?.full_name || 'Admin'}</span>
-                                                <span>{format(new Date(note.created_at), 'MMM d, HH:mm')}</span>
-                                            </div>
+                            <div className="flex-1 space-y-2.5">
+                                {notes.length === 0 ? <p className="text-xs text-slate-400 text-center py-6">No internal notes yet</p> : notes.map(note => (
+                                    <div key={note.id} className="bg-amber-50/70 border border-amber-100 rounded-lg p-3">
+                                        <p className="text-[13px] text-slate-700 whitespace-pre-wrap">{note.note_text}</p>
+                                        <div className="flex items-center justify-between mt-2 text-[10px] text-slate-400">
+                                            <span>{note.admin?.full_name || 'Admin'}</span>
+                                            <span>{format(new Date(note.created_at), 'MMM d, HH:mm')}</span>
                                         </div>
-                                    ))
-                                )}
+                                    </div>
+                                ))}
                             </div>
                         </TabsContent>
                     </Tabs>
@@ -1637,7 +951,9 @@ function ConversationDetailView({
     )
 }
 
-// Blast Announcement Modal
+// ═══════════════════════════════════════════════════════════
+// BLAST MODAL
+// ═══════════════════════════════════════════════════════════
 function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const [message, setMessage] = useState('')
     const [sending, setSending] = useState(false)
@@ -1648,358 +964,136 @@ function BlastAnnouncementModal({ open, onOpenChange }: { open: boolean; onOpenC
     const [loadingStates, setLoadingStates] = useState(false)
     const [previewCount, setPreviewCount] = useState<number | null>(null)
     const [loadingPreview, setLoadingPreview] = useState(false)
+    const [progress, setProgress] = useState<{ status: 'idle' | 'sending' | 'complete' | 'error'; total: number; sent: number; failed: number; percent: number; message: string; errors?: string[] }>({ status: 'idle', total: 0, sent: 0, failed: 0, percent: 0, message: '' })
 
-    const [progress, setProgress] = useState<{
-        status: 'idle' | 'sending' | 'complete' | 'error'
-        total: number
-        sent: number
-        failed: number
-        percent: number
-        message: string
-        errors?: string[]
-    }>({
-        status: 'idle',
-        total: 0,
-        sent: 0,
-        failed: 0,
-        percent: 0,
-        message: ''
-    })
+    const roleOptions = [{ value: 'consumer', label: 'Consumers' }, { value: 'shop', label: 'Shop Owners' }, { value: 'SA', label: 'Sales Agents' }, { value: 'HQ', label: 'HQ Staff' }]
 
-    const roleOptions = [
-        { value: 'consumer', label: 'Consumers' },
-        { value: 'shop', label: 'Shop Owners' },
-        { value: 'SA', label: 'Sales Agents' },
-        { value: 'HQ', label: 'HQ Staff' }
-    ]
-
-    useEffect(() => {
-        if (open) {
-            fetchStates()
-        }
-    }, [open])
-
-    useEffect(() => {
-        if (open && message.trim()) {
-            fetchPreviewCount()
-        } else {
-            setPreviewCount(null)
-        }
-    }, [targetType, selectedStates, selectedRoles, open])
+    useEffect(() => { if (open) fetchStates() }, [open])
+    useEffect(() => { if (open && message.trim()) fetchPreviewCount(); else setPreviewCount(null) }, [targetType, selectedStates, selectedRoles, open])
 
     const fetchStates = async () => {
         setLoadingStates(true)
-        try {
-            const res = await fetch('/api/admin/states')
-            const data = await res.json()
-            if (data.states) setStates(data.states)
-        } catch (error) {
-            console.error('Failed to fetch states', error)
-        } finally {
-            setLoadingStates(false)
-        }
+        try { const res = await fetch('/api/admin/states'); const data = await res.json(); if (data.states) setStates(data.states) }
+        catch (error) { console.error('Failed to fetch states', error) }
+        finally { setLoadingStates(false) }
     }
 
     const fetchPreviewCount = async () => {
         setLoadingPreview(true)
-        try {
-            const res = await fetch('/api/admin/support/blast/preview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    targetType,
-                    states: targetType === 'state' ? selectedStates : [],
-                    roles: targetType === 'role' ? selectedRoles : []
-                })
-            })
-            const data = await res.json()
-            setPreviewCount(data.count ?? null)
-        } catch (error) {
-            console.error('Failed to fetch preview', error)
-        } finally {
-            setLoadingPreview(false)
-        }
+        try { const res = await fetch('/api/admin/support/blast/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetType, states: targetType === 'state' ? selectedStates : [], roles: targetType === 'role' ? selectedRoles : [] }) }); const data = await res.json(); setPreviewCount(data.count ?? null) }
+        catch (error) { console.error('Failed to fetch preview', error) }
+        finally { setLoadingPreview(false) }
     }
 
     const handleSend = async () => {
         if (!message.trim()) return
-
-        setSending(true)
-        setProgress({
-            status: 'sending',
-            total: 0,
-            sent: 0,
-            failed: 0,
-            percent: 0,
-            message: 'Starting...'
-        })
-
+        setSending(true); setProgress({ status: 'sending', total: 0, sent: 0, failed: 0, percent: 0, message: 'Starting...' })
         try {
-            const res = await fetch('/api/admin/support/blast/stream', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message,
-                    subject: 'Announcement',
-                    targetType,
-                    states: targetType === 'state' ? selectedStates : [],
-                    roles: targetType === 'role' ? selectedRoles : []
-                })
-            })
-
-            if (!res.body) {
-                throw new Error('No response body')
-            }
-
-            const reader = res.body.getReader()
-            const decoder = new TextDecoder()
-
+            const res = await fetch('/api/admin/support/blast/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, subject: 'Announcement', targetType, states: targetType === 'state' ? selectedStates : [], roles: targetType === 'role' ? selectedRoles : [] }) })
+            if (!res.body) throw new Error('No response body')
+            const reader = res.body.getReader(); const decoder = new TextDecoder()
             while (true) {
                 const { done, value } = await reader.read()
                 if (done) break
-
                 const chunk = decoder.decode(value)
-                const lines = chunk.split('\n')
-
-                for (const line of lines) {
+                for (const line of chunk.split('\n')) {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6))
-
-                            if (data.type === 'error') {
-                                setProgress(p => ({ ...p, status: 'error', message: data.error }))
-                            } else if (data.type === 'start') {
-                                setProgress(p => ({ ...p, total: data.total, message: data.message }))
-                            } else if (data.type === 'progress') {
-                                setProgress({
-                                    status: 'sending',
-                                    total: data.total,
-                                    sent: data.sent,
-                                    failed: data.failed,
-                                    percent: data.percent,
-                                    message: data.message
-                                })
-                            } else if (data.type === 'complete') {
-                                setProgress({
-                                    status: 'complete',
-                                    total: data.total,
-                                    sent: data.sent,
-                                    failed: data.failed,
-                                    percent: 100,
-                                    message: data.message,
-                                    errors: data.errors
-                                })
-                            }
-                        } catch (e) {
-                            console.error('Parse error:', e)
-                        }
+                            if (data.type === 'error') setProgress(p => ({ ...p, status: 'error', message: data.error }))
+                            else if (data.type === 'start') setProgress(p => ({ ...p, total: data.total, message: data.message }))
+                            else if (data.type === 'progress') setProgress({ status: 'sending', total: data.total, sent: data.sent, failed: data.failed, percent: data.percent, message: data.message })
+                            else if (data.type === 'complete') setProgress({ status: 'complete', total: data.total, sent: data.sent, failed: data.failed, percent: 100, message: data.message, errors: data.errors })
+                        } catch (e) { /* parse error */ }
                     }
                 }
             }
-        } catch (error: any) {
-            setProgress(p => ({
-                ...p,
-                status: 'error',
-                message: error.message || 'Failed to send blast'
-            }))
-        } finally {
-            setSending(false)
-        }
+        } catch (error: any) { setProgress(p => ({ ...p, status: 'error', message: error.message || 'Failed' })) }
+        finally { setSending(false) }
     }
 
-    const handleClose = () => {
-        if (!sending) {
-            setMessage('')
-            setProgress({ status: 'idle', total: 0, sent: 0, failed: 0, percent: 0, message: '' })
-            onOpenChange(false)
-        }
-    }
+    const handleClose = () => { if (!sending) { setMessage(''); setProgress({ status: 'idle', total: 0, sent: 0, failed: 0, percent: 0, message: '' }); onOpenChange(false) } }
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-lg rounded-2xl">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <Megaphone className="w-5 h-5 text-purple-600" />
-                        Blast Announcement
+                        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center"><Megaphone className="w-4 h-4 text-purple-600" /></div>
+                        Broadcast Message
                     </DialogTitle>
-                    <DialogDescription>
-                        Send a message to all users or a specific segment. Messages will appear in their Support Inbox.
-                    </DialogDescription>
+                    <DialogDescription>Send to users. Messages appear in their Support Inbox.</DialogDescription>
                 </DialogHeader>
-
                 {progress.status === 'idle' ? (
                     <div className="space-y-4">
-                        {/* Target Type */}
                         <div>
-                            <Label>Target Audience</Label>
+                            <Label className="text-xs font-medium text-slate-600">Target</Label>
                             <div className="flex gap-2 mt-1.5">
-                                <Button
-                                    variant={targetType === 'all' ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => setTargetType('all')}
-                                >
-                                    All Users
-                                </Button>
-                                <Button
-                                    variant={targetType === 'state' ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => setTargetType('state')}
-                                >
-                                    By State
-                                </Button>
-                                <Button
-                                    variant={targetType === 'role' ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => setTargetType('role')}
-                                >
-                                    By Role
-                                </Button>
+                                {(['all', 'state', 'role'] as const).map(t => (
+                                    <Button key={t} variant={targetType === t ? 'default' : 'outline'} size="sm" className="text-xs rounded-lg" onClick={() => setTargetType(t)}>
+                                        {t === 'all' ? 'All Users' : t === 'state' ? 'By State' : 'By Role'}
+                                    </Button>
+                                ))}
                             </div>
                         </div>
-
-                        {/* State Selection */}
                         {targetType === 'state' && (
                             <div>
-                                <Label>Select States</Label>
-                                <div className="flex flex-wrap gap-2 mt-1.5 max-h-32 overflow-auto p-2 border rounded-md">
-                                    {loadingStates ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        states.map(state => (
-                                            <label key={state.id} className="flex items-center gap-1.5 text-sm">
-                                                <Checkbox
-                                                    checked={selectedStates.includes(state.state_code)}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedStates([...selectedStates, state.state_code])
-                                                        } else {
-                                                            setSelectedStates(selectedStates.filter(s => s !== state.state_code))
-                                                        }
-                                                    }}
-                                                />
-                                                {state.state_name}
-                                            </label>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Role Selection */}
-                        {targetType === 'role' && (
-                            <div>
-                                <Label>Select Roles</Label>
-                                <div className="flex flex-wrap gap-2 mt-1.5">
-                                    {roleOptions.map(role => (
-                                        <label key={role.value} className="flex items-center gap-1.5 text-sm">
-                                            <Checkbox
-                                                checked={selectedRoles.includes(role.value)}
-                                                onCheckedChange={(checked) => {
-                                                    if (checked) {
-                                                        setSelectedRoles([...selectedRoles, role.value])
-                                                    } else {
-                                                        setSelectedRoles(selectedRoles.filter(r => r !== role.value))
-                                                    }
-                                                }}
-                                            />
-                                            {role.label}
+                                <Label className="text-xs">States</Label>
+                                <div className="flex flex-wrap gap-2 mt-1.5 max-h-32 overflow-auto p-2 border rounded-lg">
+                                    {loadingStates ? <Loader2 className="w-4 h-4 animate-spin" /> : states.map(s => (
+                                        <label key={s.id} className="flex items-center gap-1.5 text-xs">
+                                            <Checkbox checked={selectedStates.includes(s.state_code)} onCheckedChange={(c) => c ? setSelectedStates([...selectedStates, s.state_code]) : setSelectedStates(selectedStates.filter(x => x !== s.state_code))} />{s.state_name}
                                         </label>
                                     ))}
                                 </div>
                             </div>
                         )}
-
-                        {/* Message */}
-                        <div>
-                            <Label>Message</Label>
-                            <Textarea
-                                value={message}
-                                onChange={(e) => setMessage(e.target.value)}
-                                placeholder="Type your announcement message..."
-                                className="mt-1.5 min-h-[120px]"
-                            />
-                        </div>
-
-                        {/* Preview Count */}
-                        {previewCount !== null && (
-                            <div className="text-sm text-gray-600 bg-gray-50 rounded-md p-2 flex items-center gap-2">
-                                <Users className="w-4 h-4" />
-                                This message will be sent to <strong>{previewCount.toLocaleString()}</strong> users
+                        {targetType === 'role' && (
+                            <div>
+                                <Label className="text-xs">Roles</Label>
+                                <div className="flex flex-wrap gap-2 mt-1.5">
+                                    {roleOptions.map(r => (
+                                        <label key={r.value} className="flex items-center gap-1.5 text-xs">
+                                            <Checkbox checked={selectedRoles.includes(r.value)} onCheckedChange={(c) => c ? setSelectedRoles([...selectedRoles, r.value]) : setSelectedRoles(selectedRoles.filter(x => x !== r.value))} />{r.label}
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
+                        )}
+                        <div>
+                            <Label className="text-xs">Message</Label>
+                            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type your announcement..." className="mt-1.5 min-h-[100px] rounded-lg" />
+                        </div>
+                        {previewCount !== null && (
+                            <div className="text-xs text-slate-600 bg-slate-50 rounded-lg p-2.5 flex items-center gap-2 border"><Users className="w-3.5 h-3.5 text-indigo-500" />Sending to <strong>{previewCount.toLocaleString()}</strong> users</div>
                         )}
                     </div>
                 ) : (
                     <div className="space-y-4 py-4">
-                        {/* Progress Bar */}
                         <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                                <span>{progress.message}</span>
-                                <span>{progress.percent}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-3">
-                                <div
-                                    className={cn(
-                                        "h-3 rounded-full transition-all duration-300",
-                                        progress.status === 'error' ? 'bg-red-500' :
-                                            progress.status === 'complete' ? 'bg-green-500' : 'bg-blue-500'
-                                    )}
-                                    style={{ width: `${progress.percent}%` }}
-                                />
+                            <div className="flex justify-between text-xs"><span>{progress.message}</span><span className="font-mono">{progress.percent}%</span></div>
+                            <div className="w-full bg-slate-100 rounded-full h-2.5">
+                                <div className={cn("h-2.5 rounded-full transition-all", progress.status === 'error' ? 'bg-red-500' : progress.status === 'complete' ? 'bg-emerald-500' : 'bg-indigo-500')} style={{ width: `${progress.percent}%` }} />
                             </div>
                         </div>
-
-                        {/* Stats */}
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                            <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-2xl font-bold text-gray-900">{progress.total}</div>
-                                <div className="text-xs text-gray-500">Total</div>
-                            </div>
-                            <div className="bg-green-50 rounded-lg p-3">
-                                <div className="text-2xl font-bold text-green-600">{progress.sent}</div>
-                                <div className="text-xs text-gray-500">Sent</div>
-                            </div>
-                            <div className="bg-red-50 rounded-lg p-3">
-                                <div className="text-2xl font-bold text-red-600">{progress.failed}</div>
-                                <div className="text-xs text-gray-500">Failed</div>
-                            </div>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                            <div className="bg-slate-50 rounded-xl p-3"><div className="text-xl font-bold">{progress.total}</div><div className="text-[10px] text-slate-500">Total</div></div>
+                            <div className="bg-emerald-50 rounded-xl p-3"><div className="text-xl font-bold text-emerald-600">{progress.sent}</div><div className="text-[10px] text-slate-500">Sent</div></div>
+                            <div className="bg-red-50 rounded-xl p-3"><div className="text-xl font-bold text-red-600">{progress.failed}</div><div className="text-[10px] text-slate-500">Failed</div></div>
                         </div>
-
-                        {/* Errors */}
-                        {progress.errors && progress.errors.length > 0 && (
-                            <div className="bg-red-50 border border-red-100 rounded-md p-3">
-                                <p className="text-sm font-medium text-red-800 mb-1">Some errors occurred:</p>
-                                <ul className="text-xs text-red-600 list-disc list-inside">
-                                    {progress.errors.slice(0, 3).map((err, i) => (
-                                        <li key={i}>{err}</li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
                     </div>
                 )}
-
                 <DialogFooter>
                     {progress.status === 'idle' ? (
                         <>
-                            <Button variant="outline" onClick={handleClose}>Cancel</Button>
-                            <Button
-                                onClick={handleSend}
-                                disabled={!message.trim() || sending}
-                                className="bg-purple-600 hover:bg-purple-700"
-                            >
-                                {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                                Send Blast
+                            <Button variant="outline" onClick={handleClose} className="rounded-lg">Cancel</Button>
+                            <Button onClick={handleSend} disabled={!message.trim() || sending} className="bg-purple-600 hover:bg-purple-700 rounded-lg">
+                                {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}Send
                             </Button>
                         </>
                     ) : progress.status === 'complete' || progress.status === 'error' ? (
-                        <Button onClick={handleClose}>Close</Button>
-                    ) : (
-                        <Button disabled>
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                            Sending...
-                        </Button>
-                    )}
+                        <Button onClick={handleClose} className="rounded-lg">Close</Button>
+                    ) : <Button disabled className="rounded-lg"><Loader2 className="w-4 h-4 animate-spin mr-2" />Sending...</Button>}
                 </DialogFooter>
             </DialogContent>
         </Dialog>

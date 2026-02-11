@@ -165,7 +165,7 @@ export default function HrAttendanceTimesheetsView({ userProfile }: HrAttendance
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <div>
-                            <CardTitle>Timesheets</CardTitle>
+                            <CardTitle className="text-lg">Timesheets</CardTitle>
                             <CardDescription>Weekly or monthly aggregated timesheet records.</CardDescription>
                         </div>
                         <div className="flex items-center gap-2">

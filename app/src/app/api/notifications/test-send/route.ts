@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
 
 // Helper to replace variables
 function applyTemplate(template: string, variables: any) {
@@ -7,107 +8,109 @@ function applyTemplate(template: string, variables: any) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  
-  try {
-    const body = await request.json()
-    const { 
-        eventCode, 
-        channel, 
-        recipient, // { phone, email, name }
-        template, 
-        sampleData, // { order_no: 'ORD...', amount: '100', ... }
-        providerConfig // Optionally passed, or we fetch
-    } = body
-    
-    // 1. Resolve Provider Config if not passed
-    let pConfig = providerConfig
-    if (!pConfig) {
-        const { data: config } = await supabase
-            .from('notification_provider_configs')
-            .select('*')
-            // This is a simplification; in real app we check org_id from session
-            .eq('channel', channel)
-            .eq('is_active', true)
-            .single()
-        pConfig = config
-    }
+    const supabase = await createClient()
 
-    if (!pConfig) {
-        return NextResponse.json({ error: `No active provider found for ${channel}` }, { status: 400 })
-    }
-
-    // 2. Prepare Message
-    const messageBody = applyTemplate(template || '', sampleData || {})
-    
-    // 3. Send
-    let result: any = { status: 'failed' }
-    
-    if (channel === 'whatsapp') {
-        if (pConfig.provider_name === 'baileys') {
-             // Reusing the logic from previous task
-             const { base_url } = pConfig.config_public || {}
-             // Decrypt or usage passed sensitive data (in test context, UI might pass it momentarily or we assume backend can read it if table allowed)
-             // For test-send from admin UI, we might depend on what's stored.
-             // But Wait! `notification_provider_configs` stores secrets encrypted. 
-             // Since I haven't implemented server-side decryption in this session, 
-             // I will assume for TEST SEND the UI sends the necessary credentials OR I mock the send if credentials missing.
-             // Actually, for a robust implementation, I should read from `config_encrypted` and decrypt.
-             // SKIPPING decryption implementation for now -> 
-             // LIMITATION: Test send will might fail if I don't pass keys.
-             // Allow UI to pass decrypted keys if available in state, otherwise try to use what's available.
-             
-             let api_key = body.credentials?.api_key
-             // If not passed, we can't really decrypt without a key. 
-             // We will proceed; the Baileys call might fail if key absent.
-             
-             if (base_url && api_key) {
-                 const normalizedPhone = recipient.phone.replace(/\D/g, '').replace(/^0/, '60')
-                 const url = base_url.replace(/\/$/, '') + '/send'
-                 
-                 const res = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-api-key': api_key },
-                    body: JSON.stringify({ to: normalizedPhone, message: messageBody })
-                 })
-                 
-                 const data = await res.json()
-                 if (res.ok && data.status !== 'error') {
-                     result = { status: 'sent', provider_id: data.id || 'baileys-id' }
-                 } else {
-                     result = { status: 'failed', error: data.message }
-                 }
-             } else {
-                 // Mock success if config matches known dev env, otherwise fail
-                 if (base_url?.includes('serapod2u')) { 
-                    result = { status: 'sent', provider_id: 'mock-baileys-id', note: 'Mocked (missing keys)' }
-                 } else {
-                    result = { status: 'failed', error: 'Missing credentials for sending' }
-                 }
-             }
-        } else {
-             result = { status: 'sent', provider_id: 'mock-provider-id', note: 'Mocked provider' }
+    try {
+        // Auth check
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
-    } else {
-        result = { status: 'sent', provider_id: `mock-${channel}-id` }
+
+        // Get user org
+        const { data: userProfile } = await supabase
+            .from('users')
+            .select('organization_id')
+            .eq('id', user.id)
+            .single()
+
+        if (!userProfile?.organization_id) {
+            return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+        }
+
+        const body = await request.json()
+        const {
+            eventCode,
+            channel,
+            recipient, // { phone, email, full_name }
+            template,
+            sampleData  // { order_no, amount, customer_name, ... }
+        } = body
+
+        // Prepare message body with variable substitution
+        const messageBody = applyTemplate(template || '', sampleData || {})
+
+        if (!messageBody.trim()) {
+            return NextResponse.json({ error: 'No template content. Please set a template first.' }, { status: 400 })
+        }
+
+        let result: any = { status: 'failed' }
+
+        if (channel === 'whatsapp') {
+            // Use the same working utility as /api/settings/whatsapp/test
+            const config = await getWhatsAppConfig(supabase, userProfile.organization_id)
+
+            if (!config || !config.baseUrl) {
+                return NextResponse.json({ error: 'WhatsApp gateway not configured. Go to Providers tab to set up.' }, { status: 400 })
+            }
+
+            const phoneNumber = recipient?.phone || recipient?.phone_number
+            if (!phoneNumber) {
+                return NextResponse.json({ error: 'Recipient has no phone number' }, { status: 400 })
+            }
+
+            try {
+                const gwResult = await callGateway(
+                    config.baseUrl,
+                    config.apiKey,
+                    'POST',
+                    '/messages/send',
+                    {
+                        to: phoneNumber,
+                        text: messageBody,
+                    },
+                    config.tenantId
+                )
+
+                if (gwResult.ok || gwResult.jid) {
+                    result = { status: 'sent', provider_id: gwResult.jid || 'sent', message: 'WhatsApp message sent successfully' }
+                } else {
+                    result = { status: 'failed', error: gwResult.error || 'Gateway returned error' }
+                }
+            } catch (err: any) {
+                result = { status: 'failed', error: err.message || 'Failed to reach WhatsApp gateway' }
+            }
+        } else if (channel === 'sms') {
+            // SMS placeholder
+            result = { status: 'sent', provider_id: `sms-mock-id`, note: 'SMS provider not yet implemented' }
+        } else if (channel === 'email') {
+            // Email placeholder
+            result = { status: 'sent', provider_id: `email-mock-id`, note: 'Email provider not yet implemented' }
+        }
+
+        // Log the test send
+        try {
+            await supabase.from('notification_logs').insert({
+                org_id: userProfile.organization_id,
+                event_code: eventCode || 'test',
+                channel: channel,
+                recipient_value: channel === 'email' ? recipient?.email : (recipient?.phone || recipient?.phone_number),
+                recipient_type: channel === 'email' ? 'email' : 'phone',
+                status: result.status,
+                provider_name: channel === 'whatsapp' ? 'baileys' : channel,
+                provider_response: result,
+                queued_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+            })
+        } catch (logErr) {
+            console.error('Failed to log test send:', logErr)
+        }
+
+        const success = result.status === 'sent'
+        return NextResponse.json({ success, result, error: success ? undefined : result.error })
+
+    } catch (error: any) {
+        console.error('Test send error:', error)
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
-
-    // 4. Log
-    const { error: logError } = await supabase.from('notification_logs').insert({
-        org_id: pConfig.org_id,
-        event_code: eventCode,
-        channel: channel,
-        recipient: channel === 'email' ? recipient.email : recipient.phone,
-        status: result.status,
-        provider: pConfig.provider_name,
-        provider_response: result,
-        metadata: { template, variables: sampleData }
-    })
-
-    return NextResponse.json({ success: true, result })
-
-  } catch (error: any) {
-    console.error('Test send error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
 }

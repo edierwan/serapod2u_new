@@ -92,7 +92,7 @@ export default function HrRecruitmentView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Recruitment / ATS</CardTitle>
+                            <CardTitle className="text-lg">Recruitment / ATS</CardTitle>
                             <CardDescription>Manage job postings, applicants, and offers with structured workflows.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -146,7 +146,7 @@ export default function HrRecruitmentView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Job Postings</CardTitle>
+                            <CardTitle className="text-base">Job Postings</CardTitle>
                             <CardDescription>Track active openings and publishing status.</CardDescription>
                         </div>
                         <div className="relative w-full sm:w-64">
@@ -187,7 +187,7 @@ export default function HrRecruitmentView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Recent Applicants</CardTitle>
+                    <CardTitle className="text-base">Recent Applicants</CardTitle>
                     <CardDescription>Latest candidates entering the pipeline.</CardDescription>
                 </CardHeader>
                 <CardContent>

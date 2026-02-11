@@ -63,7 +63,7 @@ export default function HrSettingsView({ organizationId, canEdit }: HrSettingsVi
     return (
         <Card>
             <CardHeader>
-                <CardTitle>HR Settings</CardTitle>
+                <CardTitle className="text-lg">HR Settings</CardTitle>
                 <CardDescription>Configure default HR policies (Phase 1).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

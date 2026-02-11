@@ -23,7 +23,7 @@ export default function HrModulePage({ title, subtitle, sections }: HrModulePage
             <Card>
                 <CardHeader>
                     <div className="flex items-center gap-3">
-                        <CardTitle>{title}</CardTitle>
+                        <CardTitle className="text-lg">{title}</CardTitle>
                         <Badge variant="outline" className="text-blue-600 border-blue-200">Phase 1</Badge>
                     </div>
                     <CardDescription>{subtitle}</CardDescription>

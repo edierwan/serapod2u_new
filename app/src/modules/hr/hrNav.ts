@@ -28,6 +28,7 @@ import {
     Settings as SettingsIcon,
     ShieldCheck,
     Wrench,
+    Landmark,
     type LucideIcon,
 } from 'lucide-react'
 
@@ -136,6 +137,7 @@ export const hrNavGroups: HrNavGroup[] = [
             { id: 'hr/settings/positions', label: 'Positions', icon: Briefcase, href: toHref('hr/settings/positions') },
             { id: 'hr/settings/approval-rules', label: 'Approval Rules', icon: CheckCircle2, href: toHref('hr/settings/approval-rules') },
             { id: 'hr/settings/permissions', label: 'HR Permissions', icon: ShieldCheck, href: toHref('hr/settings/permissions') },
+            { id: 'hr/settings/accounting', label: 'Accounting', icon: Landmark, href: toHref('hr/settings/accounting') },
             { id: 'hr/settings/configuration', label: 'Configuration', icon: Wrench, href: toHref('hr/settings/configuration') },
         ],
     },

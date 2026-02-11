@@ -187,7 +187,7 @@ export default function DefaultAccountsSettings({ userProfile }: DefaultAccounts
         <CardHeader>
           <div className="flex items-center gap-2">
             <Settings2 className="w-6 h-6 text-gray-400" />
-            <CardTitle>Default Posting Accounts</CardTitle>
+            <CardTitle className="text-lg">Default Posting Accounts</CardTitle>
           </div>
           <CardDescription>
             Configure which GL accounts to use for different transaction types
@@ -220,7 +220,7 @@ export default function DefaultAccountsSettings({ userProfile }: DefaultAccounts
           <div className="flex items-center gap-2">
             <Settings2 className="w-6 h-6 text-blue-500" />
             <div>
-              <CardTitle>Default Posting Accounts</CardTitle>
+              <CardTitle className="text-lg">Default Posting Accounts</CardTitle>
               <CardDescription>
                 Configure which GL accounts to use for different transaction types
               </CardDescription>

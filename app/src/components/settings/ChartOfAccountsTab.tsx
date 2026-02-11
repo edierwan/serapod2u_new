@@ -409,7 +409,7 @@ export default function ChartOfAccountsTab({ userProfile }: ChartOfAccountsTabPr
           <div className="flex items-center gap-2">
             <BookOpen className="w-6 h-6 text-blue-500" />
             <div>
-              <CardTitle>Chart of Accounts</CardTitle>
+              <CardTitle className="text-lg">Chart of Accounts</CardTitle>
               <CardDescription>
                 Manage your general ledger accounts
               </CardDescription>

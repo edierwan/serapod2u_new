@@ -130,7 +130,7 @@ export default function WhatsAppSubTabs({
         message: string
         timestamp: Date
     } | null>(null)
-    
+
     // Saved test numbers state
     const [savedTestNumbers, setSavedTestNumbers] = useState<string[]>([])
     const [newTestNumber, setNewTestNumber] = useState('')
@@ -243,7 +243,7 @@ export default function WhatsAppSubTabs({
                 .eq('id', whatsappConfig.id)
 
             if (error) throw error
-            
+
             console.log('Test numbers saved:', numbers)
         } catch (err: any) {
             console.error('Failed to save test numbers:', err)
@@ -264,6 +264,10 @@ export default function WhatsAppSubTabs({
                 if (errObj.code === 401) return 'Authentication failed. Check API Key.'
                 if (errObj.reason) return errObj.reason
             }
+            // Simple string errors from the new gateway format
+            if (errorStr.includes('Connection closed')) return 'Connection dropped (temporary). Auto-reconnecting...'
+            if (errorStr.toLowerCase().includes('logged out')) return 'Logged out. Please reconnect (scan QR).'
+            if (errorStr.includes('401')) return 'Authentication failed. Check API Key.'
             return errorStr
         } catch (e) {
             return errorStr
@@ -295,6 +299,13 @@ export default function WhatsAppSubTabs({
                     prev ? { ...prev, pairing_state: 'unknown', last_error: 'Session expired, please re-login' } : null
                 )
                 setIsGatewayUnreachable(true)
+                return
+            }
+
+            if (response.status === 403) {
+                // User doesn't have admin access to WhatsApp settings - silently handle
+                setGatewayStatus(null)
+                setIsGatewayUnreachable(false)
                 return
             }
 
@@ -342,22 +353,44 @@ export default function WhatsAppSubTabs({
         }
     }, [whatsappConfig?.provider_name, whatsappConfig?.config_public.test_number, testNumber, userProfile])
 
-    // Fetch QR code
+    // Fetch QR code (uses enriched gateway response with PNG base64)
     const fetchQRCode = async () => {
         try {
             const response = await fetch('/api/settings/whatsapp/qr')
             const data = await response.json()
 
-            if (response.ok && data.qr) {
-                const QRCode = (await import('qrcode')).default
-                const dataUrl = await QRCode.toDataURL(data.qr, {
-                    errorCorrectionLevel: 'M',
-                    type: 'image/png',
-                    margin: 2,
-                    width: 300
-                })
-                setQrCode(dataUrl)
+            if (!response.ok) {
+                console.error('QR fetch error:', data.error || response.statusText)
+                setQrCode(null)
+                return
+            }
+
+            // If connected, no QR needed
+            if (data.connected) {
+                setQrCode(null)
+                return
+            }
+
+            if (data.qr_png_base64) {
+                // Use pre-rendered PNG from gateway (preferred)
+                setQrCode(data.qr_png_base64)
                 setQrExpiry(data.expires_in_sec || 25)
+            } else if (data.qr) {
+                // Fallback: render raw QR string client-side
+                try {
+                    const QRCode = (await import('qrcode')).default
+                    const dataUrl = await QRCode.toDataURL(data.qr, {
+                        errorCorrectionLevel: 'M',
+                        type: 'image/png',
+                        margin: 2,
+                        width: 300
+                    })
+                    setQrCode(dataUrl)
+                    setQrExpiry(data.expires_in_sec || 25)
+                } catch (qrRenderErr) {
+                    console.error('Failed to render QR client-side:', qrRenderErr)
+                    setQrCode(null)
+                }
             } else {
                 setQrCode(null)
             }
@@ -367,7 +400,7 @@ export default function WhatsAppSubTabs({
         }
     }
 
-    // Gateway control handlers
+    // Change WhatsApp Number: logout → clear → start → poll for QR
     const handleGatewayReset = async () => {
         if (!confirm('This will disconnect the current WhatsApp number and require re-scanning the QR code. Continue?')) {
             return
@@ -375,17 +408,69 @@ export default function WhatsAppSubTabs({
 
         try {
             setGatewayAction('reset')
-            const response = await fetch('/api/settings/whatsapp/reset', { method: 'POST' })
-            const data = await response.json()
+            setQrCode(null)
 
-            if (response.ok) {
-                setGatewayStatus(prev =>
-                    prev ? { ...prev, pairing_state: 'waiting_qr', connected: false, phone_number: null } : null
-                )
-                await fetchQRCode()
-            } else {
-                alert(`Failed to reset session: ${data.error}`)
+            // Step 1: Logout (safe, prevents auto-reconnect)
+            const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
+            if (!logoutRes.ok) {
+                const logoutData = await logoutRes.json()
+                throw new Error(logoutData.error || 'Logout failed')
             }
+
+            // Step 2: Clear auth state
+            const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
+            if (!clearRes.ok) {
+                const clearData = await clearRes.json()
+                throw new Error(clearData.error || 'Clear session failed')
+            }
+
+            // Step 3: Start new session
+            const startRes = await fetch('/api/settings/whatsapp/start', { method: 'POST' })
+            if (!startRes.ok) {
+                const startData = await startRes.json()
+                throw new Error(startData.error || 'Start session failed')
+            }
+
+            // Update UI state to show QR panel
+            setGatewayStatus(prev =>
+                prev ? { ...prev, pairing_state: 'waiting_qr', connected: false, phone_number: null, push_name: null } : null
+            )
+
+            // Step 4: Poll for QR code (up to 15 seconds)
+            let qrFound = false
+            for (let i = 0; i < 15; i++) {
+                await new Promise(resolve => setTimeout(resolve, 1000))
+                try {
+                    const qrRes = await fetch('/api/settings/whatsapp/qr')
+                    const qrData = await qrRes.json()
+
+                    if (qrRes.ok && (qrData.qr_png_base64 || qrData.qr)) {
+                        if (qrData.qr_png_base64) {
+                            setQrCode(qrData.qr_png_base64)
+                        } else if (qrData.qr) {
+                            const QRCode = (await import('qrcode')).default
+                            const dataUrl = await QRCode.toDataURL(qrData.qr, {
+                                errorCorrectionLevel: 'M',
+                                type: 'image/png',
+                                margin: 2,
+                                width: 300
+                            })
+                            setQrCode(dataUrl)
+                        }
+                        setQrExpiry(qrData.expires_in_sec || 25)
+                        qrFound = true
+                        break
+                    }
+                } catch {
+                    // Continue polling
+                }
+            }
+
+            if (!qrFound) {
+                // Still show waiting_qr state - the normal polling will pick it up
+                console.warn('QR not available yet after 15s polling, normal poll will continue')
+            }
+
         } catch (error: any) {
             alert(`Error: ${error.message}`)
         } finally {
@@ -394,21 +479,34 @@ export default function WhatsAppSubTabs({
     }
 
     const handleGatewayLogout = async () => {
-        if (!confirm('This will disconnect from WhatsApp. Continue?')) {
+        if (!confirm('This will disconnect from WhatsApp completely. You will need to scan QR again to reconnect. Continue?')) {
             return
         }
 
         try {
             setGatewayAction('logout')
-            const response = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
-            const data = await response.json()
 
-            if (response.ok) {
-                setGatewayStatus(prev => (prev ? { ...prev, connected: false, pairing_state: 'disconnected' } : null))
-                setQrCode(null)
-            } else {
-                alert(`Failed to logout: ${data.error}`)
+            // Step 1: Logout
+            const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
+            if (!logoutRes.ok) {
+                const logoutData = await logoutRes.json()
+                throw new Error(logoutData.error || 'Logout failed')
             }
+
+            // Step 2: Clear auth so next connect shows fresh QR
+            const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
+            if (!clearRes.ok) {
+                console.warn('Clear failed after logout, continuing anyway')
+            }
+
+            setGatewayStatus(prev => (prev ? {
+                ...prev,
+                connected: false,
+                pairing_state: 'disconnected',
+                phone_number: null,
+                push_name: null,
+            } : null))
+            setQrCode(null)
         } catch (error: any) {
             alert(`Error: ${error.message}`)
         } finally {
@@ -419,10 +517,14 @@ export default function WhatsAppSubTabs({
     const handleGatewayReconnect = async () => {
         try {
             setGatewayAction('reconnect')
-            const response = await fetch('/api/settings/whatsapp/reconnect', { method: 'POST' })
+
+            // Use start endpoint to initiate fresh connection
+            const response = await fetch('/api/settings/whatsapp/start', { method: 'POST' })
             const data = await response.json()
 
             if (response.ok) {
+                // Wait a moment then refresh status
+                await new Promise(resolve => setTimeout(resolve, 2000))
                 await fetchGatewayStatus()
             } else {
                 alert(`Failed to reconnect: ${data.error}`)
@@ -443,10 +545,10 @@ export default function WhatsAppSubTabs({
 
         try {
             setSendingTest(true)
-            
+
             // Send to all saved test numbers
             const results: { number: string; success: boolean; error?: string }[] = []
-            
+
             for (const number of savedTestNumbers) {
                 try {
                     const response = await fetch('/api/settings/whatsapp/test', {
@@ -458,10 +560,10 @@ export default function WhatsAppSubTabs({
                         })
                     })
                     const data = await response.json()
-                    results.push({ 
-                        number, 
-                        success: data.success, 
-                        error: data.error 
+                    results.push({
+                        number,
+                        success: data.success,
+                        error: data.error
                     })
                 } catch (err: any) {
                     results.push({ number, success: false, error: err.message })
@@ -614,12 +716,12 @@ export default function WhatsAppSubTabs({
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
                                     <span className="text-green-700 font-bold text-sm">
-                                        {gatewayStatus.push_name?.[0]?.toUpperCase() || 'W'}
+                                        {gatewayStatus.push_name?.[0]?.toUpperCase() || gatewayStatus.phone_number?.[0] || 'W'}
                                     </span>
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500">WhatsApp Name</p>
-                                    <p className="font-semibold">{gatewayStatus.push_name || 'Unknown'}</p>
+                                    <p className="font-semibold">{gatewayStatus.push_name || (gatewayStatus.phone_number ? `+${gatewayStatus.phone_number}` : 'Not set')}</p>
                                 </div>
                             </div>
                             {gatewayStatus.last_connected_at && (
@@ -1187,8 +1289,8 @@ export default function WhatsAppSubTabs({
                                         onKeyDown={e => e.key === 'Enter' && handleAddTestNumber()}
                                         className="flex-1 bg-white"
                                     />
-                                    <Button 
-                                        onClick={handleAddTestNumber} 
+                                    <Button
+                                        onClick={handleAddTestNumber}
                                         disabled={savingTestNumbers || !newTestNumber.trim()}
                                         size="sm"
                                     >
@@ -1200,9 +1302,9 @@ export default function WhatsAppSubTabs({
                                 {savedTestNumbers.length > 0 ? (
                                     <div className="flex flex-wrap gap-2 pt-2">
                                         {savedTestNumbers.map((number) => (
-                                            <Badge 
-                                                key={number} 
-                                                variant="secondary" 
+                                            <Badge
+                                                key={number}
+                                                variant="secondary"
                                                 className="px-3 py-2 text-sm flex items-center gap-2 bg-white text-gray-700 border border-gray-200 shadow-sm"
                                             >
                                                 <Smartphone className="w-3.5 h-3.5 text-blue-500" />

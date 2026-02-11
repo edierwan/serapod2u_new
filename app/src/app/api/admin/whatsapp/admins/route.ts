@@ -96,6 +96,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
         }
 
+        // Enforce max 3 admins per org
+        const { data: existingAdmins, error: countError } = await (supabase
+            .from('whatsapp_bot_admins' as any)
+            .select('id')
+            .eq('org_id', userData.organization_id) as any)
+
+        if (countError) throw countError
+
+        if ((existingAdmins || []).length >= 3) {
+            return NextResponse.json({ error: 'Maximum 3 bot admins allowed per organization. Remove an existing admin first.' }, { status: 400 })
+        }
+
         // Insert new admin (use 'as any' since table may not be in generated types yet)
         const { data: newAdmin, error } = await (supabase
             .from('whatsapp_bot_admins' as any)

@@ -93,7 +93,7 @@ export default function HrComplianceDocsView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Compliance & Documents</CardTitle>
+                            <CardTitle className="text-lg">Compliance & Documents</CardTitle>
                             <CardDescription>Policy management, contract storage, and audit-ready records.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -136,7 +136,7 @@ export default function HrComplianceDocsView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Policies</CardTitle>
+                    <CardTitle className="text-base">Policies</CardTitle>
                     <CardDescription>Track versions and employee acknowledgements.</CardDescription>
                 </CardHeader>
                 <CardContent>

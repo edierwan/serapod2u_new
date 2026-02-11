@@ -76,13 +76,13 @@ const formatCurrency = (amount: number): string => {
 export default function DistributorOrderView({ userProfile, onViewChange }: DistributorOrderViewProps) {
   const supabase = createClient()
   const { toast } = useToast()
-  
+
   // Ref to prevent duplicate toasts in React Strict Mode
   const toastShownRef = useRef(false)
-  
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
+
   // Organizations
   const [buyerOrg, setBuyerOrg] = useState<Organization | null>(null)
   const [sellerOrg, setSellerOrg] = useState<Organization | null>(null)
@@ -92,24 +92,24 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const [isDistributorDropdownOpen, setIsDistributorDropdownOpen] = useState(false)
   const distributorSearchRef = useRef<HTMLDivElement>(null)
   const [hqOrgId, setHqOrgId] = useState<string>('')
-  
+
   // Customer Information
   const [customerName, setCustomerName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [deliveryAddress, setDeliveryAddress] = useState('')
-  
+
   // Products and Variants
   const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([])
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
-  
+
   // Product filtering
   const [productSearchQuery, setProductSearchQuery] = useState('')
   const [selectedProductFilter, setSelectedProductFilter] = useState('')
 
   useEffect(() => {
     initializeOrder()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -137,20 +137,20 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const initializeOrder = async () => {
     try {
       setLoading(true)
-      
+
       // Load user's organization details
       const { data: userOrgData, error: userOrgError } = await supabase
         .from('organizations')
         .select('*')
         .eq('id', userProfile.organization_id)
         .single()
-      
+
       if (userOrgError) throw userOrgError
-      
+
       // Set SELLER as current organization (Warehouse/HQ)
       setSellerOrg(userOrgData)
       setBuyerOrg(null)
-      
+
       // Find parent HQ org to load distributors
       let hqOrgId = userOrgData.parent_org_id
 
@@ -168,7 +168,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           return
         }
       }
-      
+
       setHqOrgId(hqOrgId)
 
       // Determine inventory source organization
@@ -184,7 +184,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle()
-        
+
         if (whData) {
           inventoryOrgId = whData.id
         }
@@ -192,7 +192,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
       // Load available distributors (children of HQ)
       await loadDistributors(hqOrgId, inventoryOrgId)
-      
+
     } catch (error: any) {
       console.error('Error initializing order:', error)
       toast({
@@ -215,19 +215,19 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         .eq('org_type_code', 'DIST')
         .eq('is_active', true)
         .order('org_name')
-        
+
       if (search && search.length >= 2) {
         query = query.ilike('org_name', `%${search}%`)
       } else {
         query = query.limit(50)
       }
-      
+
       const { data, error } = await query
-      
+
       if (error) throw error
-      
+
       setAvailableDistributors(data || [])
-      
+
       if (data && data.length === 0 && !toastShownRef.current && !search) {
         toastShownRef.current = true
         toast({
@@ -248,24 +248,24 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
   const handleDistributorChange = async (distributorId: string) => {
     setSelectedDistributorId(distributorId)
-    
+
     const distributor = availableDistributors.find(d => d.id === distributorId)
     if (!distributor) return
-    
+
     setBuyerOrg(distributor)
-    
+
     // Update customer information with distributor details
     setCustomerName(distributor.contact_name || distributor.org_name)
     setPhoneNumber(distributor.contact_phone || '')
-    
+
     // Combine address and address_line2 for delivery address
     const fullAddress = [
       distributor.address,
       distributor.address_line2
     ].filter(Boolean).join(', ')
-    
+
     setDeliveryAddress(fullAddress || '')
-    
+
     // Determine inventory source again (need to pass it or store it)
     // For now, re-fetch or assume we stored it. 
     // Better to store it in state.
@@ -273,23 +273,23 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     // I'll re-derive it or pass it.
     // Actually, I can just re-derive it inside loadAvailableProducts or pass it.
     // Let's modify loadAvailableProducts to accept inventoryOrgId.
-    
+
     // Wait, I need to pass inventoryOrgId to loadAvailableProducts.
     // I'll fetch it again here to be safe/simple.
-    
+
     let inventoryOrgId = userProfile.organization_id
     // Check if we are HQ
     const { data: userOrg } = await supabase.from('organizations').select('org_type_code').eq('id', userProfile.organization_id).single()
     if (userOrg?.org_type_code === 'HQ') {
-       const { data: wh } = await supabase
-         .from('organizations')
-         .select('id')
-         .eq('parent_org_id', userProfile.organization_id)
-         .eq('org_type_code', 'WH')
-         .order('created_at', { ascending: true })
-         .limit(1)
-         .maybeSingle()
-       if (wh) inventoryOrgId = wh.id
+      const { data: wh } = await supabase
+        .from('organizations')
+        .select('id')
+        .eq('parent_org_id', userProfile.organization_id)
+        .eq('org_type_code', 'WH')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (wh) inventoryOrgId = wh.id
     }
 
     await loadAvailableProducts(distributorId, inventoryOrgId)
@@ -297,14 +297,14 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
   const loadAvailableProducts = async (distributorId: string, inventoryOrgId: string) => {
     if (!distributorId) return
-    
+
     try {
       // Get company_id for order creation (still needed later)
       const { data: companyData } = await supabase
         .rpc('get_company_id', { p_org_id: userProfile.organization_id })
-      
+
       const companyId = companyData || userProfile.organization_id
-      
+
       // Load product variants with inventory quantities
       const { data, error } = await supabase
         .from('product_variants')
@@ -327,14 +327,14 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         .eq('is_active', true)
         .eq('products.is_active', true)
         .order('variant_name')
-      
+
       if (error) throw error
-      
+
       // Get inventory for each variant
       const variantsWithInventory = await Promise.all(
         (data || []).map(async (v: any) => {
           const product = Array.isArray(v.products) ? v.products[0] : v.products
-          
+
           // Get available quantity from product_inventory using inventoryOrgId (Warehouse)
           const { data: inventoryData } = await supabase
             .from('product_inventory')
@@ -342,9 +342,9 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             .eq('variant_id', v.id)
             .eq('organization_id', inventoryOrgId)
             .maybeSingle()
-          
+
           const availableQty = inventoryData?.quantity_available || 0
-          
+
           return {
             id: v.id,
             product_id: v.product_id,
@@ -359,12 +359,12 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           }
         })
       )
-      
+
       // Filter to only show variants with available inventory
       const variantsWithStock = variantsWithInventory.filter(v => v.available_qty > 0)
-      
+
       setAvailableVariants(variantsWithStock)
-      
+
       if (variantsWithStock.length === 0) {
         toast({
           title: 'No Products Available',
@@ -439,7 +439,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     setOrderItems([...orderItems, newItem])
     setSelectedVariantId('')
     setProductSearchQuery('')
-    
+
     toast({
       title: 'Product Added',
       description: `${variant.product_name} - ${variant.variant_name} added to order`
@@ -457,7 +457,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const handleUpdateQty = (variantId: string, newQty: number) => {
     const variant = availableVariants.find(v => v.id === variantId)
     if (!variant) return
-    
+
     // Validate against available inventory
     if (newQty > variant.available_qty) {
       toast({
@@ -467,26 +467,26 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       })
       return
     }
-    
-    setOrderItems(orderItems.map(item => 
-      item.variant_id === variantId 
-        ? { 
-            ...item, 
-            qty: Math.max(1, newQty),
-            line_total: Math.max(1, newQty) * item.unit_price 
-          }
+
+    setOrderItems(orderItems.map(item =>
+      item.variant_id === variantId
+        ? {
+          ...item,
+          qty: Math.max(1, newQty),
+          line_total: Math.max(1, newQty) * item.unit_price
+        }
         : item
     ))
   }
 
   const handleUpdatePrice = (variantId: string, newPrice: number) => {
-    setOrderItems(orderItems.map(item => 
-      item.variant_id === variantId 
-        ? { 
-            ...item, 
-            unit_price: newPrice,
-            line_total: item.qty * newPrice 
-          }
+    setOrderItems(orderItems.map(item =>
+      item.variant_id === variantId
+        ? {
+          ...item,
+          unit_price: newPrice,
+          line_total: item.qty * newPrice
+        }
         : item
     ))
   }
@@ -494,7 +494,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const saveOrder = async () => {
     try {
       setSaving(true)
-      
+
       // Validation
       if (!selectedDistributorId) {
         toast({
@@ -535,7 +535,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       // Get company_id
       const { data: companyData } = await supabase
         .rpc('get_company_id', { p_org_id: userProfile.organization_id })
-      
+
       const companyId = companyData || userProfile.organization_id
 
       // Create order with draft status first (RLS requirement)
@@ -601,6 +601,9 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         throw new Error(`Failed to submit order: ${updateError.message}`)
       }
 
+      // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
+      fetch('/api/cron/notification-outbox-worker').catch(() => { })
+
       // Allocate inventory immediately upon submission (reserve stock)
       console.log('🔒 Allocating inventory for order:', order.order_no)
       const { error: allocateError } = await supabase
@@ -612,7 +615,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         await supabase.from('orders').delete().eq('id', order.id)
         throw new Error(`Failed to allocate inventory: ${allocateError.message}`)
       }
-      
+
       console.log('✅ Order submitted and inventory allocated:', order.order_no)
 
       toast({
@@ -641,7 +644,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     const subtotal = orderItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
     const tax = 0
     const total = subtotal + tax
-    
+
     return { subtotal, tax, total }
   }
 
@@ -649,17 +652,17 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
   // Filter variants based on search and product filter
   const filteredVariants = availableVariants.filter(variant => {
-    const matchesSearch = !productSearchQuery || 
+    const matchesSearch = !productSearchQuery ||
       variant.variant_name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
       variant.product_name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
       variant.manufacturer_sku?.toLowerCase().includes(productSearchQuery.toLowerCase())
-    
-    const matchesProductFilter = !selectedProductFilter || 
+
+    const matchesProductFilter = !selectedProductFilter ||
       variant.product_name === selectedProductFilter
-    
+
     // Exclude already selected variants
     const isAlreadySelected = orderItems.some(item => item.variant_id === variant.id)
-    
+
     return matchesSearch && matchesProductFilter && !isAlreadySelected
   })
 
@@ -676,9 +679,9 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleBack}
             className="gap-2 -ml-2"
           >
@@ -694,7 +697,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Forms */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* Distributor Selection */}
           <Card>
             <CardHeader className="border-b bg-gray-50">
@@ -714,8 +717,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                     onChange={(e) => {
                       setDistributorSearchQuery(e.target.value)
                       if (selectedDistributorId) {
-                         setSelectedDistributorId('')
-                         setBuyerOrg(null)
+                        setSelectedDistributorId('')
+                        setBuyerOrg(null)
                       }
                       setIsDistributorDropdownOpen(true)
                     }}
@@ -845,126 +848,126 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                         placeholder="Search by variant name or SKU..."
                         className="bg-gray-50"
                       />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Filter by Product
-                  </label>
-                  <select
-                    value={selectedProductFilter}
-                    onChange={(e) => setSelectedProductFilter(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Filter by Product
+                      </label>
+                      <select
+                        value={selectedProductFilter}
+                        onChange={(e) => setSelectedProductFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="">All Products ({Array.from(new Set(availableVariants.map(v => v.product_name))).length})</option>
+                        {Array.from(new Set(availableVariants.map(v => v.product_name))).sort().map(productName => (
+                          <option key={productName} value={productName}>
+                            {productName} ({availableVariants.filter(v => v.product_name === productName).length})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Variant Selection */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Variant ({filteredVariants.length} available)
+                    </label>
+                    <select
+                      value={selectedVariantId}
+                      onChange={(e) => setSelectedVariantId(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      disabled={filteredVariants.length === 0}
+                    >
+                      <option value="">Choose variant...</option>
+                      {filteredVariants.map((variant) => (
+                        <option key={variant.id} value={variant.id}>
+                          {variant.product_name} - {variant.variant_name} | SKU: {variant.manufacturer_sku || 'N/A'} |
+                          Price: RM {formatCurrency(variant.distributor_price)} |
+                          Stock: {variant.available_qty}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <Button
+                    onClick={handleAddProduct}
+                    disabled={!selectedVariantId}
+                    className="w-full"
                   >
-                    <option value="">All Products ({Array.from(new Set(availableVariants.map(v => v.product_name))).length})</option>
-                    {Array.from(new Set(availableVariants.map(v => v.product_name))).sort().map(productName => (
-                      <option key={productName} value={productName}>
-                        {productName} ({availableVariants.filter(v => v.product_name === productName).length})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                    Add Product
+                  </Button>
 
-              {/* Variant Selection */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Variant ({filteredVariants.length} available)
-                </label>
-                <select
-                  value={selectedVariantId}
-                  onChange={(e) => setSelectedVariantId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  disabled={filteredVariants.length === 0}
-                >
-                  <option value="">Choose variant...</option>
-                  {filteredVariants.map((variant) => (
-                    <option key={variant.id} value={variant.id}>
-                      {variant.product_name} - {variant.variant_name} | SKU: {variant.manufacturer_sku || 'N/A'} | 
-                      Price: RM {formatCurrency(variant.distributor_price)} | 
-                      Stock: {variant.available_qty}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  {/* Order Items List */}
+                  {orderItems.length > 0 && (
+                    <div className="mt-6 space-y-4">
+                      <h4 className="font-semibold text-gray-900">Selected Products ({orderItems.length})</h4>
+                      {orderItems.map((item) => {
+                        const variant = availableVariants.find(v => v.id === item.variant_id)
+                        return (
+                          <div key={item.variant_id} className="border rounded-lg p-4 bg-gray-50">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex-1">
+                                <h5 className="font-medium text-gray-900">{item.product_name}</h5>
+                                <p className="text-sm text-gray-600">{item.variant_name}</p>
+                                {item.manufacturer_sku && (
+                                  <p className="text-xs text-gray-500 mt-1">SKU: {item.manufacturer_sku}</p>
+                                )}
+                                {variant && (
+                                  <p className="text-xs text-blue-600 mt-1">Available: {variant.available_qty} units</p>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveProduct(item.variant_id)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
 
-              <Button 
-                onClick={handleAddProduct}
-                disabled={!selectedVariantId}
-                className="w-full"
-              >
-                Add Product
-              </Button>
-
-              {/* Order Items List */}
-              {orderItems.length > 0 && (
-                <div className="mt-6 space-y-4">
-                  <h4 className="font-semibold text-gray-900">Selected Products ({orderItems.length})</h4>
-                  {orderItems.map((item) => {
-                    const variant = availableVariants.find(v => v.id === item.variant_id)
-                    return (
-                      <div key={item.variant_id} className="border rounded-lg p-4 bg-gray-50">
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex-1">
-                            <h5 className="font-medium text-gray-900">{item.product_name}</h5>
-                            <p className="text-sm text-gray-600">{item.variant_name}</p>
-                            {item.manufacturer_sku && (
-                              <p className="text-xs text-gray-500 mt-1">SKU: {item.manufacturer_sku}</p>
-                            )}
-                            {variant && (
-                              <p className="text-xs text-blue-600 mt-1">Available: {variant.available_qty} units</p>
-                            )}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveProduct(item.variant_id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Quantity
-                            </label>
-                            <Input
-                              type="number"
-                              value={item.qty}
-                              onChange={(e) => handleUpdateQty(item.variant_id, parseInt(e.target.value) || 1)}
-                              min="1"
-                              max={variant?.available_qty}
-                              className="text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Unit Price (RM)
-                            </label>
-                            <Input
-                              type="number"
-                              value={item.unit_price}
-                              onChange={(e) => handleUpdatePrice(item.variant_id, parseFloat(e.target.value) || 0)}
-                              min="0"
-                              step="0.01"
-                              className="text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Line Total (RM)
-                            </label>
-                            <div className="text-sm font-semibold text-gray-900 py-2">
-                              {formatCurrency(item.line_total || 0)}
+                            <div className="grid grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                  Quantity
+                                </label>
+                                <Input
+                                  type="number"
+                                  value={item.qty}
+                                  onChange={(e) => handleUpdateQty(item.variant_id, parseInt(e.target.value) || 1)}
+                                  min="1"
+                                  max={variant?.available_qty}
+                                  className="text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                  Unit Price (RM)
+                                </label>
+                                <Input
+                                  type="number"
+                                  value={item.unit_price}
+                                  onChange={(e) => handleUpdatePrice(item.variant_id, parseFloat(e.target.value) || 0)}
+                                  min="0"
+                                  step="0.01"
+                                  className="text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                  Line Total (RM)
+                                </label>
+                                <div className="text-sm font-semibold text-gray-900 py-2">
+                                  {formatCurrency(item.line_total || 0)}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+                        )
+                      })}
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>
@@ -1078,7 +1081,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                     {orderItems.length === 0 && ' At least one product.'}
                   </div>
                 )}
-                <Button 
+                <Button
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={saveOrder}
                   disabled={saving || !selectedDistributorId || !sellerOrg || !customerName || !deliveryAddress || orderItems.length === 0}

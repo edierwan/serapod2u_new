@@ -119,10 +119,18 @@ export default function BotAdminSection() {
         fetchGlobalAiMode()
     }, [fetchAdmins, fetchGlobalAiMode])
 
+    const MAX_BOT_ADMINS = 3
+
     // Add/update admin
     const handleSaveAdmin = async () => {
         if (!newPhone.trim()) {
             setError('Phone number is required')
+            return
+        }
+
+        // Enforce max 3 admins on add (not edit)
+        if (!editingAdmin && admins.length >= MAX_BOT_ADMINS) {
+            setError(`Maximum ${MAX_BOT_ADMINS} bot admins allowed. Remove one before adding a new admin.`)
             return
         }
 
@@ -317,62 +325,65 @@ export default function BotAdminSection() {
                                 Only WhatsApp numbers listed here are allowed to control the AI bot using /ai commands such as pausing auto-replies or generating drafts.
                             </CardDescription>
                         </div>
-                        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button onClick={openAddDialog} size="sm">
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    Add Admin
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>
-                                        {editingAdmin ? 'Edit Bot Admin' : 'Add Bot Admin'}
-                                    </DialogTitle>
-                                    <DialogDescription>
-                                        This phone number will be able to use /ai commands to control the bot
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4 py-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="phone">Phone Number</Label>
-                                        <Input
-                                            id="phone"
-                                            placeholder="e.g. 60192277233 or 0192277233"
-                                            value={newPhone}
-                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
-                                        />
-                                        <p className="text-xs text-gray-500">
-                                            Enter phone number with country code (60) or local format (0)
-                                        </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="name">Display Name (Optional)</Label>
-                                        <Input
-                                            id="name"
-                                            placeholder="e.g. Edi Admin"
-                                            value={newName}
-                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
-                                        />
-                                    </div>
-                                    {error && (
-                                        <div className="text-sm text-red-600 flex items-center gap-1">
-                                            <AlertTriangle className="w-4 h-4" />
-                                            {error}
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">{admins.length}/{MAX_BOT_ADMINS} admins</Badge>
+                            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button onClick={openAddDialog} size="sm" disabled={admins.length >= MAX_BOT_ADMINS}>
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        {admins.length >= MAX_BOT_ADMINS ? 'Max Reached' : 'Add Admin'}
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            {editingAdmin ? 'Edit Bot Admin' : 'Add Bot Admin'}
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            This phone number will be able to use /ai commands to control the bot
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-4 py-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="phone">Phone Number</Label>
+                                            <Input
+                                                id="phone"
+                                                placeholder="e.g. 60192277233 or 0192277233"
+                                                value={newPhone}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
+                                            />
+                                            <p className="text-xs text-gray-500">
+                                                Enter phone number with country code (60) or local format (0)
+                                            </p>
                                         </div>
-                                    )}
-                                </div>
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                                        Cancel
-                                    </Button>
-                                    <Button onClick={handleSaveAdmin} disabled={saving}>
-                                        {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                        {editingAdmin ? 'Save Changes' : 'Add Admin'}
-                                    </Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="name">Display Name (Optional)</Label>
+                                            <Input
+                                                id="name"
+                                                placeholder="e.g. Edi Admin"
+                                                value={newName}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+                                            />
+                                        </div>
+                                        {error && (
+                                            <div className="text-sm text-red-600 flex items-center gap-1">
+                                                <AlertTriangle className="w-4 h-4" />
+                                                {error}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <DialogFooter>
+                                        <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                                            Cancel
+                                        </Button>
+                                        <Button onClick={handleSaveAdmin} disabled={saving}>
+                                            {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                            {editingAdmin ? 'Save Changes' : 'Add Admin'}
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -391,7 +402,7 @@ export default function BotAdminSection() {
                                 <Info className="w-3 h-3" />
                                 Recommended: Add at least one admin number for manual takeover.
                             </p>
-                            <Button onClick={openAddDialog} size="sm" className="mt-4">
+                            <Button onClick={openAddDialog} size="sm" className="mt-4" disabled={admins.length >= MAX_BOT_ADMINS}>
                                 <Plus className="w-4 h-4 mr-2" />
                                 Add First Admin
                             </Button>

@@ -79,7 +79,7 @@ export default function HrLearningView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Learning & Development</CardTitle>
+                            <CardTitle className="text-lg">Learning & Development</CardTitle>
                             <CardDescription>Deliver training, track certifications, and build a skills matrix.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -122,7 +122,7 @@ export default function HrLearningView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Catalog</CardTitle>
+                    <CardTitle className="text-base">Course Catalog</CardTitle>
                     <CardDescription>Active courses available for enrollments.</CardDescription>
                 </CardHeader>
                 <CardContent>

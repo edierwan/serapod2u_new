@@ -31,7 +31,7 @@ import {
 } from '@/lib/api/payroll'
 import {
     Calculator, CheckCircle, DollarSign, FileText, HelpCircle,
-    Lock, Plus, Settings
+    Lock, Plus, Settings, Landmark, RotateCcw, Loader2
 } from 'lucide-react'
 
 interface HrPayrollPayslipsViewProps {
@@ -55,6 +55,13 @@ const statusBadge = (status: string) => {
     }
     const item = map[status] || { variant: 'outline' as const, label: status }
     return <Badge variant={item.variant}>{item.label}</Badge>
+}
+
+const glStatusBadge = (glStatus: string | undefined) => {
+    if (!glStatus || glStatus === 'NOT_POSTED') return <Badge variant="outline" className="text-xs">Not Posted</Badge>
+    if (glStatus === 'POSTED') return <Badge variant="default" className="bg-green-600 text-xs">GL Posted</Badge>
+    if (glStatus === 'REVERSED') return <Badge variant="destructive" className="text-xs">GL Reversed</Badge>
+    return <Badge variant="outline" className="text-xs">{glStatus}</Badge>
 }
 
 export default function HrPayrollPayslipsView({ userProfile }: HrPayrollPayslipsViewProps) {
@@ -151,6 +158,56 @@ export default function HrPayrollPayslipsView({ userProfile }: HrPayrollPayslips
         setActionLoading(false)
     }
 
+    const [glPostingRunId, setGlPostingRunId] = useState<string | null>(null)
+
+    const handlePostToGL = async (run: PayrollRun) => {
+        if (!confirm('Post this payroll run to the General Ledger? This will create journal entries in Finance.')) return
+        setGlPostingRunId(run.id)
+        try {
+            const res = await fetch('/api/hr/payroll/post-to-gl', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ payroll_run_id: run.id }),
+            })
+            const data = await res.json()
+            if (data.success) {
+                toast({
+                    title: 'Posted to GL',
+                    description: `Journal ${data.journal_number} created. Total: RM ${data.total_debit?.toLocaleString()}`,
+                })
+                loadRuns()
+            } else {
+                toast({ title: 'GL Posting Failed', description: data.error || 'Unknown error', variant: 'destructive' })
+            }
+        } catch (e) {
+            toast({ title: 'Error', description: 'Failed to post to GL', variant: 'destructive' })
+        } finally {
+            setGlPostingRunId(null)
+        }
+    }
+
+    const handleReverseGL = async (run: PayrollRun) => {
+        const reason = prompt('Reason for reversing GL posting (e.g., payroll rerun):')
+        if (!reason) return
+        setGlPostingRunId(run.id)
+        try {
+            const res = await fetch(`/api/hr/payroll/post-to-gl?payroll_run_id=${run.id}&reason=${encodeURIComponent(reason)}`, {
+                method: 'DELETE',
+            })
+            const data = await res.json()
+            if (data.success) {
+                toast({ title: 'GL Posting Reversed', description: data.message })
+                loadRuns()
+            } else {
+                toast({ title: 'Reversal Failed', description: data.error || 'Unknown error', variant: 'destructive' })
+            }
+        } catch (e) {
+            toast({ title: 'Error', description: 'Failed to reverse GL posting', variant: 'destructive' })
+        } finally {
+            setGlPostingRunId(null)
+        }
+    }
+
     const handleSaveSettings = async () => {
         setActionLoading(true)
         const result = await updateStatutoryConfig(settingsForm)
@@ -226,6 +283,7 @@ export default function HrPayrollPayslipsView({ userProfile }: HrPayrollPayslips
                                                 <TableHead>Period</TableHead>
                                                 <TableHead>Name</TableHead>
                                                 <TableHead>Status</TableHead>
+                                                <TableHead>GL Status</TableHead>
                                                 <TableHead>Employees</TableHead>
                                                 <TableHead>Net Total</TableHead>
                                                 <TableHead className="text-right">Actions</TableHead>
@@ -237,6 +295,7 @@ export default function HrPayrollPayslipsView({ userProfile }: HrPayrollPayslips
                                                     <TableCell className="text-sm">{new Date(run.period_start).toLocaleDateString()} – {new Date(run.period_end).toLocaleDateString()}</TableCell>
                                                     <TableCell className="font-medium">{run.name}</TableCell>
                                                     <TableCell>{statusBadge(run.status)}{run.is_locked && <Lock className="h-3 w-3 inline ml-1 text-gray-400" />}</TableCell>
+                                                    <TableCell>{glStatusBadge((run as any).gl_status)}</TableCell>
                                                     <TableCell className="text-sm">{run.employee_count || '—'}</TableCell>
                                                     <TableCell className="text-sm font-medium">{run.total_net ? `RM ${run.total_net.toLocaleString()}` : '—'}</TableCell>
                                                     <TableCell className="text-right">
@@ -244,6 +303,18 @@ export default function HrPayrollPayslipsView({ userProfile }: HrPayrollPayslips
                                                             <Button variant="ghost" size="sm" onClick={() => handleSelectRun(run)}>View</Button>
                                                             {canManage && run.status === 'draft' && <Button size="sm" variant="outline" onClick={() => handleCalculate(run)} disabled={actionLoading}><Calculator className="h-4 w-4 mr-1" />Calculate</Button>}
                                                             {canManage && run.status === 'calculated' && <Button size="sm" onClick={() => handleApprove(run)} disabled={actionLoading}><CheckCircle className="h-4 w-4 mr-1" />Approve</Button>}
+                                                            {canManage && run.status === 'approved' && (run as any).gl_status !== 'POSTED' && (
+                                                                <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => handlePostToGL(run)} disabled={glPostingRunId === run.id}>
+                                                                    {glPostingRunId === run.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Landmark className="h-4 w-4 mr-1" />}
+                                                                    Post to GL
+                                                                </Button>
+                                                            )}
+                                                            {canManage && (run as any).gl_status === 'POSTED' && (
+                                                                <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={() => handleReverseGL(run)} disabled={glPostingRunId === run.id}>
+                                                                    {glPostingRunId === run.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+                                                                    Reverse
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>

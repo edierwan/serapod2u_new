@@ -77,55 +77,55 @@ const formatCurrency = (amount: number): string => {
 export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderViewProps) {
   const supabase = createClient()
   const { toast } = useToast()
-  
+
   // Ref to prevent duplicate toasts in React Strict Mode
   const toastShownRef = useRef(false)
-  
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
+
   // Organizations
   const [buyerOrg, setBuyerOrg] = useState<Organization | null>(null)
   const [sellerOrg, setSellerOrg] = useState<Organization | null>(null)
   const [availableShops, setAvailableShops] = useState<Organization[]>([])
   const [selectedShopId, setSelectedShopId] = useState('')
   const [inventoryOrgId, setInventoryOrgId] = useState<string>('')
-  
+
   // Customer Information
   const [customerName, setCustomerName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [deliveryAddress, setDeliveryAddress] = useState('')
-  
+
   // Products and Variants
   const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([])
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
-  
+
   // Product filtering
   const [productSearchQuery, setProductSearchQuery] = useState('')
   const [selectedProductFilter, setSelectedProductFilter] = useState('')
 
   useEffect(() => {
     initializeOrder()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const initializeOrder = async () => {
     try {
       setLoading(true)
-      
+
       // Load user's organization details (HQ)
       const { data: userOrgData, error: userOrgError } = await supabase
         .from('organizations')
         .select('*')
         .eq('id', userProfile.organization_id)
         .single()
-      
+
       if (userOrgError) throw userOrgError
-      
+
       // Set SELLER as current organization (HQ/WH)
       setSellerOrg(userOrgData)
-      
+
       // Find parent HQ org (if we are not HQ)
       let hqOrgId = userOrgData.parent_org_id
       if (!hqOrgId) {
@@ -145,7 +145,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle()
-        
+
         if (whData) {
           setInventoryOrgId(whData.id)
         } else {
@@ -154,7 +154,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
         await loadShops(hqOrgId)
       }
-      
+
     } catch (error: any) {
       console.error('Error initializing order:', error)
       toast({
@@ -175,9 +175,9 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         .select('id')
         .eq('parent_org_id', hqOrgId)
         .eq('org_type_code', 'DIST')
-      
+
       const distributorIds = distributors?.map(d => d.id) || []
-      
+
       if (distributorIds.length === 0) {
         if (!toastShownRef.current) {
           toastShownRef.current = true
@@ -198,11 +198,11 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         .eq('org_type_code', 'SHOP')
         .eq('is_active', true)
         .order('org_name')
-      
+
       if (error) throw error
-      
+
       setAvailableShops(shops || [])
-      
+
       if (shops && shops.length === 0 && !toastShownRef.current) {
         toastShownRef.current = true
         toast({
@@ -226,22 +226,22 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
   const handleShopChange = async (shopId: string) => {
     setSelectedShopId(shopId)
-    
+
     const shop = availableShops.find(s => s.id === shopId)
     if (!shop) return
-    
+
     setBuyerOrg(shop)
-    
+
     // Update customer information with Shop details
     setCustomerName(shop.contact_name || shop.org_name)
     setPhoneNumber(shop.contact_phone || '')
-    
+
     // Combine address and address_line2 for delivery address
     const fullAddress = [
       shop.address,
       shop.address_line2
     ].filter(Boolean).join(', ')
-    
+
     setDeliveryAddress(fullAddress || '')
 
     // Load products from HQ Inventory
@@ -252,7 +252,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
   const loadAvailableProducts = async (inventorySourceId: string) => {
     if (!inventorySourceId) return
-    
+
     try {
       // Load product variants with inventory quantities
       const { data, error } = await supabase
@@ -276,14 +276,14 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         .eq('is_active', true)
         .eq('products.is_active', true)
         .order('variant_name')
-      
+
       if (error) throw error
-      
+
       // Get inventory for each variant from Inventory Source (Warehouse/HQ)
       const variantsWithInventory = await Promise.all(
         (data || []).map(async (v: any) => {
           const product = Array.isArray(v.products) ? v.products[0] : v.products
-          
+
           // Get available quantity from product_inventory using Inventory Source ID
           const { data: inventoryData } = await supabase
             .from('product_inventory')
@@ -291,9 +291,9 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
             .eq('variant_id', v.id)
             .eq('organization_id', inventorySourceId)
             .maybeSingle()
-          
+
           const availableQty = inventoryData?.quantity_available || 0
-          
+
           return {
             id: v.id,
             product_id: v.product_id,
@@ -308,12 +308,12 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
           }
         })
       )
-      
+
       // Filter to only show variants with available inventory
       const variantsWithStock = variantsWithInventory.filter(v => v.available_qty > 0)
-      
+
       setAvailableVariants(variantsWithStock)
-      
+
       if (variantsWithStock.length === 0) {
         toast({
           title: 'No Products Available',
@@ -382,7 +382,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
     setOrderItems([...orderItems, newItem])
     setSelectedVariantId('')
     setProductSearchQuery('')
-    
+
     toast({
       title: 'Product Added',
       description: `${variant.product_name} - ${variant.variant_name} added to order`
@@ -400,7 +400,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
   const handleUpdateQty = (variantId: string, newQty: number) => {
     const variant = availableVariants.find(v => v.id === variantId)
     if (!variant) return
-    
+
     // Validate against available inventory
     if (newQty > variant.available_qty) {
       toast({
@@ -410,26 +410,26 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
       })
       return
     }
-    
-    setOrderItems(orderItems.map(item => 
-      item.variant_id === variantId 
-        ? { 
-            ...item, 
-            qty: Math.max(1, newQty),
-            line_total: Math.max(1, newQty) * item.unit_price 
-          }
+
+    setOrderItems(orderItems.map(item =>
+      item.variant_id === variantId
+        ? {
+          ...item,
+          qty: Math.max(1, newQty),
+          line_total: Math.max(1, newQty) * item.unit_price
+        }
         : item
     ))
   }
 
   const handleUpdatePrice = (variantId: string, newPrice: number) => {
-    setOrderItems(orderItems.map(item => 
-      item.variant_id === variantId 
-        ? { 
-            ...item, 
-            unit_price: newPrice,
-            line_total: item.qty * newPrice 
-          }
+    setOrderItems(orderItems.map(item =>
+      item.variant_id === variantId
+        ? {
+          ...item,
+          unit_price: newPrice,
+          line_total: item.qty * newPrice
+        }
         : item
     ))
   }
@@ -438,7 +438,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
     const subtotal = orderItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
     const tax = 0
     const total = subtotal + tax
-    
+
     return { subtotal, tax, total }
   }
 
@@ -446,24 +446,24 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
   // Filter variants based on search and product filter
   const filteredVariants = availableVariants.filter(variant => {
-    const matchesSearch = !productSearchQuery || 
+    const matchesSearch = !productSearchQuery ||
       variant.variant_name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
       variant.product_name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
       variant.manufacturer_sku?.toLowerCase().includes(productSearchQuery.toLowerCase())
-    
-    const matchesProductFilter = !selectedProductFilter || 
+
+    const matchesProductFilter = !selectedProductFilter ||
       variant.product_name === selectedProductFilter
-    
+
     // Exclude already selected variants
     const isAlreadySelected = orderItems.some(item => item.variant_id === variant.id)
-    
+
     return matchesSearch && matchesProductFilter && !isAlreadySelected
   })
 
   const saveOrder = async () => {
     try {
       setSaving(true)
-      
+
       // Validation
       if (!selectedShopId) {
         toast({
@@ -504,7 +504,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
       // Get company_id
       const { data: companyData } = await supabase
         .rpc('get_company_id', { p_org_id: userProfile.organization_id })
-      
+
       const companyId = companyData || userProfile.organization_id
 
       // Create order with draft status first (RLS requirement)
@@ -570,6 +570,9 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         throw new Error(`Failed to submit order: ${updateError.message}`)
       }
 
+      // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
+      fetch('/api/cron/notification-outbox-worker').catch(() => { })
+
       // Allocate inventory immediately upon submission (reserve stock)
       console.log('🔒 Allocating inventory for order:', order.order_no)
       const { error: allocateError } = await supabase
@@ -625,9 +628,9 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleBack}
             className="gap-2 -ml-2"
           >
@@ -643,7 +646,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Forms */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* Shop Selection */}
           <Card>
             <CardHeader className="border-b bg-gray-50">
@@ -804,15 +807,15 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                       <option value="">Choose variant...</option>
                       {filteredVariants.map((variant) => (
                         <option key={variant.id} value={variant.id}>
-                          {variant.product_name} - {variant.variant_name} | SKU: {variant.manufacturer_sku || 'N/A'} | 
-                          Price: RM {formatCurrency(variant.retailer_price)} | 
+                          {variant.product_name} - {variant.variant_name} | SKU: {variant.manufacturer_sku || 'N/A'} |
+                          Price: RM {formatCurrency(variant.retailer_price)} |
                           Stock: {variant.available_qty}
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  <Button 
+                  <Button
                     onClick={handleAddProduct}
                     disabled={!selectedVariantId}
                     className="w-full"
@@ -848,7 +851,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                                 <Trash2 className="w-4 h-4" />
                               </Button>
                             </div>
-                            
+
                             <div className="grid grid-cols-3 gap-3">
                               <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -1003,7 +1006,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                     {orderItems.length === 0 && ' At least one product.'}
                   </div>
                 )}
-                <Button 
+                <Button
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={saveOrder}
                   disabled={saving || !selectedShopId || !sellerOrg || !customerName || !deliveryAddress || orderItems.length === 0}

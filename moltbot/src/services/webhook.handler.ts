@@ -32,6 +32,56 @@ type LogEventType =
 export class WebhookHandler {
 
     /**
+     * Forward a message summary to all active admin phones for the org.
+     * This lets admins see user messages and bot replies on their WhatsApp.
+     */
+    private async forwardToAdmins(
+        orgId: string | null,
+        senderPhone: string,
+        senderName: string | undefined,
+        messageText: string,
+        messageType: 'user' | 'bot' | 'system',
+        excludePhone?: string
+    ): Promise<void> {
+        if (!orgId) return;
+
+        try {
+            const adminPhones = await supabaseDB.getActiveAdminPhones(orgId);
+            if (adminPhones.length === 0) return;
+
+            // Format the forwarded message
+            let prefix = '';
+            const displayName = senderName || senderPhone;
+            switch (messageType) {
+                case 'user':
+                    prefix = `📩 *New message from ${displayName}*\n_(${senderPhone})_\n\n`;
+                    break;
+                case 'bot':
+                    prefix = `🤖 *AI Bot replied to ${displayName}*\n_(${senderPhone})_\n\n`;
+                    break;
+                case 'system':
+                    prefix = `⚙️ *System* — `;
+                    break;
+            }
+
+            const forwardText = `${prefix}${messageText}`;
+
+            // Send to each admin (except the sender if they're an admin)
+            for (const adminPhone of adminPhones) {
+                if (excludePhone && adminPhone === this.normalizePhone(excludePhone)) continue;
+
+                try {
+                    await gatewayService.sendMessage(adminPhone, forwardText);
+                } catch (err: any) {
+                    logger.error({ adminPhone, error: err.message }, 'Failed to forward to admin');
+                }
+            }
+        } catch (err: any) {
+            logger.error({ orgId, error: err.message }, 'forwardToAdmins failed');
+        }
+    }
+
+    /**
      * Normalize phone number to digits only with 60 prefix
      */
     private normalizePhone(phone: string): string {
@@ -296,6 +346,13 @@ export class WebhookHandler {
                 mode: currentMode,
                 autoReplyEnabled: config.features.autoReply,
             }, 'Skipping auto-reply (takeover mode or disabled)');
+
+            // In takeover mode, still forward user message to admins so they can see it
+            if (currentMode === 'takeover' && orgId) {
+                this.forwardToAdmins(orgId, phone, payload.wa.pushName, text, 'user').catch(err => {
+                    logger.error({ error: err.message }, 'Failed to forward user msg to admins (takeover)');
+                });
+            }
         }
     }
 
@@ -711,6 +768,13 @@ export class WebhookHandler {
         const startTime = Date.now();
 
         try {
+            // Forward user message to admin phones first
+            if (orgId) {
+                this.forwardToAdmins(orgId, msg.from, msg.pushName, msg.text, 'user').catch(err => {
+                    logger.error({ error: err.message }, 'Failed to forward user msg to admins');
+                });
+            }
+
             // 1. Process with AI service
             const result = await aiService.processMessage(msg);
 
@@ -745,6 +809,13 @@ export class WebhookHandler {
                 } catch (err: any) {
                     logger.error({ error: err.message }, 'Failed to store bot reply');
                 }
+            }
+
+            // 5. Forward bot reply to admin phones so they see what bot said
+            if (orgId) {
+                this.forwardToAdmins(orgId, msg.from, msg.pushName, result.reply, 'bot').catch(err => {
+                    logger.error({ error: err.message }, 'Failed to forward bot reply to admins');
+                });
             }
 
         } catch (error: any) {

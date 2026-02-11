@@ -57,6 +57,13 @@ const ROUNDING_OPTIONS: { value: string; label: string }[] = [
     { value: 'round_nearest', label: 'Round to nearest' },
 ]
 
+const CARRY_FORWARD_PRESETS = [
+    { label: 'Standard (5 days, 3 months)', maxDays: 5, expiryMonths: 3 },
+    { label: 'Generous (10 days, 6 months)', maxDays: 10, expiryMonths: 6 },
+    { label: 'Minimal (3 days, 2 months)', maxDays: 3, expiryMonths: 2 },
+    { label: 'Full Year (all days, 12 months)', maxDays: 99, expiryMonths: 12 },
+]
+
 // ── Blank leave type for the form ───────────────────────────────
 
 function blankLeaveType(): Omit<LeaveType, 'id' | 'createdAt' | 'updatedAt'> {
@@ -217,7 +224,7 @@ export default function HrLeaveTypesView() {
             {/* ── Header ─────────────────────────────────────────── */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Leave Types</h1>
+                    <h1 className="text-lg font-semibold tracking-tight">Leave Types</h1>
                     <p className="text-sm text-muted-foreground mt-1">
                         Define leave policies aligned with Malaysia Employment Act 1955
                     </p>
@@ -507,7 +514,14 @@ export default function HrLeaveTypesView() {
                                         <Switch checked={formData.carryForward.enabled} onCheckedChange={(v) => setFormData({ ...formData, carryForward: { ...formData.carryForward, enabled: v } })} />
                                     </label>
                                     {formData.carryForward.enabled && (
-                                        <div className="grid grid-cols-2 gap-3 pt-1">
+                                        <>
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                <span className="text-[11px] text-muted-foreground font-medium">Presets:</span>
+                                                {CARRY_FORWARD_PRESETS.map((p) => (
+                                                    <button key={p.label} type="button" className="text-[10px] px-2 py-0.5 rounded-full border hover:bg-blue-50 hover:border-blue-300 transition-colors" onClick={() => setFormData({ ...formData, carryForward: { ...formData.carryForward, maxDays: p.maxDays, expiryMonths: p.expiryMonths } })}>{p.label}</button>
+                                                ))}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 pt-1">
                                             <div className="space-y-1">
                                                 <label className="text-[11px] text-muted-foreground">Max carry-forward days</label>
                                                 <input type="number" className="w-full rounded border bg-background px-2 py-1.5 text-sm" value={formData.carryForward.maxDays} onChange={(e) => setFormData({ ...formData, carryForward: { ...formData.carryForward, maxDays: parseInt(e.target.value) || 0 } })} min={0} />
@@ -517,6 +531,7 @@ export default function HrLeaveTypesView() {
                                                 <input type="number" className="w-full rounded border bg-background px-2 py-1.5 text-sm" value={formData.carryForward.expiryMonths} onChange={(e) => setFormData({ ...formData, carryForward: { ...formData.carryForward, expiryMonths: parseInt(e.target.value) || 0 } })} min={0} />
                                             </div>
                                         </div>
+                                        </>
                                     )}
                                 </div>
 

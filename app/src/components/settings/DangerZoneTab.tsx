@@ -498,6 +498,7 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
                 <li>All invoices and payments</li>
                 <li>All shipments and tracking records</li>
                 <li>All document workflows</li>
+                <li><strong>All GL journal entries and postings</strong></li>
                 <li><strong>All product inventory records</strong></li>
                 <li><strong>All stock movements (audit trail)</strong></li>
                 <li><strong>All points transactions (consumer engagement)</strong></li>
@@ -608,6 +609,7 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
                 <li>Delete all orders and order items</li>
                 <li>Delete all QR codes, master codes, and batches</li>
                 <li>Delete all invoices and payments</li>
+                <li><strong>Delete all GL journal entries and postings</strong></li>
                 <li><strong>Delete all product inventory records</strong></li>
                 <li><strong>Delete all stock movements</strong></li>
                 <li><strong>Delete all points transactions</strong></li>

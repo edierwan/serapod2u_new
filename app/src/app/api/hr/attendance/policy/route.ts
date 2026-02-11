@@ -82,6 +82,11 @@ export async function PUT(request: NextRequest) {
             grace_minutes: Number.isFinite(body.grace_minutes) ? Number(body.grace_minutes) : DEFAULT_POLICY.grace_minutes,
             timezone: body.timezone ? String(body.timezone) : DEFAULT_POLICY.timezone,
             require_shift: !!body.require_shift,
+            late_after_minutes: Number.isFinite(body.late_after_minutes) ? Number(body.late_after_minutes) : 15,
+            early_leave_before_minutes: Number.isFinite(body.early_leave_before_minutes) ? Number(body.early_leave_before_minutes) : 15,
+            max_open_entry_hours: Number.isFinite(body.max_open_entry_hours) ? Number(body.max_open_entry_hours) : 16,
+            allow_clock_out_without_clock_in: !!body.allow_clock_out_without_clock_in,
+            overtime_policy_json: body.overtime_policy_json ?? { enabled: false, autoApprove: false, maxDailyMinutes: 120, rate: 1.5 },
             updated_by: ctx.userId,
             updated_at: new Date().toISOString()
         }

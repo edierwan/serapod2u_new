@@ -948,3 +948,19 @@ export function getLeaveRepository(): ILeaveRepository {
     if (!_instance) _instance = new MockLeaveRepository()
     return _instance
 }
+
+/**
+ * Factory that returns the Supabase-backed repository when organization_id
+ * and user_id are available, or falls back to mock data.
+ */
+export function getLeaveRepositoryForOrg(
+    organizationId: string | null,
+    userId: string | null
+): ILeaveRepository {
+    if (organizationId && userId) {
+        // Dynamic import avoided — use direct instantiation
+        const { SupabaseLeaveRepository } = require('./supabaseRepository')
+        return new SupabaseLeaveRepository(organizationId, userId)
+    }
+    return getLeaveRepository()
+}

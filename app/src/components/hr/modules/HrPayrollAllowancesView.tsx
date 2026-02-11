@@ -28,7 +28,8 @@ import {
     fetchEmployeeAllowances, upsertEmployeeAllowance,
     fetchEmployeeDeductions, upsertEmployeeDeduction
 } from '@/lib/api/payroll'
-import { Gift, Minus, Pencil, Plus } from 'lucide-react'
+import { Gift, Minus, Pencil, Plus, Sparkles } from 'lucide-react'
+import EmployeeSearchPicker from '@/components/hr/shared/EmployeeSearchPicker'
 
 interface HrPayrollAllowancesViewProps {
     userProfile: {
@@ -42,6 +43,31 @@ interface HrPayrollAllowancesViewProps {
 
 const emptyAllowType = { code: '', name: '', is_taxable: true, is_recurring: true, default_amount: 0 }
 const emptyDedType = { code: '', name: '', category: 'other' as string, is_recurring: true }
+
+const ALLOWANCE_TEMPLATES = [
+    { code: 'TRAVEL', name: 'Travel Allowance', is_taxable: false, is_recurring: true, default_amount: 200 },
+    { code: 'MEAL', name: 'Meal Allowance', is_taxable: false, is_recurring: true, default_amount: 150 },
+    { code: 'HOUSING', name: 'Housing Allowance', is_taxable: true, is_recurring: true, default_amount: 500 },
+    { code: 'PHONE', name: 'Phone Allowance', is_taxable: false, is_recurring: true, default_amount: 100 },
+    { code: 'PETROL', name: 'Petrol/Fuel Allowance', is_taxable: false, is_recurring: true, default_amount: 300 },
+    { code: 'PARKING', name: 'Parking Allowance', is_taxable: false, is_recurring: true, default_amount: 100 },
+    { code: 'SHIFT', name: 'Shift Allowance', is_taxable: true, is_recurring: true, default_amount: 50 },
+    { code: 'ATTENDANCE', name: 'Attendance Incentive', is_taxable: true, is_recurring: true, default_amount: 100 },
+    { code: 'HARDSHIP', name: 'Hardship Allowance', is_taxable: true, is_recurring: true, default_amount: 200 },
+]
+
+const DEDUCTION_TEMPLATES = [
+    { code: 'EPF-EE', name: 'EPF Employee (11%)', category: 'statutory', is_recurring: true },
+    { code: 'EPF-ER', name: 'EPF Employer (12/13%)', category: 'statutory', is_recurring: true },
+    { code: 'SOCSO-EE', name: 'SOCSO Employee', category: 'statutory', is_recurring: true },
+    { code: 'EIS-EE', name: 'EIS Employee', category: 'statutory', is_recurring: true },
+    { code: 'PCB', name: 'PCB / Monthly Tax Deduction', category: 'statutory', is_recurring: true },
+    { code: 'ZAKAT', name: 'Zakat', category: 'statutory', is_recurring: true },
+    { code: 'LOAN', name: 'Staff Loan', category: 'loan', is_recurring: true },
+    { code: 'ADVANCE', name: 'Salary Advance', category: 'advance', is_recurring: false },
+    { code: 'INSURANCE', name: 'Group Insurance Premium', category: 'other', is_recurring: true },
+    { code: 'UNION', name: 'Union Fees', category: 'other', is_recurring: true },
+]
 
 export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowancesViewProps) {
     const { hasPermission } = usePermissions(userProfile.roles.role_level, userProfile.role_code, userProfile.department_id)
@@ -68,6 +94,9 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
 
     const [empDedDialogOpen, setEmpDedDialogOpen] = useState(false)
     const [empDedForm, setEmpDedForm] = useState({ employee_id: '', deduction_type_id: '', amount: 0, effective_date: '', end_date: '', total_amount: '', remaining_amount: '' })
+    const [employeeNames, setEmployeeNames] = useState<Record<string, string>>({})
+    const [allowTemplateDialogOpen, setAllowTemplateDialogOpen] = useState(false)
+    const [dedTemplateDialogOpen, setDedTemplateDialogOpen] = useState(false)
 
     const loadData = async () => {
         setLoading(true)
@@ -131,6 +160,22 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
         setActionLoading(false)
     }
 
+    const handleLoadAllowTemplate = async (tpl: typeof ALLOWANCE_TEMPLATES[0]) => {
+        setActionLoading(true)
+        const result = await createAllowanceType({ code: tpl.code, name: tpl.name, is_taxable: tpl.is_taxable, is_recurring: tpl.is_recurring, default_amount: tpl.default_amount })
+        if (result.success) { toast({ title: `Added: ${tpl.name}` }); loadData() }
+        else toast({ title: 'Error', description: result.error || 'Failed', variant: 'destructive' })
+        setActionLoading(false)
+    }
+
+    const handleLoadDedTemplate = async (tpl: typeof DEDUCTION_TEMPLATES[0]) => {
+        setActionLoading(true)
+        const result = await createDeductionType({ code: tpl.code, name: tpl.name, category: tpl.category, is_recurring: tpl.is_recurring })
+        if (result.success) { toast({ title: `Added: ${tpl.name}` }); loadData() }
+        else toast({ title: 'Error', description: result.error || 'Failed', variant: 'destructive' })
+        setActionLoading(false)
+    }
+
     return (
         <div className="space-y-6">
             <Tabs defaultValue="allowances">
@@ -144,7 +189,7 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div><CardTitle className="text-base">Allowance Types</CardTitle><CardDescription>Master list of allowance categories.</CardDescription></div>
-                                {canManage && <Button size="sm" onClick={() => { setEditingAllowType(null); setAllowTypeForm(emptyAllowType); setAllowTypeDialogOpen(true) }}><Plus className="h-4 w-4 mr-1" />Add Type</Button>}
+                                {canManage && <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setAllowTemplateDialogOpen(true)}><Sparkles className="h-3 w-3 mr-1" />Load Template</Button><Button size="sm" onClick={() => { setEditingAllowType(null); setAllowTypeForm(emptyAllowType); setAllowTypeDialogOpen(true) }}><Plus className="h-4 w-4 mr-1" />Add Type</Button></div>}
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -186,7 +231,7 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
                                     <TableBody>
                                         {empAllowances.map(ea => (
                                             <TableRow key={ea.id}>
-                                                <TableCell className="text-sm">{ea.employee_id.slice(0, 8)}...</TableCell>
+                                                <TableCell className="text-sm">{employeeNames[ea.employee_id] || ea.employee_id.slice(0, 8) + '...'}</TableCell>
                                                 <TableCell className="text-sm">{allowanceTypes.find(at => at.id === ea.allowance_type_id)?.name || ea.allowance_type_id.slice(0, 8)}</TableCell>
                                                 <TableCell className="text-sm font-medium">{ea.amount.toLocaleString()}</TableCell>
                                                 <TableCell className="text-sm">{new Date(ea.effective_date).toLocaleDateString()}</TableCell>
@@ -205,7 +250,7 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div><CardTitle className="text-base">Deduction Types</CardTitle><CardDescription>Master list of deduction categories.</CardDescription></div>
-                                {canManage && <Button size="sm" onClick={() => { setEditingDedType(null); setDedTypeForm(emptyDedType); setDedTypeDialogOpen(true) }}><Plus className="h-4 w-4 mr-1" />Add Type</Button>}
+                                {canManage && <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDedTemplateDialogOpen(true)}><Sparkles className="h-3 w-3 mr-1" />Load Template</Button><Button size="sm" onClick={() => { setEditingDedType(null); setDedTypeForm(emptyDedType); setDedTypeDialogOpen(true) }}><Plus className="h-4 w-4 mr-1" />Add Type</Button></div>}
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -246,7 +291,7 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
                                     <TableBody>
                                         {empDeductions.map(ed => (
                                             <TableRow key={ed.id}>
-                                                <TableCell className="text-sm">{ed.employee_id.slice(0, 8)}...</TableCell>
+                                                <TableCell className="text-sm">{employeeNames[ed.employee_id] || ed.employee_id.slice(0, 8) + '...'}</TableCell>
                                                 <TableCell className="text-sm">{deductionTypes.find(dt => dt.id === ed.deduction_type_id)?.name || ed.deduction_type_id.slice(0, 8)}</TableCell>
                                                 <TableCell className="text-sm font-medium">{ed.amount.toLocaleString()}</TableCell>
                                                 <TableCell className="text-sm">{ed.total_amount ? `${ed.total_amount.toLocaleString()} / ${ed.remaining_amount?.toLocaleString() || '0'}` : '—'}</TableCell>
@@ -318,7 +363,7 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
                 <DialogContent className="sm:max-w-[480px]">
                     <DialogHeader><DialogTitle>Assign Allowance to Employee</DialogTitle></DialogHeader>
                     <div className="space-y-4">
-                        <div className="space-y-2"><Label>Employee ID *</Label><Input placeholder="User UUID" value={empAllowForm.employee_id} onChange={e => setEmpAllowForm(p => ({ ...p, employee_id: e.target.value }))} /></div>
+                        <div className="space-y-2"><Label>Employee *</Label><EmployeeSearchPicker value={empAllowForm.employee_id} onChange={(id, emp) => { setEmpAllowForm(p => ({ ...p, employee_id: id })); if (emp) setEmployeeNames(prev => ({ ...prev, [id]: emp.full_name || emp.email })) }} /></div>
                         <div className="space-y-2">
                             <Label>Allowance Type *</Label>
                             <Select value={empAllowForm.allowance_type_id} onValueChange={v => { const at = allowanceTypes.find(a => a.id === v); setEmpAllowForm(p => ({ ...p, allowance_type_id: v, amount: at?.default_amount || p.amount })) }}>
@@ -344,7 +389,7 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
                 <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader><DialogTitle>Assign Deduction to Employee</DialogTitle><DialogDescription>For loans, specify total and remaining amounts.</DialogDescription></DialogHeader>
                     <div className="space-y-4">
-                        <div className="space-y-2"><Label>Employee ID *</Label><Input placeholder="User UUID" value={empDedForm.employee_id} onChange={e => setEmpDedForm(p => ({ ...p, employee_id: e.target.value }))} /></div>
+                        <div className="space-y-2"><Label>Employee *</Label><EmployeeSearchPicker value={empDedForm.employee_id} onChange={(id, emp) => { setEmpDedForm(p => ({ ...p, employee_id: id })); if (emp) setEmployeeNames(prev => ({ ...prev, [id]: emp.full_name || emp.email })) }} /></div>
                         <div className="space-y-2">
                             <Label>Deduction Type *</Label>
                             <Select value={empDedForm.deduction_type_id} onValueChange={v => setEmpDedForm(p => ({ ...p, deduction_type_id: v }))}>
@@ -366,6 +411,68 @@ export default function HrPayrollAllowancesView({ userProfile }: HrPayrollAllowa
                         <Button variant="outline" onClick={() => setEmpDedDialogOpen(false)}>Cancel</Button>
                         <Button onClick={handleSaveEmpDed} disabled={actionLoading}>{actionLoading ? 'Saving...' : 'Save'}</Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ─── Allowance Template Dialog ──────────────────────── */}
+            <Dialog open={allowTemplateDialogOpen} onOpenChange={setAllowTemplateDialogOpen}>
+                <DialogContent className="sm:max-w-[550px] max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Allowance Type Templates</DialogTitle>
+                        <DialogDescription>Common Malaysian allowance types. Click Add to create.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        {ALLOWANCE_TEMPLATES.map((tpl, i) => {
+                            const exists = allowanceTypes.some(at => at.code === tpl.code)
+                            return (
+                                <div key={i} className={`flex items-center justify-between rounded-lg border p-3 ${exists ? 'bg-gray-50 opacity-60' : 'hover:bg-blue-50'}`}>
+                                    <div>
+                                        <div className="font-medium text-sm">{tpl.name}</div>
+                                        <div className="text-xs text-gray-500">{tpl.code} • RM {tpl.default_amount} • {tpl.is_taxable ? 'Taxable' : 'Tax-exempt'}</div>
+                                    </div>
+                                    {exists ? (
+                                        <Badge variant="secondary" className="text-[10px]">Added</Badge>
+                                    ) : (
+                                        <Button size="sm" variant="outline" disabled={actionLoading} onClick={() => handleLoadAllowTemplate(tpl)}>
+                                            <Plus className="h-3 w-3 mr-1" />Add
+                                        </Button>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <DialogFooter><Button variant="outline" onClick={() => setAllowTemplateDialogOpen(false)}>Done</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ─── Deduction Template Dialog ──────────────────────── */}
+            <Dialog open={dedTemplateDialogOpen} onOpenChange={setDedTemplateDialogOpen}>
+                <DialogContent className="sm:max-w-[550px] max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Deduction Type Templates</DialogTitle>
+                        <DialogDescription>Malaysian statutory deductions and common types. Click Add to create.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        {DEDUCTION_TEMPLATES.map((tpl, i) => {
+                            const exists = deductionTypes.some(dt => dt.code === tpl.code)
+                            return (
+                                <div key={i} className={`flex items-center justify-between rounded-lg border p-3 ${exists ? 'bg-gray-50 opacity-60' : 'hover:bg-blue-50'}`}>
+                                    <div>
+                                        <div className="font-medium text-sm">{tpl.name}</div>
+                                        <div className="text-xs text-gray-500">{tpl.code} • {tpl.category}</div>
+                                    </div>
+                                    {exists ? (
+                                        <Badge variant="secondary" className="text-[10px]">Added</Badge>
+                                    ) : (
+                                        <Button size="sm" variant="outline" disabled={actionLoading} onClick={() => handleLoadDedTemplate(tpl)}>
+                                            <Plus className="h-3 w-3 mr-1" />Add
+                                        </Button>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <DialogFooter><Button variant="outline" onClick={() => setDedTemplateDialogOpen(false)}>Done</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

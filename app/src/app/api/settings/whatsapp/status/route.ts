@@ -75,6 +75,8 @@ export async function GET(request: NextRequest) {
         push_name: gatewayStatus.push_name,
         last_connected_at: gatewayStatus.last_connected_at,
         last_error: gatewayStatus.last_error,
+        last_disconnect_code: gatewayStatus.last_disconnect_code || null,
+        last_disconnect_reason: gatewayStatus.last_disconnect_reason || null,
         has_qr: gatewayStatus.has_qr,
         tenant_id: gatewayStatus.tenant_id,
       }, { headers: { 'Cache-Control': 'no-store' } });

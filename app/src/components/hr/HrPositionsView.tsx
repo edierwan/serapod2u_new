@@ -189,8 +189,8 @@ const HrPositionsView = ({ organizationId, canEdit }: HrPositionsViewProps) => {
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <CardTitle>Positions</CardTitle>
-                        <CardDescription>Manage job titles and seniority levels</CardDescription>
+                        <CardTitle className="text-base font-semibold">Positions</CardTitle>
+                        <CardDescription className="text-xs">Manage job titles and seniority levels</CardDescription>
                     </div>
                     {canEdit && (
                         <div className="flex flex-wrap gap-2">
@@ -236,7 +236,7 @@ const HrPositionsView = ({ organizationId, canEdit }: HrPositionsViewProps) => {
                     <div className="py-8 text-center text-gray-500">No positions found.</div>
                 ) : (
                     <div className="rounded-md border overflow-hidden">
-                        <div className="grid grid-cols-12 gap-2 bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-600">
+                        <div className="grid grid-cols-12 gap-2 bg-gray-50 px-4 py-2 text-[11px] font-medium text-gray-500 uppercase tracking-wide">
                             <div className="col-span-2">Code</div>
                             <div className="col-span-4">Name</div>
                             <div className="col-span-2">Category</div>
@@ -245,39 +245,40 @@ const HrPositionsView = ({ organizationId, canEdit }: HrPositionsViewProps) => {
                             <div className="col-span-2 text-right">Actions</div>
                         </div>
                         {filteredPositions.map(position => (
-                            <div key={position.id} className="grid grid-cols-12 gap-2 px-4 py-3 border-t items-center">
-                                <div className="col-span-2 font-mono text-sm">{position.code}</div>
+                            <div key={position.id} className="grid grid-cols-12 gap-2 px-4 py-2.5 border-t items-center hover:bg-muted/30 transition-colors">
+                                <div className="col-span-2 font-mono text-xs text-gray-500">{position.code}</div>
                                 <div className="col-span-4">
-                                    <div className="font-medium">{position.name}</div>
-                                    {!position.is_active && <Badge variant="secondary" className="mt-1">Inactive</Badge>}
+                                    <div className="text-sm text-gray-800 dark:text-gray-200">{position.name}</div>
+                                    {!position.is_active && <Badge variant="secondary" className="mt-0.5 text-[10px] h-4 px-1">Inactive</Badge>}
                                 </div>
-                                <div className="col-span-2 text-sm text-gray-600">
-                                    {position.category || '-'}
+                                <div className="col-span-2 text-xs text-gray-500">
+                                    {position.category || '—'}
                                 </div>
-                                <div className="col-span-1 text-sm text-gray-600">{position.level ?? '-'}</div>
-                                <div className="col-span-1 text-sm text-gray-600 flex items-center gap-1">
-                                    <Users className="h-4 w-4" />
+                                <div className="col-span-1 text-xs text-gray-500">{position.level ?? '—'}</div>
+                                <div className="col-span-1 text-xs text-gray-500 flex items-center gap-1">
+                                    <Users className="h-3 w-3" />
                                     {position.user_count ?? 0}
                                 </div>
-                                <div className="col-span-2 flex justify-end gap-2">
+                                <div className="col-span-2 flex justify-end gap-1">
                                     {canEdit && (
                                         <>
-                                            <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(position)}>
-                                                <Edit className="h-4 w-4" />
+                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenDialog(position)}>
+                                                <Edit className="h-3.5 w-3.5 text-gray-400" />
                                             </Button>
                                             <Button
                                                 variant="ghost"
-                                                size="sm"
+                                                size="icon"
+                                                className="h-7 w-7"
                                                 onClick={() => handleOpenDelete(position)}
                                                 title="Delete position"
                                             >
-                                                <Trash2 className="h-4 w-4 text-red-500" />
+                                                <Trash2 className="h-3.5 w-3.5 text-red-400" />
                                             </Button>
-                                            <Button variant="ghost" size="sm" onClick={() => handleToggleActive(position)}>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggleActive(position)}>
                                                 {position.is_active ? (
-                                                    <ToggleRight className="h-4 w-4 text-green-600" />
+                                                    <ToggleRight className="h-3.5 w-3.5 text-green-500" />
                                                 ) : (
-                                                    <ToggleLeft className="h-4 w-4 text-gray-400" />
+                                                    <ToggleLeft className="h-3.5 w-3.5 text-gray-400" />
                                                 )}
                                             </Button>
                                         </>

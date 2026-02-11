@@ -111,7 +111,7 @@ export default function HrTimeExpenseView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Time & Expense Tracking</CardTitle>
+                            <CardTitle className="text-lg">Time & Expense Tracking</CardTitle>
                             <CardDescription>Capture timesheets, overtime, and expense claims with approvals.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -154,7 +154,7 @@ export default function HrTimeExpenseView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Recent Expense Claims</CardTitle>
+                    <CardTitle className="text-base">Recent Expense Claims</CardTitle>
                     <CardDescription>Track reimbursement progress and approvals.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -182,7 +182,7 @@ export default function HrTimeExpenseView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>GL Integration</CardTitle>
+                    <CardTitle className="text-base">GL Integration</CardTitle>
                     <CardDescription>Map approved claims to finance journals and reimbursement accounts.</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">

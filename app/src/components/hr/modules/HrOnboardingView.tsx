@@ -94,7 +94,7 @@ export default function HrOnboardingView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Onboarding</CardTitle>
+                            <CardTitle className="text-lg">Onboarding</CardTitle>
                             <CardDescription>Automate new hire paperwork, tasks, and orientation workflows.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -137,7 +137,7 @@ export default function HrOnboardingView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Onboarding Templates</CardTitle>
+                    <CardTitle className="text-base">Onboarding Templates</CardTitle>
                     <CardDescription>Reusable task blueprints for each role.</CardDescription>
                 </CardHeader>
                 <CardContent>

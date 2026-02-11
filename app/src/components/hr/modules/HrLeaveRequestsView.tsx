@@ -24,7 +24,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { getLeaveRepository } from '@/modules/hr/leave/repository'
+import { getLeaveRepositoryForOrg } from '@/modules/hr/leave/repository'
+import { SupabaseLeaveRepository } from '@/modules/hr/leave/supabaseRepository'
 import {
     formatDate,
     formatDateRange,
@@ -69,8 +70,19 @@ function initials(name: string) {
 
 // ── Component ───────────────────────────────────────────────────
 
-export default function HrLeaveRequestsView() {
-    const repo = getLeaveRepository()
+export default function HrLeaveRequestsView({
+    organizationId,
+    userId,
+}: {
+    organizationId?: string
+    userId?: string
+}) {
+    const repo = useMemo(() => {
+        if (organizationId && userId) {
+            return new SupabaseLeaveRepository(organizationId, userId)
+        }
+        return getLeaveRepositoryForOrg(null, null)
+    }, [organizationId, userId])
 
     // Data
     const [requests, setRequests] = useState<LeaveRequest[]>([])
@@ -106,8 +118,8 @@ export default function HrLeaveRequestsView() {
             const [reqs, types, bals, hols] = await Promise.all([
                 repo.getLeaveRequests({ scope: activeTab }),
                 repo.getLeaveTypes(),
-                repo.getLeaveBalances('emp-1'), // current user mock
-                repo.getPublicHolidays(2025),
+                repo.getLeaveBalances(userId || ''),
+                repo.getPublicHolidays(new Date().getFullYear()),
             ])
             setRequests(reqs)
             setLeaveTypes(types)
@@ -182,11 +194,11 @@ export default function HrLeaveRequestsView() {
         try {
             const lt = leaveTypes.find((t) => t.id === formLeaveType)
             await repo.createLeaveRequest({
-                employeeId: 'emp-1',
-                employeeName: 'Current User',
+                employeeId: userId || '',
+                employeeName: '',
                 employeeAvatar: null,
-                departmentId: 'dept-eng',
-                departmentName: 'Engineering',
+                departmentId: '',
+                departmentName: '',
                 leaveTypeId: formLeaveType,
                 leaveTypeName: lt?.name ?? '',
                 leaveTypeColor: lt?.color ?? '#3b82f6',
@@ -223,7 +235,7 @@ export default function HrLeaveRequestsView() {
             {/* ── Header ─────────────────────────────────────────── */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Leave Requests</h1>
+                    <h1 className="text-lg font-semibold tracking-tight">Leave Requests</h1>
                     <p className="text-sm text-muted-foreground mt-1">Submit and manage leave applications</p>
                 </div>
                 <Button onClick={openCreate} className="gap-2">

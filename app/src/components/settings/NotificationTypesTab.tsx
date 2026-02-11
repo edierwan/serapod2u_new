@@ -107,7 +107,9 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       const { data: types, error: typesError } = await supabase
         .from('notification_types')
         .select('*')
-        .order('category, event_name')
+        .order('category')
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('event_name')
 
       if (typesError) throw typesError
 
@@ -556,12 +558,13 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
 
       {/* Category Tabs */}
       <TabsComponent value={activeCategory} onValueChange={setActiveCategory} className="w-full">
-        <TabsList2 className="grid w-full grid-cols-2 lg:grid-cols-5">
+        <TabsList2 className="grid w-full grid-cols-2 lg:grid-cols-6">
           <TabsTrigger2 value="configuration">Configuration</TabsTrigger2>
-          <TabsTrigger2 value="order">Order Status Changes</TabsTrigger2>
-          <TabsTrigger2 value="inventory">Inventory & Stock Alerts</TabsTrigger2>
-          <TabsTrigger2 value="qr">QR Code & Consumer</TabsTrigger2>
-          <TabsTrigger2 value="user">User Account Activities</TabsTrigger2>
+          <TabsTrigger2 value="order">Order Status</TabsTrigger2>
+          <TabsTrigger2 value="document">Order Document</TabsTrigger2>
+          <TabsTrigger2 value="inventory">Inventory & Stock</TabsTrigger2>
+          <TabsTrigger2 value="qr">QR & Consumer</TabsTrigger2>
+          <TabsTrigger2 value="user">User Account</TabsTrigger2>
         </TabsList2>
 
         {/* Configuration Tab - Summary View */}
@@ -612,6 +615,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           <div className="grid gap-4">
             {Object.entries({
               order: 'Order Status Changes',
+              document: 'Order Document Workflow',
               inventory: 'Inventory & Stock Alerts',
               qr: 'QR Code & Consumer Activities',
               user: 'User Account Activities'
@@ -645,6 +649,11 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         {/* Order Status Changes Tab */}
         <TabsContent2 value="order" className="mt-6">
           {renderCategoryContent('order')}
+        </TabsContent2>
+
+        {/* Order Document Workflow Tab */}
+        <TabsContent2 value="document" className="mt-6">
+          {renderCategoryContent('document')}
         </TabsContent2>
 
         {/* Inventory & Stock Alerts Tab */}

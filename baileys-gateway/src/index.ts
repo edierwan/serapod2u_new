@@ -190,6 +190,9 @@ app.get(
         push_name: status.push_name,
         last_connected_at: status.last_connected_at,
         last_error: status.last_error,
+        last_disconnect_code: status.last_disconnect_code,
+        last_disconnect_reason: status.last_disconnect_reason,
+        has_qr: status.has_qr,
         uptime: process.uptime(),
       });
     } catch (error: any) {
@@ -223,6 +226,7 @@ app.post(
 /**
  * GET /session/qr (legacy)
  * Maps to /tenants/serapod2u/session/qr
+ * Returns enriched QR response with PNG base64
  */
 app.get(
   '/session/qr',
@@ -233,14 +237,83 @@ app.get(
       const tenantId = req.tenantId!;
       const qrData = await tenantSocketManager.getQR(tenantId);
 
-      // Return legacy format
+      // Return enriched format
       res.json({
+        ok: qrData.ok,
+        pairing_state: qrData.pairing_state,
+        connected: qrData.connected,
         qr: qrData.qr,
+        qr_format: qrData.qr_format,
+        qr_png_base64: qrData.qr_png_base64,
+        generated_at: qrData.generated_at,
         expires_in_sec: qrData.expires_in_sec,
       });
     } catch (error: any) {
       logger.error({ error: error.message }, 'Error getting QR (legacy)');
-      res.status(500).json({ error: error.message || 'Failed to get QR code' });
+      res.status(500).json({ ok: false, error: error.message || 'Failed to get QR code' });
+    }
+  }
+);
+
+/**
+ * POST /session/logout (legacy)
+ * Safe logout - sets manualDisconnect, no auto-reconnect
+ */
+app.post(
+  '/session/logout',
+  resetRateLimiter,
+  requireLegacyAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.tenantId!;
+      logger.info({ tenantId }, 'Session logout requested (legacy)');
+      const result = await tenantSocketManager.logoutSession(tenantId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Error logging out (legacy)');
+      res.status(500).json({ ok: false, error: error.message || 'Failed to logout' });
+    }
+  }
+);
+
+/**
+ * POST /session/clear (legacy)
+ * Clears auth state files for change-number flow
+ */
+app.post(
+  '/session/clear',
+  resetRateLimiter,
+  requireLegacyAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.tenantId!;
+      logger.info({ tenantId }, 'Session clear requested (legacy)');
+      const result = await tenantSocketManager.clearSession(tenantId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Error clearing session (legacy)');
+      res.status(500).json({ ok: false, error: error.message || 'Failed to clear session' });
+    }
+  }
+);
+
+/**
+ * POST /session/start (legacy)
+ * Starts a new session after logout+clear for change-number flow
+ */
+app.post(
+  '/session/start',
+  resetRateLimiter,
+  requireLegacyAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.tenantId!;
+      logger.info({ tenantId }, 'Session start requested (legacy)');
+      const result = await tenantSocketManager.startSession(tenantId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Error starting session (legacy)');
+      res.status(500).json({ ok: false, error: error.message || 'Failed to start session' });
     }
   }
 );

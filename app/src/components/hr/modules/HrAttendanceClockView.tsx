@@ -29,6 +29,7 @@ import {
     AlertTriangle, CalendarClock, Clock3, HelpCircle,
     Pencil, Plus, Timer, Trash2
 } from 'lucide-react'
+import OvertimeRulesCard from './OvertimeRulesCard'
 
 interface HrAttendanceClockViewProps {
     userProfile: {
@@ -75,6 +76,7 @@ export default function HrAttendanceClockView({ userProfile }: HrAttendanceClock
 
     const [shiftDialogOpen, setShiftDialogOpen] = useState(false)
     const [shiftForm, setShiftForm] = useState({ name: '', start_time: '09:00', end_time: '18:00', break_minutes: 60, grace_override_minutes: '', allow_cross_midnight: false })
+    const [shiftTemplateDialogOpen, setShiftTemplateDialogOpen] = useState(false)
 
     const [correctionDialogOpen, setCorrectionDialogOpen] = useState(false)
     const [correctionEntry, setCorrectionEntry] = useState<AttendanceEntry | null>(null)
@@ -180,6 +182,32 @@ export default function HrAttendanceClockView({ userProfile }: HrAttendanceClock
         setActionLoading(false)
     }
 
+    // ─── Shift Templates (common Malaysian patterns) ──────────────
+    const SHIFT_TEMPLATES = [
+        { name: 'Morning Shift', start_time: '08:00', end_time: '17:00', break_minutes: 60, allow_cross_midnight: false, desc: '8 AM – 5 PM (standard office)' },
+        { name: 'Office 9-6', start_time: '09:00', end_time: '18:00', break_minutes: 60, allow_cross_midnight: false, desc: '9 AM – 6 PM (common KL hours)' },
+        { name: 'Afternoon Shift', start_time: '14:00', end_time: '22:00', break_minutes: 60, allow_cross_midnight: false, desc: '2 PM – 10 PM' },
+        { name: 'Night Shift', start_time: '22:00', end_time: '06:00', break_minutes: 60, allow_cross_midnight: true, desc: '10 PM – 6 AM (cross midnight)' },
+        { name: 'Retail / Mall', start_time: '10:00', end_time: '22:00', break_minutes: 90, allow_cross_midnight: false, desc: '10 AM – 10 PM (12h retail)' },
+        { name: 'Half Day (AM)', start_time: '08:00', end_time: '13:00', break_minutes: 0, allow_cross_midnight: false, desc: '8 AM – 1 PM (no break)' },
+        { name: 'Factory 3-Shift (A)', start_time: '06:00', end_time: '14:00', break_minutes: 30, allow_cross_midnight: false, desc: '6 AM – 2 PM (manufacturing)' },
+        { name: 'Factory 3-Shift (B)', start_time: '14:00', end_time: '22:00', break_minutes: 30, allow_cross_midnight: false, desc: '2 PM – 10 PM (manufacturing)' },
+        { name: 'Factory 3-Shift (C)', start_time: '22:00', end_time: '06:00', break_minutes: 30, allow_cross_midnight: true, desc: '10 PM – 6 AM (manufacturing)' },
+        { name: 'Flexi Hours', start_time: '07:00', end_time: '19:00', break_minutes: 60, allow_cross_midnight: false, desc: '7 AM – 7 PM (flexible 8h within)' },
+    ]
+
+    const handleLoadShiftTemplate = async (tpl: typeof SHIFT_TEMPLATES[0]) => {
+        setActionLoading(true)
+        const result = await createAttendanceShift({
+            name: tpl.name, start_time: tpl.start_time, end_time: tpl.end_time,
+            break_minutes: tpl.break_minutes, grace_override_minutes: null,
+            allow_cross_midnight: tpl.allow_cross_midnight
+        } as any)
+        if (result.success) { toast({ title: `Shift "${tpl.name}" added` }); loadData() }
+        else toast({ title: 'Error', description: result.error || 'Failed', variant: 'destructive' })
+        setActionLoading(false)
+    }
+
     return (
         <TooltipProvider>
             <div className="space-y-6">
@@ -199,7 +227,7 @@ export default function HrAttendanceClockView({ userProfile }: HrAttendanceClock
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">
-                            <div><CardTitle>Clock In / Out</CardTitle><CardDescription>Track daily attendance and shifts.</CardDescription></div>
+                            <div><CardTitle className="text-lg">Clock In / Out</CardTitle><CardDescription>Track daily attendance and shifts.</CardDescription></div>
                             <Badge variant={openEntry ? 'default' : 'secondary'}>{openEntry ? 'Clocked In' : 'Clocked Out'}</Badge>
                         </div>
                     </CardHeader>
@@ -315,11 +343,19 @@ export default function HrAttendanceClockView({ userProfile }: HrAttendanceClock
                     </Card>
                 </div>
 
+                {/* Overtime Rules – always visible for configuration access */}
+                <OvertimeRulesCard canManage={canManage} />
+
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <div><CardTitle className="text-base">Shifts</CardTitle><CardDescription>Optional shift templates for clock-in.</CardDescription></div>
-                            {canManage && <Button size="sm" onClick={() => setShiftDialogOpen(true)}><Plus className="h-4 w-4 mr-1" />Add Shift</Button>}
+                            {canManage && (
+                                <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => setShiftTemplateDialogOpen(true)}>Load Template</Button>
+                                    <Button size="sm" onClick={() => setShiftDialogOpen(true)}><Plus className="h-4 w-4 mr-1" />Add Shift</Button>
+                                </div>
+                            )}
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
@@ -391,6 +427,40 @@ export default function HrAttendanceClockView({ userProfile }: HrAttendanceClock
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setCorrectionDialogOpen(false)}>Cancel</Button>
                             <Button onClick={handleSubmitCorrection} disabled={actionLoading || !correctionForm.reason.trim()}>{actionLoading ? 'Submitting...' : 'Submit Correction'}</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* ─── Shift Template Dialog ──────────────────────── */}
+                <Dialog open={shiftTemplateDialogOpen} onOpenChange={setShiftTemplateDialogOpen}>
+                    <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Shift Templates</DialogTitle>
+                            <DialogDescription>Select common shift patterns used in Malaysian businesses. Click to add.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-2">
+                            {SHIFT_TEMPLATES.map((tpl, i) => {
+                                const alreadyExists = shifts.some(s => s.name === tpl.name)
+                                return (
+                                    <div key={i} className={`flex items-center justify-between rounded-lg border p-3 ${alreadyExists ? 'bg-gray-50 opacity-60' : 'hover:bg-blue-50 cursor-pointer'}`}>
+                                        <div>
+                                            <div className="font-medium text-sm">{tpl.name}</div>
+                                            <div className="text-xs text-gray-500">{tpl.desc} • Break: {tpl.break_minutes}min</div>
+                                        </div>
+                                        {alreadyExists ? (
+                                            <Badge variant="secondary" className="text-[10px]">Added</Badge>
+                                        ) : (
+                                            <Button size="sm" variant="outline" disabled={actionLoading}
+                                                onClick={() => handleLoadShiftTemplate(tpl)}>
+                                                <Plus className="h-3 w-3 mr-1" />Add
+                                            </Button>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setShiftTemplateDialogOpen(false)}>Done</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

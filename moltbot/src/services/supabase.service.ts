@@ -127,6 +127,33 @@ export async function isPhoneAdmin(orgId: string, phone: string): Promise<boolea
 }
 
 /**
+ * Get all active admin phone numbers for an org
+ * Used for forwarding conversations to bot admins
+ */
+export async function getActiveAdminPhones(orgId: string): Promise<string[]> {
+    const supabase = getSupabase();
+    if (!supabase) return [];
+
+    try {
+        const { data, error } = await supabase
+            .from('whatsapp_bot_admins')
+            .select('phone_digits, display_name')
+            .eq('org_id', orgId)
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('[Supabase] getActiveAdminPhones error:', error);
+            return [];
+        }
+
+        return (data || []).map((admin: any) => admin.phone_digits);
+    } catch (err) {
+        console.error('[Supabase] getActiveAdminPhones error:', err);
+        return [];
+    }
+}
+
+/**
  * Get conversation state for user phone
  */
 export async function getConversation(orgId: string, userPhone: string): Promise<WhatsAppConversation | null> {

@@ -24,6 +24,7 @@ import {
     fetchEmployeeCompensations, upsertEmployeeCompensation
 } from '@/lib/api/payroll'
 import { Banknote, Pencil, Plus, Trash2, Users } from 'lucide-react'
+import EmployeeSearchPicker from '@/components/hr/shared/EmployeeSearchPicker'
 
 interface HrPayrollSalaryViewProps {
     userProfile: {
@@ -54,6 +55,7 @@ export default function HrPayrollSalaryView({ userProfile }: HrPayrollSalaryView
 
     const [compDialogOpen, setCompDialogOpen] = useState(false)
     const [compForm, setCompForm] = useState(emptyComp)
+    const [employeeNames, setEmployeeNames] = useState<Record<string, string>>({})
 
     const loadData = async () => {
         setLoading(true)
@@ -119,7 +121,7 @@ export default function HrPayrollSalaryView({ userProfile }: HrPayrollSalaryView
             <Card>
                 <CardHeader>
                     <div className="flex items-center justify-between">
-                        <div><CardTitle>Salary Bands</CardTitle><CardDescription>Define salary grades, ranges, and overtime eligibility.</CardDescription></div>
+                        <div><CardTitle className="text-lg">Salary Bands</CardTitle><CardDescription>Define salary grades, ranges, and overtime eligibility.</CardDescription></div>
                         {canManage && <Button size="sm" onClick={() => handleOpenBandDialog()}><Plus className="h-4 w-4 mr-1" />Add Band</Button>}
                     </div>
                 </CardHeader>
@@ -171,7 +173,7 @@ export default function HrPayrollSalaryView({ userProfile }: HrPayrollSalaryView
             <Card>
                 <CardHeader>
                     <div className="flex items-center justify-between">
-                        <div><CardTitle>Employee Compensation</CardTitle><CardDescription>Assign salary bands and basic salary to employees.</CardDescription></div>
+                        <div><CardTitle className="text-lg">Employee Compensation</CardTitle><CardDescription>Assign salary bands and basic salary to employees.</CardDescription></div>
                         {canManage && <Button size="sm" onClick={() => { setCompForm(emptyComp); setCompDialogOpen(true) }}><Users className="h-4 w-4 mr-1" />Assign</Button>}
                     </div>
                 </CardHeader>
@@ -193,7 +195,7 @@ export default function HrPayrollSalaryView({ userProfile }: HrPayrollSalaryView
                                 <TableBody>
                                     {compensations.map(comp => (
                                         <TableRow key={comp.id}>
-                                            <TableCell className="text-sm">{comp.employee_id.slice(0, 8)}...</TableCell>
+                                            <TableCell className="text-sm">{employeeNames[comp.employee_id] || comp.employee_id.slice(0, 8) + '...'}</TableCell>
                                             <TableCell className="text-sm">{bands.find(b => b.id === comp.salary_band_id)?.name || (comp.salary_band_id || '').slice(0, 8)}</TableCell>
                                             <TableCell className="text-sm font-medium">{comp.basic_salary.toLocaleString()}</TableCell>
                                             <TableCell className="text-sm">{new Date(comp.effective_date).toLocaleDateString()}</TableCell>
@@ -245,7 +247,7 @@ export default function HrPayrollSalaryView({ userProfile }: HrPayrollSalaryView
                 <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader><DialogTitle>Assign Compensation</DialogTitle><DialogDescription>Set basic salary for an employee with a salary band.</DialogDescription></DialogHeader>
                     <div className="space-y-4">
-                        <div className="space-y-2"><Label>Employee ID *</Label><Input placeholder="User UUID" value={compForm.employee_id} onChange={e => setCompForm(p => ({ ...p, employee_id: e.target.value }))} /></div>
+                        <div className="space-y-2"><Label>Employee *</Label><EmployeeSearchPicker value={compForm.employee_id} onChange={(id, emp) => { setCompForm(p => ({ ...p, employee_id: id })); if (emp) setEmployeeNames(prev => ({ ...prev, [id]: emp.full_name || emp.email })) }} /></div>
                         <div className="space-y-2">
                             <Label>Salary Band *</Label>
                             <Select value={compForm.salary_band_id} onValueChange={v => { const band = bands.find(b => b.id === v); setCompForm(p => ({ ...p, salary_band_id: v, pay_type: band?.pay_type || 'monthly' })) }}>
@@ -254,7 +256,7 @@ export default function HrPayrollSalaryView({ userProfile }: HrPayrollSalaryView
                             </Select>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2"><Label>Basic Salary (RM)</Label><Input type="number" value={compForm.basic_salary} onChange={e => setCompForm(p => ({ ...p, basic_salary: Number(e.target.value) }))} /></div>
+                            <div className="space-y-2"><Label>Basic Salary (RM)</Label><Input type="text" inputMode="numeric" value={compForm.basic_salary ? compForm.basic_salary.toLocaleString() : ''} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setCompForm(p => ({ ...p, basic_salary: Number(v) || 0 })) }} placeholder="e.g. 3,500" /></div>
                             <div className="space-y-2"><Label>Effective Date *</Label><Input type="date" value={compForm.effective_date} onChange={e => setCompForm(p => ({ ...p, effective_date: e.target.value }))} /></div>
                         </div>
                     </div>

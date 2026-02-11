@@ -4,8 +4,8 @@
  * GET /api/settings/whatsapp/qr
  * Returns QR code for pairing (if waiting for QR)
  * 
- * Uses multi-tenant gateway endpoint: GET /tenants/{tenantId}/session/qr
- * Returns raw QR string (not data URL) - client renders with qrcode library
+ * Uses legacy gateway endpoint: GET /session/qr
+ * Returns raw QR string + PNG base64 data URL for direct display
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Call gateway tenant QR endpoint
+    // Call gateway QR endpoint (enriched response with PNG)
     const qrData = await callGateway(
       config.baseUrl,
       config.apiKey,
@@ -59,16 +59,20 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
-      ok: qrData.ok,
-      qr: qrData.qr,
+      ok: qrData.ok !== false,
+      qr: qrData.qr || null,
+      qr_png_base64: qrData.qr_png_base64 || null,
       pairing_state: qrData.pairing_state,
-      expires_in_sec: qrData.expires_in_sec,
+      connected: qrData.connected || false,
+      generated_at: qrData.generated_at || null,
+      expires_in_sec: qrData.expires_in_sec || 0,
       tenant_id: qrData.tenant_id,
     });
 
   } catch (error: any) {
     console.error('Error getting WhatsApp QR:', error);
     return NextResponse.json({
+      ok: false,
       error: error.message || 'Failed to get QR code'
     }, { status: 500 });
   }

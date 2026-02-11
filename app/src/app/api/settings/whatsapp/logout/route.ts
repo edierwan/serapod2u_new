@@ -2,10 +2,9 @@
  * WhatsApp Gateway Logout API
  * 
  * POST /api/settings/whatsapp/logout
- * Logs out from WhatsApp
+ * Safe logout from WhatsApp - sets manualDisconnect to prevent auto-reconnect
  * 
- * Note: For multi-tenant gateway, logout is handled via session/reset
- * This endpoint is kept for backward compatibility and uses reset internally
+ * Uses legacy gateway endpoint: POST /session/logout
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -48,13 +47,12 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // For multi-tenant gateway, logout is handled via session/reset
-    // This provides the same functionality of disconnecting and requiring re-pairing
+    // Call the dedicated logout endpoint (safe, no auto-reconnect)
     const result = await callGateway(
       config.baseUrl,
       config.apiKey,
       'POST',
-      '/session/reset',
+      '/session/logout',
       undefined,
       config.tenantId
     );

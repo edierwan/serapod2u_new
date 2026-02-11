@@ -159,32 +159,131 @@ export default function NotificationFlowDrawer({
         }
     }
 
-    const handleTestSend = async () => {
-        if (!resolvedRecipients.length) return
+    // Quick test phone number
+    const [quickTestPhone, setQuickTestPhone] = useState('')
+
+    const handleTestSend = async (directPhone?: string) => {
+        const phone = directPhone || resolvedRecipients[0]?.phone || quickTestPhone
+        if (!phone) return
+
         setTestSending(true)
         setTestResult(null)
         try {
-            // Pick first resolved recipient for test
-            const target = resolvedRecipients[0]
-            // Pick first enabled channel
             const channel = localSetting.channels_enabled[0] || 'whatsapp'
+            const currentTemplate = localSetting.templates?.[channel] || ''
+
+            // Build rich sample data for template rendering
+            const sampleData: any = {
+                // Order variables
+                order_no: sampleId || 'ORD26000049',
+                order_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                status: 'Approved',
+                amount: '1,400.00',
+                customer_name: 'Serapod Technology Sdn Bhd',
+                customer_phone: '+60147519216',
+                delivery_address: 'No4, Tingkat1, Lorong Perniagaan Alma Jaya 11, Taman Alma Jaya',
+                approved_by: 'Admin',
+                approved_at: new Date().toLocaleDateString('en-GB'),
+                closed_at: new Date().toLocaleDateString('en-GB'),
+                action: 'Cancelled',
+                reason: 'N/A',
+                order_url: typeof window !== 'undefined' ? `${window.location.origin}/orders` : 'https://app.serapod.com/orders',
+                item_list: '• Cellera Hero – Deluxe Cellera Cartridge [Keladi Cheese] × 100 units (1 case) — RM 1,400.00',
+                total_cases: '1',
+                total_items: '1',
+                buyer_org: 'Serapod Technology Sdn Bhd',
+                seller_org: 'Shenzen VapeHome Technologies',
+                // Order Deleted variables
+                deleted_by: 'Super Admin',
+                deleted_at: new Date().toLocaleString('en-GB'),
+                // Manufacturer Scan Complete variables
+                batch_id: 'BATCH-2024-00012',
+                total_master_codes: '50',
+                total_unique_codes: '5,000',
+                production_completed_at: new Date().toLocaleString('en-GB'),
+                completed_by: 'Manufacturing Operator',
+                balance_document_no: 'PR26000012',
+                // Document Workflow variables
+                doc_no: 'PO26000015',
+                doc_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                doc_type: 'Purchase Order',
+                doc_status: 'Pending Acknowledgement',
+                buyer_name: 'Serapod Technology Sdn Bhd',
+                seller_name: 'Shenzen VapeHome Technologies',
+                deposit_amount: '420.00',
+                balance_amount: '980.00',
+                invoice_no: 'INV26000015',
+                payment_no: 'PAY26000015',
+                receipt_no: 'REC26000015',
+                acknowledged_by: 'Factory Manager',
+                acknowledged_at: new Date().toLocaleString('en-GB'),
+                document_url: typeof window !== 'undefined' ? `${window.location.origin}/orders` : 'https://app.serapod.com/orders',
+                // Inventory variables
+                product_name: 'Cellera Hero',
+                variant_name: 'Deluxe Cartridge [Keladi Cheese]',
+                sku: 'CLR-DLX-KC-001',
+                warehouse_name: 'Main Warehouse KL',
+                available_qty: '15',
+                reorder_point: '20',
+                reorder_qty: '100',
+                quantity_received: '500',
+                total_on_hand: '515',
+                inventory_url: typeof window !== 'undefined' ? `${window.location.origin}/inventory` : 'https://app.serapod.com/inventory',
+                // QR / Consumer variables
+                qr_code: 'QR-ABC-12345',
+                scan_location: 'Kuala Lumpur, MY',
+                scanned_at: new Date().toLocaleString('en-GB'),
+                consumer_name: 'Ahmad bin Ali',
+                consumer_phone: '+60123456789',
+                points_earned: '50',
+                total_points: '350',
+                entry_number: 'LD-2024-00042',
+                entry_status: 'Confirmed',
+                reward_name: 'Free Starter Kit',
+                points_used: '200',
+                remaining_points: '150',
+                // User variables
+                user_name: 'Jane Smith',
+                user_email: 'jane@example.com',
+                user_role: 'Admin',
+                created_at: new Date().toLocaleDateString('en-GB'),
+                activated_at: new Date().toLocaleDateString('en-GB'),
+                deactivated_at: new Date().toLocaleDateString('en-GB'),
+                changed_at: new Date().toLocaleString('en-GB'),
+                requested_at: new Date().toLocaleString('en-GB'),
+                ip_address: '203.0.113.42',
+                login_location: 'Unknown Location',
+                login_time: new Date().toLocaleString('en-GB'),
+                // Generic
+                event_name: type.event_name || 'Order Submitted',
+                reference_id: sampleId || 'ORD26000049',
+            }
+
+            const target = resolvedRecipients[0] || {
+                phone,
+                full_name: 'Test Recipient',
+                email: ''
+            }
+            // Override phone with the direct one if provided
+            if (directPhone) target.phone = directPhone
 
             const res = await fetch('/api/notifications/test-send', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     eventCode: type.event_code,
                     channel,
                     recipient: target,
-                    template: localSetting.templates?.[channel],
-                    sampleData: { order_no: sampleId, amount: '120.00' } // Mock vars for now
+                    template: currentTemplate,
+                    sampleData
                 })
             })
             const data = await res.json()
             setTestResult(data)
-            if (data.success) fetchLogs() // refresh logs
+            if (data.success) fetchLogs()
         } catch (error) {
             console.error(error)
-            setTestResult({ error: 'Failed to send' })
+            setTestResult({ success: false, error: 'Failed to send' })
         } finally {
             setTestSending(false)
         }
@@ -560,24 +659,89 @@ export default function NotificationFlowDrawer({
                                         // Simple local mock resolution
                                         const resolvePreview = (tpl: string) => {
                                             const vars: any = {
-                                                order_no: sampleId || 'ORD26000042',
-                                                status: 'APPROVED',
-                                                amount: '1,250.00',
-                                                customer_name: 'John Doe',
+                                                // Order variables
+                                                order_no: sampleId || 'ORD26000048',
+                                                order_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                                                status: 'Approved',
+                                                amount: '2,800.00',
+                                                customer_name: 'Serapod Technology Sdn Bhd',
+                                                customer_phone: '+60147519216',
+                                                delivery_address: 'No4, Tingkat1, Lorong Perniagaan Alma Jaya 11, Taman Alma Jaya',
                                                 approved_by: 'Admin User',
-                                                order_url: 'https://app.serapod.com/orders/1',
-                                                sku: 'PRD-001',
-                                                product_name: 'Super Pod V2',
-                                                stock_level: '15',
-                                                threshold: '20',
-                                                inventory_url: 'https://app.serapod.com/inventory',
-                                                code: 'ABC-123',
-                                                verify_url: 'https://app.serapod.com/verify/123',
-                                                user_name: 'Jane Smith',
-                                                email: 'jane@example.com',
-                                                phone_number: '+60123456789',
+                                                approved_at: new Date().toLocaleDateString('en-GB'),
+                                                closed_at: new Date().toLocaleDateString('en-GB'),
+                                                action: 'Cancelled',
                                                 reason: 'Out of stock',
-                                                approved_at: new Date().toLocaleDateString('en-GB')
+                                                order_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod.com'}/orders`,
+                                                item_list: '• Cellera Hero – Deluxe Cellera Cartridge [Keladi Cheese] × 100 units (1 case) — RM 1,400.00\n• Super Pod V2 – Classic Mint × 200 units (2 cases) — RM 1,400.00',
+                                                total_cases: '3',
+                                                total_items: '2',
+                                                buyer_org: 'Serapod Technology Sdn Bhd',
+                                                seller_org: 'Shenzen VapeHome Technologies',
+                                                // Order Deleted variables
+                                                deleted_by: 'Super Admin',
+                                                deleted_at: new Date().toLocaleString('en-GB'),
+                                                // Manufacturer Scan Complete variables
+                                                batch_id: 'BATCH-2024-00012',
+                                                total_master_codes: '50',
+                                                total_unique_codes: '5,000',
+                                                production_completed_at: new Date().toLocaleString('en-GB'),
+                                                completed_by: 'Manufacturing Operator',
+                                                balance_document_no: 'PR26000012',
+                                                // Document Workflow variables
+                                                doc_no: 'PO26000015',
+                                                doc_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                                                doc_type: 'Purchase Order',
+                                                doc_status: 'Pending Acknowledgement',
+                                                buyer_name: 'Serapod Technology Sdn Bhd',
+                                                seller_name: 'Shenzen VapeHome Technologies',
+                                                deposit_amount: '840.00',
+                                                balance_amount: '1,960.00',
+                                                invoice_no: 'INV26000015',
+                                                payment_no: 'PAY26000015',
+                                                receipt_no: 'REC26000015',
+                                                acknowledged_by: 'Factory Manager',
+                                                acknowledged_at: new Date().toLocaleString('en-GB'),
+                                                document_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod.com'}/orders`,
+                                                // Inventory variables
+                                                product_name: 'Cellera Hero',
+                                                variant_name: 'Deluxe Cartridge [Keladi Cheese]',
+                                                sku: 'CLR-DLX-KC-001',
+                                                warehouse_name: 'Main Warehouse KL',
+                                                available_qty: '15',
+                                                reorder_point: '20',
+                                                reorder_qty: '100',
+                                                quantity_received: '500',
+                                                total_on_hand: '515',
+                                                inventory_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod.com'}/inventory`,
+                                                // QR / Consumer variables
+                                                qr_code: 'QR-ABC-12345',
+                                                scan_location: 'Kuala Lumpur, MY',
+                                                scanned_at: new Date().toLocaleString('en-GB'),
+                                                consumer_name: 'Ahmad bin Ali',
+                                                consumer_phone: '+60123456789',
+                                                points_earned: '50',
+                                                total_points: '350',
+                                                entry_number: 'LD-2024-00042',
+                                                entry_status: 'Confirmed',
+                                                reward_name: 'Free Starter Kit',
+                                                points_used: '200',
+                                                remaining_points: '150',
+                                                // User variables
+                                                user_name: 'Jane Smith',
+                                                user_email: 'jane@example.com',
+                                                user_role: 'Admin',
+                                                created_at: new Date().toLocaleDateString('en-GB'),
+                                                activated_at: new Date().toLocaleDateString('en-GB'),
+                                                deactivated_at: new Date().toLocaleDateString('en-GB'),
+                                                changed_at: new Date().toLocaleString('en-GB'),
+                                                requested_at: new Date().toLocaleString('en-GB'),
+                                                ip_address: '203.0.113.42',
+                                                login_location: 'Unknown Location',
+                                                login_time: new Date().toLocaleString('en-GB'),
+                                                // Generic
+                                                event_name: type.event_name || 'Order Submitted',
+                                                reference_id: sampleId || 'ORD26000048'
                                             }
                                             let res = tpl || ''
                                             Object.keys(vars).forEach(k => {
@@ -607,7 +771,12 @@ export default function NotificationFlowDrawer({
                                                         <SelectContent>
                                                             {templatesForChannel.length > 0 ? (
                                                                 templatesForChannel.map(t => (
-                                                                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                                                    <SelectItem key={t.id} value={t.id}>
+                                                                        <div className="flex flex-col">
+                                                                            <span>{t.name}</span>
+                                                                            {t.description && <span className="text-xs text-gray-400">{t.description}</span>}
+                                                                        </div>
+                                                                    </SelectItem>
                                                                 ))
                                                             ) : (
                                                                 <div className="p-2 text-xs text-gray-500 text-center">No preset templates</div>
@@ -625,7 +794,31 @@ export default function NotificationFlowDrawer({
                                                         onChange={(e) => updateTemplate(channel, e.target.value)}
                                                     />
                                                     <div className="text-xs text-gray-500">
-                                                        Variables: {"{{order_no}}, {{status}}, {{customer_name}}, {{amount}}"}
+                                                        Variables: {(() => {
+                                                            const code = type.event_code;
+                                                            const cat = type.category;
+                                                            if (code === 'order_submitted')
+                                                                return '{{order_no}}, {{order_date}}, {{customer_name}}, {{customer_phone}}, {{delivery_address}}, {{amount}}, {{item_list}}, {{total_cases}}, {{total_items}}, {{order_url}}';
+                                                            if (code === 'order_approved')
+                                                                return '{{order_no}}, {{order_date}}, {{customer_name}}, {{customer_phone}}, {{delivery_address}}, {{amount}}, {{item_list}}, {{total_cases}}, {{total_items}}, {{approved_by}}, {{approved_at}}, {{order_url}}';
+                                                            if (code === 'order_closed')
+                                                                return '{{order_no}}, {{order_date}}, {{customer_name}}, {{amount}}, {{item_list}}, {{total_cases}}, {{total_items}}, {{closed_at}}, {{order_url}}';
+                                                            if (code === 'order_rejected')
+                                                                return '{{order_no}}, {{order_date}}, {{customer_name}}, {{amount}}, {{status}}, {{action}}, {{reason}}, {{order_url}}';
+                                                            if (code === 'order_deleted')
+                                                                return '{{order_no}}, {{status}}, {{customer_name}}, {{deleted_by}}, {{deleted_at}}, {{order_url}}';
+                                                            if (code === 'manufacturer_scan_complete')
+                                                                return '{{order_no}}, {{batch_id}}, {{total_master_codes}}, {{total_unique_codes}}, {{production_completed_at}}, {{completed_by}}, {{customer_name}}, {{balance_document_no}}, {{order_url}}';
+                                                            if (cat === 'document')
+                                                                return '{{doc_no}}, {{order_no}}, {{doc_date}}, {{amount}}, {{deposit_amount}}, {{balance_amount}}, {{buyer_name}}, {{seller_name}}, {{invoice_no}}, {{payment_no}}, {{receipt_no}}, {{acknowledged_by}}, {{acknowledged_at}}, {{document_url}}';
+                                                            if (cat === 'inventory')
+                                                                return '{{product_name}}, {{variant_name}}, {{sku}}, {{warehouse_name}}, {{available_qty}}, {{reorder_point}}, {{reorder_qty}}, {{quantity_received}}, {{total_on_hand}}, {{inventory_url}}';
+                                                            if (cat === 'qr')
+                                                                return '{{product_name}}, {{variant_name}}, {{qr_code}}, {{scan_location}}, {{scanned_at}}, {{consumer_name}}, {{consumer_phone}}, {{points_earned}}, {{total_points}}, {{entry_number}}, {{entry_status}}, {{reward_name}}, {{points_used}}, {{remaining_points}}';
+                                                            if (cat === 'user')
+                                                                return '{{user_name}}, {{user_email}}, {{user_role}}, {{created_at}}, {{activated_at}}, {{deactivated_at}}, {{changed_at}}, {{requested_at}}, {{ip_address}}, {{login_location}}, {{login_time}}';
+                                                            return '{{order_no}}, {{status}}, {{customer_name}}, {{amount}}, {{approved_by}}, {{reason}}, {{order_url}}';
+                                                        })()}
                                                     </div>
                                                 </div>
 
@@ -660,31 +853,65 @@ export default function NotificationFlowDrawer({
                                     <CardContent className="pt-6 space-y-4">
                                         <h4 className="font-medium text-sm">Send Test Message</h4>
                                         <div className="text-sm text-gray-500">
-                                            Will send using the template from current settings to the first resolved recipient from "Recipients" tab.
+                                            Send the current template as a WhatsApp message to verify delivery.
                                         </div>
+
+                                        {/* Quick Test - Direct Phone */}
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-medium text-gray-700">Quick Test — Send to Phone Number</Label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    placeholder="e.g. 0192277233"
+                                                    value={quickTestPhone}
+                                                    onChange={(e) => setQuickTestPhone(e.target.value)}
+                                                    className="flex-1"
+                                                />
+                                                <Button
+                                                    onClick={() => handleTestSend(quickTestPhone)}
+                                                    disabled={testSending || !quickTestPhone.trim()}
+                                                    size="sm"
+                                                >
+                                                    {testSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                                                    <span className="ml-1">Send</span>
+                                                </Button>
+                                            </div>
+                                            <p className="text-xs text-gray-400">Enter phone number with or without country code (60 will be auto-prefixed)</p>
+                                        </div>
+
+                                        <div className="relative flex items-center gap-2 py-1">
+                                            <div className="flex-1 border-t border-gray-200" />
+                                            <span className="text-xs text-gray-400">or use resolved recipients</span>
+                                            <div className="flex-1 border-t border-gray-200" />
+                                        </div>
+
+                                        {/* Resolved Recipient Test */}
                                         {resolvedRecipients.length === 0 ? (
-                                            <div className="p-3 bg-amber-50 text-amber-800 text-sm border border-amber-200">
-                                                Please resolve recipients in "Recipients" tab first.
+                                            <div className="p-3 bg-gray-50 text-gray-500 text-sm border border-gray-200 rounded">
+                                                No resolved recipients yet. Use "Quick Test" above, or go to Recipients tab → enter a Sample ID → click Resolve.
                                             </div>
                                         ) : (
-                                            <div className="p-3 bg-blue-50 text-blue-800 text-sm border border-blue-200 flex justify-between items-center">
-                                                <span>To: {resolvedRecipients[0].full_name} ({resolvedRecipients[0].phone || resolvedRecipients[0].email})</span>
-                                                <Badge variant="outline">Preview</Badge>
+                                            <div className="space-y-2">
+                                                <div className="p-3 bg-blue-50 text-blue-800 text-sm border border-blue-200 rounded flex justify-between items-center">
+                                                    <span>To: {resolvedRecipients[0].full_name} ({resolvedRecipients[0].phone || resolvedRecipients[0].email})</span>
+                                                    <Badge variant="outline">Resolved</Badge>
+                                                </div>
+                                                <Button
+                                                    className="w-full"
+                                                    variant="outline"
+                                                    onClick={() => handleTestSend()}
+                                                    disabled={testSending}
+                                                >
+                                                    {testSending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <TestTube className="w-4 h-4 mr-2" />}
+                                                    Send to Resolved Recipient
+                                                </Button>
                                             </div>
                                         )}
 
-                                        <Button
-                                            className="w-full"
-                                            onClick={handleTestSend}
-                                            disabled={testSending || resolvedRecipients.length === 0}
-                                        >
-                                            {testSending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <TestTube className="w-4 h-4 mr-2" />}
-                                            Send Test Message
-                                        </Button>
-
                                         {testResult && (
-                                            <div className={`p-3 rounded text-sm ${testResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-                                                {testResult.success ? 'Test message sent successfully!' : `Failed: ${testResult.error}`}
+                                            <div className={`p-3 rounded text-sm ${testResult.success ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                                                {testResult.success
+                                                    ? '✅ Test message sent successfully! Check your WhatsApp.'
+                                                    : `❌ Failed: ${testResult.error || 'Unknown error'}`}
                                             </div>
                                         )}
                                     </CardContent>

@@ -252,7 +252,7 @@ export default function HrLeaveApprovalFlowView() {
             {/* ── Header ─────────────────────────────────────────── */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Approval Flow</h1>
+                    <h1 className="text-lg font-semibold tracking-tight">Approval Flow</h1>
                     <p className="text-sm text-muted-foreground mt-1">
                         Configure approval chains, delegation rules, and SLA settings
                     </p>

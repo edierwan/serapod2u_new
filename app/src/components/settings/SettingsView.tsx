@@ -19,7 +19,6 @@ import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
 import DocumentTemplateTab from './DocumentTemplateTab'
 import DocSequenceTab from './DocSequenceTab'
-import AccountingTab from './AccountingTab'
 import AuthorizationTab from './AuthorizationTab'
 import {
   Settings,
@@ -43,7 +42,6 @@ import {
   Image as ImageIcon,
   Info,
   Package,
-  Calculator,
   Hash
 } from 'lucide-react'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
@@ -69,6 +67,8 @@ interface UserProfile {
 
 interface SettingsViewProps {
   userProfile: UserProfile
+  /** Optional initial tab to show (e.g. 'profile', 'organization', 'security', etc.) */
+  initialTab?: string
 }
 
 interface UserSettings {
@@ -113,8 +113,8 @@ interface OrganizationSettings {
   }
 }
 
-const SettingsView = ({ userProfile }: SettingsViewProps) => {
-  const [activeTab, setActiveTab] = useState('profile')
+const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
+  const [activeTab, setActiveTab] = useState(initialTab || 'profile')
   const [orgSubTab] = useState<'info'>('info')
   const [loading, setLoading] = useState(false)
   const { theme, setTheme } = useTheme()
@@ -633,9 +633,6 @@ const SettingsView = ({ userProfile }: SettingsViewProps) => {
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'organization', label: 'Organization', icon: Building2 },
-    // Accounting tab - after Organization, HQ only with role_level <= 20
-    ...(userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? [{ id: 'accounting', label: 'Accounting', icon: Calculator }] : []),
-    { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'preferences', label: 'Preferences', icon: Settings },
     ...(userProfile.roles.role_level === 1 ? [{ id: 'authorization', label: 'Authorization', icon: Lock }] : []),
@@ -656,36 +653,6 @@ const SettingsView = ({ userProfile }: SettingsViewProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-        <p className="text-gray-600">Manage your account and system preferences</p>
-      </div>
-
-      {/* Tabs - Mobile grid, desktop scroll */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 -mx-4 px-4 sm:mx-0 sm:px-0">
-        <nav className="-mb-px grid grid-cols-2 gap-2 overflow-visible sm:flex sm:space-x-8 sm:gap-0 sm:overflow-x-auto sm:scrollbar-hide">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 justify-start rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium transition sm:rounded-none sm:border-0 sm:border-b-2 sm:border-transparent sm:px-2 sm:py-2 sm:flex-shrink-0 sm:justify-center ${activeTab === tab.id
-                  ? 'bg-blue-50 text-blue-600 sm:bg-transparent sm:border-blue-500'
-                  : 'text-gray-600 hover:bg-gray-50 sm:text-gray-500 sm:hover:text-gray-700 sm:hover:border-gray-300'
-                  }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Icon className="w-4 h-4" />
-                  <span className="text-sm sm:text-base">{tab.label}</span>
-                </div>
-              </button>
-            )
-          })}
-        </nav>
-      </div>
-
       {/* Tab Content */}
       <div>
         {/* Profile Settings */}
@@ -1481,67 +1448,6 @@ const SettingsView = ({ userProfile }: SettingsViewProps) => {
           </div>
         )}
 
-        {/* Security Settings - Placeholder for future security features */}
-        {activeTab === 'security' && (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" />
-                  Security Settings
-                </CardTitle>
-                <CardDescription>
-                  Manage your account security settings
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-blue-900">
-                      <p className="font-semibold mb-1">Password Management</p>
-                      <p>To change your password, please go to <span className="font-medium">My Profile</span> page where you can securely update your credentials.</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Two-Factor Authentication - Coming Soon */}
-                <div className="border border-gray-200 rounded-lg p-4 opacity-60">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">Two-Factor Authentication</h4>
-                      <p className="text-sm text-gray-500">Add an extra layer of security to your account</p>
-                    </div>
-                    <Badge variant="outline" className="text-gray-500 border-gray-300">Coming Soon</Badge>
-                  </div>
-                </div>
-
-                {/* Session Management - Coming Soon */}
-                <div className="border border-gray-200 rounded-lg p-4 opacity-60">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">Active Sessions</h4>
-                      <p className="text-sm text-gray-500">Manage your active login sessions</p>
-                    </div>
-                    <Badge variant="outline" className="text-gray-500 border-gray-300">Coming Soon</Badge>
-                  </div>
-                </div>
-
-                {/* Login History - Coming Soon */}
-                <div className="border border-gray-200 rounded-lg p-4 opacity-60">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">Login History</h4>
-                      <p className="text-sm text-gray-500">View your recent login activity</p>
-                    </div>
-                    <Badge variant="outline" className="text-gray-500 border-gray-300">Coming Soon</Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
         {/* Notifications Settings */}
         {activeTab === 'notifications' && (
           <div className="space-y-6">
@@ -1716,11 +1622,6 @@ const SettingsView = ({ userProfile }: SettingsViewProps) => {
               <DocSequenceTab userProfile={userProfile} />
             </TabsContent2>
           </TabsComponent>
-        )}
-
-        {/* Accounting Tab - HQ Admin/Power User Only */}
-        {activeTab === 'accounting' && userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 && (
-          <AccountingTab userProfile={userProfile} />
         )}
 
         {/* Authorization Tab - Super Admin Only */}

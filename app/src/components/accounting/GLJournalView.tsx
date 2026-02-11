@@ -328,7 +328,7 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-lg">
                     <BookOpen className="w-5 h-5" />
                     General Ledger Journals
                   </CardTitle>
@@ -511,7 +511,7 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-lg">
                     <Clock className="w-5 h-5 text-orange-500" />
                     Pending GL Postings
                   </CardTitle>

@@ -28,7 +28,6 @@ import UsersView from '@/components/users/UsersView'
 import MyProfileViewNew from '@/components/dashboard/views/MyProfileViewNew'
 
 import ReportingView from '@/components/dashboard/views/reporting/ReportingView'
-import SettingsView from '@/components/settings/SettingsView'
 import DashboardOverview from '@/components/dashboard/DashboardOverview'
 import HrPeopleView from '@/components/hr/HrPeopleView'
 import HrOrgChartView from '@/components/hr/HrOrgChartView'
@@ -48,17 +47,61 @@ import HrPerformanceAppraisalsView from '@/components/hr/modules/HrPerformanceAp
 import HrPerformanceReviewsView from '@/components/hr/modules/HrPerformanceReviewsView'
 import HrSettingsApprovalRulesView from '@/components/hr/modules/HrSettingsApprovalRulesView'
 import HrSettingsPermissionsView from '@/components/hr/modules/HrSettingsPermissionsView'
+import HrPublicHolidaysView from '@/components/hr/modules/HrPublicHolidaysView'
 import HRTopNav from '@/modules/hr/components/HRTopNav'
 import HrLandingView from '@/modules/hr/components/HrLandingView'
 import HrConfigurationView from '@/modules/hr/components/HrConfigurationView'
+import HrAccountingView from '@/modules/hr/components/HrAccountingView'
+import HrAiAssistant from '@/modules/hr/components/HrAiAssistant'
+import ModuleAiAssistant, {
+  financeAssistantConfig,
+  supplyChainAssistantConfig,
+  customerGrowthAssistantConfig,
+} from '@/components/ai/ModuleAiAssistant'
+// Finance Module Components
+import FinanceTopNav from '@/modules/finance/components/FinanceTopNav'
+import FinanceLandingView from '@/modules/finance/components/FinanceLandingView'
+import FinanceConfigurationView from '@/modules/finance/components/FinanceConfigurationView'
+import FinancePlaceholderView from '@/modules/finance/components/FinancePlaceholderView'
+import FinanceCurrencySettingsView from '@/modules/finance/components/FinanceCurrencySettingsView'
+import GLJournalView from '@/components/accounting/GLJournalView'
+import PendingPostingsView from '@/components/accounting/PendingPostingsView'
+import ARInvoicesView from '@/components/accounting/ARInvoicesView'
+import ARReceiptsView from '@/components/accounting/ARReceiptsView'
+import ARAgingView from '@/components/accounting/ARAgingView'
+import APBillsView from '@/components/accounting/APBillsView'
+import APPaymentsView from '@/components/accounting/APPaymentsView'
+import APAgingView from '@/components/accounting/APAgingView'
+import TrialBalanceView from '@/components/accounting/reports/TrialBalanceView'
+import ProfitLossView from '@/components/accounting/reports/ProfitLossView'
+import BalanceSheetView from '@/components/accounting/reports/BalanceSheetView'
+import GLDetailView from '@/components/accounting/reports/GLDetailView'
+import BankAccountsView from '@/components/accounting/BankAccountsView'
+import BankReconciliationView from '@/components/accounting/BankReconciliationView'
+import CashFlowView from '@/components/accounting/CashFlowView'
+import ChartOfAccountsTab from '@/components/settings/ChartOfAccountsTab'
+import DefaultAccountsSettings from '@/components/settings/DefaultAccountsSettings'
+import PostingRulesSettings from '@/components/settings/PostingRulesSettings'
+import FinancePermissionsSettings from '@/components/settings/FinancePermissionsSettings'
+import AccountingTab from '@/components/settings/AccountingTab'
+// Settings Module Components
+import SettingsTopNav from '@/modules/settings/components/SettingsTopNav'
+import SettingsLandingView from '@/modules/settings/components/SettingsLandingView'
+import SettingsView from '@/components/settings/SettingsView'
+import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
+import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
+import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
+import DocSequenceTab from '@/components/settings/DocSequenceTab'
+import AuthorizationTab from '@/components/settings/AuthorizationTab'
+import DangerZoneTab from '@/components/settings/DangerZoneTab'
+import AiProviderSettingsCard from '@/modules/hr/components/AiProviderSettingsCard'
+import AiUsageDashboard from '@/modules/settings/components/AiUsageDashboard'
 import { createClient } from '@/lib/supabase/client'
 import { getStorageUrl } from '@/lib/utils'
 // QR Tracking Components
 import QRBatchesView from '@/components/dashboard/views/qr-tracking/QRBatchesView'
-import ManufacturerScanViewV2 from '@/components/dashboard/views/qr-tracking/ManufacturerScanViewV2'
 import ManufacturerScanView2 from '@/components/dashboard/views/qr-tracking/ManufacturerScanView2'
 import WarehouseReceiveView2 from '@/components/dashboard/views/qr-tracking/WarehouseReceiveView2'
-import WarehouseReceiveView from '@/components/dashboard/views/qr-tracking/WarehouseReceiveView'
 import WarehouseShipV2 from '@/components/dashboard/views/qr-tracking/WarehouseShipV2'
 import ConsumerScanView from '@/components/dashboard/views/qr-tracking/ConsumerScanView'
 
@@ -72,6 +115,28 @@ import RedeemGiftManagementView from '@/components/redeem-gift/RedeemGiftManagem
 import JourneyBuilderV2 from '@/components/journey/JourneyBuilderV2'
 import ScratchCardGameView from '@/components/dashboard/views/consumer-engagement/ScratchCardGameView'
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
+import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
+import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
+import { isSupplyChainViewId } from '@/modules/supply-chain/supplyChainNav'
+import LoyaltyLandingView from '@/modules/loyalty/components/LoyaltyLandingView'
+import LoyaltyTopNav from '@/modules/loyalty/components/LoyaltyTopNav'
+import { isLoyaltyViewId } from '@/modules/loyalty/loyaltyNav'
+// CRM Module Components
+import CrmLandingView from '@/modules/crm/components/CrmLandingView'
+import CrmTopNav from '@/modules/crm/components/CrmTopNav'
+import { isCrmViewId } from '@/modules/crm/crmNav'
+// Marketing Module Components
+import MarketingLandingView from '@/modules/marketing/components/MarketingLandingView'
+import MarketingTopNav from '@/modules/marketing/components/MarketingTopNav'
+import { isMarketingViewId } from '@/modules/marketing/marketingNav'
+// Catalog Module Components
+import CatalogLandingView from '@/modules/catalog/components/CatalogLandingView'
+import CatalogTopNav from '@/modules/catalog/components/CatalogTopNav'
+import { isCatalogViewId } from '@/modules/catalog/catalogNav'
+// Customer & Growth Module Components
+import CustomerGrowthLandingView from '@/modules/customer-growth/components/CustomerGrowthLandingView'
+import CustomerGrowthTopNav from '@/modules/customer-growth/components/CustomerGrowthTopNav'
+import { isCustomerGrowthViewId } from '@/modules/customer-growth/customerGrowthNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
 import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
@@ -124,6 +189,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     userProfile.roles.role_level <= 20 ||
     hasPermission('manage_org_chart') ||
     hasPermission('edit_org_settings')
+
+  const canEditFinance =
+    userProfile.roles.role_level <= 20 ||
+    hasPermission('edit_org_settings') ||
+    hasPermission('view_settings')
 
   // ── Sidebar collapse state (persisted in localStorage) ──────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -219,6 +289,18 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       return
     }
 
+    // ── Redirect old accounting URLs to Finance module ────────────
+    if (view === 'accounting' || view === 'settings-accounting') {
+      router.push('/finance')
+      return
+    }
+
+    // ── Redirect Customer & Growth breadcrumb to its landing page ──
+    if (view === 'customer-growth') {
+      router.push('/customer-growth')
+      return
+    }
+
     setCurrentView(view)
   }
 
@@ -246,12 +328,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       // QR Tracking Views
       case 'qr-batches':
         return <QRBatchesView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'manufacturer-scan-v2':
-        return <ManufacturerScanViewV2 userProfile={userProfile} onViewChange={handleViewChange} />
       case 'manufacturer-scan-2':
         return <ManufacturerScanView2 userProfile={userProfile} />
-      case 'warehouse-receive':
-        return <WarehouseReceiveView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'warehouse-receive-2':
         return <WarehouseReceiveView2 userProfile={userProfile} />
       case 'warehouse-ship-v2':
@@ -294,6 +372,24 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
       case 'manufacturer-quality-issues':
         return <QualityIssuesView userProfile={userProfile} />
+
+      case 'supply-chain':
+        return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleViewChange} orgTypeCode={userProfile.organizations?.org_type_code} roleLevel={userProfile.roles?.role_level} />
+
+      case 'loyalty':
+        return <LoyaltyLandingView userName={userProfile.full_name} onViewChange={handleViewChange} hideHeroBanner />
+
+      case 'crm':
+        return <CrmLandingView userName={userProfile.full_name} onViewChange={handleViewChange} hideHeroBanner />
+
+      case 'mktg':
+        return <MarketingLandingView userName={userProfile.full_name} onViewChange={handleViewChange} hideHeroBanner />
+
+      case 'catalog':
+        return <CatalogLandingView userName={userProfile.full_name} onViewChange={handleViewChange} hideHeroBanner />
+
+      case 'customer-growth':
+        return <CustomerGrowthLandingView userName={userProfile.full_name} onViewChange={handleViewChange} />
 
       case 'inventory':
       case 'inventory-list':
@@ -340,8 +436,43 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
       case 'reporting':
         return <ReportingView userProfile={userProfile} />
+
+      // ── Settings Module Views ──────────────────────────────────
       case 'settings':
-        return <SettingsView userProfile={userProfile} />
+        return <SettingsLandingView userName={userProfile.full_name} roleLevel={userProfile.roles.role_level} />
+      case 'settings/profile':
+        return <SettingsView userProfile={userProfile} initialTab="profile" />
+      case 'settings/organization':
+        return <SettingsView userProfile={userProfile} initialTab="organization" />
+      case 'settings/notifications':
+        return <SettingsView userProfile={userProfile} initialTab="notifications" />
+      case 'settings/notifications/types':
+        return <NotificationTypesTab userProfile={userProfile} />
+      case 'settings/notifications/providers':
+        return <NotificationProvidersTab userProfile={userProfile} />
+      case 'settings/preferences':
+        return <SettingsView userProfile={userProfile} initialTab="preferences" />
+      case 'settings/preferences/document-template':
+        return <DocumentTemplateTab userProfile={userProfile} />
+      case 'settings/preferences/doc-sequence':
+        return <DocSequenceTab userProfile={userProfile} />
+      case 'settings/authorization':
+        return <AuthorizationTab userProfile={userProfile} />
+      case 'settings/ai':
+        return (
+          <AiProviderSettingsCard
+            organizationId={userProfile.organizations.id}
+            canEdit={userProfile.roles.role_level <= 20}
+          />
+        )
+      case 'settings/ai/usage':
+        return (
+          <AiUsageDashboard
+            organizationId={userProfile.organizations.id}
+          />
+        )
+      case 'settings/danger-zone':
+        return <DangerZoneTab userProfile={userProfile} />
       case 'hr-people':
         return (
           <HrPeopleView
@@ -387,12 +518,19 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         )
       case 'hr/attendance/clock-in-out':
         return <HrAttendanceClockView userProfile={userProfile} />
+      case 'hr/attendance/public-holidays':
+        return <HrPublicHolidaysView canEdit={canEditHr} />
       case 'hr/attendance/timesheets':
         return <HrAttendanceTimesheetsView userProfile={userProfile} />
       case 'hr/leave/types':
         return <HrLeaveTypesView />
       case 'hr/leave/requests':
-        return <HrLeaveRequestsView />
+        return (
+          <HrLeaveRequestsView
+            organizationId={userProfile.organizations.id}
+            userId={userProfile.id}
+          />
+        )
       case 'hr/leave/approval-flow':
         return <HrLeaveApprovalFlowView />
       case 'hr/payroll/salary-structure':
@@ -420,24 +558,144 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <HrSettingsApprovalRulesView />
       case 'hr/settings/permissions':
         return <HrSettingsPermissionsView />
+      case 'hr/settings/accounting':
+        return (
+          <HrAccountingView
+            organizationId={userProfile.organizations.id}
+            canEdit={canEditHr}
+          />
+        )
       case 'hr/settings/configuration':
         return (
           <HrConfigurationView
             organizationId={userProfile.organizations.id}
             canEdit={canEditHr}
+            onNavigate={handleViewChange}
           />
         )
       case 'hr':
         return <HrLandingView userName={userProfile.full_name} bannerImageUrl={hrBannerUrl} />
+
+      // ── Finance Module Views ──────────────────────────────────
+      case 'finance':
+        return <FinanceLandingView userName={userProfile.full_name} />
+      case 'finance/gl/journals':
+        return <GLJournalView userProfile={userProfile} />
+      case 'finance/gl/pending-postings':
+        return <PendingPostingsView userProfile={userProfile} />
+      case 'finance/gl/chart-of-accounts':
+        return <ChartOfAccountsTab userProfile={userProfile} />
+      case 'finance/settings/default-accounts':
+        return <DefaultAccountsSettings userProfile={userProfile} />
+      case 'finance/settings/currency':
+        return <FinanceCurrencySettingsView userProfile={userProfile} />
+      case 'finance/settings/fiscal-year':
+        return (
+          <AccountingTab userProfile={userProfile} />
+        )
+      case 'finance/settings/posting-rules':
+        return (
+          <PostingRulesSettings userProfile={userProfile} />
+        )
+      case 'finance/settings/permissions':
+        return (
+          <FinancePermissionsSettings userProfile={userProfile} />
+        )
+      case 'finance/settings/configuration':
+        return (
+          <FinanceConfigurationView
+            organizationId={userProfile.organizations.id}
+            canEdit={canEditFinance}
+            onNavigate={handleViewChange}
+          />
+        )
+      case 'finance/status':
+        return <AccountingTab userProfile={userProfile} />
+      // AR placeholders
+      case 'finance/ar/invoices':
+        return <ARInvoicesView userProfile={userProfile} />
+      case 'finance/ar/receipts':
+        return <ARReceiptsView userProfile={userProfile} />
+      case 'finance/ar/aging':
+        return <ARAgingView userProfile={userProfile} />
+      // AP placeholders
+      case 'finance/ap/bills':
+        return <APBillsView userProfile={userProfile} />
+      case 'finance/ap/payments':
+        return <APPaymentsView userProfile={userProfile} />
+      case 'finance/ap/aging':
+        return <APAgingView userProfile={userProfile} />
+      // Cash & Banking
+      case 'finance/cash/bank-accounts':
+        return <BankAccountsView userProfile={userProfile} />
+      case 'finance/cash/reconciliation':
+        return <BankReconciliationView userProfile={userProfile} />
+      case 'finance/cash/cashflow':
+        return <CashFlowView userProfile={userProfile} />
+      // Reports placeholders
+      case 'finance/reports/trial-balance':
+        return <TrialBalanceView userProfile={userProfile} />
+      case 'finance/reports/profit-loss':
+        return <ProfitLossView userProfile={userProfile} />
+      case 'finance/reports/balance-sheet':
+        return <BalanceSheetView userProfile={userProfile} />
+      case 'finance/reports/gl-detail':
+        return <GLDetailView userProfile={userProfile} />
+      case 'finance/reports/cashflow':
+        return <CashFlowView userProfile={userProfile} />
+
       default:
         return <DashboardOverview userProfile={userProfile} onViewChange={handleViewChange} />
     }
   }
 
   const isHrView = currentView === 'hr' || currentView.startsWith('hr/') || currentView.startsWith('hr-')
+  const isFinanceView = currentView === 'finance' || currentView.startsWith('finance/')
+  const isSettingsView = currentView === 'settings' || currentView.startsWith('settings/')
+  const isSupplyChainView = isSupplyChainViewId(currentView)
+  const isLoyaltyView = isLoyaltyViewId(currentView)
+  const isCrmView = isCrmViewId(currentView)
+  const isMarketingView = isMarketingViewId(currentView)
+  const isCatalogView = isCatalogViewId(currentView)
+  const isCustomerGrowthView = isCustomerGrowthViewId(currentView)
+  // Show Customer & Growth domain top-nav on ALL CG views (landing + child modules + sub-views)
+  const showCustomerGrowthTopNav = isCustomerGrowthView
+  const hasModuleTopNav = isHrView || isFinanceView || isSettingsView || isSupplyChainView || isLoyaltyView || isCrmView || isMarketingView || isCatalogView || showCustomerGrowthTopNav
 
   const handleHrNavigate = (href: string) => {
     router.push(href)
+  }
+
+  const handleFinanceNavigate = (href: string) => {
+    router.push(href)
+  }
+
+  const handleSettingsNavigate = (href: string) => {
+    router.push(href)
+  }
+
+  const handleSupplyChainNavigate = (viewId: string) => {
+    handleViewChange(viewId)
+  }
+
+  const handleLoyaltyNavigate = (viewId: string) => {
+    handleViewChange(viewId)
+  }
+
+  const handleCrmNavigate = (viewId: string) => {
+    handleViewChange(viewId)
+  }
+
+  const handleMarketingNavigate = (viewId: string) => {
+    handleViewChange(viewId)
+  }
+
+  const handleCatalogNavigate = (viewId: string) => {
+    handleViewChange(viewId)
+  }
+
+  const handleCustomerGrowthNavigate = (viewId: string) => {
+    handleViewChange(viewId)
   }
 
   return (
@@ -457,9 +715,46 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         {isHrView && (
           <HRTopNav currentView={currentView} onNavigate={handleHrNavigate} />
         )}
-        <main className={`flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 sm:py-6 ${isHrView ? '' : 'pt-16 lg:pt-6'} print:p-0 print:pt-0 print:overflow-visible print:h-auto`}>
+        {/* Finance Top Navigation — shown only on /finance/* routes */}
+        {isFinanceView && (
+          <FinanceTopNav currentView={currentView} onNavigate={handleFinanceNavigate} />
+        )}
+        {/* Settings Top Navigation — shown only on /settings/* routes */}
+        {isSettingsView && (
+          <SettingsTopNav currentView={currentView} onNavigate={handleSettingsNavigate} roleLevel={userProfile.roles.role_level} />
+        )}
+        {/* Supply Chain Top Navigation — shown on SC views */}
+        {isSupplyChainView && (
+          <SupplyChainTopNav currentView={currentView} onNavigate={handleSupplyChainNavigate} orgTypeCode={userProfile.organizations?.org_type_code} roleLevel={userProfile.roles?.role_level} />
+        )}
+        {/* Customer & Growth Domain Top Navigation — shown on ALL CG child views */}
+        {showCustomerGrowthTopNav && (
+          <CustomerGrowthTopNav currentView={currentView} onNavigate={handleCustomerGrowthNavigate} />
+        )}
+        {/* Child module top navs — shown BELOW the domain nav for within-module navigation */}
+        {isCrmView && (
+          <CrmTopNav currentView={currentView} onNavigate={handleCrmNavigate} />
+        )}
+        {isMarketingView && (
+          <MarketingTopNav currentView={currentView} onNavigate={handleMarketingNavigate} />
+        )}
+        {isLoyaltyView && (
+          <LoyaltyTopNav currentView={currentView} onNavigate={handleLoyaltyNavigate} />
+        )}
+        {isCatalogView && (
+          <CatalogTopNav currentView={currentView} onNavigate={handleCatalogNavigate} />
+        )}
+        <main className={`flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 sm:py-6 ${hasModuleTopNav ? '' : 'pt-16 lg:pt-6'} print:p-0 print:pt-0 print:overflow-visible print:h-auto`}>
           {renderCurrentView()}
         </main>
+        {/* HR AI Assistant – floating button + chat drawer */}
+        {isHrView && <HrAiAssistant />}
+        {/* Finance AI Assistant */}
+        {isFinanceView && <ModuleAiAssistant config={financeAssistantConfig} />}
+        {/* Supply Chain AI Assistant */}
+        {isSupplyChainView && <ModuleAiAssistant config={supplyChainAssistantConfig} />}
+        {/* Customer & Growth AI Assistant */}
+        {isCustomerGrowthView && <ModuleAiAssistant config={customerGrowthAssistantConfig} />}
       </div>
     </div>
   )

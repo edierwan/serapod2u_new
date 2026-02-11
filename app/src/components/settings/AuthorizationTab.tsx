@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -600,6 +600,131 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
         setHasChanges(true)
     }
 
+    // ── Module-level quick-set ────────────────────────────────────
+
+    /** Toggle all permissions in a category on or off for the selected role */
+    const setCategoryPermissions = (categoryId: string, enabled: boolean) => {
+        const cat = PERMISSION_CATEGORIES.find((c) => c.id === categoryId)
+        if (!cat) return
+        setRolePermissions((prev) => {
+            const newPerms = { ...prev }
+            if (!newPerms[selectedRole]) newPerms[selectedRole] = {}
+            newPerms[selectedRole] = { ...newPerms[selectedRole] }
+            for (const perm of cat.permissions) {
+                newPerms[selectedRole][perm.id] = enabled
+            }
+            return newPerms
+        })
+        setHasChanges(true)
+    }
+
+    // ── Preset role templates ─────────────────────────────────────
+
+    interface RolePreset {
+        label: string
+        description: string
+        permissions: Record<string, boolean>
+    }
+
+    const ROLE_PRESETS: Record<string, RolePreset> = {
+        full_access: {
+            label: 'Full Access',
+            description: 'Enable all permissions',
+            permissions: Object.fromEntries(
+                PERMISSION_CATEGORIES.flatMap((c) => c.permissions.map((p) => [p.id, true]))
+            ),
+        },
+        manufacturing: {
+            label: 'Manufacturing',
+            description: 'QR scanning, products, orders, quality',
+            permissions: {
+                view_dashboard: true, view_reports: false, export_reports: false,
+                view_inventory: false, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, manage_inventory_settings: false,
+                view_orders: true, create_orders: true, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: false,
+                view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
+                view_qr_tracking: true, scan_qr: true, manage_journeys: false, view_scan_history: true,
+                view_warehouse: false, receive_goods: false, ship_goods: false, view_receiving_value: false,
+                view_accounting: false, manage_chart_of_accounts: false, post_journal_entries: false, view_gl_reports: false, manage_fiscal_years: false,
+                view_organizations: false, create_organizations: false, edit_organizations: false, delete_organizations: false,
+                view_users: false, create_users: false, edit_users: false, delete_users: false, reset_passwords: false, manage_roles: false,
+                view_settings: false, edit_org_settings: false, manage_org_chart: false, manage_notifications: false,
+                manage_branding: false, data_migration: false, danger_zone: false, manage_authorization: false,
+            },
+        },
+        warehouse: {
+            label: 'Warehouse',
+            description: 'Receive/ship, inventory, orders, QR',
+            permissions: {
+                view_dashboard: true, view_reports: true, export_reports: false,
+                view_inventory: true, view_inventory_value: true, view_inventory_cost: false, adjust_stock: true, manage_inventory_settings: false,
+                view_orders: true, create_orders: true, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: true,
+                view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
+                view_qr_tracking: true, scan_qr: true, manage_journeys: false, view_scan_history: true,
+                view_warehouse: true, receive_goods: true, ship_goods: true, view_receiving_value: true,
+                view_accounting: false, manage_chart_of_accounts: false, post_journal_entries: false, view_gl_reports: false, manage_fiscal_years: false,
+                view_organizations: false, create_organizations: false, edit_organizations: false, delete_organizations: false,
+                view_users: false, create_users: false, edit_users: false, delete_users: false, reset_passwords: false, manage_roles: false,
+                view_settings: true, edit_org_settings: false, manage_org_chart: false, manage_notifications: false,
+                manage_branding: false, data_migration: false, danger_zone: false, manage_authorization: false,
+            },
+        },
+        shop_user: {
+            label: 'Shop / Retail',
+            description: 'Orders, products, basic dashboard',
+            permissions: {
+                view_dashboard: true, view_reports: false, export_reports: false,
+                view_inventory: true, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, manage_inventory_settings: false,
+                view_orders: true, create_orders: true, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: false,
+                view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
+                view_qr_tracking: true, scan_qr: true, manage_journeys: false, view_scan_history: false,
+                view_warehouse: false, receive_goods: false, ship_goods: false, view_receiving_value: false,
+                view_accounting: false, manage_chart_of_accounts: false, post_journal_entries: false, view_gl_reports: false, manage_fiscal_years: false,
+                view_organizations: false, create_organizations: false, edit_organizations: false, delete_organizations: false,
+                view_users: false, create_users: false, edit_users: false, delete_users: false, reset_passwords: false, manage_roles: false,
+                view_settings: true, edit_org_settings: false, manage_org_chart: false, manage_notifications: false,
+                manage_branding: false, data_migration: false, danger_zone: false, manage_authorization: false,
+            },
+        },
+        view_only: {
+            label: 'View Only',
+            description: 'Read-only access to basic features',
+            permissions: {
+                view_dashboard: true, view_reports: false, export_reports: false,
+                view_inventory: true, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, manage_inventory_settings: false,
+                view_orders: true, create_orders: false, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: false,
+                view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
+                view_qr_tracking: true, scan_qr: false, manage_journeys: false, view_scan_history: false,
+                view_warehouse: true, receive_goods: false, ship_goods: false, view_receiving_value: false,
+                view_accounting: false, manage_chart_of_accounts: false, post_journal_entries: false, view_gl_reports: false, manage_fiscal_years: false,
+                view_organizations: true, create_organizations: false, edit_organizations: false, delete_organizations: false,
+                view_users: false, create_users: false, edit_users: false, delete_users: false, reset_passwords: false, manage_roles: false,
+                view_settings: true, edit_org_settings: false, manage_org_chart: false, manage_notifications: false,
+                manage_branding: false, data_migration: false, danger_zone: false, manage_authorization: false,
+            },
+        },
+        no_access: {
+            label: 'No Access',
+            description: 'Disable all permissions',
+            permissions: Object.fromEntries(
+                PERMISSION_CATEGORIES.flatMap((c) => c.permissions.map((p) => [p.id, false]))
+            ),
+        },
+    }
+
+    const applyPreset = (presetKey: string) => {
+        const preset = ROLE_PRESETS[presetKey]
+        if (!preset) return
+        setRolePermissions((prev) => ({
+            ...prev,
+            [selectedRole]: { ...(prev[selectedRole] || {}), ...preset.permissions },
+        }))
+        setHasChanges(true)
+        toast({
+            title: 'Preset Applied',
+            description: `"${preset.label}" applied to ${ROLE_LEVELS.find((r) => r.level === selectedRole)?.name || 'role'}`,
+        })
+    }
+
     const getSensitivityBadge = (sensitivity: string) => {
         const styles = {
             low: 'bg-green-50 text-green-700 border-green-200',
@@ -804,24 +929,78 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                         {/* Permissions Panel */}
                         <Card className="lg:col-span-3">
                             <CardHeader className="pb-3 border-b">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle className="text-base flex items-center gap-2">
-                                            Permissions for {ROLE_LEVELS.find(r => r.level === selectedRole)?.name}
-                                            <Badge variant="outline" className={ROLE_LEVELS.find(r => r.level === selectedRole)?.color}>
-                                                Level {selectedRole}
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle className="text-base flex items-center gap-2">
+                                                Permissions for {ROLE_LEVELS.find(r => r.level === selectedRole)?.name}
+                                                <Badge variant="outline" className={ROLE_LEVELS.find(r => r.level === selectedRole)?.color}>
+                                                    Level {selectedRole}
+                                                </Badge>
+                                            </CardTitle>
+                                            <CardDescription className="text-xs mt-1">
+                                                Toggle permissions for this role. Changes apply to all users with this role.
+                                            </CardDescription>
+                                        </div>
+                                        {hasChanges && (
+                                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                                <AlertCircle className="w-3 h-3 mr-1" />
+                                                Unsaved Changes
                                             </Badge>
-                                        </CardTitle>
-                                        <CardDescription className="text-xs mt-1">
-                                            Toggle permissions for this role. Changes apply to all users with this role.
-                                        </CardDescription>
+                                        )}
                                     </div>
-                                    {hasChanges && (
-                                        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                            <AlertCircle className="w-3 h-3 mr-1" />
-                                            Unsaved Changes
-                                        </Badge>
-                                    )}
+
+                                    {/* ── Quick Presets ── */}
+                                    <div className="flex flex-wrap gap-1.5">
+                                        <span className="text-xs text-gray-500 self-center mr-1">Quick Presets:</span>
+                                        {Object.entries(ROLE_PRESETS).map(([key, preset]) => (
+                                            <TooltipProvider key={key}>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-7 text-xs px-2.5"
+                                                            onClick={() => applyPreset(key)}
+                                                        >
+                                                            {preset.label}
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p className="text-xs">{preset.description}</p></TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        ))}
+                                    </div>
+
+                                    {/* ── Access Summary Strip ── */}
+                                    <div className="flex flex-wrap gap-2">
+                                        {PERMISSION_CATEGORIES.map((cat) => {
+                                            const enabled = cat.permissions.filter(p => getPermissionStatus(p.id, selectedRole)).length
+                                            const total = cat.permissions.length
+                                            const pct = Math.round((enabled / total) * 100)
+                                            const color = pct === 100 ? 'bg-green-100 text-green-800 border-green-200'
+                                                : pct > 0 ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                    : 'bg-gray-50 text-gray-500 border-gray-200'
+                                            return (
+                                                <button
+                                                    key={cat.id}
+                                                    onClick={() => {
+                                                        setExpandedCategories(prev =>
+                                                            prev.includes(cat.id) ? prev : [...prev, cat.id]
+                                                        )
+                                                        // Scroll category into view
+                                                        setTimeout(() => {
+                                                            document.getElementById(`cat-${cat.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                                                        }, 150)
+                                                    }}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs transition-colors hover:ring-1 hover:ring-blue-300 ${color}`}
+                                                >
+                                                    {cat.name.split(' ')[0]}
+                                                    <span className="font-semibold">{enabled}/{total}</span>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
@@ -831,9 +1010,11 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                         const enabledCount = category.permissions.filter(
                                             p => getPermissionStatus(p.id, selectedRole)
                                         ).length
+                                        const allOn = enabledCount === category.permissions.length
+                                        const allOff = enabledCount === 0
 
                                         return (
-                                            <AccordionItem key={category.id} value={category.id} className="border-b last:border-b-0">
+                                            <AccordionItem key={category.id} value={category.id} id={`cat-${category.id}`} className="border-b last:border-b-0">
                                                 <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 hover:no-underline">
                                                     <div className="flex items-center gap-3 w-full">
                                                         <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -849,6 +1030,28 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                                     </div>
                                                 </AccordionTrigger>
                                                 <AccordionContent>
+                                                    {/* Category-level quick toggles */}
+                                                    <div className="px-4 pt-2 pb-1 flex items-center gap-2">
+                                                        <span className="text-xs text-gray-500">Quick:</span>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-6 text-xs px-2"
+                                                            disabled={allOn}
+                                                            onClick={(e) => { e.stopPropagation(); setCategoryPermissions(category.id, true) }}
+                                                        >
+                                                            All On
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-6 text-xs px-2"
+                                                            disabled={allOff}
+                                                            onClick={(e) => { e.stopPropagation(); setCategoryPermissions(category.id, false) }}
+                                                        >
+                                                            All Off
+                                                        </Button>
+                                                    </div>
                                                     <div className="px-4 pb-4 pt-2 space-y-3">
                                                         {category.permissions.map((permission) => (
                                                             <div
@@ -896,80 +1099,95 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                         </Card>
                     </div>
 
-                    {/* Permission Matrix Overview */}
+                    {/* Full Permission Matrix */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Permission Matrix Overview</CardTitle>
-                            <CardDescription>Quick view of all permissions across roles</CardDescription>
+                            <CardTitle className="text-base">Permission Matrix</CardTitle>
+                            <CardDescription>Interactive view of all permissions across roles. Click a cell to toggle.</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b">
-                                            <th className="text-left py-2 px-3 font-medium text-gray-600 w-48">Permission</th>
+                                            <th className="text-left py-2 px-3 font-medium text-gray-600 w-48 sticky left-0 bg-white z-10">Permission</th>
                                             {ROLE_LEVELS.map(role => (
-                                                <th key={role.level} className="text-center py-2 px-2 font-medium">
+                                                <th key={role.level} className="text-center py-2 px-2 font-medium min-w-[72px]">
                                                     <div className="flex flex-col items-center gap-1">
                                                         <Badge variant="outline" className={`text-xs ${role.color}`}>
                                                             L{role.level}
                                                         </Badge>
-                                                        <span className="text-xs text-gray-500">{role.name}</span>
+                                                        <span className="text-xs text-gray-500 whitespace-nowrap">{role.name}</span>
                                                     </div>
                                                 </th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {PERMISSION_CATEGORIES.flatMap(category =>
-                                            category.permissions.slice(0, 3).map((perm, idx) => (
-                                                <tr key={perm.id} className={idx === 0 ? 'border-t-2 border-gray-200' : ''}>
-                                                    <td className="py-2 px-3">
-                                                        <div className="flex items-center gap-2">
-                                                            {idx === 0 && (
-                                                                <span className="text-xs text-gray-400 font-medium">{category.name}:</span>
-                                                            )}
-                                                            <span className={idx === 0 ? 'font-medium' : ''}>{perm.name}</span>
-                                                        </div>
+                                        {PERMISSION_CATEGORIES.map(category => (
+                                            <React.Fragment key={category.id}>
+                                                {/* Category header row */}
+                                                <tr className="bg-gray-50">
+                                                    <td colSpan={ROLE_LEVELS.length + 1} className="py-1.5 px-3 sticky left-0 bg-gray-50 z-10">
+                                                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{category.name}</span>
                                                     </td>
-                                                    {ROLE_LEVELS.map(role => (
-                                                        <td key={role.level} className="text-center py-2 px-2">
-                                                            {getPermissionStatus(perm.id, role.level) ? (
-                                                                <CheckCircle className="w-4 h-4 text-green-600 mx-auto" />
-                                                            ) : (
-                                                                <EyeOff className="w-4 h-4 text-gray-300 mx-auto" />
-                                                            )}
-                                                        </td>
-                                                    ))}
                                                 </tr>
-                                            ))
-                                        )}
+                                                {category.permissions.map((perm) => (
+                                                    <tr key={perm.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                                                        <td className="py-1.5 px-3 sticky left-0 bg-white z-10">
+                                                            <span className="text-sm">{perm.name}</span>
+                                                        </td>
+                                                        {ROLE_LEVELS.map(role => {
+                                                            const enabled = getPermissionStatus(perm.id, role.level)
+                                                            return (
+                                                                <td key={role.level} className="text-center py-1.5 px-2">
+                                                                    <button
+                                                                        onClick={() => togglePermission(role.level, perm.id)}
+                                                                        className="mx-auto block p-0.5 rounded hover:bg-gray-200 transition-colors"
+                                                                        title={`${perm.name} → ${role.name}: ${enabled ? 'ON' : 'OFF'}`}
+                                                                    >
+                                                                        {enabled ? (
+                                                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                                                        ) : (
+                                                                            <EyeOff className="w-4 h-4 text-gray-300" />
+                                                                        )}
+                                                                    </button>
+                                                                </td>
+                                                            )
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </React.Fragment>
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>
-                            <p className="text-xs text-gray-500 mt-4 text-center">
-                                Showing top 3 permissions per category. Use the panel above for complete control.
-                            </p>
                         </CardContent>
                     </Card>
 
-                    {/* Information Card */}
+                    {/* Quick Reference */}
                     <Card className="bg-blue-50 border-blue-200">
                         <CardContent className="py-4">
                             <div className="flex items-start gap-3">
                                 <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                                 <div className="text-sm text-blue-900">
-                                    <p className="font-semibold mb-1">How Authorization Works</p>
-                                    <ul className="space-y-1 text-blue-800">
-                                        <li>• <strong>Super Admin (Level 1)</strong> has full access to all features including this settings page</li>
-                                        <li>• <strong>HQ Admin (Level 10)</strong> can manage most organizational settings</li>
-                                        <li>• <strong>Power User (Level 20)</strong> has access to accounting and advanced features</li>
-                                        <li>• <strong>Manager (Level 30)</strong> can approve orders and manage teams</li>
-                                        <li>• <strong>User (Level 40)</strong> has standard operational access</li>
-                                        <li>• <strong>Guest (Level 50)</strong> has read-only access to basic features</li>
-                                    </ul>
-                                    <p className="mt-2 text-blue-700">
-                                        Changes to permissions take effect immediately after saving. Users may need to refresh their browser to see updated access.
+                                    <p className="font-semibold mb-2">Quick Reference</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-1 gap-x-6 text-blue-800">
+                                        {ROLE_LEVELS.map(role => (
+                                            <span key={role.level} className="text-xs">
+                                                <strong>L{role.level} {role.name}</strong>
+                                                {' — '}
+                                                {(() => {
+                                                    const total = PERMISSION_CATEGORIES.flatMap(c => c.permissions).length
+                                                    const enabled = PERMISSION_CATEGORIES.flatMap(c => c.permissions).filter(p => getPermissionStatus(p.id, role.level)).length
+                                                    return `${enabled}/${total} permissions`
+                                                })()}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <p className="mt-2 text-xs text-blue-700">
+                                        Menu visibility also depends on <strong>Organisation Type</strong> (HQ / Manufacturer / Distributor / Warehouse / Shop).
+                                        Permissions only control feature access <em>within</em> visible modules. Changes take effect after saving.
                                     </p>
                                 </div>
                             </div>

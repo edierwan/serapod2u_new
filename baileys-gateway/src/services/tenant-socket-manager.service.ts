@@ -16,6 +16,7 @@ import makeWASocket, {
 import { Boom } from '@hapi/boom';
 import * as fs from 'fs';
 import * as path from 'path';
+import QRCode from 'qrcode';
 import { logger } from '../utils/logger';
 import { webhookService } from './webhook.service';
 
@@ -30,6 +31,8 @@ export interface TenantStatus {
     push_name: string | null;
     last_connected_at: string | null;
     last_error: string | null;
+    last_disconnect_code: number | null;
+    last_disconnect_reason: string | null;
     has_qr: boolean;
     last_qr_at: string | null;
 }
@@ -38,7 +41,11 @@ export interface TenantQRResponse {
     ok: boolean;
     tenant_id: string;
     pairing_state: PairingState;
+    connected: boolean;
     qr: string | null;
+    qr_format: 'raw';
+    qr_png_base64: string | null;
+    generated_at: string | null;
     expires_in_sec: number;
 }
 
@@ -47,16 +54,23 @@ interface TenantSocketState {
     isReady: boolean;
     isInitializing: boolean;
     isShuttingDown: boolean;
+    manualDisconnect: boolean;
     pairingState: PairingState;
     phoneNumber: string | null;
     pushName: string | null;
     lastConnectedAt: string | null;
     lastError: string | null;
+    lastDisconnectCode: number | null;
+    lastDisconnectReason: string | null;
     qrCode: string | null;
     qrExpiry: number;
     lastQrAt: string | null;
     reconnectAttempts: number;
     authPath: string;
+    startLock: boolean;
+    reconnectTimer: ReturnType<typeof setTimeout> | null;
+    lastSocketCreatedAt: number;
+    connectedSince: number;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 50; // Increased to allow long-term recovery
@@ -111,16 +125,23 @@ class TenantSocketManager {
                 isReady: false,
                 isInitializing: false,
                 isShuttingDown: false,
+                manualDisconnect: false,
                 pairingState: 'disconnected',
                 phoneNumber: null,
                 pushName: null,
                 lastConnectedAt: null,
                 lastError: null,
+                lastDisconnectCode: null,
+                lastDisconnectReason: null,
                 qrCode: null,
                 qrExpiry: 0,
                 lastQrAt: null,
                 reconnectAttempts: 0,
                 authPath: this.getTenantAuthPath(tenantId),
+                startLock: false,
+                reconnectTimer: null,
+                lastSocketCreatedAt: 0,
+                connectedSince: 0,
             };
             this.sockets.set(tenantId, state);
         }
@@ -138,8 +159,20 @@ class TenantSocketManager {
             return state;
         }
 
-        // Socket exists but disconnected, wait a bit for it to reconnect
-        if (state.socket && state.pairingState === 'reconnecting') {
+        // Reconnect timer is pending - don't race with it
+        if (state.pairingState === 'reconnecting' || state.reconnectTimer) {
+            return state;
+        }
+
+        // Waiting for QR - socket exists and is working
+        if (state.pairingState === 'waiting_qr' && state.socket) {
+            return state;
+        }
+
+        // Cooldown: don't create a new socket within 5 seconds of the last one
+        const sinceLastCreate = Date.now() - state.lastSocketCreatedAt;
+        if (sinceLastCreate < 5000 && state.lastSocketCreatedAt > 0) {
+            logger.debug({ tenantId, sinceLastCreate }, 'Socket creation cooldown active');
             return state;
         }
 
@@ -161,15 +194,34 @@ class TenantSocketManager {
     }
 
     /**
+     * Cancel any pending reconnect timer for a tenant
+     */
+    private cancelReconnectTimer(tenantId: string): void {
+        const state = this.sockets.get(tenantId);
+        if (state?.reconnectTimer) {
+            clearTimeout(state.reconnectTimer);
+            state.reconnectTimer = null;
+            logger.debug({ tenantId }, 'Reconnect timer cancelled');
+        }
+    }
+
+    /**
      * Cleanup existing socket for a tenant
      */
     private cleanupSocket(tenantId: string): void {
         const state = this.sockets.get(tenantId);
-        if (state?.socket) {
+        if (!state) return;
+
+        // Cancel pending reconnect timer first
+        this.cancelReconnectTimer(tenantId);
+
+        if (state.socket) {
             try {
-                state.socket.end(undefined);
                 state.socket.ev.removeAllListeners('connection.update');
                 state.socket.ev.removeAllListeners('creds.update');
+                state.socket.ev.removeAllListeners('messages.upsert');
+                state.socket.ev.removeAllListeners('contacts.update');
+                state.socket.end(undefined);
             } catch (e) {
                 logger.error({ tenantId, error: e }, 'Error cleaning up socket');
             }
@@ -188,11 +240,19 @@ class TenantSocketManager {
             return;
         }
 
-        // Ensure strict singleton
+        // Cooldown: prevent rapid socket creation (< 5s)
+        const sinceLastCreate = Date.now() - state.lastSocketCreatedAt;
+        if (sinceLastCreate < 5000 && state.lastSocketCreatedAt > 0) {
+            logger.warn({ tenantId, sinceLastCreate }, 'Socket creation too fast, deferring...');
+            return;
+        }
+
+        // Ensure strict singleton - cancel timers and cleanup first
         this.cleanupSocket(tenantId);
 
         state.isInitializing = true;
         state.pairingState = 'connecting';
+        state.lastSocketCreatedAt = Date.now();
 
         try {
             // Ensure auth directory exists
@@ -215,7 +275,7 @@ class TenantSocketManager {
                     creds: authState.creds,
                     keys: makeCacheableSignalKeyStore(authState.keys, socketLogger as any),
                 },
-                printQRInTerminal: true,
+                printQRInTerminal: false,
                 logger: socketLogger as any,
                 generateHighQualityLinkPreview: false,
                 markOnlineOnConnect: true,
@@ -246,6 +306,19 @@ class TenantSocketManager {
                             webhookService.forwardToMoltbot(tenantId, message, state.phoneNumber || undefined)
                                 .catch(err => logger.error({ tenantId, error: err.message }, 'Webhook forward failed'));
                         }
+                    }
+                }
+            });
+
+            // Listen for contacts.update to capture push name (often arrives after connection opens)
+            state.socket.ev.on('contacts.update', (updates: any[]) => {
+                if (!state.phoneNumber) return;
+                for (const contact of updates) {
+                    // Check if this is the user's own contact (by matching JID prefix)
+                    const contactPhone = contact.id?.split('@')[0]?.split(':')[0];
+                    if (contactPhone === state.phoneNumber && contact.notify) {
+                        logger.info({ tenantId, pushName: contact.notify }, 'Push name received from contacts.update');
+                        state.pushName = contact.notify;
                     }
                 }
             });
@@ -285,21 +358,27 @@ class TenantSocketManager {
             const statusCode = error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            // Capture structured error
-            const structuredError = {
-                code: statusCode || 0,
-                reason: error?.message || 'Connection closed',
-                at: new Date().toISOString(),
-                isLoggedOut: statusCode === DisconnectReason.loggedOut
-            };
+            // Capture structured disconnect info
+            state.lastDisconnectCode = statusCode || null;
+            state.lastDisconnectReason = error?.message || 'Connection closed';
 
-            logger.info({ tenantId, statusCode, shouldReconnect, reason: error?.message }, 'Connection closed');
+            logger.info({ tenantId, statusCode, shouldReconnect, reason: error?.message, manualDisconnect: state.manualDisconnect }, 'Connection closed');
+
+            // Cancel any pending reconnect timer from previous cycle
+            this.cancelReconnectTimer(tenantId);
 
             state.qrCode = null;
             state.pairingState = 'disconnected';
 
-            // Store structured error as JSON string for API consumers
-            state.lastError = JSON.stringify(structuredError);
+            // Store human-readable error
+            state.lastError = error?.message || `Disconnected (code: ${statusCode || 'unknown'})`;
+
+            // If manual disconnect, do NOT auto-reconnect
+            if (state.manualDisconnect) {
+                logger.info({ tenantId }, 'Manual disconnect flag set - skipping auto-reconnect');
+                state.reconnectAttempts = 0;
+                return;
+            }
 
             if (shouldReconnect && !state.isShuttingDown && state.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 state.reconnectAttempts++;
@@ -308,9 +387,10 @@ class TenantSocketManager {
                 logger.info({ tenantId, attempt: state.reconnectAttempts, delay }, `Reconnecting in ${delay}ms...`);
                 state.pairingState = 'reconnecting';
 
-                // Timer for reconnect
-                setTimeout(async () => {
-                    if (!state.isShuttingDown) {
+                // Store timer reference so we can cancel it later
+                state.reconnectTimer = setTimeout(async () => {
+                    state.reconnectTimer = null; // Clear ref before executing
+                    if (!state.isShuttingDown && !state.manualDisconnect) {
                         try {
                             await this.initializeSocket(tenantId);
                         } catch (e) {
@@ -328,19 +408,59 @@ class TenantSocketManager {
             }
         } else if (connection === 'open') {
             logger.info({ tenantId }, 'Connection opened successfully');
+
+            // Cancel any pending reconnect timer - we're connected now
+            this.cancelReconnectTimer(tenantId);
+
             state.pairingState = 'connected';
             state.lastConnectedAt = new Date().toISOString();
+            state.connectedSince = Date.now();
             state.lastError = null; // Clear error on success
             state.qrCode = null;
             state.isReady = true;
-            state.reconnectAttempts = 0;
+            // Only reset reconnect attempts after stable connection (don't reset here,
+            // reset after 30s of stable connection via timer)
 
             // Get user info
             if (state.socket?.user) {
                 state.phoneNumber = state.socket.user.id.split(':')[0] || state.socket.user.id.split('@')[0];
-                state.pushName = state.socket.user.name || null;
+                state.pushName = state.socket.user.name
+                    || (state.socket.user as any).verifiedName
+                    || (state.socket.user as any).notify
+                    || null;
                 logger.info({ tenantId, phoneNumber: state.phoneNumber, pushName: state.pushName }, 'User info');
+
+                // If pushName is null, try to fetch profile picture/name after a delay
+                if (!state.pushName && state.socket) {
+                    const sock = state.socket;
+                    const phone = state.phoneNumber;
+                    setTimeout(async () => {
+                        try {
+                            if (state.pairingState === 'connected' && phone) {
+                                // Try fetching contact info from Baileys
+                                const jid = `${phone}@s.whatsapp.net`;
+                                const status = await sock.fetchStatus(jid);
+                                if (status && (status as any).status) {
+                                    logger.info({ tenantId, status: (status as any).status }, 'Got user status text');
+                                }
+                                // pushName often arrives via contacts.update event (handled separately)
+                            }
+                        } catch (e) {
+                            // Ignore - push name will be captured via contacts.update
+                        }
+                    }, 3000);
+                }
             }
+
+            // Reset reconnect attempts after 30 seconds of stable connection
+            setTimeout(() => {
+                if (state.pairingState === 'connected' && state.connectedSince > 0 &&
+                    Date.now() - state.connectedSince >= 25000) {
+                    state.reconnectAttempts = 0;
+                    logger.debug({ tenantId }, 'Stable connection - reconnect attempts reset');
+                }
+            }, 30000);
+
         } else if (connection === 'connecting') {
             state.pairingState = 'connecting';
             logger.info({ tenantId }, 'Connecting to WhatsApp...');
@@ -363,13 +483,15 @@ class TenantSocketManager {
             push_name: state.pushName,
             last_connected_at: state.lastConnectedAt,
             last_error: state.lastError,
+            last_disconnect_code: state.lastDisconnectCode,
+            last_disconnect_reason: state.lastDisconnectReason,
             has_qr: !!(state.qrCode && state.qrExpiry > Date.now()),
             last_qr_at: state.lastQrAt,
         };
     }
 
     /**
-     * Get QR code for a tenant
+     * Get QR code for a tenant (with PNG base64 encoding)
      */
     async getQR(tenantId: string): Promise<TenantQRResponse> {
         // Ensure socket exists (lazy creation)
@@ -381,7 +503,11 @@ class TenantSocketManager {
                 ok: true,
                 tenant_id: tenantId,
                 pairing_state: 'connected',
+                connected: true,
                 qr: null,
+                qr_format: 'raw',
+                qr_png_base64: null,
+                generated_at: null,
                 expires_in_sec: 0,
             };
         }
@@ -389,11 +515,30 @@ class TenantSocketManager {
         // If we have a valid QR code
         if (state.qrCode && state.qrExpiry > Date.now()) {
             const expiresInSec = Math.max(0, Math.floor((state.qrExpiry - Date.now()) / 1000));
+
+            // Generate PNG base64 from raw QR string
+            let pngBase64: string | null = null;
+            try {
+                const pngDataUrl = await QRCode.toDataURL(state.qrCode, {
+                    errorCorrectionLevel: 'M',
+                    type: 'image/png',
+                    margin: 2,
+                    width: 300,
+                });
+                pngBase64 = pngDataUrl;
+            } catch (qrErr) {
+                logger.error({ tenantId, error: qrErr }, 'Failed to generate QR PNG');
+            }
+
             return {
                 ok: true,
                 tenant_id: tenantId,
                 pairing_state: state.pairingState,
+                connected: false,
                 qr: state.qrCode,
+                qr_format: 'raw',
+                qr_png_base64: pngBase64,
+                generated_at: state.lastQrAt,
                 expires_in_sec: expiresInSec,
             };
         }
@@ -403,13 +548,17 @@ class TenantSocketManager {
             ok: true,
             tenant_id: tenantId,
             pairing_state: state.pairingState,
+            connected: false,
             qr: null,
+            qr_format: 'raw',
+            qr_png_base64: null,
+            generated_at: null,
             expires_in_sec: 0,
         };
     }
 
     /**
-     * Reset session for a tenant (delete auth and reconnect)
+     * Reset session for a tenant (delete auth and reconnect) - LEGACY
      */
     async resetSession(tenantId: string): Promise<{ ok: boolean; pairing_state: PairingState }> {
         logger.info({ tenantId }, 'Resetting session...');
@@ -436,6 +585,8 @@ class TenantSocketManager {
             state.pushName = null;
             state.qrCode = null;
             state.lastError = null;
+            state.lastDisconnectCode = null;
+            state.lastDisconnectReason = null;
             state.reconnectAttempts = 0;
             state.pairingState = 'disconnected';
             state.isReady = false;
@@ -454,6 +605,87 @@ class TenantSocketManager {
             logger.error({ tenantId, error: error.message }, 'Failed to reset session');
             state.lastError = error.message;
             throw error;
+        }
+    }
+
+    /**
+     * Logout from WhatsApp (safe, no auto-reconnect)
+     */
+    async logoutSession(tenantId: string): Promise<{ ok: boolean }> {
+        logger.info({ tenantId }, 'Logging out session...');
+        const state = this.getOrCreateState(tenantId);
+
+        // Set manual disconnect flag FIRST to prevent auto-reconnect
+        state.manualDisconnect = true;
+
+        if (state.socket) {
+            try {
+                await state.socket.logout();
+            } catch (error: any) {
+                logger.warn({ tenantId, error: error.message }, 'Logout error (continuing anyway)');
+            }
+            this.cleanupSocket(tenantId);
+        }
+
+        state.isReady = false;
+        state.pairingState = 'disconnected';
+        state.qrCode = null;
+
+        return { ok: true };
+    }
+
+    /**
+     * Clear auth state for a tenant (public method for change-number flow)
+     */
+    async clearSession(tenantId: string): Promise<{ ok: boolean }> {
+        logger.info({ tenantId }, 'Clearing session auth...');
+        const state = this.getOrCreateState(tenantId);
+
+        // Delete auth directory contents
+        this.clearTenantAuth(tenantId);
+
+        // Reset all session data
+        state.phoneNumber = null;
+        state.pushName = null;
+        state.lastConnectedAt = null;
+        state.lastError = null;
+        state.lastDisconnectCode = null;
+        state.lastDisconnectReason = null;
+        state.qrCode = null;
+        state.lastQrAt = null;
+
+        return { ok: true };
+    }
+
+    /**
+     * Start a new session (with single-flight lock to prevent double-start)
+     */
+    async startSession(tenantId: string): Promise<{ ok: boolean }> {
+        logger.info({ tenantId }, 'Starting session...');
+        const state = this.getOrCreateState(tenantId);
+
+        // Single-flight lock
+        if (state.startLock) {
+            logger.warn({ tenantId }, 'Start already in progress (locked)');
+            return { ok: true };
+        }
+
+        state.startLock = true;
+        try {
+            // Clear manual disconnect flag
+            state.manualDisconnect = false;
+            state.reconnectAttempts = 0;
+
+            // Initialize socket (will generate new QR)
+            await this.initializeSocket(tenantId);
+
+            return { ok: true };
+        } catch (error: any) {
+            logger.error({ tenantId, error: error.message }, 'Failed to start session');
+            state.lastError = error.message;
+            throw error;
+        } finally {
+            state.startLock = false;
         }
     }
 

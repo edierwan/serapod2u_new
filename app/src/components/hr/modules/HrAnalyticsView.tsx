@@ -101,7 +101,7 @@ export default function HrAnalyticsView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>HR Analytics & Reporting</CardTitle>
+                            <CardTitle className="text-lg">HR Analytics & Reporting</CardTitle>
                             <CardDescription>Dashboards and KPI tracking for workforce, compliance, and cost.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -154,7 +154,7 @@ export default function HrAnalyticsView() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>KPI Definitions</CardTitle>
+                        <CardTitle className="text-base">KPI Definitions</CardTitle>
                         <CardDescription>Define and track KPI formulas for your org.</CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -180,7 +180,7 @@ export default function HrAnalyticsView() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Saved Reports</CardTitle>
+                        <CardTitle className="text-base">Saved Reports</CardTitle>
                         <CardDescription>Reusable report templates for leaders and compliance.</CardDescription>
                     </CardHeader>
                     <CardContent>

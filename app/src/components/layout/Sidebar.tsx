@@ -41,8 +41,11 @@ import {
   Calculator,
   Receipt,
   Briefcase,
+  UsersRound,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { isSupplyChainViewId } from '@/modules/supply-chain/supplyChainNav'
+import { isCustomerGrowthViewId } from '@/modules/customer-growth/customerGrowthNav'
 
 interface SidebarProps {
   userProfile: any
@@ -73,400 +76,51 @@ const navigationItems: MenuItem[] = [
     }
   },
   {
-    id: 'products',
-    label: 'Products',
-    icon: Package,
-    description: 'Product catalog',
-    access: {
-      // Hide Products menu for SHOP organizations
-      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
-      maxRoleLevel: 60
-    },
-    submenu: [
-      {
-        id: 'products',
-        label: 'Product List',
-        icon: Package,
-        access: {
-          allowedOrgTypes: ['HQ', 'DIST', 'WH', 'MFG'],
-          maxRoleLevel: 60
-        }
-      },
-      {
-        id: 'product-management',
-        label: 'Master Data',
-        icon: Package,
-        access: {
-          // Only HQ can manage master data (categories, brands, etc)
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 30  // Admin roles only
-        }
-      }
-    ]
+    id: 'supply-chain',
+    label: 'Supply Chain',
+    icon: Truck,
+    description: 'Products, orders, tracking & inventory',
+    // Supply Chain submenu moved to Supply Chain top-nav bar (src/modules/supply-chain/supplyChainNav.ts)
+    // Sidebar now shows Supply Chain as a single module entry → navigates to /supply-chain
   },
   {
-    id: 'order-management',
-    label: 'Order Management',
-    icon: FileText,
-    description: 'Order processing',
+    id: 'customer-growth',
+    label: 'Customer & Growth',
+    icon: UsersRound,
+    description: 'CRM, marketing, loyalty & product catalog',
     access: {
-      // Restrict access for user level 50 (SHOP_MANAGER)
-      maxRoleLevel: 40 // Only managers level 40 and below (higher privilege)
+      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'SHOP'],
     },
-    submenu: [
-      {
-        id: 'orders',
-        label: 'Orders',
-        icon: FileText,
-        // Accessible to all except WAREHOUSE
-        access: {
-          allowedOrgTypes: ['HQ', 'MANU', 'MFG', 'DIST', 'SHOP'],
-          maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'distributor-order',
-        label: 'Distributor Order',
-        icon: ShoppingCart,
-        access: {
-          // Distributors, Warehouses, and HQ
-          allowedOrgTypes: ['DIST', 'WH', 'HQ'],
-          maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'shop-order',
-        label: 'Shop Order',
-        icon: Store,
-        access: {
-          // HQ, Warehouses, and Distributors can create Shop orders
-          allowedOrgTypes: ['HQ', 'WH', 'DIST'],
-          maxRoleLevel: 40
-        }
-      }
-    ]
+    // Submenu moved to Customer & Growth top-nav bar (src/modules/customer-growth/customerGrowthNav.ts)
+    // Sidebar now shows Customer & Growth as a single module entry → navigates to /customer-growth
   },
-  {
-    id: 'qr-tracking',
-    label: 'QR Tracking',
-    icon: QrCode,
-    description: 'QR code tracking system',
-    submenu: [
-      {
-        id: 'qr-batches',
-        label: 'QR Batches',
-        icon: QrCode,
-        access: {
-          // HQ and Manufacturers manage QR batches
-          allowedOrgTypes: ['HQ', 'MANU', 'MFG'],
-          maxRoleLevel: 30
-        }
-      },
-      {
-        id: 'manufacturer-scan-v2',
-        label: 'Smart Scan',
-        icon: Factory,
-        access: {
-          // Only super admin or super@dev.com
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 10,
-          allowedEmails: ['super@dev.com']
-        }
-      },
-      {
-        id: 'manufacturer-scan-2',
-        label: 'Manufacturer Scan',
-        icon: Factory,
-        access: {
-          // Only manufacturers
-          allowedOrgTypes: ['MANU', 'MFG'],
-          maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'warehouse-receive',
-        label: 'Warehouse ReceiveOld',
-        icon: Warehouse,
-        access: {
-          // Only super admin
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 10
-        }
-      },
-      {
-        id: 'warehouse-receive-2',
-        label: 'Warehouse Receive',
-        icon: Warehouse,
-        access: {
-          // Warehouses and Distributors
-          allowedOrgTypes: ['WH', 'DIST', 'HQ'],
-          maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'warehouse-ship-v2',
-        label: 'Warehouse Ship',
-        icon: Truck,
-        access: {
-          // Only super admin
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 10
-        }
-      }
-    ]
-  },
-  {
-    id: 'consumer-engagement',
-    label: 'Loyalty',
-    icon: Gift,
-    description: 'Rewards & campaigns',
-    access: {
-      // HQ, shops, and independent consumers
-      allowedOrgTypes: ['HQ', 'SHOP', 'INDEPENDENT'],
-      maxRoleLevel: 70
-    },
-    submenu: [
-      {
-        id: 'journey-builder',
-        label: 'Journey Builder',
-        icon: BookOpen,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 30
-        }
-      },
-      {
-        id: 'marketing',
-        label: 'WhatsApp Broadcast',
-        icon: MessageSquare,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 30
-        }
-      },
-      {
-        id: 'support-inbox',
-        label: 'Support Inbox',
-        icon: Inbox,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 30
-        }
-      },
-      {
-        id: 'point-catalog',
-        label: 'Point Catalog',
-        icon: Gift,
-        access: {
-          // HQ, shops, and independent consumers can see point catalog
-          allowedOrgTypes: ['HQ', 'SHOP', 'INDEPENDENT'],
-          maxRoleLevel: 70,
-        }
-      },
-      {
-        id: 'lucky-draw',
-        label: 'Lucky Draw',
-        icon: Trophy,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 30
-        }
-      },
-      {
-        id: 'scratch-card-game',
-        label: 'Games',
-        icon: Gift,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 30
-        }
-      },
-      {
-        id: 'redeem-gift-management',
-        label: 'Redeem',
-        icon: Gift,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 30
-        }
-      },
-      {
-        id: 'consumer-activations',
-        label: 'Consumer Activations',
-        icon: Scan,
-        access: {
-          allowedOrgTypes: ['HQ'],
-          maxRoleLevel: 50
-        }
-      },
-      {
-        id: 'product-catalog',
-        label: 'Product Catalog',
-        icon: ShoppingCart,
-        access: {
-          allowedOrgTypes: ['HQ', 'DIST', 'SHOP'],
-          maxRoleLevel: 50
-        }
-      }
-    ]
-  },
-  {
-    id: 'inventory',
-    label: 'Inventory',
-    icon: Package,
-    description: 'Stock management',
-    access: {
-      // Hide Inventory menu for SHOP and MANUFACTURER organizations
-      // Restrict to Level 40 and below (higher privilege)
-      allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-      maxRoleLevel: 40
-    },
-    submenu: [
-      {
-        id: 'inventory-list',
-        label: 'View Inventory',
-        icon: Package,
-        access: {
-          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-          maxRoleLevel: 40 // Match parent restriction
-        }
-      },
-      {
-        id: 'add-stock',
-        label: 'Add Stock',
-        icon: Plus,
-        access: {
-          allowedOrgTypes: ['HQ', 'WH'],
-          maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'stock-adjustment',
-        label: 'Stock Adjustment',
-        icon: SettingsIcon,
-        access: {
-          allowedOrgTypes: ['HQ', 'WH'],
-          maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'stock-transfer',
-        label: 'Stock Transfer',
-        icon: Truck,
-        access: {
-          allowedOrgTypes: ['HQ', 'WH'],
-          maxRoleLevel: 40
-        }
-      },
-      {
-        id: 'stock-movements',
-        label: 'Movement Reports',
-        icon: ListTree,
-        access: {
-          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-          maxRoleLevel: 40
-        }
-      }
-    ]
-  },
+
   {
     id: 'hr',
     label: 'HR',
     icon: Briefcase,
     description: 'People & organization structure',
     access: {
+      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'SHOP'],
       requiredPermissionsAny: ['view_users', 'view_settings'],
       maxRoleLevel: 60
     },
     // HR submenu moved to HR top-nav bar (src/modules/hr/hrNav.ts)
     // Sidebar now shows HR as a single module entry → navigates to /hr
   },
+
   {
-    id: 'quality-issues',
-    label: 'Quality Issues',
-    icon: ShieldCheck,
-    description: 'Manage quality and returns',
-    access: {
-      allowedOrgTypes: ['HQ', 'MFG', 'MANU'],
-      maxRoleLevel: 40
-    },
-    submenu: [
-      {
-        id: 'manufacturer-quality-issues',
-        label: 'Product Return',
-        icon: ShieldCheck,
-        access: {
-          allowedOrgTypes: ['HQ', 'MFG', 'MANU'],
-          maxRoleLevel: 40
-        }
-      }
-    ]
-  },
-  {
-    id: 'accounting',
-    label: 'Accounting',
+    id: 'finance',
+    label: 'Finance',
     icon: Calculator,
-    description: 'Financial management',
+    description: 'Finance & Accounting',
     access: {
       allowedOrgTypes: ['HQ', 'DIST', 'WH'],
       maxRoleLevel: 40
     },
-    submenu: [
-      {
-        id: 'accounting-sales',
-        label: 'Sales',
-        icon: TrendingUp,
-        access: {
-          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-          maxRoleLevel: 40
-        },
-        nestedSubmenu: [
-          {
-            id: 'sales-invoice',
-            label: 'Sales Invoice',
-            icon: Receipt,
-            targetView: 'distributor-order',
-            access: {
-              allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-              maxRoleLevel: 40
-            }
-          }
-        ]
-      },
-      {
-        id: 'accounting-purchase',
-        label: 'Purchase',
-        icon: ShoppingCart,
-        access: {
-          allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-          maxRoleLevel: 40
-        },
-        nestedSubmenu: [
-          {
-            id: 'purchase-invoice',
-            label: 'Purchase Invoice',
-            icon: Receipt,
-            targetView: 'orders',
-            access: {
-              allowedOrgTypes: ['HQ', 'DIST', 'WH'],
-              maxRoleLevel: 40
-            }
-          }
-        ]
-      }
-    ]
+    // Finance submenu moved to Finance top-nav bar (src/modules/finance/financeNav.ts)
+    // Sidebar now shows Finance as a single module entry → navigates to /finance
   },
-  {
-    id: 'organizations',
-    label: 'Organizations',
-    icon: Building2,
-    description: 'Supply chain partners',
-    access: {
-      // HQ and admin roles only
-      allowedOrgTypes: ['HQ'],
-      maxRoleLevel: 30
-    }
-  }
 ]
 
 const secondaryItems: MenuItem[] = [
@@ -483,8 +137,7 @@ const secondaryItems: MenuItem[] = [
     icon: Users,
     description: 'User management',
     access: {
-      // Allow access if user has permission, regardless of org type (permission system handles scope)
-      // Removed allowedOrgTypes to fallback to permission-based check as primary
+      allowedOrgTypes: ['HQ', 'DIST', 'WH', 'SHOP'],
       requiredPermission: 'view_users'
     }
   },
@@ -544,6 +197,33 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
     if (id.startsWith('hr/')) return `/${id}`
     if (id.startsWith('hr-')) return `/hr/${id.replace('hr-', '')}`
     return null
+  }
+
+  const resolveFinancePath = (id: string) => {
+    if (id === 'finance') return '/finance'
+    if (id.startsWith('finance/')) return `/${id}`
+    return null
+  }
+
+  const resolveSettingsPath = (id: string) => {
+    if (id === 'settings') return '/settings'
+    if (id.startsWith('settings/')) return `/${id}`
+    return null
+  }
+
+  const resolveSupplyChainPath = (id: string) => {
+    if (id === 'supply-chain') return '/supply-chain'
+    return null
+  }
+
+  const resolveCustomerGrowthPath = (id: string) => {
+    if (id === 'customer-growth') return '/customer-growth'
+    return null
+  }
+
+  /** Resolve module-level navigation paths (HR, Finance, Settings, Supply Chain, Customer Growth, etc.) */
+  const resolveModulePath = (id: string) => {
+    return resolveHrPath(id) || resolveFinancePath(id) || resolveSettingsPath(id) || resolveSupplyChainPath(id) || resolveCustomerGrowthPath(id)
   }
 
   // Set mounted flag after client-side hydration
@@ -744,42 +424,6 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
     console.log('[Sidebar] Filtering navigation items with permissions:', Object.keys(permissions).length, 'permissions loaded')
     let items = filterMenuItems(navigationItems, userProfile, hasPermission)
 
-    // Filter QR Tracking submenus based on visibility settings
-    items = items.map(item => {
-      if (item.id === 'qr-tracking' && item.submenu) {
-        const filteredSubmenu = item.submenu.filter(sub => {
-          // Always show QR Batches if user has access (it's not controlled by visibility settings)
-          if (sub.id === 'qr-batches') return true
-
-          // Check visibility settings for other items
-          if (sub.id === 'manufacturer-scan-v2') return qrTrackingVisibility.manufacturer.scan
-          if (sub.id === 'manufacturer-scan-2') return qrTrackingVisibility.manufacturer.scan2
-          if (sub.id === 'warehouse-receive') return qrTrackingVisibility.warehouse.receive
-          if (sub.id === 'warehouse-receive-2') return qrTrackingVisibility.warehouse.receive2
-          if (sub.id === 'warehouse-ship-v2') return qrTrackingVisibility.warehouse.ship
-
-          // Default to true for any other items in this submenu
-          return true
-        })
-        return { ...item, submenu: filteredSubmenu }
-      }
-      return item
-    })
-
-    // Special handling for Product Catalog visibility
-    // Only show Product Catalog to SHOP users if they are super@dev.com
-    if (userProfile?.organizations?.org_type_code === 'SHOP' && userProfile?.email !== 'super@dev.com') {
-      return items.map(item => {
-        if (item.id === 'consumer-engagement' && item.submenu) {
-          return {
-            ...item,
-            submenu: item.submenu.filter(sub => sub.id !== 'product-catalog')
-          }
-        }
-        return item
-      })
-    }
-
     return items
   }, [userProfile, qrTrackingVisibility, hasPermission, permissionsLoading, permissions])
 
@@ -966,6 +610,14 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                 const isActive = currentView === item.id ||
                   // HR module: highlight when on any HR sub-route
                   (item.id === 'hr' && currentView.startsWith('hr/')) ||
+                  // Finance module: highlight when on any Finance sub-route
+                  (item.id === 'finance' && currentView.startsWith('finance/')) ||
+                  // Settings module: highlight when on any Settings sub-route
+                  (item.id === 'settings' && currentView.startsWith('settings/')) ||
+                  // Supply Chain module: highlight when on any SC child view
+                  (item.id === 'supply-chain' && isSupplyChainViewId(currentView)) ||
+                  // Customer & Growth domain: highlight when on any child module view
+                  (item.id === 'customer-growth' && isCustomerGrowthViewId(currentView)) ||
                   (item.submenu?.some((sub: any) =>
                     sub.id === currentView ||
                     sub.targetView === currentView ||
@@ -982,9 +634,9 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                         if (item.submenu) {
                           setExpandedMenu(isMenuOpen ? null : item.id)
                         } else {
-                          const hrPath = resolveHrPath(item.id)
-                          if (hrPath) {
-                            router.push(hrPath)
+                          const modulePath = resolveModulePath(item.id)
+                          if (modulePath) {
+                            router.push(modulePath)
                             setIsMobileMenuOpen(false)
                           } else {
                             onViewChange(item.id)
@@ -1030,9 +682,9 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                                   if (hasNestedSubmenu) {
                                     setExpandedNestedMenu(isNestedMenuOpen ? null : subitem.id)
                                   } else {
-                                    const hrPath = resolveHrPath(subitem.id)
-                                    if (hrPath) {
-                                      router.push(hrPath)
+                                    const modulePath = resolveModulePath(subitem.id)
+                                    if (modulePath) {
+                                      router.push(modulePath)
                                       setIsMobileMenuOpen(false)
                                     } else {
                                       onViewChange(subitem.id)
@@ -1064,9 +716,9 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                                       <button
                                         key={nestedItem.id}
                                         onClick={() => {
-                                          const hrPath = resolveHrPath(targetView)
-                                          if (hrPath) {
-                                            router.push(hrPath)
+                                          const modulePath = resolveModulePath(targetView)
+                                          if (modulePath) {
+                                            router.push(modulePath)
                                           } else {
                                             onViewChange(targetView)
                                           }

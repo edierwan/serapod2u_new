@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -9,10 +10,10 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     // CRITICAL: Verify order has a destination warehouse assigned
     if (!orderInfo?.warehouse_org_id) {
       return NextResponse.json(
-        { 
+        {
           error: 'Order has no destination warehouse assigned. Cannot complete production.',
           order_id: orderInfo?.id,
           order_no: orderInfo?.order_no
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
     const validStatuses = ['in_production', 'printing']
     if (!batch.status || !validStatuses.includes(batch.status)) {
       return NextResponse.json(
-        { 
+        {
           error: `Batch must be in production or printing status. Current status: ${batch.status}`,
           current_status: batch.status
         },
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
     // orders.warehouse_org_id → qr_master_codes.warehouse_org_id
     // This happens HERE, at production completion time.
     // ============================================================================
-    
+
     console.log('🔄 CRITICAL: Propagating warehouse assignment to all master cases...')
     console.log(`   Source: orders.warehouse_org_id = ${orderInfo.warehouse_org_id}`)
     console.log(`   Target: qr_master_codes.warehouse_org_id for batch ${batch_id}`)
@@ -129,8 +130,8 @@ export async function POST(request: NextRequest) {
     // Execute the critical UPDATE using database function to bypass RLS
     // This MUST succeed or warehouse receive will show empty forever
     const { data: propagateResult, error: propagateError } = await supabase
-      .rpc('propagate_warehouse_to_master_codes', { 
-        p_batch_id: batch_id 
+      .rpc('propagate_warehouse_to_master_codes', {
+        p_batch_id: batch_id
       })
 
     if (propagateError) {
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
     // ============================================================================
 
     console.log('📝 Ensuring master codes status is ready_to_ship')
-    
+
     const { error: masterUpdateError, count: masterUpdatedCount } = await supabase
       .from('qr_master_codes')
       .update({
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest) {
     // ============================================================================
 
     console.log('📝 Ensuring unique codes status is ready_to_ship')
-    
+
     // Update using batch_id directly instead of fetching master IDs first
     // This avoids the 1000 row limit on fetching master IDs
     const { error: uniqueUpdateError, count: uniqueUpdatedCount } = await supabase
@@ -237,10 +238,10 @@ export async function POST(request: NextRequest) {
     // ============================================================================
 
     console.log('💰 Creating balance payment request for order:', orderInfo.id)
-    
+
     const { data: balancePaymentDoc, error: balanceError } = await supabase
-      .rpc('fn_create_balance_payment_request', { 
-        p_order_id: orderInfo.id 
+      .rpc('fn_create_balance_payment_request', {
+        p_order_id: orderInfo.id
       })
 
     let balancePaymentCreated = false
@@ -252,16 +253,68 @@ export async function POST(request: NextRequest) {
     } else if (balancePaymentDoc) {
       balancePaymentCreated = true
       console.log('✅ Balance payment request created:', balancePaymentDoc)
-      
+
       // Fetch the created document to get its doc_no
       const { data: docData } = await supabase
         .from('documents')
         .select('doc_no')
         .eq('id', balancePaymentDoc)
         .single()
-      
+
       balanceDocumentNo = docData?.doc_no
     }
+
+    // ============================================================================
+    // QUEUE NOTIFICATION: Manufacturer Scan Complete
+    // ============================================================================
+    try {
+      const adminSupabase = createAdminClient()
+
+      // Fetch order with more details for notification
+      const { data: orderDetail } = await adminSupabase
+        .from('orders')
+        .select('display_doc_no, order_no, company_id, buyer_org_id, seller_org_id, notes')
+        .eq('id', orderInfo.id)
+        .single()
+
+      const displayOrderNo = orderDetail?.display_doc_no || orderDetail?.order_no || orderInfo.order_no
+      const notes = orderDetail?.notes || ''
+      const customerMatch = notes.match(/Customer:\s*([^,]+)/)
+      const customerName = customerMatch?.[1]?.trim() || 'N/A'
+
+      const payload = {
+        order_no: displayOrderNo,
+        batch_id: batch.id,
+        total_master_codes: totalMasters?.toString() || '0',
+        total_unique_codes: ((totalMasters || 0) * 110).toString(),
+        production_completed_at: new Date().toLocaleString('en-GB'),
+        completed_by: user.email || 'Manufacturer',
+        customer_name: customerName,
+        balance_document_no: balanceDocumentNo || 'N/A',
+        order_url: 'https://app.serapod2u.com/orders'
+      }
+
+      for (const channel of ['whatsapp', 'sms', 'email']) {
+        await adminSupabase.from('notifications_outbox').insert({
+          org_id: orderDetail?.company_id || orderDetail?.buyer_org_id,
+          event_code: 'manufacturer_scan_complete',
+          channel,
+          payload_json: payload,
+          priority: 'normal',
+          status: 'queued',
+          retry_count: 0,
+          max_retries: 3,
+          created_at: new Date().toISOString()
+        })
+      }
+      console.log('📨 Manufacturer scan complete notification queued')
+    } catch (notifErr) {
+      console.warn('⚠️ Failed to queue notification (non-blocking):', notifErr)
+    }
+
+    // Fire-and-forget: trigger notification outbox worker
+    const baseUrl = request.nextUrl.origin
+    fetch(`${baseUrl}/api/cron/notification-outbox-worker`).catch(() => { })
 
     return NextResponse.json({
       success: true,

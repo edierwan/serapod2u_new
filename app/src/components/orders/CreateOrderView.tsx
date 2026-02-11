@@ -1206,6 +1206,9 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             console.error('Error updating order status:', statusUpdateError)
             throw new Error(`Failed to submit order: ${statusUpdateError.message}`)
           }
+
+          // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
+          fetch('/api/cron/notification-outbox-worker').catch(() => { })
         }
 
         console.log('✅ Order updated successfully:', editingOrderNo)
@@ -1353,6 +1356,9 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           console.error('Error updating order status:', updateError)
           throw new Error(`Failed to submit order: ${updateError.message}`)
         }
+
+        // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
+        fetch('/api/cron/notification-outbox-worker').catch(() => { })
       }
 
       // Navigate back to orders list

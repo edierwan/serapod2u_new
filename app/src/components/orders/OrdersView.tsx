@@ -414,6 +414,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         description: `Order ${newDisplayNo} has been approved successfully. PO document has been generated.`,
       })
 
+      // Fire-and-forget: trigger notification outbox worker
+      fetch('/api/cron/notification-outbox-worker').catch(() => { })
+
       // Reload orders
       await loadOrders()
       await loadSummary()
@@ -476,6 +479,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         title: 'Order Cancelled',
         description: `Order ${orderNo} has been cancelled and inventory released.`,
       })
+
+      // Fire-and-forget: trigger notification outbox worker
+      fetch('/api/cron/notification-outbox-worker').catch(() => { })
 
       // Reload orders
       await loadOrders()

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Briefcase, Search, ChevronRight, ChevronDown, X, Menu as MenuIcon } from 'lucide-react'
+import { Briefcase, Search, ChevronRight, ChevronDown, X, Menu as MenuIcon, Bot } from 'lucide-react'
 import {
     hrNavGroups,
     getAllHrNavItems,
@@ -29,11 +29,31 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
     const [searchQuery, setSearchQuery] = useState('')
     const [searchOpen, setSearchOpen] = useState(false)
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+    const [aiHealthOk, setAiHealthOk] = useState<boolean | null>(null)
     const dropdownRef = useRef<HTMLDivElement>(null)
     const searchRef = useRef<HTMLDivElement>(null)
     const navRowRef = useRef<HTMLDivElement>(null)
     const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
     const [dropdownStyle, setDropdownStyle] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
+
+    // ── AI health indicator ───────────────────────────────────────
+    useEffect(() => {
+        let cancelled = false
+        const check = async () => {
+            try {
+                const res = await fetch('/api/ai/health')
+                if (!cancelled) {
+                    const data = await res.json()
+                    setAiHealthOk(data.ok === true)
+                }
+            } catch {
+                if (!cancelled) setAiHealthOk(false)
+            }
+        }
+        check()
+        const interval = setInterval(check, 60_000) // re-check every 60s
+        return () => { cancelled = true; clearInterval(interval) }
+    }, [])
 
     // ── Active helpers ────────────────────────────────────────────
 
@@ -248,6 +268,30 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                         <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>
+
+                {/* ── AI Assistant ────────────────────────────────────── */}
+                <button
+                    onClick={() => {
+                        // Dispatch custom event to open the AI drawer
+                        window.dispatchEvent(new CustomEvent('hr-ai-assistant-toggle'))
+                    }}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm text-muted-foreground hover:bg-violet-100 dark:hover:bg-violet-900/30 hover:text-violet-700 dark:hover:text-violet-300 transition-colors shrink-0"
+                    aria-label="AI Assistant"
+                    title={aiHealthOk === null ? 'HR AI Assistant – checking…' : aiHealthOk ? 'HR AI Assistant – online' : 'HR AI Assistant – offline'}
+                >
+                    <span className="relative">
+                        <Bot className="h-3.5 w-3.5" />
+                        {aiHealthOk !== null && (
+                            <span
+                                className={cn(
+                                    'absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-white dark:ring-gray-900',
+                                    aiHealthOk ? 'bg-emerald-500' : 'bg-red-500'
+                                )}
+                            />
+                        )}
+                    </span>
+                    <span className="hidden sm:inline">AI Assistant</span>
+                </button>
 
                 {/* ── Search ──────────────────────────────────────────── */}
                 <div ref={searchRef} className="relative shrink-0">

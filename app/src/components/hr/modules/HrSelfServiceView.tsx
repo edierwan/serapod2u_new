@@ -92,7 +92,7 @@ export default function HrSelfServiceView() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <CardTitle>Employee Self-Service</CardTitle>
+                            <CardTitle className="text-lg">Employee Self-Service</CardTitle>
                             <CardDescription>Empower employees to manage profiles, requests, and documents.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -135,7 +135,7 @@ export default function HrSelfServiceView() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Recent Document Requests</CardTitle>
+                    <CardTitle className="text-base">Recent Document Requests</CardTitle>
                     <CardDescription>Track issuance status and SLAs.</CardDescription>
                 </CardHeader>
                 <CardContent>

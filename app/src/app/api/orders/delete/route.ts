@@ -6,10 +6,10 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const adminSupabase = createAdminClient()
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
     const isSuperAdmin = profile && (profile as any).roles && (profile as any).roles.role_level === 1
 
     if (!isSuperAdmin) {
-      return NextResponse.json({ 
-        error: 'Permission denied. Only Super Admins can delete orders.' 
+      return NextResponse.json({
+        error: 'Permission denied. Only Super Admins can delete orders.'
       }, { status: 403 })
     }
 
@@ -36,10 +36,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order ID is required' }, { status: 400 })
     }
 
-    // Get order details before deletion
+    // Get order details before deletion (capture info for notification)
     const { data: order } = await adminSupabase
       .from('orders')
-      .select('order_no')
+      .select('order_no, display_doc_no, company_id, buyer_org_id, seller_org_id, notes, status')
       .eq('id', orderId)
       .single()
 
@@ -47,7 +47,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    console.log(`🗑️ Super Admin ${user.email} deleting order ${order.order_no} (${orderId})`)
+    const displayOrderNo = order.display_doc_no || order.order_no
+    console.log(`🗑️ Super Admin ${user.email} deleting order ${displayOrderNo} (${orderId})`)
+
+    // Queue notification BEFORE deletion (since order will be hard-deleted)
+    try {
+      // Parse customer name from notes
+      const notes = order.notes || ''
+      const customerMatch = notes.match(/Customer:\s*([^,]+)/)
+      const customerName = customerMatch?.[1]?.trim() || 'Unknown'
+
+      const { data: deleterProfile } = await adminSupabase
+        .from('users')
+        .select('full_name')
+        .eq('id', user.id)
+        .single()
+
+      const payload = {
+        order_no: displayOrderNo,
+        order_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        customer_name: customerName,
+        status: order.status || 'deleted',
+        deleted_by: deleterProfile?.full_name || user.email || 'Super Admin',
+        deleted_at: new Date().toLocaleString('en-GB'),
+        order_url: 'https://app.serapod2u.com/orders'
+      }
+
+      // Queue for each channel
+      for (const channel of ['whatsapp', 'sms', 'email']) {
+        await adminSupabase.from('notifications_outbox').insert({
+          org_id: order.company_id,
+          event_code: 'order_deleted',
+          channel,
+          payload_json: payload,
+          priority: 'normal',
+          status: 'queued',
+          retry_count: 0,
+          max_retries: 3,
+          created_at: new Date().toISOString()
+        })
+      }
+    } catch (notifErr) {
+      console.warn('⚠️ Failed to queue delete notification (non-blocking):', notifErr)
+    }
 
     // Delete Excel files from storage first
     const { data: excelFiles } = await adminSupabase.storage
@@ -76,16 +118,20 @@ export async function POST(request: NextRequest) {
 
     console.log('🎉 Order deleted successfully:', result)
 
-    return NextResponse.json({ 
-      success: true, 
-      message: `Order ${order.order_no} deleted successfully`,
-      order_no: order.order_no,
+    // Fire-and-forget: trigger notification outbox worker
+    const baseUrl = request.nextUrl.origin
+    fetch(`${baseUrl}/api/cron/notification-outbox-worker`).catch(() => { })
+
+    return NextResponse.json({
+      success: true,
+      message: `Order ${displayOrderNo} deleted successfully`,
+      order_no: displayOrderNo,
       deleted: result.deleted
     })
   } catch (error: any) {
     console.error('❌ Error deleting order:', error)
     return NextResponse.json(
-      { 
+      {
         error: error.message || 'Failed to delete order',
         details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },
