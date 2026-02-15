@@ -17,6 +17,22 @@ interface Props {
   product: StorefrontProductDetail
 }
 
+function resolveVariantImageUrl(rawPath: string | null) {
+  if (!rawPath) return null
+  if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!supabaseUrl) return rawPath
+
+  const cleanPath = rawPath.replace(/^\/+/, '')
+  const bucket = 'product-variants'
+  const objectPath = cleanPath.startsWith(`${bucket}/`)
+    ? cleanPath.slice(bucket.length + 1)
+    : cleanPath
+
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
+}
+
 function formatPrice(price: number | null) {
   if (price == null || price <= 0) return null
   return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(price)
@@ -33,14 +49,14 @@ export default function ProductDetailClient({ product }: Props) {
   // Collect all unique images from variants
   const images = useMemo(() => {
     const urls = product.variants
-      .map((v) => v.image_url)
+      .map((v) => resolveVariantImageUrl(v.image_url))
       .filter((url): url is string => !!url)
     return [...new Set(urls)]
   }, [product.variants])
 
   const [currentImage, setCurrentImage] = useState(0)
 
-  const activeImage = selectedVariant?.image_url || images[currentImage] || null
+  const activeImage = resolveVariantImageUrl(selectedVariant?.image_url || null) || images[currentImage] || null
 
   const formattedPrice = selectedVariant ? formatPrice(selectedVariant.suggested_retail_price) : null
 

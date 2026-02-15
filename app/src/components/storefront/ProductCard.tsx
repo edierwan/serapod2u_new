@@ -4,6 +4,22 @@ import Link from 'next/link'
 import { Package } from 'lucide-react'
 import type { StorefrontProduct } from '@/lib/storefront/products'
 
+function resolveVariantImageUrl(rawPath: string | null) {
+  if (!rawPath) return null
+  if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!supabaseUrl) return rawPath
+
+  const cleanPath = rawPath.replace(/^\/+/, '')
+  const bucket = 'product-variants'
+  const objectPath = cleanPath.startsWith(`${bucket}/`)
+    ? cleanPath.slice(bucket.length + 1)
+    : cleanPath
+
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
+}
+
 function formatPrice(price: number) {
   return new Intl.NumberFormat('en-MY', {
     style: 'currency',
@@ -13,6 +29,8 @@ function formatPrice(price: number) {
 }
 
 export default function StorefrontProductCard({ product }: { product: StorefrontProduct }) {
+  const imageUrl = resolveVariantImageUrl(product.image_url)
+
   return (
     <Link
       href={`/store/products/${product.id}`}
@@ -20,9 +38,9 @@ export default function StorefrontProductCard({ product }: { product: Storefront
     >
       {/* Image */}
       <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
-        {product.image_url ? (
+        {imageUrl ? (
           <img
-            src={product.image_url}
+            src={imageUrl}
             alt={product.product_name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />
