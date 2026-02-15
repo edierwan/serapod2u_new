@@ -248,6 +248,24 @@
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* ── Module Banner Animation (calm, enterprise) ── */
+.banner-gradient-animated {
+  animation: bannerShift 12s ease infinite;
+}
+
+@keyframes bannerShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .banner-gradient-animated {
+    animation: none;
+  }
+}
 @media print {
   @page {
     margin: 0;

@@ -175,7 +175,7 @@ export default function HrAiAssistant() {
     ])
   }
 
-  // ── Send message (new endpoint) ──────────────────────────────────
+  // ── Send message (streaming SSE endpoint) ─────────────────────────
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -191,6 +191,8 @@ export default function HrAiAssistant() {
       setInput('')
       setLoading(true)
 
+      const assistantMsgId = `ai-${Date.now()}`
+
       try {
         // Build conversation history (last 10 messages)
         const history = messages.slice(-10).map((m) => ({
@@ -198,34 +200,193 @@ export default function HrAiAssistant() {
           content: m.content,
         }))
 
-        const res = await fetch('/api/hr/assistant/chat', {
+        const res = await fetch('/api/hr/assistant/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: text.trim(), history }),
         })
 
-        const json = await res.json()
+        if (!res.ok || !res.body) {
+          // Fallback: try batch endpoint
+          const batchRes = await fetch('/api/hr/assistant/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text.trim(), history }),
+          })
+          const json = await batchRes.json()
+          if (json.success && json.data) {
+            const data = json.data as AssistantResponse
+            retryCountRef.current = 0
+            setStatus(data.mode === 'offline' ? 'offline' : 'online')
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: assistantMsgId,
+                role: 'assistant',
+                content: data.reply,
+                timestamp: new Date(),
+                suggestions: data.suggestions,
+                cards: data.cards,
+                mode: data.mode,
+              },
+            ])
+          } else {
+            pushError(json.error ?? 'Failed to get response from assistant.')
+          }
+          setLoading(false)
+          return
+        }
 
-        if (json.success && json.data) {
-          const data = json.data as AssistantResponse
-          retryCountRef.current = 0
-          setStatus(data.mode === 'offline' ? 'offline' : 'online')
+        // Parse SSE stream
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let streamingText = ''
+        let gotFirstToken = false
+        let metaData: Partial<AssistantResponse> = {}
 
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              const eventType = line.slice(7).trim()
+              // Next line should be data:
+              continue
+            }
+            if (!line.startsWith('data: ')) continue
+            const jsonStr = line.slice(6)
+
+            try {
+              // Determine event type from the preceding event: line
+              // SSE format: event: <type>\ndata: <json>\n\n
+              // We need to track the event type
+              const parsed = JSON.parse(jsonStr)
+
+              // Detect event type from content
+              if ('t' in parsed) {
+                // Token event
+                streamingText += parsed.t
+                if (!gotFirstToken) {
+                  gotFirstToken = true
+                  // Add empty assistant message that we'll update
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: assistantMsgId,
+                      role: 'assistant',
+                      content: streamingText,
+                      timestamp: new Date(),
+                      mode: metaData.mode,
+                    },
+                  ])
+                  setLoading(false) // Stop showing "Thinking…"
+                } else {
+                  // Update the streaming message
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsgId ? { ...m, content: streamingText } : m,
+                    ),
+                  )
+                }
+              } else if ('reply' in parsed && 'suggestions' in parsed) {
+                // Fast-path or done event with full response
+                retryCountRef.current = 0
+                setStatus(parsed.mode === 'offline' ? 'offline' : 'online')
+                setMessages((prev) => {
+                  // Replace existing streaming msg or add new one
+                  const existing = prev.find((m) => m.id === assistantMsgId)
+                  if (existing) {
+                    return prev.map((m) =>
+                      m.id === assistantMsgId
+                        ? {
+                            ...m,
+                            content: parsed.reply || streamingText,
+                            suggestions: parsed.suggestions,
+                            cards: parsed.cards,
+                            mode: parsed.mode,
+                          }
+                        : m,
+                    )
+                  }
+                  return [
+                    ...prev,
+                    {
+                      id: assistantMsgId,
+                      role: 'assistant' as const,
+                      content: parsed.reply || streamingText,
+                      timestamp: new Date(),
+                      suggestions: parsed.suggestions,
+                      cards: parsed.cards,
+                      mode: parsed.mode,
+                    },
+                  ]
+                })
+                setLoading(false)
+              } else if ('reply' in parsed && 'metrics' in parsed) {
+                // Done event (streaming completed)
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMsgId
+                      ? {
+                          ...m,
+                          content: parsed.reply || streamingText,
+                          suggestions: metaData.suggestions,
+                          cards: metaData.cards,
+                          mode: metaData.mode,
+                        }
+                      : m,
+                  ),
+                )
+                setLoading(false)
+              } else if ('error' in parsed) {
+                if (streamingText) {
+                  // Partial response + error — show what we have
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsgId
+                        ? { ...m, content: streamingText + '\n\n⚠️ ' + parsed.error }
+                        : m,
+                    ),
+                  )
+                } else {
+                  pushError(parsed.error)
+                }
+                setLoading(false)
+              } else if ('mode' in parsed && 'lang' in parsed) {
+                // Meta event
+                metaData = parsed
+              }
+            } catch {
+              // Malformed JSON — skip
+            }
+          }
+        }
+
+        // If stream ended without explicit done/fast event
+        if (streamingText && !gotFirstToken) {
+          // Shouldn't happen, but safety net
           setMessages((prev) => [
             ...prev,
             {
-              id: `ai-${Date.now()}`,
+              id: assistantMsgId,
               role: 'assistant',
-              content: data.reply,
+              content: streamingText,
               timestamp: new Date(),
-              suggestions: data.suggestions,
-              cards: data.cards,
-              mode: data.mode,
+              mode: metaData.mode,
+              suggestions: metaData.suggestions,
+              cards: metaData.cards,
             },
           ])
-        } else {
-          pushError(json.error ?? 'Failed to get response from assistant.')
         }
+
+        retryCountRef.current = 0
+        setStatus('online')
       } catch (err: any) {
         pushError(`Request failed: ${err.message}`)
         setStatus('offline')
@@ -519,13 +680,13 @@ export default function HrAiAssistant() {
                 </div>
               ))}
 
-              {/* Loading indicator */}
+              {/* Loading indicator — only shows before first token arrives */}
               {loading && (
                 <div className="flex justify-start">
                   <div className="bg-muted rounded-xl px-4 py-3 rounded-bl-sm">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Thinking…</span>
+                      <span className="streaming-dots">Thinking</span>
                     </div>
                   </div>
                 </div>

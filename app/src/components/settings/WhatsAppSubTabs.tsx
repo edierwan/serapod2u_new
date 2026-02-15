@@ -1047,7 +1047,7 @@ export default function WhatsAppSubTabs({
                                             Gateway Base URL
                                         </Label>
                                         <Input
-                                            placeholder="https://wa.serapod2u.com"
+                                            placeholder="https://wa.getouch.co"
                                             value={whatsappConfig.config_public.base_url || ''}
                                             onChange={e =>
                                                 setWhatsappConfig({
@@ -1060,10 +1060,10 @@ export default function WhatsAppSubTabs({
                                             }
                                         />
                                         <p className="text-xs text-gray-500">
-                                            The secure URL of your gateway. Example: <strong>https://wa.serapod2u.com</strong>.
+                                            The secure URL of your WhatsApp gateway. Default: <strong>https://wa.getouch.co</strong>.
                                             <br />
-                                            <span className="text-amber-600">
-                                                Note: Port 3001 is closed. Do not include :3001 in the URL.
+                                            <span className="text-gray-400">
+                                                Get your API key from <a href="https://getouch.co" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 underline">getouch.co</a> to connect instantly.
                                             </span>
                                         </p>
                                     </div>

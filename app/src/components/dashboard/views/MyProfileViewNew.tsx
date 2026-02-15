@@ -167,7 +167,11 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       }
 
       // Fetch complete user profile with related data including HR Foundation fields
-      const { data: profile, error } = await supabase
+      // First try full query with all joins
+      let profile: any = null
+      let queryError: any = null
+
+      const { data: fullProfile, error: fullError } = await supabase
         .from('users')
         .select(`
           *,
@@ -199,7 +203,41 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         .eq('id', targetUserId)
         .single()
 
-      if (error) throw error
+      if (fullError) {
+        // FK joins might fail if columns don't exist yet — fallback to basic query
+        console.warn('Full profile query failed, trying fallback:', fullError.message || fullError.code)
+        const { data: basicProfile, error: basicError } = await supabase
+          .from('users')
+          .select(`
+            *,
+            organizations:organization_id (
+              id,
+              org_name,
+              org_type_code,
+              org_code
+            ),
+            roles:role_code (
+              role_name,
+              role_level
+            ),
+            msia_banks:bank_id (
+              id,
+              short_name
+            )
+          `)
+          .eq('id', targetUserId)
+          .single()
+
+        if (basicError) {
+          queryError = basicError
+        } else {
+          profile = basicProfile
+        }
+      } else {
+        profile = fullProfile
+      }
+
+      if (queryError) throw queryError
 
       if (profile) {
         // Transform the data structure
@@ -236,10 +274,10 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         })
       }
     } catch (error: any) {
-      console.error('Error loading profile:', error)
+      console.error('Error loading profile:', error?.message || error?.code || JSON.stringify(error))
       toast({
         title: "Error",
-        description: "Failed to load profile data",
+        description: error?.message || "Failed to load profile data",
         variant: "destructive",
       })
     } finally {

@@ -83,7 +83,7 @@ export default function ThemePreferencesCard() {
   const { toast } = useToast()
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleThemeModeChange = (mode: 'light' | 'dark' | 'system') => {
+  const handleThemeModeChange = (mode: 'light' | 'dark') => {
     setTheme(mode)
     toast({
       title: "✅ Theme Saved",
@@ -119,7 +119,7 @@ export default function ThemePreferencesCard() {
             <Sparkles className="h-4 w-4 text-muted-foreground" />
             <Label className="text-sm font-semibold">Display Mode</Label>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <Button
               variant={theme === 'light' ? 'default' : 'outline'}
               onClick={() => handleThemeModeChange('light')}
@@ -138,16 +138,6 @@ export default function ThemePreferencesCard() {
               <Moon className="h-5 w-5" />
               <span className="text-xs">Dark</span>
               {theme === 'dark' && <Check className="h-3 w-3" />}
-            </Button>
-            
-            <Button
-              variant={theme === 'system' ? 'default' : 'outline'}
-              onClick={() => handleThemeModeChange('system')}
-              className="flex flex-col items-center gap-2 h-auto py-4"
-            >
-              <Monitor className="h-5 w-5" />
-              <span className="text-xs">Auto</span>
-              {theme === 'system' && <Check className="h-3 w-3" />}
             </Button>
           </div>
         </div>

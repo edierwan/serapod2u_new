@@ -1,13 +1,10 @@
 /**
  * POST /api/module-assistant/chat
  *
- * Generic module AI assistant endpoint.
+ * Generic module AI assistant endpoint (batch / non-streaming).
  * Handles Finance, Supply Chain, and Customer & Growth modules.
  *
- * Accepts { message, history, moduleId } where moduleId ∈
- *   ['finance', 'supply-chain', 'customer-growth']
- *
- * Flow: Auth → Rate-limit → DB context fetch → AI call → response
+ * Flow: Auth → Rate-limit → Smart tool (DB query) → AI fallback → response
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -15,118 +12,65 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProviderConfig } from '@/lib/server/ai/providerSettings'
 import { sendToAi } from '@/lib/ai/aiGateway'
 import { logAiUsage } from '@/lib/server/ai/usageLogger'
+import { recordMetric, estimateTokens } from '@/lib/ai/metrics'
+import { ensureWarm, touchLastRequest } from '@/lib/ai/warmup'
 import type { AiChatRequest, AiProvider } from '@/lib/ai/types'
+import { detectCGIntent, executeCGTool, CG_SUGGESTIONS } from '@/lib/server/module-assistant/tools-customer-growth'
+import { detectFinIntent, executeFinTool, FIN_SUGGESTIONS } from '@/lib/server/module-assistant/tools-finance'
+import { detectSCIntent, executeSCTool, SC_SUGGESTIONS } from '@/lib/server/module-assistant/tools-supply-chain'
 
-// ─── Module definitions ────────────────────────────────────────────
+// ─── Fast-path greeting regex ──────────────────────────────────────
+
+const GREETING_RE = /^\s*(hi|hello|hey|helo|hye|yo|salam|assalamualaikum|morning|pagi|petang|malam|good\s*(morning|afternoon|evening)|apa\s*khabar|how\s*are\s*you|what'?s?\s*up|nak\s*tanya|boleh\s*tanya|saya\s*nak\s*tanya|i\s*want\s*to\s*ask)\s*[!?.…]*\s*$/i
+
+const GREETING_REPLIES_EN = [
+    'Hey there! 👋 How can I help you today?',
+    'Hi! 😊 What would you like to know?',
+    'Hello! Ready to help — just ask!',
+]
+const GREETING_REPLIES_MS = [
+    'Hai! 👋 Nak tanya apa hari ni?',
+    'Hello! 😊 Boleh bantu apa?',
+    'Salam! Saya sedia membantu!',
+]
+
+// ─── Module config ─────────────────────────────────────────────────
 
 type ModuleId = 'finance' | 'supply-chain' | 'customer-growth'
 
-interface ModuleConfig {
-    label: string
-    /** Key tables this assistant may query for context */
-    contextTables: string[]
-    /** System instruction additions describing the module scope */
-    systemScope: string
-    /** Keywords used to detect module-related messages (BM + EN) */
-    keywords: RegExp
-    /** Offline fallback queries – quick DB stats to show if AI is down */
-    fallbackQueries: Array<{
-        label: string
-        table: string
-        select: string
-        limit: number
-    }>
+const MODULE_LABELS: Record<ModuleId, string> = {
+    finance: 'Finance',
+    'supply-chain': 'Supply Chain',
+    'customer-growth': 'Customer & Growth',
 }
 
-const MODULE_CONFIGS: Record<ModuleId, ModuleConfig> = {
-    finance: {
-        label: 'Finance',
-        contextTables: [
-            'gl_accounts',
-            'gl_journals',
-            'gl_journal_lines',
-            'documents',
-            'fiscal_years',
-            'fiscal_periods',
-            'bank_accounts',
-            'tax_codes',
-            'payment_terms',
-            'gl_budgets',
-        ],
-        systemScope: `You are the Finance Assistant for Serapod2U.
-You specialise in GL (General Ledger), journals, chart of accounts, invoices, bills, payments, credit notes, 
-fiscal years/periods, bank accounts, tax codes, budgets, and financial reports.
-Tables accessible: gl_accounts, gl_journals, gl_journal_lines, documents (invoices/bills), fiscal_years, 
-fiscal_periods, bank_accounts, tax_codes, payment_terms, gl_budgets, gl_budget_lines, exchange_rates.
-When asked about specific records, provide numbers and summaries. Be concise and accurate.`,
-        keywords:
-            /\b(gl|journal|ledger|akaun|account|invoice|invois|bill|payment|bayaran|tax|cukai|budget|bajet|fiscal|kewangan|finance|bank|reconcil|credit\s*note|debit\s*note|ap|ar|receivable|payable|hutang|piutang|posting|chart\s*of\s*accounts)\b/i,
-        fallbackQueries: [
-            { label: 'GL Accounts', table: 'gl_accounts', select: 'id, account_code, account_name, account_type, is_active', limit: 10 },
-            { label: 'Recent Journals', table: 'gl_journals', select: 'id, journal_number, description, status, total_debit, journal_date', limit: 5 },
-            { label: 'Documents', table: 'documents', select: 'id, doc_number, doc_type, status, total_amount, created_at', limit: 5 },
-        ],
-    },
+function getSuggestions(moduleId: ModuleId) {
+    switch (moduleId) {
+        case 'finance': return FIN_SUGGESTIONS
+        case 'supply-chain': return SC_SUGGESTIONS
+        case 'customer-growth': return CG_SUGGESTIONS
+    }
+}
 
-    'supply-chain': {
-        label: 'Supply Chain',
-        contextTables: [
-            'products',
-            'product_variants',
-            'product_categories',
-            'orders',
-            'order_items',
-            'organizations',
-            'qr_batches',
-            'qr_codes',
-            'stock_movements',
-            'stock_adjustments',
-        ],
-        systemScope: `You are the Supply Chain Assistant for Serapod2U.
-You specialise in products, product variants/SKUs, orders (sales orders, purchase orders), inventory, 
-QR code tracking, stock movements, warehouses, shipments, and organizations.
-Tables accessible: products, product_variants, product_categories, orders, order_items, organizations, 
-qr_batches, qr_codes, qr_movements, stock_movements, stock_adjustments, brands, product_inventory.
-When asked about specific records, provide numbers and summaries. Be concise and accurate.`,
-        keywords:
-            /\b(product|produk|order|pesanan|inventory|inventori|stock|stok|qr|batch|warehouse|gudang|shipment|penghantaran|variant|sku|category|kategori|brand|jenama|movement|adjustment|transfer|organization|organisasi)\b/i,
-        fallbackQueries: [
-            { label: 'Products', table: 'products', select: 'id, name, sku, status, created_at', limit: 5 },
-            { label: 'Recent Orders', table: 'orders', select: 'id, order_number, status, total_amount, created_at', limit: 5 },
-            { label: 'QR Batches', table: 'qr_batches', select: 'id, batch_number, quantity, status, created_at', limit: 5 },
-        ],
-    },
-
-    'customer-growth': {
-        label: 'Customer & Growth',
-        contextTables: [
-            'consumer_qr_scans',
-            'consumer_activations',
-            'consumer_feedback',
-            'points_transactions',
-            'points_rules',
-            'marketing_campaigns',
-            'marketing_templates',
-            'lucky_draw_campaigns',
-            'support_conversations',
-            'short_links',
-        ],
-        systemScope: `You are the Customer & Growth Assistant for Serapod2U.
-You specialise in CRM, consumer engagement, loyalty programs, marketing campaigns, gamification 
-(lucky draw, scratch cards, spin wheel, daily quizzes), support conversations, and notifications.
-Tables accessible: consumer_qr_scans, consumer_activations, consumer_feedback, points_transactions, 
-points_rules, point_rewards, marketing_campaigns, marketing_templates, lucky_draw_campaigns, 
-scratch_card_campaigns, spin_wheel_campaigns, support_conversations, short_links, short_link_clicks, 
-notification_logs, master_banner_configs.
-When asked about specific records, provide numbers and summaries. Be concise and accurate.`,
-        keywords:
-            /\b(consumer|pengguna|pelanggan|customer|crm|marketing|pemasaran|campaign|kempen|loyalty|kesetiaan|point|mata|redeem|tebus|lucky\s*draw|scratch|spin|quiz|kuiz|support|sokongan|banner|notification|notifikasi|activation|pengaktifan|feedback|maklum\s*balas|gamif)\b/i,
-        fallbackQueries: [
-            { label: 'Consumer Activations', table: 'consumer_activations', select: 'id, product_name, consumer_phone, activated_at', limit: 5 },
-            { label: 'Points Transactions', table: 'points_transactions', select: 'id, type, points, description, created_at', limit: 5 },
-            { label: 'Marketing Campaigns', table: 'marketing_campaigns', select: 'id, name, status, created_at', limit: 5 },
-        ],
-    },
+/** Detect intent and execute tool for a module */
+async function tryToolExecution(moduleId: ModuleId, message: string, supabase: any, orgId: string) {
+    switch (moduleId) {
+        case 'finance': {
+            const { tool } = detectFinIntent(message)
+            if (tool) return { tool, result: await executeFinTool(tool, supabase, orgId) }
+            return null
+        }
+        case 'supply-chain': {
+            const { tool } = detectSCIntent(message)
+            if (tool) return { tool, result: await executeSCTool(tool, supabase, orgId) }
+            return null
+        }
+        case 'customer-growth': {
+            const { tool } = detectCGIntent(message)
+            if (tool) return { tool, result: await executeCGTool(tool, supabase, orgId) }
+            return null
+        }
+    }
 }
 
 // ─── Rate Limit ────────────────────────────────────────────────────
@@ -198,7 +142,7 @@ export async function POST(request: NextRequest) {
         }
 
         const moduleId = body.moduleId as ModuleId
-        if (!moduleId || !MODULE_CONFIGS[moduleId]) {
+        if (!moduleId || !MODULE_LABELS[moduleId]) {
             return res(400, { error: 'Invalid moduleId. Expected: finance, supply-chain, customer-growth' })
         }
 
@@ -206,45 +150,112 @@ export async function POST(request: NextRequest) {
         const conversationHistory = body.history ?? []
         const requestedProvider = body.provider as AiProvider | undefined
         const lang = detectLang(userMessage)
-        const modCfg = MODULE_CONFIGS[moduleId]
+        const suggestions = getSuggestions(moduleId)
+        const modLabel = MODULE_LABELS[moduleId]
+
+        // ── FAST PATH: short greetings → canned reply, no LLM call ────
+        if (userMessage.length <= 30 && GREETING_RE.test(userMessage)) {
+            const pool = lang === 'ms' ? GREETING_REPLIES_MS : GREETING_REPLIES_EN
+            const reply = pool[Math.floor(Math.random() * pool.length)]
+            recordMetric({
+                ts: new Date().toISOString(),
+                provider: 'fast-path',
+                model: '-',
+                time_to_first_token_ms: 0,
+                total_ms: Date.now() - startMs,
+                tokens_out_estimate: estimateTokens(reply),
+                error: null,
+                mode: 'fast-path',
+                user: userId.slice(0, 8),
+            })
+            return ok({
+                reply,
+                lang,
+                mode: 'ai' as const,
+                intent: 'casual',
+                confidence: 'high',
+                suggestions,
+                cards: [],
+                meta: { durationMs: Date.now() - startMs, fastPath: true },
+            })
+        }
+
+        // ── SMART TOOL PATH: try intent-based DB query first ───────────
+        const toolExec = await tryToolExecution(moduleId, userMessage, supabase, orgId)
+        if (toolExec && toolExec.result.success) {
+            const totalMs = Date.now() - startMs
+            const reply = toolExec.result.summary
+            recordMetric({
+                ts: new Date().toISOString(),
+                provider: 'db-tool',
+                model: toolExec.tool,
+                time_to_first_token_ms: 0,
+                total_ms: totalMs,
+                tokens_out_estimate: estimateTokens(reply),
+                error: null,
+                mode: 'tool',
+                user: userId.slice(0, 8),
+            })
+            logAiUsage({
+                organizationId: orgId,
+                userId,
+                provider: 'db-tool',
+                module: moduleId,
+                model: toolExec.tool,
+                responseMs: totalMs,
+                status: 'success',
+                messagePreview: userMessage,
+            })
+            return ok({
+                reply,
+                lang,
+                mode: 'ai+tool' as const,
+                intent: toolExec.tool,
+                confidence: 'high',
+                suggestions,
+                cards: toolExec.result.rows ? [{ title: toolExec.tool, rows: toolExec.result.rows }] : [],
+                meta: { durationMs: totalMs, tool: toolExec.tool, totalCount: toolExec.result.totalCount },
+            })
+        }
 
         // ── Resolve AI provider ────────────────────────────────────────
         const admin = createAdminClient()
         const resolvedConfig = await resolveProviderConfig(admin, orgId, requestedProvider)
-        // Strict enforcement: only use the DB-selected provider, never silently
-        // fall back to another provider that may incur costs.
         const aiAvailable = resolvedConfig.enabled
 
-        // ── If module-specific message → fetch DB context first ────────
-        let dbContext = ''
-        if (modCfg.keywords.test(userMessage)) {
-            dbContext = await fetchModuleContext(supabase, orgId, modCfg, userMessage)
-        }
-
-        // ── If AI unavailable → return DB fallback ─────────────────────
+        // ── If AI unavailable → return tool result or offline msg ──────
         if (!aiAvailable) {
-            const fallback = await buildOfflineFallback(supabase, orgId, modCfg, lang)
+            const fallbackReply = toolExec?.result?.summary
+                || (lang === 'ms' ? 'AI sedang tidak tersedia. Sila cuba lagi nanti.' : 'AI is currently unavailable. Please try again shortly.')
             return ok({
-                reply: fallback.reply,
+                reply: fallbackReply,
                 lang,
                 mode: 'offline' as const,
                 intent: 'general',
                 confidence: 'low',
-                suggestions: getModuleSuggestions(moduleId),
-                cards: fallback.cards,
+                suggestions,
+                cards: toolExec?.result?.rows ? [{ title: 'Data', rows: toolExec.result.rows }] : [],
                 meta: { durationMs: Date.now() - startMs, offline: true },
             })
         }
 
-        // ── Build system prompt ────────────────────────────────────────
-        const systemInstruction = buildSystemPrompt(modCfg, lang, dbContext)
+        // ── Opportunistic warmup → keep model hot ──────────────────
+        await ensureWarm()
+        touchLastRequest()
+
+        // ── Build system prompt with tool context ──────────────────
+        const toolContext = toolExec?.result?.summary ? `\n\n--- DB DATA ---\n${toolExec.result.summary}\n--- END ---` : ''
+        const langNote = lang === 'ms'
+            ? 'Jawab dalam Bahasa Melayu. Santai tapi profesional.'
+            : 'Reply in English. Casual but professional.'
+        const systemInstruction = `You are Serapod2U ${modLabel} Assistant. Be concise, warm, helpful. Use only provided context data. 1-4 sentences unless asked for detail. ${langNote}${toolContext}`
 
         const aiRequest: AiChatRequest = {
             message: userMessage,
             context: { page: `${moduleId}_assistant`, orgId },
             provider: resolvedConfig.provider,
             systemInstruction,
-            conversationHistory,
+            conversationHistory: conversationHistory.slice(-6),
         }
 
         const aiResponse = await sendToAi(aiRequest, {
@@ -254,42 +265,55 @@ export async function POST(request: NextRequest) {
         })
 
         // Log usage
+        const totalMs = Date.now() - startMs
         logAiUsage({
             organizationId: orgId,
             userId,
             provider: resolvedConfig.provider ?? 'ollama',
             module: moduleId,
             model: resolvedConfig.model,
-            responseMs: Date.now() - startMs,
+            responseMs: totalMs,
             status: aiResponse.error ? 'error' : 'success',
             errorMessage: aiResponse.error,
             messagePreview: userMessage,
         })
 
+        recordMetric({
+            ts: new Date().toISOString(),
+            provider: resolvedConfig.provider ?? 'ollama',
+            model: resolvedConfig.model ?? 'qwen2.5:3b',
+            time_to_first_token_ms: -1,
+            total_ms: totalMs,
+            tokens_out_estimate: estimateTokens(aiResponse.message ?? ''),
+            error: aiResponse.error ?? null,
+            mode: 'batch',
+            user: userId.slice(0, 8),
+        })
+
         if (aiResponse.error && !aiResponse.message) {
-            // AI failed → try offline fallback
-            const fallback = await buildOfflineFallback(supabase, orgId, modCfg, lang)
+            const fallbackReply = toolExec?.result?.summary
+                || (lang === 'ms' ? 'AI sedang tidak tersedia. Sila cuba lagi nanti.' : 'AI is currently unavailable. Please try again shortly.')
             return ok({
-                reply: fallback.reply,
+                reply: fallbackReply,
                 lang,
                 mode: 'offline' as const,
                 intent: 'general',
                 confidence: 'low',
-                suggestions: getModuleSuggestions(moduleId),
-                cards: fallback.cards,
-                meta: { durationMs: Date.now() - startMs, offline: true, aiError: aiResponse.error },
+                suggestions,
+                cards: toolExec?.result?.rows ? [{ title: 'Data', rows: toolExec.result.rows }] : [],
+                meta: { durationMs: totalMs, offline: true, aiError: aiResponse.error },
             })
         }
 
         return ok({
-            reply: aiResponse.message ?? offlineFallbackText(lang),
+            reply: aiResponse.message ?? (lang === 'ms' ? 'AI sedang tidak tersedia.' : 'AI is currently unavailable.'),
             lang,
-            mode: dbContext ? ('ai+tool' as const) : ('ai' as const),
+            mode: toolContext ? ('ai+tool' as const) : ('ai' as const),
             intent: 'general',
             confidence: 'medium',
-            suggestions: getModuleSuggestions(moduleId),
+            suggestions,
             cards: [],
-            meta: { durationMs: Date.now() - startMs, dbContextUsed: !!dbContext },
+            meta: { durationMs: totalMs, dbContextUsed: !!toolContext },
         })
     } catch (err: any) {
         console.error('[Module Assistant] Error:', err)
@@ -307,126 +331,3 @@ function ok(data: Record<string, any>) {
     return NextResponse.json({ success: true, data })
 }
 
-/**
- * Fetch quick DB stats to inject into the AI system prompt as context.
- */
-async function fetchModuleContext(
-    supabase: any,
-    orgId: string,
-    modCfg: ModuleConfig,
-    _userMessage: string,
-): Promise<string> {
-    const parts: string[] = []
-
-    for (const q of modCfg.fallbackQueries) {
-        try {
-            const { data, error, count } = await supabase
-                .from(q.table)
-                .select(q.select, { count: 'exact' })
-                .limit(q.limit)
-
-            if (!error && data) {
-                parts.push(`## ${q.label} (total: ${count ?? data.length})\n${JSON.stringify(data, null, 2)}`)
-            }
-        } catch {
-            // skip failed queries
-        }
-    }
-
-    return parts.length > 0
-        ? `\n\n--- DATABASE CONTEXT (live data from org) ---\n${parts.join('\n\n')}\n--- END DB CONTEXT ---`
-        : ''
-}
-
-/**
- * Build a rich system prompt with module scope + optional DB context.
- */
-function buildSystemPrompt(modCfg: ModuleConfig, lang: Lang, dbContext: string): string {
-    const personality = `
-
-IMPORTANT GUIDELINES:
-- Be conversational, warm, and friendly — like a helpful colleague.
-- When you detect the topic is related to ${modCfg.label}, provide data-driven answers using the DB context below.
-- You can handle small talk — respond warmly, then gently guide toward ${modCfg.label} topics.
-- Use ONLY the provided context data to answer questions. Do NOT invent or hallucinate data.
-- Format your responses clearly with sections and bullet points where appropriate.
-- Be concise and action-oriented.`
-
-    const langNote =
-        lang === 'ms'
-            ? '\n\nReply in Bahasa Melayu. Gunakan bahasa santai tapi profesional.'
-            : '\n\nReply in English. Use a casual yet professional tone.'
-
-    return modCfg.systemScope + personality + dbContext + langNote
-}
-
-/**
- * Build offline fallback with DB data.
- */
-async function buildOfflineFallback(
-    supabase: any,
-    orgId: string,
-    modCfg: ModuleConfig,
-    lang: Lang,
-): Promise<{ reply: string; cards: any[] }> {
-    const cards: any[] = []
-    const lines: string[] = []
-
-    lines.push(
-        lang === 'ms'
-            ? `**AI sedang offline** — berikut data ${modCfg.label} dari DB anda:`
-            : `**AI is offline** — here's ${modCfg.label} data from your database:`,
-    )
-    lines.push('')
-
-    for (const q of modCfg.fallbackQueries) {
-        try {
-            const { data, error, count } = await supabase
-                .from(q.table)
-                .select(q.select, { count: 'exact' })
-                .limit(q.limit)
-
-            if (!error && data && data.length > 0) {
-                lines.push(`📊 **${q.label}**: ${count ?? data.length} record(s)`)
-                cards.push({ title: q.label, rows: data })
-            }
-        } catch {
-            // skip
-        }
-    }
-
-    return { reply: lines.join('\n'), cards }
-}
-
-function offlineFallbackText(lang: Lang): string {
-    return lang === 'ms'
-        ? 'AI sedang tidak tersedia. Sila cuba lagi nanti.'
-        : 'AI is currently unavailable. Please try again shortly.'
-}
-
-/**
- * Quick suggestions per module.
- */
-function getModuleSuggestions(moduleId: ModuleId) {
-    const suggestions: Record<ModuleId, Array<{ label: string; intent: string }>> = {
-        finance: [
-            { label: 'Trial balance summary?', intent: 'general' },
-            { label: 'Total GL accounts?', intent: 'general' },
-            { label: 'Pending journals?', intent: 'general' },
-            { label: 'Outstanding invoices?', intent: 'general' },
-        ],
-        'supply-chain': [
-            { label: 'Total products?', intent: 'general' },
-            { label: 'Recent orders?', intent: 'general' },
-            { label: 'Low stock items?', intent: 'general' },
-            { label: 'QR batch status?', intent: 'general' },
-        ],
-        'customer-growth': [
-            { label: 'Total consumers?', intent: 'general' },
-            { label: 'Recent activations?', intent: 'general' },
-            { label: 'Active campaigns?', intent: 'general' },
-            { label: 'Points summary?', intent: 'general' },
-        ],
-    }
-    return suggestions[moduleId] ?? []
-}

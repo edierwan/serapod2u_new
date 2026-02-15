@@ -9,6 +9,7 @@
  * API docs: https://github.com/ollama/ollama/blob/main/docs/api.md
  */
 import { type AiChatRequest, type AiResponse, type AiProviderConfig } from '../types'
+import { keepAliveAgent } from './ollama-agent'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434'
 const DEFAULT_MODEL = 'qwen2.5:3b'
@@ -157,9 +158,10 @@ export async function callOllama(
                 messages,
                 stream: false,
                 options: {
-                    // Keep resource usage low on small VPS
+                    // Performance-tuned defaults for CPU-only VPS
                     num_ctx: 4096,
-                    temperature: 0.7,
+                    temperature: 0.3,
+                    top_p: 0.9,
                 },
             }),
             signal: controller.signal,

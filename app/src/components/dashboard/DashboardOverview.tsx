@@ -5,6 +5,7 @@ import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
 import RecentActivities from './RecentActivities'
 import SupplyChainProgressBoard from './SupplyChainProgressBoard'
+import ModuleBanner from '@/components/ui/ModuleBanner'
 
 interface UserProfile {
   id: string
@@ -58,30 +59,38 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
     onViewChange('track-order')
   }
 
+  const getGreeting = () => {
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Good morning'
+    if (hour < 17) return 'Good afternoon'
+    return 'Good evening'
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Dashboard Header */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Dashboard Overview</h2>
-        <p className="text-gray-600">
-          Welcome back, {userProfile.organizations?.org_name || userProfile.email}
-        </p>
-        <p className="text-sm text-gray-500">
-          {userProfile.roles.role_name} • {userProfile.email}
-        </p>
-      </div>
+    <div className="space-y-8">
+      {/* Dashboard Header — uses unified ModuleBanner */}
+      <ModuleBanner
+        module="dashboard"
+        title={`${getGreeting()}${userProfile.organizations?.org_name ? ',' : ''}`}
+        subtitle={userProfile.organizations?.org_name || undefined}
+        userName={userProfile.email}
+      />
 
       {/* Statistics Cards */}
       <DashboardStatistics userProfile={userProfile} />
 
-      {/* Action Required and Recent Activities - Moved to Top */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ActionRequired
-          userProfile={userProfile}
-          onViewDocument={handleViewDocument}
-          onViewChange={onViewChange}
-        />
-        <RecentActivities userProfile={userProfile} />
+      {/* Action Required and Recent Activities */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-3">
+          <ActionRequired
+            userProfile={userProfile}
+            onViewDocument={handleViewDocument}
+            onViewChange={onViewChange}
+          />
+        </div>
+        <div className="lg:col-span-2">
+          <RecentActivities userProfile={userProfile} />
+        </div>
       </div>
 
       {/* Network Supply Pipeline */}

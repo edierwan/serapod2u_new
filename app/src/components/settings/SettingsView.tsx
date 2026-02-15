@@ -633,7 +633,6 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'organization', label: 'Organization', icon: Building2 },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'preferences', label: 'Preferences', icon: Settings },
     ...(userProfile.roles.role_level === 1 ? [{ id: 'authorization', label: 'Authorization', icon: Lock }] : []),
     ...(userProfile.roles.role_level === 1 ? [{ id: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle }] : [])
@@ -1448,89 +1447,6 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
           </div>
         )}
 
-        {/* Notifications Settings */}
-        {activeTab === 'notifications' && (
-          <div className="space-y-6">
-            {/* For HQ Power Users - Show comprehensive notification system */}
-            {userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? (
-              <TabsComponent defaultValue="types" className="w-full">
-                <TabsList2 className="grid w-full grid-cols-2">
-                  <TabsTrigger2 value="types">Notification Types</TabsTrigger2>
-                  <TabsTrigger2 value="providers">Providers</TabsTrigger2>
-                </TabsList2>
-
-                <TabsContent2 value="types" className="mt-6">
-                  <NotificationTypesTab userProfile={userProfile} />
-                </TabsContent2>
-
-                <TabsContent2 value="providers" className="mt-6">
-                  <NotificationProvidersTab userProfile={userProfile} />
-                </TabsContent2>
-              </TabsComponent>
-            ) : (
-              /* Regular Users - Show simple notification preferences */
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notification Preferences</CardTitle>
-                  <CardDescription>
-                    Choose how you want to be notified about important updates
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    {/* Email Notifications */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
-                      <div className="space-y-0.5 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Mail className="w-4 h-4 text-gray-600" />
-                          <Label className="text-base font-medium">Email Notifications</Label>
-                        </div>
-                        <p className="text-sm text-gray-500">
-                          Receive notifications via email for important updates
-                        </p>
-                      </div>
-                      <Switch
-                        checked={userSettings.email_notifications}
-                        onCheckedChange={(checked) => setUserSettings({
-                          ...userSettings,
-                          email_notifications: checked
-                        })}
-                      />
-                    </div>
-
-                    {/* SMS Notifications */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
-                      <div className="space-y-0.5 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-4 h-4 text-gray-600" />
-                          <Label className="text-base font-medium">SMS Notifications</Label>
-                        </div>
-                        <p className="text-sm text-gray-500">
-                          Receive urgent notifications via SMS
-                        </p>
-                      </div>
-                      <Switch
-                        checked={userSettings.sms_notifications}
-                        onCheckedChange={(checked) => setUserSettings({
-                          ...userSettings,
-                          sms_notifications: checked
-                        })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <Button onClick={handleSaveNotifications} disabled={loading}>
-                      <Save className="w-4 h-4 mr-2" />
-                      {loading ? 'Saving...' : 'Save Preferences'}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
-
         {/* Preferences Settings */}
         {activeTab === 'preferences' && (
           <TabsComponent defaultValue="system" className="w-full">
@@ -1588,7 +1504,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                       <Select
                         value={theme}
                         onValueChange={(value) => {
-                          setTheme(value as 'light' | 'dark' | 'system')
+                          setTheme(value as 'light' | 'dark')
                           setUserSettings({ ...userSettings, theme: value })
                         }}
                       >
@@ -1598,7 +1514,6 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                         <SelectContent>
                           <SelectItem value="light">Light</SelectItem>
                           <SelectItem value="dark">Dark</SelectItem>
-                          <SelectItem value="system">System</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

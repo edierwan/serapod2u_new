@@ -18,6 +18,8 @@ import { generateSuggestions, getWelcomeSuggestions } from '@/lib/server/hr/assi
 import { resolveProviderConfig } from '@/lib/server/ai/providerSettings'
 import { sendToAi, HR_SYSTEM_INSTRUCTION } from '@/lib/ai/aiGateway'
 import { logAiUsage } from '@/lib/server/ai/usageLogger'
+import { recordMetric, estimateTokens } from '@/lib/ai/metrics'
+import { ensureWarm, touchLastRequest } from '@/lib/ai/warmup'
 import type { AiChatRequest, AiProvider } from '@/lib/ai/types'
 
 // ─── Rate Limit (per user, in-memory) ──────────────────────────────
@@ -84,39 +86,67 @@ export async function POST(request: NextRequest) {
     // Route intent
     const { intent, confidence } = routeIntent(userMessage)
 
+    // ── FAST PATH: short greetings → canned reply, no LLM call ──
+    const GREETING_RE = /^\s*(hi|hello|hey|helo|hye|yo|salam|assalamualaikum|morning|pagi|petang|malam|good\s*(morning|afternoon|evening)|apa\s*khabar|how\s*are\s*you|what'?s?\s*up|nak\s*tanya|boleh\s*tanya|saya\s*nak\s*tanya|i\s*want\s*to\s*ask)\s*[!?.…]*\s*$/i
+    if (userMessage.length <= 30 && GREETING_RE.test(userMessage)) {
+      const greetings_en = [
+        'Hey there! 👋 How can I help you with HR today?',
+        'Hi! 😊 Need help with leave, salary, attendance, or anything HR?',
+        'Hello! Ready to help — ask me about employees, departments, payroll, and more!',
+      ]
+      const greetings_ms = [
+        'Hai! 👋 Nak tanya apa pasal HR hari ni?',
+        'Hello! 😊 Boleh bantu pasal cuti, gaji, kehadiran, atau apa-apa HR.',
+        'Salam! Saya sedia membantu — tanya pasal pekerja, jabatan, payroll dan lain-lain!',
+      ]
+      const pool = lang === 'ms' ? greetings_ms : greetings_en
+      const reply = pool[Math.floor(Math.random() * pool.length)]
+      const suggestions = generateSuggestions('general', hrRole, lang)
+
+      recordMetric({
+        ts: new Date().toISOString(),
+        provider: 'fast-path',
+        model: '-',
+        time_to_first_token_ms: 0,
+        total_ms: Date.now() - startMs,
+        tokens_out_estimate: estimateTokens(reply),
+        error: null,
+        mode: 'fast-path',
+        user: ctx.userId.slice(0, 8),
+      })
+
+      return ok({
+        reply,
+        lang,
+        mode: 'ai' as const,
+        intent: 'casual',
+        confidence: 'high',
+        suggestions,
+        cards: [],
+        meta: { durationMs: Date.now() - startMs, fastPath: true },
+      })
+    }
+
     // ── Casual / Chitchat → friendly response (no DB, no AI needed) ─
     if (intent === 'casual') {
       const casualReply = getCasualResponse(userMessage, lang)
       const suggestions = generateSuggestions('general', hrRole, lang)
 
-      // Optionally try AI enrichment for a more natural feel
-      let reply = casualReply
-      try {
-        const admin = createAdminClient()
-        const resolvedConfig = await resolveProviderConfig(admin, ctx.organizationId, requestedProvider)
-        if (resolvedConfig.enabled) {
-          const aiReq: AiChatRequest = {
-            message: userMessage,
-            context: { page: 'hr_assistant', orgId: ctx.organizationId },
-            provider: resolvedConfig.provider,
-            systemInstruction: buildCasualSystemPrompt(lang),
-            conversationHistory: conversationHistory.slice(-6),
-          }
-          const aiRes = await sendToAi(aiReq, {
-            userId: ctx.userId,
-            provider: resolvedConfig.provider,
-            configOverride: resolvedConfig,
-          })
-          if (aiRes.message && !aiRes.error) {
-            reply = aiRes.message
-          }
-        }
-      } catch {
-        // AI failed → use canned response, which is totally fine
-      }
+      // Skip AI enrichment for casual — canned response is fast and sufficient
+      recordMetric({
+        ts: new Date().toISOString(),
+        provider: 'canned',
+        model: '-',
+        time_to_first_token_ms: 0,
+        total_ms: Date.now() - startMs,
+        tokens_out_estimate: estimateTokens(casualReply),
+        error: null,
+        mode: 'fast-path',
+        user: ctx.userId.slice(0, 8),
+      })
 
       return ok({
-        reply,
+        reply: casualReply,
         lang,
         mode: 'ai' as const,
         intent: 'casual',
@@ -147,19 +177,13 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Try to enrich through AI for a natural language summary
-      const enriched = await tryAiEnrich(
-        userMessage,
-        toolResult,
-        viewer,
-        conversationHistory,
-        requestedProvider,
-      )
+      // Return tool result directly — skip LLM enrichment to avoid hallucination with small models
+      const formattedReply = formatToolAnswer(toolResult, lang)
 
       return ok({
-        reply: enriched ?? formatToolAnswer(toolResult, lang),
+        reply: formattedReply,
         lang,
-        mode: enriched ? 'ai+tool' : 'tool',
+        mode: 'tool',
         intent,
         confidence,
         suggestions,
@@ -206,6 +230,10 @@ export async function POST(request: NextRequest) {
       conversationHistory,
     }
 
+    // Opportunistic warmup for cold model
+    await ensureWarm()
+    touchLastRequest()
+
     const aiResponse = await sendToAi(aiRequest, {
       userId: ctx.userId,
       provider: resolvedConfig.provider,
@@ -223,6 +251,19 @@ export async function POST(request: NextRequest) {
       status: aiResponse.error ? 'error' : 'success',
       errorMessage: aiResponse.error,
       messagePreview: userMessage,
+    })
+
+    // Record in-memory metric
+    recordMetric({
+      ts: new Date().toISOString(),
+      provider: resolvedConfig.provider ?? 'ollama',
+      model: resolvedConfig.model ?? 'qwen2.5:3b',
+      time_to_first_token_ms: -1, // batch mode — no streaming TTFT
+      total_ms: Date.now() - startMs,
+      tokens_out_estimate: estimateTokens(aiResponse.message ?? ''),
+      error: aiResponse.error ?? null,
+      mode: 'batch',
+      user: ctx.userId.slice(0, 8),
     })
 
     if (aiResponse.error && !aiResponse.message) {
@@ -345,38 +386,21 @@ async function tryAiEnrich(
 }
 
 function buildSystemPrompt(lang: Lang): string {
-  const base = HR_SYSTEM_INSTRUCTION
-  const personality = `
-
-IMPORTANT PERSONALITY GUIDELINES:
-- Be conversational, warm, and friendly — like a helpful colleague, not a robot.
-- If the user asks a general/casual question, reply naturally and conversationally first.
-- When you detect the topic is HR-related (salary, leave, attendance, employees, payroll, etc.), then provide data-driven answers.
-- You can handle small talk — respond warmly, then gently guide toward HR if appropriate.
-- Never dump raw audit data unless specifically asked for an audit.
-- Use a mix of casual tone with professional accuracy when discussing HR data.`
-
+  // COMPACT system prompt — keep short for faster inference on CPU-only VPS
   const langNote = lang === 'ms'
-    ? '\n\nReply in Bahasa Melayu. Gunakan bahasa santai tapi profesional, macam kawan sekerja.'
-    : '\n\nReply in English. Use a casual yet professional tone, like a helpful coworker.'
-  return base + personality + langNote
+    ? 'Jawab dalam Bahasa Melayu. Santai tapi profesional.'
+    : 'Reply in English. Casual but professional tone.'
+  return `You are Serapod2U HR Assistant. Be concise, warm, helpful. Use only provided context data. If data unavailable, say so. 1-4 sentences unless asked for detail. ${langNote}`
 }
 
 /**
  * System prompt optimized for casual/chitchat — warm and conversational.
  */
 function buildCasualSystemPrompt(lang: Lang): string {
-  const base = `You are a friendly HR Assistant chatbot for Serapod2U.
-You're having a casual conversation with a user. Be warm, natural, and approachable.
-If they're just saying hello or making small talk, respond naturally — like a friendly colleague.
-Gently let them know you can help with HR topics (employees, salary, leave, attendance, payroll, etc.).
-Keep responses SHORT (1-3 sentences max). Don't dump data unless asked.
-Never mention you're an AI unless directly asked. Just be helpful and human-like.`
-
   const langNote = lang === 'ms'
-    ? '\n\nJawab dalam Bahasa Melayu. Guna bahasa santai macam kawan baik.'
-    : '\n\nReply in English. Keep it casual and friendly.'
-  return base + langNote
+    ? 'Jawab dalam Bahasa Melayu. Santai macam kawan.'
+    : 'Reply in English. Casual and friendly.'
+  return `You are a friendly HR chatbot. Keep replies to 1-2 sentences. Be warm. ${langNote}`
 }
 
 /**

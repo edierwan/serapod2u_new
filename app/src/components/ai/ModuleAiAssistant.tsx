@@ -202,7 +202,7 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
     ])
   }
 
-  // ── Send message
+  // ── Send message (streaming SSE endpoint)
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || loading) return
@@ -217,13 +217,15 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
       setInput('')
       setLoading(true)
 
+      const assistantMsgId = `ai-${Date.now()}`
+
       try {
         const history = messages.slice(-10).map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
         }))
 
-        const res = await fetch(`/api/module-assistant/chat`, {
+        const res = await fetch(`/api/module-assistant/chat/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -233,28 +235,116 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
           }),
         })
 
-        const json = await res.json()
-
-        if (json.success && json.data) {
-          const data = json.data as AssistantResponse
-          retryCountRef.current = 0
-          setStatus(data.mode === 'offline' ? 'offline' : 'online')
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `ai-${Date.now()}`,
-              role: 'assistant',
-              content: data.reply,
-              timestamp: new Date(),
-              suggestions: data.suggestions,
-              cards: data.cards,
-              mode: data.mode,
-            },
-          ])
-        } else {
-          pushError(json.error ?? 'Failed to get response from assistant.')
+        if (!res.ok || !res.body) {
+          // Fallback to batch endpoint
+          const batchRes = await fetch('/api/module-assistant/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text.trim(), history, moduleId: config.moduleId }),
+          })
+          const json = await batchRes.json()
+          if (json.success && json.data) {
+            const data = json.data as AssistantResponse
+            retryCountRef.current = 0
+            setStatus(data.mode === 'offline' ? 'offline' : 'online')
+            setMessages((prev) => [
+              ...prev,
+              { id: assistantMsgId, role: 'assistant', content: data.reply, timestamp: new Date(), suggestions: data.suggestions, cards: data.cards, mode: data.mode },
+            ])
+          } else {
+            pushError(json.error ?? 'Failed to get response.')
+          }
+          setLoading(false)
+          return
         }
+
+        // Parse SSE stream
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let streamingText = ''
+        let gotFirstToken = false
+        let metaData: Partial<AssistantResponse> = {}
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) continue
+            if (!line.startsWith('data: ')) continue
+            const jsonStr = line.slice(6)
+
+            try {
+              const parsed = JSON.parse(jsonStr)
+
+              if ('t' in parsed) {
+                // Token event
+                streamingText += parsed.t
+                if (!gotFirstToken) {
+                  gotFirstToken = true
+                  setMessages((prev) => [
+                    ...prev,
+                    { id: assistantMsgId, role: 'assistant', content: streamingText, timestamp: new Date(), mode: metaData.mode },
+                  ])
+                  setLoading(false)
+                } else {
+                  setMessages((prev) =>
+                    prev.map((m) => m.id === assistantMsgId ? { ...m, content: streamingText } : m),
+                  )
+                }
+              } else if ('reply' in parsed && 'suggestions' in parsed) {
+                // Fast-path or done with full response
+                retryCountRef.current = 0
+                setStatus(parsed.mode === 'offline' ? 'offline' : 'online')
+                setMessages((prev) => {
+                  const existing = prev.find((m) => m.id === assistantMsgId)
+                  if (existing) {
+                    return prev.map((m) =>
+                      m.id === assistantMsgId
+                        ? { ...m, content: parsed.reply || streamingText, suggestions: parsed.suggestions, cards: parsed.cards, mode: parsed.mode }
+                        : m,
+                    )
+                  }
+                  return [
+                    ...prev,
+                    { id: assistantMsgId, role: 'assistant' as const, content: parsed.reply || streamingText, timestamp: new Date(), suggestions: parsed.suggestions, cards: parsed.cards, mode: parsed.mode },
+                  ]
+                })
+                setLoading(false)
+              } else if ('reply' in parsed && 'metrics' in parsed) {
+                // Stream done
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMsgId
+                      ? { ...m, content: parsed.reply || streamingText, suggestions: metaData.suggestions, cards: metaData.cards, mode: metaData.mode }
+                      : m,
+                  ),
+                )
+                setLoading(false)
+              } else if ('error' in parsed) {
+                if (streamingText) {
+                  setMessages((prev) =>
+                    prev.map((m) => m.id === assistantMsgId ? { ...m, content: streamingText + '\n\n⚠️ ' + parsed.error } : m),
+                  )
+                } else {
+                  pushError(parsed.error)
+                }
+                setLoading(false)
+              } else if ('mode' in parsed && 'lang' in parsed) {
+                // Meta event
+                metaData = parsed
+              }
+            } catch { /* malformed JSON — skip */ }
+          }
+        }
+
+        retryCountRef.current = 0
+        setStatus('online')
       } catch (err: any) {
         pushError(`Request failed: ${err.message}`)
         setStatus('offline')
@@ -470,13 +560,13 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
                 </div>
               ))}
 
-              {/* Loading */}
+              {/* Loading — only before first token arrives */}
               {loading && (
                 <div className="flex justify-start">
                   <div className="bg-muted rounded-xl px-4 py-3 rounded-bl-sm">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Thinking…</span>
+                      <span>Thinking</span>
                     </div>
                   </div>
                 </div>

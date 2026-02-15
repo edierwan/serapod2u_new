@@ -121,7 +121,14 @@ export async function callGateway(
   // Headers setup
   const headers: Record<string, string> = {};
   if (apiKey) {
-    headers['x-api-key'] = apiKey;
+    // Use Bearer token for Getouch gateway (wa.getouch.co),
+    // fallback to x-api-key for legacy self-hosted gateways
+    const isGetouchGateway = baseUrl.includes('getouch.co');
+    if (isGetouchGateway) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else {
+      headers['x-api-key'] = apiKey;
+    }
   }
   // Only add Content-Type for requests with body (POST, PUT, PATCH)
   if (method !== 'GET' && method !== 'DELETE') {

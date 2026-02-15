@@ -23,6 +23,7 @@ import {
     Megaphone,
     Bot,
     BarChart3,
+    CreditCard,
     type LucideIcon,
 } from 'lucide-react'
 
@@ -102,7 +103,6 @@ export const settingsNavGroups: SettingsNavGroup[] = [
         icon: Bell,
         description: 'Manage notification types, providers, and delivery preferences.',
         children: [
-            { id: 'settings/notifications', label: 'Notification Settings', icon: Bell, href: toHref('settings/notifications'), description: 'Overview & preferences' },
             { id: 'settings/notifications/types', label: 'Notification Types', icon: Megaphone, href: toHref('settings/notifications/types'), description: 'Configure notification categories' },
             { id: 'settings/notifications/providers', label: 'Notification Providers', icon: MessageSquare, href: toHref('settings/notifications/providers'), description: 'Email, SMS, WhatsApp channels' },
         ],
@@ -135,6 +135,15 @@ export const settingsNavGroups: SettingsNavGroup[] = [
         children: [
             { id: 'settings/ai', label: 'AI Provider Settings', icon: Bot, href: toHref('settings/ai'), description: 'Provider, model & connection config' },
             { id: 'settings/ai/usage', label: 'AI Usage', icon: BarChart3, href: toHref('settings/ai/usage'), description: 'Usage analytics & reports' },
+        ],
+    },
+    {
+        id: 'settings-payment-gateway',
+        label: 'Payment Gateway',
+        icon: CreditCard,
+        description: 'Configure payment providers for the storefront checkout.',
+        children: [
+            { id: 'settings/payment-gateway', label: 'Payment Gateway', icon: CreditCard, href: toHref('settings/payment-gateway'), description: 'Provider credentials & activation' },
         ],
     },
     {

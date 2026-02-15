@@ -398,58 +398,65 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-orange-600" />
-            Action Required
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            Loading pending actions...
+      <div className="rounded-2xl border border-gray-100 bg-white">
+        <div className="px-6 py-5 border-b border-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 animate-pulse" />
+            <div className="h-5 w-36 bg-gray-100 rounded-lg animate-pulse" />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="p-6 space-y-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-24 bg-gray-50 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      </div>
     )
   }
 
   if (pendingDocs.length === 0 && approvedH2MOrders.length === 0 && submittedOrders.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            Action Required
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto mb-3 opacity-50" />
-            <p className="text-gray-600">No pending actions</p>
-            <p className="text-sm text-gray-500 mt-1">All documents are up to date</p>
+      <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
+        <div className="px-6 py-5 border-b border-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-50">
+              <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" strokeWidth={1.75} />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900">Action Required</h3>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="text-center py-12 px-6">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-7 h-7 text-emerald-500" strokeWidth={1.5} />
+          </div>
+          <p className="text-sm font-medium text-gray-700">All caught up!</p>
+          <p className="text-xs text-gray-400 mt-1">No pending actions — all documents are up to date</p>
+        </div>
+      </div>
     )
   }
 
   const totalActions = pendingDocs.length + approvedH2MOrders.length + submittedOrders.length
 
   return (
-    <Card>
-      <CardHeader>
+    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
+      <div className="px-6 py-5 border-b border-gray-50">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-orange-600" />
-            Action Required
-            <Badge variant="destructive" className="ml-2">
-              {totalActions}
-            </Badge>
-          </CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-amber-50">
+              <AlertCircle className="w-4.5 h-4.5 text-amber-600" strokeWidth={1.75} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Action Required</h3>
+              <p className="text-xs text-gray-400">Items that need your attention</p>
+            </div>
+          </div>
+          <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-red-500 text-white text-[11px] font-bold px-1.5">
+            {totalActions}
+          </span>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+      </div>
+      <div className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
         {/* Submitted Orders Awaiting Approval */}
         {submittedOrders.map((order) => {
           const totalAmount = order.order_items.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
@@ -458,75 +465,66 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           return (
             <div
               key={`order-${order.id}`}
-              className="p-3 sm:p-4 border border-orange-200 rounded-lg bg-orange-50"
+              className="group rounded-xl border border-amber-100 bg-gradient-to-r from-amber-50/80 to-orange-50/50 p-4 transition-all hover:shadow-md hover:shadow-amber-100/50"
             >
-              {/* Mobile/Tablet Layout */}
               <div className="space-y-3">
                 {/* Header */}
-                <div className="flex items-start gap-2">
-                  <div className="p-2 rounded-lg bg-orange-600 text-white flex-shrink-0">
-                    <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                    <Package className="w-4 h-4" strokeWidth={2} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-orange-900 text-sm sm:text-base mb-1">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1">
                       Order Awaiting Approval
                     </h4>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge variant="outline" className="text-[10px] sm:text-xs font-mono bg-white">
+                      <span className="inline-flex items-center rounded-md bg-white border border-gray-200 px-2 py-0.5 text-[11px] font-mono text-gray-700">
                         {order.display_doc_no || order.order_no}
-                      </Badge>
-                      <Badge className="text-[10px] sm:text-xs bg-amber-500">
+                      </span>
+                      <span className="inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
                         {order.order_type}
-                      </Badge>
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Notification Banner */}
-                <div className="bg-white border border-orange-200 rounded-md px-2.5 py-2">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-[11px] sm:text-xs text-orange-900">
-                      This order is waiting for your approval before it can be processed.
+                {/* Details Grid */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Buyer</p>
+                    <p className="font-medium text-gray-800 truncate">{order.buyer_org.org_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Seller</p>
+                    <p className="font-medium text-gray-800 truncate">{order.seller_org.org_name}</p>
+                  </div>
+                </div>
+
+                {/* Stats Row */}
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3 text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Package className="w-3 h-3" />
+                      {totalUnits} units
+                    </span>
+                    <span className="font-medium text-gray-700">
+                      RM {totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                     </span>
                   </div>
+                  <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                    <Clock className="w-3 h-3" />
+                    {formatTimeAgo(order.created_at)}
+                  </span>
                 </div>
 
-                {/* Details Grid */}
-                <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
-                  <div>
-                    <p className="text-[10px] sm:text-xs text-orange-600 mb-0.5">Buyer</p>
-                    <p className="font-medium text-orange-900 truncate">{order.buyer_org.org_name}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] sm:text-xs text-orange-600 mb-0.5">Seller</p>
-                    <p className="font-medium text-orange-900 truncate">{order.seller_org.org_name}</p>
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div className="flex items-center gap-3 text-[11px] sm:text-xs text-orange-700">
-                  <div className="flex items-center gap-1">
-                    <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    <span>{totalUnits} units</span>
-                  </div>
-                  <div>RM {totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
-                </div>
-
-                {/* Timestamp */}
-                <div className="flex items-center gap-1 text-[10px] sm:text-xs text-orange-600">
-                  <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  <span>Submitted {formatTimeAgo(order.created_at)}</span>
-                </div>
-
-                {/* Action Button - Full Width on Mobile */}
+                {/* Action Button */}
                 <Button
                   size="sm"
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-xs sm:text-sm h-9"
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs h-9 rounded-lg shadow-sm"
                   onClick={() => onViewChange('orders')}
                 >
                   Review & Approve
-                  <ChevronRight className="w-4 h-4 ml-1" />
+                  <ChevronRight className="w-3.5 h-3.5 ml-1" />
                 </Button>
               </div>
             </div>
@@ -537,60 +535,53 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         {approvedH2MOrders.map((order) => (
           <div
             key={`h2m-${order.id}`}
-            className="p-3 sm:p-4 border border-blue-200 rounded-lg bg-blue-50"
+            className="group rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/80 to-indigo-50/50 p-4 transition-all hover:shadow-md hover:shadow-blue-100/50"
           >
             <div className="space-y-3">
               {/* Header */}
-              <div className="flex items-start gap-2">
-                <div className="p-2 rounded-lg bg-blue-600 text-white flex-shrink-0">
-                  <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-sm">
+                  <Package className="w-4 h-4" strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-blue-900 text-sm sm:text-base mb-1">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-1">
                     H2M Order Approved
                   </h4>
-                  <Badge variant="outline" className="text-[10px] sm:text-xs font-mono bg-white">
+                  <span className="inline-flex items-center rounded-md bg-white border border-gray-200 px-2 py-0.5 text-[11px] font-mono text-gray-700">
                     {order.display_doc_no || order.order_no}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Notification Banner */}
-              <div className="bg-white border border-blue-200 rounded-md px-2.5 py-2">
-                <div className="flex items-start gap-2">
-                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-[11px] sm:text-xs text-blue-900">
-                    HQ approved. You can now create a D2H order.
                   </span>
                 </div>
               </div>
 
+              {/* Info Banner */}
+              <div className="bg-white/80 border border-blue-100 rounded-lg px-3 py-2">
+                <p className="text-[11px] text-blue-800">
+                  HQ approved — you can now create a D2H order.
+                </p>
+              </div>
+
               {/* Details */}
-              <div className="space-y-1 text-xs sm:text-sm">
-                <p className="text-blue-700">
-                  From: <span className="font-medium text-blue-900">{order.buyer_org.org_name}</span>
+              <div className="text-xs space-y-1">
+                <p className="text-gray-500">
+                  From: <span className="font-medium text-gray-800">{order.buyer_org.org_name}</span>
                 </p>
-                <p className="text-[10px] sm:text-xs text-blue-600">
-                  {order.order_type} (HQ → Manufacturer)
-                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-wider text-gray-400">{order.order_type}</span>
+                  <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                    <Clock className="w-3 h-3" />
+                    {formatTimeAgo(order.approved_at)}
+                  </span>
+                </div>
               </div>
 
-              {/* Timestamp */}
-              <div className="flex items-center gap-1 text-[10px] sm:text-xs text-blue-600">
-                <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                <span>Approved {formatTimeAgo(order.approved_at)}</span>
-              </div>
-
-              {/* Action Button - Full Width on Mobile */}
+              {/* Action Button */}
               <Button
                 size="sm"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-9"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 rounded-lg shadow-sm"
                 onClick={() => window.location.href = '/dashboard?view=create-order'}
               >
                 Create D2H Order
-                <ChevronRight className="w-4 h-4 ml-1" />
+                <ChevronRight className="w-3.5 h-3.5 ml-1" />
               </Button>
             </div>
           </div>
@@ -605,20 +596,20 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                 <button
                   key={`mobile-${doc.id}`}
                   onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
-                  className="p-3 rounded-xl border border-gray-200 bg-white/80 text-left shadow-sm hover:shadow transition-all"
+                  className="p-3 rounded-xl border border-gray-100 bg-white text-left shadow-sm hover:shadow-md transition-all group"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className={`inline-flex items-center justify-center rounded-md ${getDocumentColor(doc.doc_type)} p-1.5`}>
+                    <div className={`inline-flex items-center justify-center rounded-lg ${getDocumentColor(doc.doc_type)} p-1.5`}>
                       {getDocumentIcon(doc.doc_type)}
                     </div>
-                    <Badge variant="outline" className="text-[10px] font-mono">
+                    <span className="text-[10px] font-mono text-gray-500">
                       {doc.display_doc_no || doc.doc_no}
-                    </Badge>
+                    </span>
                   </div>
                   <p className="mt-2 text-xs font-semibold text-gray-900 truncate">
                     {getDocumentTypeLabel(doc.doc_type as Document['doc_type'])}
                   </p>
-                  <p className="text-[11px] text-gray-600 truncate">
+                  <p className="text-[11px] text-gray-500 truncate">
                     Order {doc.order.display_doc_no || doc.order.order_no}
                   </p>
                   <div className="mt-2 flex items-center gap-1 text-[10px] text-gray-400">
@@ -630,81 +621,64 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
             </div>
 
             {/* Desktop / tablet list */}
-            <div className="hidden sm:flex sm:flex-col sm:gap-3">
+            <div className="hidden sm:flex sm:flex-col sm:gap-2">
               {pendingDocs.map((doc) => (
                 <div
                   key={doc.id}
-                  className="flex items-start gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                  className="group flex items-center gap-4 p-4 rounded-xl border border-gray-100 bg-white hover:bg-gray-50/50 hover:shadow-sm transition-all"
                 >
                   {/* Icon */}
-                  <div className={`p-2.5 rounded-lg ${getDocumentColor(doc.doc_type)} flex-shrink-0`}>
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${getDocumentColor(doc.doc_type)}`}>
                     {getDocumentIcon(doc.doc_type)}
                   </div>
 
                   {/* Content */}
-                  <div className="flex-1 min-w-0 space-y-2">
-                    {/* Header Row */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-semibold text-gray-900">
-                            {getDocumentTypeLabel(doc.doc_type as Document['doc_type'])}
-                          </h4>
-                          <Badge variant="outline" className="text-xs font-mono">
-                            {doc.display_doc_no || doc.doc_no}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <Button
-                        size="sm"
-                        onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
-                        className="flex-shrink-0"
-                      >
-                        Review
-                        <ChevronRight className="w-4 h-4 ml-1" />
-                      </Button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        {getDocumentTypeLabel(doc.doc_type as Document['doc_type'])}
+                      </h4>
+                      <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-100 px-2 py-0.5 text-[11px] font-mono text-gray-600">
+                        {doc.display_doc_no || doc.doc_no}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                      <span>Order: <span className="text-gray-700 font-medium">{doc.order.display_doc_no || doc.order.order_no}</span></span>
+                      <span className="text-gray-300">&bull;</span>
+                      <span>From: {doc.issued_by_org.org_name}</span>
+                      <span className="text-gray-300">&bull;</span>
+                      <span className="flex items-center gap-1 text-gray-400">
+                        <Clock className="w-3 h-3" />
+                        {formatTimeAgo(doc.created_at)}
+                      </span>
                     </div>
 
-                    {/* Payment Proof Warning - Full Width Banner with Link - Only show if required */}
+                    {/* Payment Proof Warning */}
                     {doc.doc_type === 'INVOICE' &&
                       userProfile.organizations.org_type_code === 'HQ' &&
                       requirePaymentProof && (
                         <button
                           onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
-                          className="w-full bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-center justify-between gap-2 hover:bg-amber-100 transition-colors group"
+                          className="mt-2 w-full bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5 flex items-center justify-between gap-2 hover:bg-amber-100/70 transition-colors group/inner"
                         >
                           <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-xs font-medium text-amber-900">
-                              Payment proof required
-                            </span>
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                            <span className="text-[11px] font-medium text-amber-800">Payment proof required</span>
                           </div>
-                          <div className="flex items-center gap-1 text-xs text-amber-700 group-hover:text-amber-900">
-                            <span className="font-medium">Click to upload</span>
-                            <ChevronRight className="w-3 h-3" />
-                          </div>
+                          <span className="text-[11px] text-amber-600 font-medium group-hover/inner:text-amber-800">Upload &rarr;</span>
                         </button>
                       )}
-
-                    {/* Details */}
-                    <div className="space-y-1">
-                      <p className="text-sm text-gray-600">
-                        Order: <span className="font-medium text-gray-900">{doc.order.display_doc_no || doc.order.order_no}</span>
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        From: {doc.issued_by_org.org_name}
-                      </p>
-                    </div>
-
-                    {/* Timestamp */}
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{formatTimeAgo(doc.created_at)}</span>
-                    </div>
                   </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
+                    className="flex-shrink-0 text-xs h-8 rounded-lg border-gray-200 hover:bg-gray-100 hover:border-gray-300"
+                  >
+                    Review
+                    <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -713,13 +687,14 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
 
         {pendingDocs.length >= 10 && (
-          <div className="text-center pt-2">
-            <Button variant="ghost" size="sm">
+          <div className="text-center pt-3 border-t border-gray-50">
+            <Button variant="ghost" size="sm" className="text-xs text-gray-500 hover:text-gray-800">
               View All Pending Actions
+              <ChevronRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

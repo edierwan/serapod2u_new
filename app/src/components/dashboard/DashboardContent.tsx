@@ -96,6 +96,7 @@ import AuthorizationTab from '@/components/settings/AuthorizationTab'
 import DangerZoneTab from '@/components/settings/DangerZoneTab'
 import AiProviderSettingsCard from '@/modules/hr/components/AiProviderSettingsCard'
 import AiUsageDashboard from '@/modules/settings/components/AiUsageDashboard'
+import PaymentGatewaySettingsView from '@/modules/settings/components/PaymentGatewaySettingsView'
 import { createClient } from '@/lib/supabase/client'
 import { getStorageUrl } from '@/lib/utils'
 // QR Tracking Components
@@ -444,8 +445,6 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <SettingsView userProfile={userProfile} initialTab="profile" />
       case 'settings/organization':
         return <SettingsView userProfile={userProfile} initialTab="organization" />
-      case 'settings/notifications':
-        return <SettingsView userProfile={userProfile} initialTab="notifications" />
       case 'settings/notifications/types':
         return <NotificationTypesTab userProfile={userProfile} />
       case 'settings/notifications/providers':
@@ -473,6 +472,13 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         )
       case 'settings/danger-zone':
         return <DangerZoneTab userProfile={userProfile} />
+      case 'settings/payment-gateway':
+        return (
+          <PaymentGatewaySettingsView
+            organizationId={userProfile.organizations.id}
+            canEdit={userProfile.roles.role_level <= 20}
+          />
+        )
       case 'hr-people':
         return (
           <HrPeopleView

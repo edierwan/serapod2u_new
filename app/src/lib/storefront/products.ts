@@ -1,0 +1,272 @@
+import { createClient } from '@/lib/supabase/server'
+
+function toStorefrontImageUrl(rawPath: string | null): string | null {
+  if (!rawPath) return null
+  if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!supabaseUrl) return rawPath
+
+  const cleanPath = rawPath.replace(/^\/+/, '')
+  const bucket = 'product-variants'
+
+  const objectPath = cleanPath.startsWith(`${bucket}/`)
+    ? cleanPath.slice(bucket.length + 1)
+    : cleanPath
+
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
+}
+
+// ── Types ────────────────────────────────────────────────────────
+
+export interface StorefrontProduct {
+  id: string
+  product_name: string
+  product_code: string
+  product_description: string | null
+  short_description: string | null
+  is_active: boolean | null
+  category_id: string
+  brand_id: string | null
+  category_name?: string
+  brand_name?: string
+  image_url: string | null
+  starting_price: number | null
+  variant_count: number
+  tags: string[]
+}
+
+export interface StorefrontProductDetail {
+  id: string
+  product_name: string
+  product_code: string
+  product_description: string | null
+  short_description: string | null
+  is_active: boolean | null
+  category_name: string | null
+  brand_name: string | null
+  variants: StorefrontVariant[]
+}
+
+export interface StorefrontVariant {
+  id: string
+  variant_name: string
+  variant_code: string
+  image_url: string | null
+  suggested_retail_price: number | null
+  base_cost: number | null
+  is_active: boolean | null
+  is_default: boolean | null
+  attributes: Record<string, unknown> | null
+  barcode: string | null
+  sort_order: number | null
+}
+
+export interface StorefrontCategory {
+  id: string
+  name: string
+  product_count: number
+}
+
+interface ListProductsParams {
+  search?: string
+  category?: string
+  sort?: 'newest' | 'price_asc' | 'price_desc' | 'name_asc'
+  page?: number
+  limit?: number
+}
+
+// ── Functions ────────────────────────────────────────────────────
+
+export async function listProducts(params: ListProductsParams = {}) {
+  const { search, category, sort = 'newest', page = 1, limit = 12 } = params
+  const supabase = await createClient()
+  const offset = (page - 1) * limit
+
+  // Build query for products with their variants
+  let query = supabase
+    .from('products')
+    .select(`
+      id,
+      product_name,
+      product_code,
+      product_description,
+      short_description,
+      is_active,
+      category_id,
+      brand_id,
+      created_at,
+      product_categories (id, category_name),
+      brands (id, brand_name),
+      product_variants (id, variant_name, image_url, suggested_retail_price, is_active)
+    `, { count: 'exact' })
+    .eq('is_active', true)
+
+  // Apply search filter
+  if (search) {
+    query = query.or(`product_name.ilike.%${search}%,product_code.ilike.%${search}%,product_description.ilike.%${search}%`)
+  }
+
+  // Apply category filter
+  if (category) {
+    query = query.eq('category_id', category)
+  }
+
+  // Apply sorting
+  switch (sort) {
+    case 'name_asc':
+      query = query.order('product_name', { ascending: true })
+      break
+    case 'newest':
+      query = query.order('created_at', { ascending: false })
+      break
+    default:
+      query = query.order('created_at', { ascending: false })
+  }
+
+  // Pagination
+  query = query.range(offset, offset + limit - 1)
+
+  const { data, error, count } = await query
+
+  if (error) {
+    console.error('Error fetching products:', error)
+    return { products: [], total: 0, page, limit }
+  }
+
+  // Transform data
+  const products: StorefrontProduct[] = (data || []).map((p: any) => {
+    const activeVariants = (p.product_variants || []).filter((v: any) => v.is_active !== false)
+    const prices = activeVariants
+      .map((v: any) => v.suggested_retail_price)
+      .filter((price: any) => price != null && price > 0)
+
+    const startingPrice = prices.length > 0 ? Math.min(...prices) : null
+
+    // Get first available image from variants
+    const firstImage = toStorefrontImageUrl(activeVariants.find((v: any) => v.image_url)?.image_url || null)
+
+    return {
+      id: p.id,
+      product_name: p.product_name,
+      product_code: p.product_code,
+      product_description: p.product_description,
+      short_description: p.short_description,
+      is_active: p.is_active,
+      category_id: p.category_id,
+      brand_id: p.brand_id,
+      category_name: (p.product_categories as any)?.category_name || null,
+      brand_name: (p.brands as any)?.brand_name || null,
+      image_url: firstImage,
+      starting_price: startingPrice,
+      variant_count: activeVariants.length,
+      tags: [
+        (p.brands as any)?.brand_name,
+        (p.product_categories as any)?.category_name,
+      ].filter(Boolean),
+    }
+  })
+
+  // Sort by price if requested (post-fetch since price is computed)
+  if (sort === 'price_asc') {
+    products.sort((a, b) => (a.starting_price ?? Infinity) - (b.starting_price ?? Infinity))
+  } else if (sort === 'price_desc') {
+    products.sort((a, b) => (b.starting_price ?? 0) - (a.starting_price ?? 0))
+  }
+
+  return {
+    products,
+    total: count || 0,
+    page,
+    limit,
+  }
+}
+
+export async function getProductDetail(productId: string): Promise<StorefrontProductDetail | null> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('products')
+    .select(`
+      id,
+      product_name,
+      product_code,
+      product_description,
+      short_description,
+      is_active,
+      product_categories (category_name),
+      brands (brand_name),
+      product_variants (
+        id,
+        variant_name,
+        variant_code,
+        image_url,
+        suggested_retail_price,
+        base_cost,
+        is_active,
+        is_default,
+        attributes,
+        barcode,
+        sort_order
+      )
+    `)
+    .eq('id', productId)
+    .eq('is_active', true)
+    .single()
+
+  if (error || !data) {
+    console.error('Error fetching product detail:', error)
+    return null
+  }
+
+  const p = data as any
+  return {
+    id: p.id,
+    product_name: p.product_name,
+    product_code: p.product_code,
+    product_description: p.product_description,
+    short_description: p.short_description,
+    is_active: p.is_active,
+    category_name: p.product_categories?.category_name || null,
+    brand_name: p.brands?.brand_name || null,
+    variants: (p.product_variants || [])
+      .filter((v: any) => v.is_active !== false)
+      .sort((a: any, b: any) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+      .map((v: any) => ({
+        id: v.id,
+        variant_name: v.variant_name,
+        variant_code: v.variant_code,
+        image_url: toStorefrontImageUrl(v.image_url),
+        suggested_retail_price: v.suggested_retail_price,
+        base_cost: v.base_cost,
+        is_active: v.is_active,
+        is_default: v.is_default,
+        attributes: v.attributes,
+        barcode: v.barcode,
+        sort_order: v.sort_order,
+      })),
+  }
+}
+
+export async function listCategories(): Promise<StorefrontCategory[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('product_categories')
+    .select('id, category_name')
+    .order('category_name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching categories:', error)
+    return []
+  }
+
+  // Get product counts per category
+  const categories: StorefrontCategory[] = (data || []).map((c: any) => ({
+    id: c.id,
+    name: c.category_name,
+    product_count: 0, // Will be populated separately if needed
+  }))
+
+  return categories
+}

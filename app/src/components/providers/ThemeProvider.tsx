@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 
-type Theme = 'light' | 'dark' | 'system'
+type Theme = 'light' | 'dark'
 type ThemeVariant = 'default' | 'slate' | 'ocean' | 'forest' | 'purple' | 'sunset' | 'black' | 'nord'
 
 interface ThemeContextType {
@@ -20,7 +20,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window !== 'undefined') {
       const savedTheme = localStorage.getItem('theme') as Theme | null
-      return savedTheme || 'light'
+      // Migrate 'system' to 'light' if previously saved
+      if (savedTheme === 'system' || !savedTheme) return 'light'
+      if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
+      return 'light'
     }
     return 'light'
   })
@@ -36,26 +39,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   })
 
   useEffect(() => {
-    // Note: Initial load is now handled by useState initializer
-    // This effect only runs when theme changes after mount
-    
     // Apply theme to document
     const root = document.documentElement
     
-    let effectiveTheme: 'light' | 'dark' = 'light'
-    
-    if (theme === 'system') {
-      // Use system preference
-      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      effectiveTheme = systemPrefersDark ? 'dark' : 'light'
-    } else {
-      effectiveTheme = theme
-    }
+    const effectiveTheme: 'light' | 'dark' = theme
     
     setResolvedTheme(effectiveTheme)
     
     // Remove all theme classes first
     root.classList.remove('light', 'dark', 'theme-slate', 'theme-ocean', 'theme-forest', 'theme-purple', 'theme-sunset', 'theme-black', 'theme-nord')
+    
+    // Set data-theme attribute for CSS custom property targeting
+    root.setAttribute('data-theme', effectiveTheme)
     
     // Add the effective theme class
     if (effectiveTheme === 'dark' && themeVariant === 'default') {
@@ -69,24 +64,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Save to localStorage
     localStorage.setItem('theme', theme)
   }, [theme, themeVariant])
-
-  // Listen for system theme changes when in system mode
-  useEffect(() => {
-    if (theme !== 'system') return
-
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    
-    const handleChange = (e: MediaQueryListEvent) => {
-      const effectiveTheme = e.matches ? 'dark' : 'light'
-      setResolvedTheme(effectiveTheme)
-      const root = document.documentElement
-      root.classList.remove('light', 'dark')
-      root.classList.add(effectiveTheme)
-    }
-
-    mediaQuery.addEventListener('change', handleChange)
-    return () => mediaQuery.removeEventListener('change', handleChange)
-  }, [theme])
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme)

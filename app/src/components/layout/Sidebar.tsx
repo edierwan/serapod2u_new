@@ -7,7 +7,7 @@ import { signOut } from '@/app/actions/auth'
 import { Button } from '@/components/ui/button'
 import { filterMenuItems, type MenuItem } from '@/lib/menu-access'
 import { usePermissions } from '@/hooks/usePermissions'
-import { getStorageUrl } from '@/lib/utils'
+import { getStorageUrl, cn } from '@/lib/utils'
 import {
   Package,
   BarChart3,
@@ -155,6 +155,67 @@ const secondaryItems: MenuItem[] = [
     }
   }
 ]
+
+
+interface SidebarNavItemProps {
+  icon: any
+  label: string
+  isActive?: boolean
+  hasChildren?: boolean
+  isOpen?: boolean
+  onClick?: () => void
+  isCollapsed?: boolean
+  className?: string
+}
+
+const SidebarNavItem = ({
+  icon: Icon,
+  label,
+  isActive,
+  hasChildren,
+  isOpen,
+  onClick,
+  isCollapsed,
+  className,
+}: SidebarNavItemProps) => {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-colors group select-none outline-none focus-visible:ring-2 focus-visible:ring-gray-200",
+        isActive
+          ? "bg-gray-100 dark:bg-gray-800/80 text-gray-900 dark:text-gray-100 font-semibold"
+          : "text-gray-600 dark:text-gray-400 font-normal hover:bg-gray-50 dark:hover:bg-gray-800/40",
+        className
+      )}
+      title={isCollapsed ? label : undefined}
+    >
+      <Icon
+        className={cn(
+          "w-[18px] h-[18px] flex-shrink-0 transition-colors",
+          isActive
+            ? "text-gray-600 dark:text-gray-300"
+            : "text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400"
+        )}
+        strokeWidth={1.5}
+      />
+      {!isCollapsed && (
+        <>
+          <span className="flex-1 text-left leading-none">{label}</span>
+          {hasChildren && (
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 text-gray-400 ml-auto transition-transform duration-200",
+                isOpen && "rotate-90"
+              )}
+              strokeWidth={1.5}
+            />
+          )}
+        </>
+      )}
+    </button>
+  )
+}
 
 export default function Sidebar({ userProfile, currentView, onViewChange, onCollapseChange, initialCollapsed }: SidebarProps) {
   const { hasPermission, loading: permissionsLoading, permissions } = usePermissions(
@@ -601,11 +662,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
 
         {/* Navigation */}
         <div className="flex-1 overflow-y-auto">
-          <nav className="p-4 space-y-2">
+          <nav className="p-2 flex flex-col gap-4">
             {/* Main Navigation */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               {filteredNavigationItems.map((item: any) => {
-                const Icon = item.icon
                 // Check if current view matches any submenu or nested submenu
                 const isActive = currentView === item.id ||
                   // HR module: highlight when on any HR sub-route
@@ -629,7 +689,13 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
 
                 return (
                   <div key={item.id}>
-                    <button
+                    <SidebarNavItem
+                      icon={item.icon}
+                      label={item.label}
+                      isActive={isActive}
+                      hasChildren={!!item.submenu}
+                      isOpen={isMenuOpen}
+                      isCollapsed={isCollapsed}
                       onClick={() => {
                         if (item.submenu) {
                           setExpandedMenu(isMenuOpen ? null : item.id)
@@ -644,30 +710,14 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                           }
                         }
                       }}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
-                        : 'text-foreground hover:bg-accent'
-                        }`}
-                      title={isCollapsed ? item.label : undefined}
-                    >
-                      <Icon className="h-5 w-5 flex-shrink-0" />
-                      {!isCollapsed && (
-                        <div className="text-left flex-1">
-                          <div>{item.label}</div>
-                        </div>
-                      )}
-                      {!isCollapsed && item.submenu && (
-                        <ChevronDown className={`h-4 w-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
-                      )}
-                    </button>
+                    />
 
                     {/* Submenu */}
                     {item.submenu && isMenuOpen && !isCollapsed && (
-                      <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
+                      <div className="mt-1 space-y-0.5 ml-4 border-l border-gray-100 pl-2">
                         {item.submenu.map((subitem: any) => {
                           const hasNestedSubmenu = subitem.nestedSubmenu && subitem.nestedSubmenu.length > 0
                           const isNestedMenuOpen = expandedNestedMenu === subitem.id
-                          const SubIcon = subitem.icon
 
                           // Check if this submenu or any of its nested items are active
                           const isSubitemActive = currentView === subitem.id ||
@@ -677,7 +727,14 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
 
                           return (
                             <div key={subitem.id}>
-                              <button
+                              <SidebarNavItem
+                                icon={subitem.icon}
+                                label={subitem.label}
+                                isActive={isSubitemActive}
+                                hasChildren={hasNestedSubmenu}
+                                isOpen={isNestedMenuOpen}
+                                isCollapsed={isCollapsed}
+                                className="py-2 h-9"
                                 onClick={() => {
                                   if (hasNestedSubmenu) {
                                     setExpandedNestedMenu(isNestedMenuOpen ? null : subitem.id)
@@ -692,29 +749,24 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                                     }
                                   }
                                 }}
-                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isSubitemActive
-                                  ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
-                                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                                  }`}
-                              >
-                                <SubIcon className="h-4 w-4" />
-                                <span className="flex-1 text-left">{subitem.label}</span>
-                                {hasNestedSubmenu && (
-                                  <ChevronRight className={`h-3 w-3 transition-transform ${isNestedMenuOpen ? 'rotate-90' : ''}`} />
-                                )}
-                              </button>
+                              />
 
                               {/* Nested Submenu */}
                               {hasNestedSubmenu && isNestedMenuOpen && (
-                                <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
+                                <div className="mt-0.5 space-y-0.5 ml-4 border-l border-gray-100 pl-2">
                                   {subitem.nestedSubmenu.map((nestedItem: any) => {
-                                    const NestedIcon = nestedItem.icon
                                     const targetView = nestedItem.targetView || nestedItem.id
                                     const isNestedActive = currentView === nestedItem.id || currentView === targetView
 
                                     return (
-                                      <button
+                                      <SidebarNavItem
                                         key={nestedItem.id}
+                                        icon={nestedItem.icon}
+                                        label={nestedItem.label}
+                                        isActive={isNestedActive}
+                                        hasChildren={false}
+                                        isCollapsed={isCollapsed}
+                                        className="py-2 h-9"
                                         onClick={() => {
                                           const modulePath = resolveModulePath(targetView)
                                           if (modulePath) {
@@ -724,14 +776,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                                           }
                                           setIsMobileMenuOpen(false)
                                         }}
-                                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isNestedActive
-                                          ? 'bg-blue-100 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300'
-                                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                                          }`}
-                                      >
-                                        <NestedIcon className="h-4 w-4" />
-                                        <span>{nestedItem.label}</span>
-                                      </button>
+                                      />
                                     )
                                   })}
                                 </div>
@@ -747,34 +792,25 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
             </div>
 
             {/* Divider */}
-            <div className="border-t border-border my-4" />
+            <div className="border-t border-border/50 mx-2" />
 
             {/* Secondary Navigation */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               {filteredSecondaryItems.map((item) => {
-                const Icon = item.icon
                 const isActive = currentView === item.id
 
                 return (
-                  <button
+                  <SidebarNavItem
                     key={item.id}
+                    icon={item.icon}
+                    label={item.label}
+                    isActive={isActive}
+                    isCollapsed={isCollapsed}
                     onClick={() => {
                       onViewChange(item.id)
                       setIsMobileMenuOpen(false) // Close mobile menu on navigation
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
-                      : 'text-foreground hover:bg-accent'
-                      }`}
-                    title={isCollapsed ? item.label : undefined}
-                  >
-                    <Icon className="h-5 w-5 flex-shrink-0" />
-                    {!isCollapsed && (
-                      <div className="text-left">
-                        <div>{item.label}</div>
-                      </div>
-                    )}
-                  </button>
+                  />
                 )
               })}
             </div>

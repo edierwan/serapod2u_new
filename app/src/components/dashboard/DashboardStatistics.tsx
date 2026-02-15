@@ -171,73 +171,110 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
       title: 'Pending Actions',
       value: stats.pendingDocuments,
       icon: AlertCircle,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-50',
-      description: 'Documents awaiting acknowledgment'
+      color: 'text-amber-600',
+      bgColor: 'bg-gradient-to-br from-amber-50 to-orange-50',
+      iconBg: 'bg-amber-100',
+      borderColor: 'border-amber-100',
+      description: 'Documents awaiting acknowledgment',
+      trend: stats.pendingDocuments > 0 ? 'needs-attention' : 'ok'
     },
     {
       title: 'Active Orders',
       value: stats.activeOrders,
       icon: Package,
       color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
-      description: 'Orders in progress'
+      bgColor: 'bg-gradient-to-br from-blue-50 to-indigo-50',
+      iconBg: 'bg-blue-100',
+      borderColor: 'border-blue-100',
+      description: 'Orders in progress',
+      trend: 'neutral'
     },
     {
       title: 'Completed This Month',
       value: stats.completedThisMonth,
       icon: CheckCircle2,
-      color: 'text-green-600',
-      bgColor: 'bg-green-50',
-      description: 'Successfully closed orders'
+      color: 'text-emerald-600',
+      bgColor: 'bg-gradient-to-br from-emerald-50 to-teal-50',
+      iconBg: 'bg-emerald-100',
+      borderColor: 'border-emerald-100',
+      description: 'Successfully closed orders',
+      trend: 'positive'
     },
     {
       title: 'Documents Today',
       value: stats.documentsToday,
       icon: FileText,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-50',
-      description: 'New documents generated'
+      color: 'text-violet-600',
+      bgColor: 'bg-gradient-to-br from-violet-50 to-purple-50',
+      iconBg: 'bg-violet-100',
+      borderColor: 'border-violet-100',
+      description: 'New documents generated',
+      trend: 'neutral'
     }
   ]
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="animate-pulse">
-            <CardContent className="p-3 sm:p-4 lg:p-6">
-              <div className="h-16 sm:h-20 bg-gray-200 rounded"></div>
-            </CardContent>
-          </Card>
+          <div key={i} className="rounded-2xl border bg-white p-5 animate-pulse">
+            <div className="flex items-center justify-between mb-4">
+              <div className="h-10 w-10 bg-gray-100 rounded-xl" />
+              <div className="h-4 w-16 bg-gray-100 rounded-full" />
+            </div>
+            <div className="h-8 w-12 bg-gray-100 rounded-lg mb-1" />
+            <div className="h-3 w-24 bg-gray-50 rounded-full" />
+          </div>
         ))}
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {statCards.map((stat, index) => (
-        <Card key={index} className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 mb-1">
-                  {stat.title}
-                </p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
-                  {stat.value}
-                </p>
-                <p className="text-xs text-gray-500 hidden sm:block">
-                  {stat.description}
-                </p>
+        <div
+          key={index}
+          className={`group relative overflow-hidden rounded-2xl border ${stat.borderColor} ${stat.bgColor} p-5 transition-all duration-300 hover:shadow-lg hover:shadow-gray-200/50 hover:-translate-y-0.5`}
+        >
+          {/* Subtle radial glow on hover */}
+          <div className="absolute inset-0 bg-white/0 group-hover:bg-white/30 transition-colors duration-300" />
+          
+          <div className="relative z-10">
+            {/* Top row: icon + trend indicator */}
+            <div className="flex items-center justify-between mb-4">
+              <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${stat.iconBg} transition-transform duration-300 group-hover:scale-110`}>
+                <stat.icon className={`w-5 h-5 ${stat.color}`} strokeWidth={1.75} />
               </div>
-              <div className={`p-2 sm:p-3 rounded-lg ${stat.bgColor}`}>
-                <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
-              </div>
+              {stat.trend === 'needs-attention' && stat.value > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
+                  <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
+                  Action
+                </span>
+              )}
+              {stat.trend === 'positive' && stat.value > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  <TrendingUp className="w-3 h-3" />
+                </span>
+              )}
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Value */}
+            <p className="text-3xl font-bold text-gray-900 tracking-tight mb-0.5">
+              {stat.value}
+            </p>
+            
+            {/* Title */}
+            <p className="text-sm font-medium text-gray-600 mb-0.5">
+              {stat.title}
+            </p>
+            
+            {/* Description — hidden on mobile */}
+            <p className="text-xs text-gray-400 hidden sm:block">
+              {stat.description}
+            </p>
+          </div>
+        </div>
       ))}
     </div>
   )
