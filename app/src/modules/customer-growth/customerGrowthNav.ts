@@ -20,6 +20,9 @@ import {
     Megaphone,
     Trophy,
     Gamepad2,
+    Store,
+    ImageIcon,
+    ShoppingBag,
     type LucideIcon,
 } from 'lucide-react'
 import { isCrmViewId } from '@/modules/crm/crmNav'
@@ -80,6 +83,13 @@ export const customerGrowthModules: CustomerGrowthNavChild[] = [
         route: '/catalog',
         description: 'Consumer-facing product catalog with pricing and variants.',
     },
+    {
+        id: 'ecommerce',
+        label: 'E-commerce',
+        icon: Store,
+        route: '/ecommerce',
+        description: 'Online store management, hero banners, and storefront settings.',
+    },
 ]
 
 // Group the modules into card groups for the landing page AND top nav dropdowns
@@ -125,9 +135,25 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
             { id: 'product-catalog', label: 'Product Catalog', icon: ShoppingCart, route: '/catalog', description: 'Browse and manage product catalog', href: '/catalog' },
         ],
     },
+    {
+        id: 'cg-ecommerce',
+        label: 'E-commerce',
+        icon: Store,
+        description: 'Manage your online storefront — hero banners, promotions, and store settings.',
+        children: [
+            { id: 'store-banner-manager', label: 'Hero Banners', icon: ImageIcon, route: '/ecommerce', description: 'Manage storefront hero banner slides', href: '/ecommerce' },
+            { id: 'store-orders', label: 'Store Orders', icon: ShoppingBag, route: '/ecommerce', description: 'View and manage online store orders', href: '/ecommerce' },
+        ],
+    },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────
+
+/** E-commerce view IDs */
+const ecommerceViewIds = new Set(['ecommerce', 'store-banner-manager', 'store-orders'])
+export function isEcommerceViewId(viewId: string): boolean {
+    return ecommerceViewIds.has(viewId)
+}
 
 /** Check if a given view ID belongs to the Customer & Growth domain.
  *  Delegates to each child module's detector so sub-views (e.g. 'support-inbox') are also captured. */
@@ -136,7 +162,8 @@ export function isCustomerGrowthViewId(viewId: string): boolean {
         isCrmViewId(viewId) ||
         isMarketingViewId(viewId) ||
         isLoyaltyViewId(viewId) ||
-        isCatalogViewId(viewId)
+        isCatalogViewId(viewId) ||
+        isEcommerceViewId(viewId)
 }
 
 /** Determine which child module a view belongs to (returns module id, or null) */
@@ -145,6 +172,7 @@ export function getActiveCustomerGrowthModule(viewId: string): string | null {
     if (isMarketingViewId(viewId)) return 'mktg'
     if (isLoyaltyViewId(viewId)) return 'loyalty'
     if (isCatalogViewId(viewId)) return 'catalog'
+    if (isEcommerceViewId(viewId)) return 'ecommerce'
     return null
 }
 
@@ -154,6 +182,7 @@ export function getActiveCustomerGrowthGroup(viewId: string): string | null {
     if (isMarketingViewId(viewId)) return 'cg-marketing'
     if (isLoyaltyViewId(viewId)) return 'cg-loyalty'
     if (isCatalogViewId(viewId)) return 'cg-catalog'
+    if (isEcommerceViewId(viewId)) return 'cg-ecommerce'
     return null
 }
 

@@ -1,59 +1,67 @@
 import Link from 'next/link'
 import { listProducts, listCategories } from '@/lib/storefront/products'
+import { listActiveStoreBanners } from '@/lib/storefront/banners'
 import StorefrontProductCard from '@/components/storefront/ProductCard'
+import StoreHeroSlider from '@/components/storefront/StoreHeroSlider'
 import { ArrowRight, Package, ShieldCheck, Truck } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 export default async function StorefrontHomePage() {
-  // Fetch featured products (latest)
-  const { products } = await listProducts({ sort: 'newest', limit: 6 })
-  const categories = await listCategories()
+  // Fetch featured products (latest) + banners in parallel
+  const [{ products }, categories, banners] = await Promise.all([
+    listProducts({ sort: 'newest', limit: 6 }),
+    listCategories(),
+    listActiveStoreBanners(),
+  ])
 
   return (
     <div>
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-        {/* Subtle animated gradient overlay */}
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            background: 'radial-gradient(circle at 30% 50%, rgba(59,130,246,0.15), transparent 50%), radial-gradient(circle at 70% 50%, rgba(168,85,247,0.1), transparent 50%)',
-          }}
-        />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
-          <div className="max-w-2xl">
-            <span className="inline-block px-3 py-1 text-xs font-medium tracking-wider uppercase text-blue-400 bg-blue-500/10 rounded-full mb-4">
-              New Collection
-            </span>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-[1.1] tracking-tight">
-              Premium Products,{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-violet-400">
-                Delivered Right.
+      {/* Hero Section — dynamic slider if banners exist, otherwise static fallback */}
+      {banners.length > 0 ? (
+        <StoreHeroSlider banners={banners} interval={6000} />
+      ) : (
+        <section className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+          <div
+            className="absolute inset-0 opacity-30"
+            style={{
+              background: 'radial-gradient(circle at 30% 50%, rgba(59,130,246,0.15), transparent 50%), radial-gradient(circle at 70% 50%, rgba(168,85,247,0.1), transparent 50%)',
+            }}
+          />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
+            <div className="max-w-2xl">
+              <span className="inline-block px-3 py-1 text-xs font-medium tracking-wider uppercase text-blue-400 bg-blue-500/10 rounded-full mb-4">
+                New Collection
               </span>
-            </h1>
-            <p className="mt-5 text-lg text-gray-300 max-w-lg leading-relaxed">
-              Discover our curated selection of quality devices and accessories.
-              Shop with confidence — fast checkout, secure payments.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/store/products"
-                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-blue-600 rounded-full hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/25"
-              >
-                Shop Now
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                href="/login"
-                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-gray-300 bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-all border border-white/10"
-              >
-                Business Login
-              </Link>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-[1.1] tracking-tight">
+                Premium Products,{' '}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-violet-400">
+                  Delivered Right.
+                </span>
+              </h1>
+              <p className="mt-5 text-lg text-gray-300 max-w-lg leading-relaxed">
+                Discover our curated selection of quality devices and accessories.
+                Shop with confidence — fast checkout, secure payments.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  href="/store/products"
+                  className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-blue-600 rounded-full hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/25"
+                >
+                  Shop Now
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="/login"
+                  className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-gray-300 bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-all border border-white/10"
+                >
+                  Business Login
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Trust Badges */}
       <section className="border-b border-gray-100 bg-white">

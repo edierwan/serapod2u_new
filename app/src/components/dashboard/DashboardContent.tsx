@@ -137,7 +137,8 @@ import { isCatalogViewId } from '@/modules/catalog/catalogNav'
 // Customer & Growth Module Components
 import CustomerGrowthLandingView from '@/modules/customer-growth/components/CustomerGrowthLandingView'
 import CustomerGrowthTopNav from '@/modules/customer-growth/components/CustomerGrowthTopNav'
-import { isCustomerGrowthViewId } from '@/modules/customer-growth/customerGrowthNav'
+import { isCustomerGrowthViewId, isEcommerceViewId } from '@/modules/customer-growth/customerGrowthNav'
+import StoreBannerManagerView from '@/modules/ecommerce/components/StoreBannerManagerView'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
 import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
@@ -204,11 +205,13 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     return false
   })
 
-  // ── HR banner image config ──────────────────────────────────────
-  const [hrBannerUrl, setHrBannerUrl] = useState<string | null>(null)
+  // ── Module banner image configs (all modules) ──────────────────
+  const [moduleBannerUrls, setModuleBannerUrls] = useState<Record<string, string | null>>({
+    dashboard: null, supply: null, customer: null, hr: null, finance: null, settings: null,
+  })
 
   useEffect(() => {
-    async function loadHrBanner() {
+    async function loadModuleBanners() {
       if (!userProfile.organization_id) return
       try {
         const supabase = createClient()
@@ -225,17 +228,24 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
           settings = data.settings as Record<string, any>
         }
 
-        const bannerPath = settings?.hr_config?.banner_image_url
-        if (bannerPath) {
-          setHrBannerUrl(
-            bannerPath.startsWith('http') ? bannerPath : getStorageUrl(bannerPath)
-          )
+        const banners = settings?.module_banners || {}
+        const resolved: Record<string, string | null> = {}
+        const moduleKeys = ['dashboard', 'supply', 'customer', 'hr', 'finance', 'settings']
+        for (const key of moduleKeys) {
+          // For HR, also check legacy path as fallback
+          const path = banners[key] || (key === 'hr' ? settings?.hr_config?.banner_image_url : null)
+          if (path) {
+            resolved[key] = path.startsWith('http') ? path : getStorageUrl(path)
+          } else {
+            resolved[key] = null
+          }
         }
+        setModuleBannerUrls(resolved)
       } catch (e) {
-        console.error('Failed to load HR banner config:', e)
+        console.error('Failed to load module banner configs:', e)
       }
     }
-    loadHrBanner()
+    loadModuleBanners()
   }, [userProfile.organization_id])
 
   // Check for stored view from sessionStorage (set by EngagementShell when navigating from other pages)
@@ -375,7 +385,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <QualityIssuesView userProfile={userProfile} />
 
       case 'supply-chain':
-        return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleViewChange} orgTypeCode={userProfile.organizations?.org_type_code} roleLevel={userProfile.roles?.role_level} />
+        return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleViewChange} orgTypeCode={userProfile.organizations?.org_type_code} roleLevel={userProfile.roles?.role_level} bannerImageUrl={moduleBannerUrls.supply} />
 
       case 'loyalty':
         return <LoyaltyLandingView userName={userProfile.full_name} onViewChange={handleViewChange} hideHeroBanner />
@@ -390,7 +400,12 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <CatalogLandingView userName={userProfile.full_name} onViewChange={handleViewChange} hideHeroBanner />
 
       case 'customer-growth':
-        return <CustomerGrowthLandingView userName={userProfile.full_name} onViewChange={handleViewChange} />
+        return <CustomerGrowthLandingView userName={userProfile.full_name} onViewChange={handleViewChange} bannerImageUrl={moduleBannerUrls.customer} />
+
+      case 'store-banner-manager':
+        return <StoreBannerManagerView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'store-orders':
+        return <StoreBannerManagerView userProfile={userProfile} onViewChange={handleViewChange} />
 
       case 'inventory':
       case 'inventory-list':
@@ -440,7 +455,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
       // ── Settings Module Views ──────────────────────────────────
       case 'settings':
-        return <SettingsLandingView userName={userProfile.full_name} roleLevel={userProfile.roles.role_level} />
+        return <SettingsLandingView userName={userProfile.full_name} roleLevel={userProfile.roles.role_level} bannerImageUrl={moduleBannerUrls.settings} />
       case 'settings/profile':
         return <SettingsView userProfile={userProfile} initialTab="profile" />
       case 'settings/organization':
@@ -580,11 +595,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
           />
         )
       case 'hr':
-        return <HrLandingView userName={userProfile.full_name} bannerImageUrl={hrBannerUrl} />
+        return <HrLandingView userName={userProfile.full_name} bannerImageUrl={moduleBannerUrls.hr} />
 
       // ── Finance Module Views ──────────────────────────────────
       case 'finance':
-        return <FinanceLandingView userName={userProfile.full_name} />
+        return <FinanceLandingView userName={userProfile.full_name} bannerImageUrl={moduleBannerUrls.finance} />
       case 'finance/gl/journals':
         return <GLJournalView userProfile={userProfile} />
       case 'finance/gl/pending-postings':
@@ -651,7 +666,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <CashFlowView userProfile={userProfile} />
 
       default:
-        return <DashboardOverview userProfile={userProfile} onViewChange={handleViewChange} />
+        return <DashboardOverview userProfile={userProfile} onViewChange={handleViewChange} bannerImageUrl={moduleBannerUrls.dashboard} />
     }
   }
 

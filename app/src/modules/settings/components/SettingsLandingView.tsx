@@ -25,13 +25,15 @@ interface SettingsLandingViewProps {
     userName?: string | null
     /** User role level — used to filter Authorization and Danger Zone */
     roleLevel?: number
+    /** Custom banner image URL */
+    bannerImageUrl?: string | null
 }
 
 /**
  * Settings Landing / Overview page.
  * Shows hero banner + grouped quick-link cards generated from settingsNav config.
  */
-export default function SettingsLandingView({ userName, roleLevel }: SettingsLandingViewProps) {
+export default function SettingsLandingView({ userName, roleLevel, bannerImageUrl }: SettingsLandingViewProps) {
     const router = useRouter()
 
     // Filter groups based on role level
@@ -46,7 +48,7 @@ export default function SettingsLandingView({ userName, roleLevel }: SettingsLan
     return (
         <div className="w-full space-y-6">
             {/* Hero Banner */}
-            <SettingsHeroBanner userName={userName ?? null} />
+            <SettingsHeroBanner userName={userName ?? null} bannerImageUrl={bannerImageUrl} />
 
             {/* Section subtitle */}
             <div>

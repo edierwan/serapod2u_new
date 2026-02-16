@@ -28,9 +28,10 @@ interface UserProfile {
 interface DashboardOverviewProps {
   userProfile: UserProfile
   onViewChange: (view: string) => void
+  bannerImageUrl?: string | null
 }
 
-export default function DashboardOverview({ userProfile, onViewChange }: DashboardOverviewProps) {
+export default function DashboardOverview({ userProfile, onViewChange, bannerImageUrl }: DashboardOverviewProps) {
   const handleViewDocument = (orderId: string, documentId: string, docType: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST', docNo?: string) => {
     // Store the order ID and document ID in session storage
     // Use 'trackingOrderId' to match what TrackOrderView expects
@@ -74,6 +75,7 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
         title={`${getGreeting()}${userProfile.organizations?.org_name ? ',' : ''}`}
         subtitle={userProfile.organizations?.org_name || undefined}
         userName={userProfile.email}
+        bannerImageUrl={bannerImageUrl}
       />
 
       {/* Statistics Cards */}
