@@ -139,6 +139,7 @@ import CustomerGrowthLandingView from '@/modules/customer-growth/components/Cust
 import CustomerGrowthTopNav from '@/modules/customer-growth/components/CustomerGrowthTopNav'
 import { isCustomerGrowthViewId, isEcommerceViewId } from '@/modules/customer-growth/customerGrowthNav'
 import StoreBannerManagerView from '@/modules/ecommerce/components/StoreBannerManagerView'
+import StoreOrdersView from '@/modules/ecommerce/components/StoreOrdersView'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
 import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
@@ -405,7 +406,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'store-banner-manager':
         return <StoreBannerManagerView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'store-orders':
-        return <StoreBannerManagerView userProfile={userProfile} onViewChange={handleViewChange} />
+        return <StoreOrdersView userProfile={userProfile} onViewChange={handleViewChange} />
 
       case 'inventory':
       case 'inventory-list':

@@ -144,11 +144,11 @@ export async function middleware(request: NextRequest) {
   if (qrRedirect) return qrRedirect;
 
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront']
+  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront']
 
   // Check if current path is public
   const isPublicPath = PUBLIC_PATHS.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
+    path === '/' ? request.nextUrl.pathname === '/' : request.nextUrl.pathname.startsWith(path)
   )
 
   // Allow public paths to proceed without auth check

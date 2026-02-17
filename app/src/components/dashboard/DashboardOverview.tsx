@@ -4,7 +4,6 @@ import { useState } from 'react'
 import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
 import RecentActivities from './RecentActivities'
-import SupplyChainProgressBoard from './SupplyChainProgressBoard'
 import ModuleBanner from '@/components/ui/ModuleBanner'
 
 interface UserProfile {
@@ -94,9 +93,6 @@ export default function DashboardOverview({ userProfile, onViewChange, bannerIma
           <RecentActivities userProfile={userProfile} />
         </div>
       </div>
-
-      {/* Network Supply Pipeline */}
-      <SupplyChainProgressBoard userProfile={userProfile} />
     </div>
   )
 }

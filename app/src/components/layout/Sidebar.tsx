@@ -44,6 +44,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useTranslation } from '@/lib/i18n/LanguageProvider'
 import { isSupplyChainViewId } from '@/modules/supply-chain/supplyChainNav'
 import { isCustomerGrowthViewId } from '@/modules/customer-growth/customerGrowthNav'
 
@@ -223,6 +224,21 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
     userProfile?.role_code,
     userProfile?.department_id
   )
+  const { t } = useTranslation()
+
+  // Translation map for sidebar navigation labels
+  const labelMap: Record<string, string> = {
+    'Dashboard': t('sidebar.dashboard'),
+    'Reporting': t('sidebar.reporting'),
+    'Supply Chain': t('sidebar.supplyChain'),
+    'Customer & Growth': t('sidebar.customerGrowth'),
+    'HR': t('sidebar.hr'),
+    'Finance': t('sidebar.finance'),
+    'My Profile': t('sidebar.myProfile'),
+    'User Management': t('sidebar.userManagement'),
+    'Settings': t('sidebar.settings'),
+  }
+  const tLabel = (label: string) => labelMap[label] || label
   const [isCollapsed, setIsCollapsedRaw] = useState(() => {
     if (typeof initialCollapsed === 'boolean') return initialCollapsed
     if (typeof window !== 'undefined') {
@@ -691,7 +707,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                   <div key={item.id}>
                     <SidebarNavItem
                       icon={item.icon}
-                      label={item.label}
+                      label={tLabel(item.label)}
                       isActive={isActive}
                       hasChildren={!!item.submenu}
                       isOpen={isMenuOpen}
@@ -803,7 +819,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                   <SidebarNavItem
                     key={item.id}
                     icon={item.icon}
-                    label={item.label}
+                    label={tLabel(item.label)}
                     isActive={isActive}
                     isCollapsed={isCollapsed}
                     onClick={() => {
@@ -851,10 +867,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
             onClick={handleSignOut}
             disabled={isSigningOut}
             className="w-full justify-start gap-3 text-foreground hover:bg-accent"
-            title={isCollapsed ? 'Sign Out' : undefined}
+            title={isCollapsed ? t('common.signOut') : undefined}
           >
             <LogOut className="h-4 w-4 flex-shrink-0" />
-            {!isCollapsed && (isSigningOut ? 'Signing out...' : 'Sign Out')}
+            {!isCollapsed && (isSigningOut ? t('common.loading') : t('common.signOut'))}
           </Button>
         </div>
       </div>

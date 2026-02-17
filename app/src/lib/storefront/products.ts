@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 function toStorefrontImageUrl(rawPath: string | null): string | null {
   if (!rawPath) return null
@@ -80,7 +80,7 @@ interface ListProductsParams {
 
 export async function listProducts(params: ListProductsParams = {}) {
   const { search, category, sort = 'newest', page = 1, limit = 12 } = params
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const offset = (page - 1) * limit
 
   // Build query for products with their variants
@@ -183,7 +183,7 @@ export async function listProducts(params: ListProductsParams = {}) {
 }
 
 export async function getProductDetail(productId: string): Promise<StorefrontProductDetail | null> {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data, error } = await supabase
     .from('products')
@@ -249,7 +249,7 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
 }
 
 export async function listCategories(): Promise<StorefrontCategory[]> {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data, error } = await supabase
     .from('product_categories')

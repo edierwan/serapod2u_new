@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { AuthProvider } from '@/components/providers/AuthProvider'
 import { ThemeProvider } from '@/components/providers/ThemeProvider'
+import { LanguageProvider } from '@/lib/i18n/LanguageProvider'
 import { Toaster } from '@/components/ui/toaster'
 
 // const inter = Inter({ subsets: ['latin'] })
@@ -42,9 +43,11 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans antialiased">
         <ThemeProvider>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              {children}
+            </AuthProvider>
+          </LanguageProvider>
           <Toaster />
         </ThemeProvider>
       </body>

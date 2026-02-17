@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useTheme } from '@/components/providers/ThemeProvider'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -135,16 +136,16 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
     const isNegative = changeType === 'decrease'
 
     return (
-        <Card className="relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-0 bg-white">
+        <Card className="relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-0 bg-card">
             <div className={`absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full opacity-10 group-hover:opacity-20 transition-opacity`} style={{ backgroundColor: color }} />
             <CardContent className="pt-6">
                 <div className="flex items-start justify-between">
                     <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-500">{title}</p>
+                        <p className="text-sm font-medium text-muted-foreground">{title}</p>
                         {loading ? (
-                            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                         ) : (
-                            <div className="text-3xl font-bold text-gray-900 tracking-tight">
+                            <div className="text-3xl font-bold text-foreground tracking-tight">
                                 {typeof value === 'number' ? (
                                     <AnimatedCounter 
                                         value={value} 
@@ -159,9 +160,9 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                                 <Badge 
                                     variant="secondary" 
                                     className={`text-xs font-medium ${
-                                        isPositive ? 'bg-green-100 text-green-700' : 
-                                        isNegative ? 'bg-red-100 text-red-700' : 
-                                        'bg-gray-100 text-gray-600'
+                                        isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
+                                        isNegative ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 
+                                        'bg-muted text-muted-foreground'
                                     }`}
                                 >
                                     {isPositive && <ArrowUpRight className="w-3 h-3 mr-0.5" />}
@@ -169,7 +170,7 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                                     {Math.abs(change).toFixed(1)}%
                                 </Badge>
                             )}
-                            {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
+                            {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
                         </div>
                     </div>
                     <div className={`p-3 rounded-xl`} style={{ backgroundColor: `${color}15` }}>
@@ -191,6 +192,14 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
     const [activeTab, setActiveTab] = useState('overview')
     const [financialData, setFinancialData] = useState<any>(null)
     const supabase = createClient()
+    const { resolvedTheme } = useTheme()
+    const isDark = resolvedTheme === 'dark'
+
+    // Theme-aware chart colors
+    const chartGridColor = isDark ? '#374151' : '#f0f0f0'
+    const chartTickColor = isDark ? '#9ca3af' : '#6b7280'
+    const tooltipBg = isDark ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)'
+    const tooltipStyle = { borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)', backgroundColor: tooltipBg, color: isDark ? '#f3f4f6' : undefined }
 
     useEffect(() => {
         const fetchDistributors = async () => {
@@ -391,13 +400,13 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
     if (loading && !data) {
         return (
-            <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+            <div className="flex h-screen items-center justify-center bg-background">
                 <div className="text-center space-y-4">
                     <div className="relative">
-                        <div className="w-16 h-16 border-4 border-blue-200 rounded-full animate-pulse" />
+                        <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-800 rounded-full animate-pulse" />
                         <Loader2 className="w-8 h-8 text-blue-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin" />
                     </div>
-                    <p className="text-gray-500 font-medium">Loading executive dashboard...</p>
+                    <p className="text-muted-foreground font-medium">Loading executive dashboard...</p>
                 </div>
             </div>
         )
@@ -406,25 +415,25 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
     const periodDays = differenceInDays(new Date(dateParams.endDate), new Date(dateParams.startDate))
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+        <div className="min-h-screen bg-background">
             <div className="p-6 lg:p-8 space-y-8 max-w-[1600px] mx-auto">
                 {/* Header */}
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                     <div className="space-y-1">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-200">
+                            <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-200 dark:shadow-blue-900/30">
                                 <BarChart3 className="w-6 h-6 text-white" />
                             </div>
                             <div>
-                                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Executive Dashboard</h1>
-                                <p className="text-gray-500">Real-time business intelligence & analytics</p>
+                                <h1 className="text-3xl font-bold text-foreground tracking-tight">Executive Dashboard</h1>
+                                <p className="text-muted-foreground">Real-time business intelligence & analytics</p>
                             </div>
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                         <Select value={selectedDistributor} onValueChange={setSelectedDistributor}>
-                            <SelectTrigger className="w-[200px] bg-white border-gray-200 shadow-sm">
-                                <Building2 className="mr-2 h-4 w-4 text-gray-500" />
+                            <SelectTrigger className="w-[200px] bg-card border-border shadow-sm">
+                                <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
                                 <SelectValue placeholder="All Distributors" />
                             </SelectTrigger>
                             <SelectContent>
@@ -435,8 +444,8 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </SelectContent>
                         </Select>
                         <Select value={dateRange} onValueChange={setDateRange}>
-                            <SelectTrigger className="w-[180px] bg-white border-gray-200 shadow-sm">
-                                <Calendar className="mr-2 h-4 w-4 text-gray-500" />
+                            <SelectTrigger className="w-[180px] bg-card border-border shadow-sm">
+                                <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
                                 <SelectValue placeholder="Select range" />
                             </SelectTrigger>
                             <SelectContent>
@@ -448,10 +457,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 <SelectItem value="lastMonth">Last Month</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button variant="outline" onClick={fetchData} className="bg-white shadow-sm">
+                        <Button variant="outline" onClick={fetchData} className="bg-card shadow-sm">
                             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                         </Button>
-                        <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-200">
+                        <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-200 dark:shadow-blue-900/30">
                             <Download className="mr-2 h-4 w-4" />
                             Export Report
                         </Button>
@@ -460,15 +469,15 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                 {/* Error Banner */}
                 {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+                    <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <AlertCircle className="w-5 h-5 text-red-500" />
                             <div>
-                                <p className="font-medium text-red-800">Unable to load reporting data</p>
-                                <p className="text-sm text-red-600">{error}</p>
+                                <p className="font-medium text-red-800 dark:text-red-200">Unable to load reporting data</p>
+                                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
                             </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={fetchData} className="border-red-300 text-red-700 hover:bg-red-100">
+                        <Button variant="outline" size="sm" onClick={fetchData} className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30">
                             <RefreshCw className="w-4 h-4 mr-2" />
                             Retry
                         </Button>
@@ -477,7 +486,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                 {/* Tab Navigation */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                    <TabsList className="bg-white/80 backdrop-blur border shadow-sm p-1 h-auto">
+                    <TabsList className="bg-card/80 backdrop-blur border shadow-sm p-1 h-auto">
                         <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
                             <Activity className="w-4 h-4 mr-2" />
                             Overview
@@ -545,14 +554,14 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                         {/* Main Charts Row */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Trend Chart */}
-                            <Card className="lg:col-span-2 border-0 shadow-lg bg-white/80 backdrop-blur">
+                            <Card className="lg:col-span-2 border-0 shadow-lg bg-card/80 backdrop-blur">
                                 <CardHeader className="pb-2">
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <CardTitle className="text-lg font-semibold">Shipment Trend</CardTitle>
                                             <CardDescription>Volume over time with growth trajectory</CardDescription>
                                         </div>
-                                        <Badge variant="secondary" className="bg-green-100 text-green-700">
+                                        <Badge variant="secondary" className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                                             <TrendingUp className="w-3 h-3 mr-1" />
                                             Growing
                                         </Badge>
@@ -568,7 +577,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                         <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
                                                     </linearGradient>
                                                 </defs>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tickFormatter={(value: string) => {
@@ -578,12 +587,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                     }}
                                                     tickLine={false}
                                                     axisLine={false}
-                                                    tick={{ fill: '#6b7280', fontSize: 12 }}
+                                                    tick={{ fill: chartTickColor, fontSize: 12 }}
                                                 />
                                                 <YAxis 
                                                     tickLine={false}
                                                     axisLine={false}
-                                                    tick={{ fill: '#6b7280', fontSize: 12 }}
+                                                    tick={{ fill: chartTickColor, fontSize: 12 }}
                                                     tickFormatter={(value) => value.toLocaleString()}
                                                 />
                                                 <Tooltip 
@@ -591,7 +600,8 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                         borderRadius: '12px', 
                                                         border: 'none', 
                                                         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-                                                        backgroundColor: 'rgba(255, 255, 255, 0.95)'
+                                                        backgroundColor: tooltipBg,
+                                                        color: isDark ? '#f3f4f6' : undefined
                                                     }}
                                                     formatter={(value: number) => [value.toLocaleString(), 'Units']}
                                                     labelFormatter={(value: string) => {
@@ -616,7 +626,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </Card>
 
                             {/* Product Distribution */}
-                            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
+                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-lg font-semibold">Product Distribution</CardTitle>
                                     <CardDescription>Top performing variants</CardDescription>
@@ -640,7 +650,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                     ))}
                                                 </Pie>
                                                 <Tooltip 
-                                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                    contentStyle={tooltipStyle}
                                                     formatter={(value: number) => [value.toLocaleString(), 'Units']}
                                                 />
                                             </PieChart>
@@ -651,7 +661,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                             <div key={index} className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[index] }} />
-                                                    <span className="text-sm text-gray-600 truncate max-w-[120px]">{item.name}</span>
+                                                    <span className="text-sm text-muted-foreground truncate max-w-[120px]">{item.name}</span>
                                                 </div>
                                                 <span className="text-sm font-semibold">{item.units?.toLocaleString()}</span>
                                             </div>
@@ -664,7 +674,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                         {/* Secondary Charts */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {/* Top Distributors */}
-                            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
+                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
                                 <CardHeader>
                                     <CardTitle className="text-lg font-semibold">Top Distributors</CardTitle>
                                     <CardDescription>By shipment volume</CardDescription>
@@ -673,19 +683,19 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                     <div className="h-[300px]">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={data?.distributorPerformance?.slice(0, 5) || []} layout="vertical" margin={{ left: 20 }}>
-                                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f0f0f0" />
+                                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke={chartGridColor} />
                                                 <XAxis type="number" hide />
                                                 <YAxis
                                                     dataKey="name"
                                                     type="category"
                                                     width={100}
-                                                    tick={{ fontSize: 12, fill: '#6b7280' }}
+                                                    tick={{ fontSize: 12, fill: chartTickColor }}
                                                     tickLine={false}
                                                     axisLine={false}
                                                 />
                                                 <Tooltip 
                                                     cursor={{ fill: 'transparent' }}
-                                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                    contentStyle={tooltipStyle}
                                                     formatter={(value: number) => [value.toLocaleString(), 'Units']}
                                                 />
                                                 <Bar dataKey="units" radius={[0, 8, 8, 0]} barSize={24}>
@@ -700,7 +710,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </Card>
 
                             {/* Recent Activity */}
-                            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
+                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
                                 <CardHeader>
                                     <CardTitle className="text-lg font-semibold">Recent Shipments</CardTitle>
                                     <CardDescription>Latest processed orders</CardDescription>
@@ -708,25 +718,25 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 <CardContent>
                                     <div className="space-y-4">
                                         {(data?.recentShipments || []).slice(0, 6).map((shipment: any, index: number) => (
-                                            <div key={shipment.id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                                            <div key={shipment.id || index} className="flex items-center justify-between p-3 bg-muted rounded-xl hover:bg-muted/80 transition-colors">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="p-2 bg-blue-100 rounded-lg">
-                                                        <Truck className="w-4 h-4 text-blue-600" />
+                                                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                                        <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                                                     </div>
                                                     <div>
-                                                        <p className="text-sm font-medium text-gray-900">{shipment.distributor}</p>
-                                                        <p className="text-xs text-gray-500">{shipment.orderNo}</p>
+                                                        <p className="text-sm font-medium text-foreground">{shipment.distributor}</p>
+                                                        <p className="text-xs text-muted-foreground">{shipment.orderNo}</p>
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-sm font-semibold text-gray-900">{shipment.units?.toLocaleString()} units</p>
-                                                    <p className="text-xs text-gray-500">{format(new Date(shipment.date), 'MMM dd, HH:mm')}</p>
+                                                    <p className="text-sm font-semibold text-foreground">{shipment.units?.toLocaleString()} units</p>
+                                                    <p className="text-xs text-muted-foreground">{format(new Date(shipment.date), 'MMM dd, HH:mm')}</p>
                                                 </div>
                                             </div>
                                         ))}
                                         {(!data?.recentShipments || data.recentShipments.length === 0) && (
-                                            <div className="text-center py-8 text-gray-500">
-                                                <BoxIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                                            <div className="text-center py-8 text-muted-foreground">
+                                                <BoxIcon className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
                                                 <p>No recent shipments</p>
                                             </div>
                                         )}
@@ -775,7 +785,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             />
                         </div>
 
-                        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
+                        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
                             <CardHeader>
                                 <CardTitle className="text-lg font-semibold">Order Processing Timeline</CardTitle>
                                 <CardDescription>Daily order volume and status breakdown</CardDescription>
@@ -784,7 +794,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 <div className="h-[400px]">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <ComposedChart data={trendData}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
                                             <XAxis 
                                                 dataKey="date" 
                                                 tickFormatter={(value: string) => {
@@ -797,7 +807,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                             />
                                             <YAxis tickLine={false} axisLine={false} />
                                             <Tooltip 
-                                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                contentStyle={tooltipStyle}
                                             />
                                             <Legend />
                                             <Bar dataKey="units" name="Units Shipped" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
@@ -850,7 +860,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {/* Revenue Breakdown */}
-                            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
+                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
                                 <CardHeader>
                                     <CardTitle className="text-lg font-semibold">Revenue by Account Type</CardTitle>
                                     <CardDescription>Distribution across GL accounts</CardDescription>
@@ -889,7 +899,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </Card>
 
                             {/* Payment Status */}
-                            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
+                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
                                 <CardHeader>
                                     <CardTitle className="text-lg font-semibold">Payment Status Overview</CardTitle>
                                     <CardDescription>Current payment pipeline</CardDescription>
@@ -903,10 +913,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                         ].map((item, index) => (
                                             <div key={index} className="space-y-2">
                                                 <div className="flex justify-between text-sm">
-                                                    <span className="text-gray-600">{item.label}</span>
+                                                    <span className="text-muted-foreground">{item.label}</span>
                                                     <span className="font-semibold">{item.value}</span>
                                                 </div>
-                                                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                <div className="h-2 bg-muted rounded-full overflow-hidden">
                                                     <div 
                                                         className="h-full rounded-full transition-all duration-1000 ease-out"
                                                         style={{ 
@@ -919,13 +929,13 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                         ))}
                                     </div>
 
-                                    <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-100">
+                                    <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-xl border border-green-100 dark:border-green-800">
                                         <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-green-100 rounded-lg">
-                                                <Wallet className="w-5 h-5 text-green-600" />
+                                            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                                <Wallet className="w-5 h-5 text-green-600 dark:text-green-400" />
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium text-green-900">Collection Rate</p>
+                                                <p className="text-sm font-medium text-green-900 dark:text-green-200">Collection Rate</p>
                                                 <p className="text-2xl font-bold text-green-600">
                                                     {financialMetrics?.invoiceCount 
                                                         ? Math.round((financialMetrics.completedPayments / financialMetrics.invoiceCount) * 100) 
@@ -976,7 +986,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             />
                         </div>
 
-                        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
+                        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
                             <CardHeader>
                                 <CardTitle className="text-lg font-semibold">Product Performance Matrix</CardTitle>
                                 <CardDescription>Detailed breakdown by variant</CardDescription>
@@ -987,20 +997,20 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                         const total = data?.summary?.totalUnits || 1
                                         const percentage = (product.units / total) * 100
                                         return (
-                                            <div key={index} className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                                            <div key={index} className="p-4 bg-muted rounded-xl hover:bg-muted/80 transition-colors">
                                                 <div className="flex items-center justify-between mb-3">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-4 h-4 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
-                                                        <span className="font-medium text-gray-900">{product.name}</span>
+                                                        <span className="font-medium text-foreground">{product.name}</span>
                                                     </div>
                                                     <div className="flex items-center gap-4">
-                                                        <span className="text-lg font-bold text-gray-900">{product.units?.toLocaleString()}</span>
-                                                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                                                        <span className="text-lg font-bold text-foreground">{product.units?.toLocaleString()}</span>
+                                                        <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
                                                             {percentage.toFixed(1)}%
                                                         </Badge>
                                                     </div>
                                                 </div>
-                                                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                <div className="h-2 bg-muted rounded-full overflow-hidden">
                                                     <div 
                                                         className="h-full rounded-full transition-all duration-1000 ease-out"
                                                         style={{ 
@@ -1019,7 +1029,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                 </Tabs>
 
                 {/* Footer */}
-                <div className="text-center text-sm text-gray-500 pt-4 border-t">
+                <div className="text-center text-sm text-muted-foreground pt-4 border-t border-border">
                     <p>Last updated: {format(new Date(), 'MMMM dd, yyyy HH:mm:ss')} • Data refreshes automatically</p>
                 </div>
             </div>

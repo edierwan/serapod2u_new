@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export interface StoreBanner {
   id: string
@@ -17,7 +17,7 @@ export interface StoreBanner {
  */
 export async function listActiveStoreBanners(): Promise<StoreBanner[]> {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const now = new Date().toISOString()
 
     const { data, error } = await supabase
