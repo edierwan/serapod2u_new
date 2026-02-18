@@ -181,7 +181,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
       // Get user profile to determine redirect
       let { data: userProfile } = await supabase
         .from('users')
-        .select('*, organizations(org_type_code)')
+        .select('*, organizations!fk_users_organization(org_type_code)')
         .eq('id', authUser.id)
         .single()
 
@@ -189,7 +189,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
         await new Promise(resolve => setTimeout(resolve, 500))
         const { data: retryProfile } = await supabase
           .from('users')
-          .select('*, organizations(org_type_code)')
+          .select('*, organizations!fk_users_organization(org_type_code)')
           .eq('id', authUser.id)
           .single()
         userProfile = retryProfile

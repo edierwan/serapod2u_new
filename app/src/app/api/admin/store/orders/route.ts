@@ -11,7 +11,7 @@ async function getAuthenticatedAdmin(supabase: any) {
     const adminClient = createAdminClient()
     const { data: profile } = await adminClient
         .from('users')
-        .select('id, organization_id, role_code, organizations(id, org_type_code), roles(role_level)')
+        .select('id, organization_id, role_code, organizations!fk_users_organization(id, org_type_code), roles(role_level)')
         .eq('id', user.id)
         .single()
 

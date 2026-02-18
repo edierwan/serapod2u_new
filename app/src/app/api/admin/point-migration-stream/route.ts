@@ -410,7 +410,7 @@ export async function POST(request: NextRequest) {
                 if (user?.id) {
                     const { data: userProfile } = await supabaseAdmin
                         .from('users')
-                        .select('organization_id, organizations(settings)')
+                        .select('organization_id, organizations!fk_users_organization(settings)')
                         .eq('id', user.id)
                         .single();
                     

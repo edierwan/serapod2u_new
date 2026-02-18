@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
           phone,
           role,
           organization_id,
-          organization:organizations(id, name, code),
+          organization:organizations!fk_users_organization(id, name, code),
           created_at
         `)
         .eq('id', userId)
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
           phone,
           role,
           organization_id,
-          organization:organizations(id, name, code),
+          organization:organizations!fk_users_organization(id, name, code),
           created_at
         `)
         .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
