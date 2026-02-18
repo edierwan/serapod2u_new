@@ -16,9 +16,15 @@ import {
   Loader2,
   Calendar,
   Link as LinkIcon,
+  LayoutGrid,
+  Settings2,
+  Columns,
+  RotateCcw,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────
+
+type LayoutSlot = 'carousel' | 'split_main' | 'split_side_top' | 'split_side_bottom'
 
 interface StoreBanner {
   id: string
@@ -32,8 +38,29 @@ interface StoreBanner {
   is_active: boolean
   starts_at: string | null
   ends_at: string | null
+  layout_slot: LayoutSlot
   created_at: string
   updated_at: string
+}
+
+interface HeroConfig {
+  layout_type: 'carousel' | 'split'
+  auto_rotate_interval: number
+  max_slides: number
+}
+
+const LAYOUT_SLOT_LABELS: Record<LayoutSlot, string> = {
+  carousel: 'Carousel Slide',
+  split_main: 'Split — Main (Left)',
+  split_side_top: 'Split — Side Top (Right)',
+  split_side_bottom: 'Split — Side Bottom (Right)',
+}
+
+const LAYOUT_SLOT_COLORS: Record<LayoutSlot, string> = {
+  carousel: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  split_main: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  split_side_top: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  split_side_bottom: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
 }
 
 interface StoreBannerManagerViewProps {
@@ -51,7 +78,16 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
   const [editingBanner, setEditingBanner] = useState<StoreBanner | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [showConfigPanel, setShowConfigPanel] = useState(false)
+  const [savingConfig, setSavingConfig] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Hero config state
+  const [heroConfig, setHeroConfig] = useState<HeroConfig>({
+    layout_type: 'carousel',
+    auto_rotate_interval: 6000,
+    max_slides: 5,
+  })
 
   // Form state
   const [form, setForm] = useState({
@@ -64,17 +100,28 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
     is_active: true,
     starts_at: '',
     ends_at: '',
+    layout_slot: 'carousel' as LayoutSlot,
   })
 
-  // ── Fetch banners ─────────────────────────────────────────────
+  // ── Fetch banners + config ──────────────────────────────────────
 
   const fetchBanners = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/admin/store/banners')
-      if (!res.ok) throw new Error('Failed to fetch banners')
-      const data = await res.json()
-      setBanners(data.banners || [])
+      const [bannersRes, configRes] = await Promise.all([
+        fetch('/api/admin/store/banners'),
+        fetch('/api/admin/store/hero-config'),
+      ])
+      if (!bannersRes.ok) throw new Error('Failed to fetch banners')
+      const bannersData = await bannersRes.json()
+      setBanners(bannersData.banners || [])
+
+      if (configRes.ok) {
+        const configData = await configRes.json()
+        if (configData.config) {
+          setHeroConfig(configData.config)
+        }
+      }
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -83,6 +130,30 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
   }, [])
 
   useEffect(() => { fetchBanners() }, [fetchBanners])
+
+  // ── Save hero config ──────────────────────────────────────────
+
+  const saveHeroConfig = async (newConfig: Partial<HeroConfig>) => {
+    setSavingConfig(true)
+    setError(null)
+    const merged = { ...heroConfig, ...newConfig }
+    try {
+      const res = await fetch('/api/admin/store/hero-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(merged),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to save config')
+      }
+      setHeroConfig(merged)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSavingConfig(false)
+    }
+  }
 
   // ── Image upload ──────────────────────────────────────────────
 
@@ -138,6 +209,7 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
         ...form,
         starts_at: form.starts_at || null,
         ends_at: form.ends_at || null,
+        layout_slot: form.layout_slot || 'carousel',
         sort_order: editingBanner ? editingBanner.sort_order : banners.length,
       }
 
@@ -148,7 +220,10 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingBanner.id, ...payload }),
         })
-        if (!res.ok) throw new Error('Failed to update banner')
+        if (!res.ok) {
+          const resData = await res.json().catch(() => ({}))
+          throw new Error(resData.error || 'Failed to update banner')
+        }
       } else {
         // Create
         const res = await fetch('/api/admin/store/banners', {
@@ -156,7 +231,10 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (!res.ok) throw new Error('Failed to create banner')
+        if (!res.ok) {
+          const resData = await res.json().catch(() => ({}))
+          throw new Error(resData.error || 'Failed to create banner')
+        }
       }
 
       setShowForm(false)
@@ -214,6 +292,7 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
       is_active: banner.is_active,
       starts_at: banner.starts_at ? banner.starts_at.slice(0, 16) : '',
       ends_at: banner.ends_at ? banner.ends_at.slice(0, 16) : '',
+      layout_slot: banner.layout_slot || 'carousel',
     })
     setShowForm(true)
   }
@@ -229,6 +308,7 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
       is_active: true,
       starts_at: '',
       ends_at: '',
+      layout_slot: 'carousel',
     })
   }
 
@@ -253,6 +333,17 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowConfigPanel(prev => !prev)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+              showConfigPanel
+                ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
+                : 'border-border hover:bg-accent'
+            }`}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Layout Config
+          </button>
           <a
             href="/store"
             target="_blank"
@@ -272,6 +363,145 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
           )}
         </div>
       </div>
+
+      {/* Hero Layout Config Panel */}
+      {showConfigPanel && (
+        <div className="bg-card border border-violet-200 dark:border-violet-800 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-sm flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-violet-500" />
+              Hero Layout Configuration
+            </h2>
+            {savingConfig && <Loader2 className="h-4 w-4 animate-spin text-violet-500" />}
+          </div>
+
+          {/* Layout type selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Layout Type
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Carousel layout */}
+              <button
+                onClick={() => saveHeroConfig({ layout_type: 'carousel' })}
+                className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                  heroConfig.layout_type === 'carousel'
+                    ? 'border-violet-500 bg-violet-50/50 dark:bg-violet-900/20'
+                    : 'border-border hover:border-violet-200 dark:hover:border-violet-800'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-100 to-violet-200 dark:from-violet-800 dark:to-violet-900 flex items-center justify-center">
+                    <RotateCcw className="h-5 w-5 text-violet-600 dark:text-violet-300" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Standard Carousel</p>
+                    <p className="text-[11px] text-muted-foreground">Full-width auto-rotating slides</p>
+                  </div>
+                </div>
+                {/* Mini preview */}
+                <div className="h-8 bg-muted rounded flex items-center justify-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-violet-500" />
+                  <div className="w-2 h-2 rounded-full bg-muted-foreground/20" />
+                  <div className="w-2 h-2 rounded-full bg-muted-foreground/20" />
+                </div>
+                {heroConfig.layout_type === 'carousel' && (
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+
+              {/* Split layout */}
+              <button
+                onClick={() => saveHeroConfig({ layout_type: 'split' })}
+                className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                  heroConfig.layout_type === 'split'
+                    ? 'border-violet-500 bg-violet-50/50 dark:bg-violet-900/20'
+                    : 'border-border hover:border-violet-200 dark:hover:border-violet-800'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-800 dark:to-emerald-900 flex items-center justify-center">
+                    <Columns className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Split Layout</p>
+                    <p className="text-[11px] text-muted-foreground">Shopee/Lazada style 2-column</p>
+                  </div>
+                </div>
+                {/* Mini preview */}
+                <div className="h-8 flex gap-1">
+                  <div className="flex-[2] bg-muted rounded" />
+                  <div className="flex-1 flex flex-col gap-0.5">
+                    <div className="flex-1 bg-muted rounded" />
+                    <div className="flex-1 bg-muted rounded" />
+                  </div>
+                </div>
+                {heroConfig.layout_type === 'split' && (
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Auto-rotate interval */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Auto-Rotate Interval (seconds)
+              </label>
+              <select
+                value={heroConfig.auto_rotate_interval}
+                onChange={(e) => saveHeroConfig({ auto_rotate_interval: Number(e.target.value) })}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              >
+                <option value={3000}>3 seconds</option>
+                <option value={4000}>4 seconds</option>
+                <option value={5000}>5 seconds</option>
+                <option value={6000}>6 seconds</option>
+                <option value={8000}>8 seconds</option>
+                <option value={10000}>10 seconds</option>
+                <option value={0}>No auto-rotate</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Max Carousel Slides
+              </label>
+              <select
+                value={heroConfig.max_slides}
+                onChange={(e) => saveHeroConfig({ max_slides: Number(e.target.value) })}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              >
+                <option value={3}>3 slides</option>
+                <option value={5}>5 slides</option>
+                <option value={8}>8 slides</option>
+                <option value={10}>10 slides</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Layout guide */}
+          {heroConfig.layout_type === 'split' && (
+            <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">Split Layout Guide:</p>
+              <ul className="space-y-0.5 ml-3 list-disc">
+                <li><span className="font-medium text-emerald-600 dark:text-emerald-400">Split — Main (Left):</span> Large carousel on the left (⅔ width)</li>
+                <li><span className="font-medium text-amber-600 dark:text-amber-400">Split — Side Top:</span> Static banner, top-right (⅓ width)</li>
+                <li><span className="font-medium text-rose-600 dark:text-rose-400">Split — Side Bottom:</span> Static banner, bottom-right (⅓ width)</li>
+                <li>Banners marked as &quot;Carousel Slide&quot; will also be used in the main carousel</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -423,6 +653,29 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
             </div>
           </div>
 
+          {/* Layout Slot */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+              <LayoutGrid className="h-3.5 w-3.5" /> Layout Position
+            </label>
+            <select
+              value={form.layout_slot}
+              onChange={(e) => setForm(prev => ({ ...prev, layout_slot: e.target.value as LayoutSlot }))}
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+            >
+              <option value="carousel">Carousel Slide (Standard full-width)</option>
+              <option value="split_main">Split — Main Left (Large carousel)</option>
+              <option value="split_side_top">Split — Side Top Right (Static)</option>
+              <option value="split_side_bottom">Split — Side Bottom Right (Static)</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              {form.layout_slot === 'carousel' && 'This banner will appear as a full-width carousel slide.'}
+              {form.layout_slot === 'split_main' && 'This banner will appear in the large left carousel of the split layout.'}
+              {form.layout_slot === 'split_side_top' && 'This banner will appear as the small static banner in the top-right of the split layout.'}
+              {form.layout_slot === 'split_side_bottom' && 'This banner will appear as the small static banner in the bottom-right of the split layout.'}
+            </p>
+          </div>
+
           {/* Active toggle */}
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -505,13 +758,16 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-mono text-muted-foreground">#{index + 1}</span>
                           {banner.badge_text && (
                             <span className="text-[10px] font-medium uppercase tracking-wider text-violet-600 bg-violet-50 dark:bg-violet-900/30 dark:text-violet-300 px-1.5 py-0.5 rounded">
                               {banner.badge_text}
                             </span>
                           )}
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${LAYOUT_SLOT_COLORS[banner.layout_slot || 'carousel']}`}>
+                            {LAYOUT_SLOT_LABELS[banner.layout_slot || 'carousel']}
+                          </span>
                         </div>
                         <h3 className="font-semibold text-sm text-foreground truncate mt-1">
                           {banner.title || '(no title)'}
@@ -568,7 +824,8 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
       {banners.length > 0 && (
         <p className="text-xs text-muted-foreground text-center">
           {banners.filter(b => b.is_active).length} active of {banners.length} total banners •
-          Banners auto-rotate on the storefront homepage
+          Layout: <span className="font-medium">{heroConfig.layout_type === 'split' ? 'Split (Shopee-style)' : 'Standard Carousel'}</span> •
+          Auto-rotate: {heroConfig.auto_rotate_interval > 0 ? `${heroConfig.auto_rotate_interval / 1000}s` : 'Off'}
         </p>
       )}
     </div>

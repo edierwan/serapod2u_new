@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Loader2 } from 'lucide-react'
+import { X, Loader2, Upload, ImageIcon } from 'lucide-react'
 
 interface Category {
   id?: string
@@ -44,6 +44,9 @@ export default function CategoryDialog({
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open) {
@@ -66,6 +69,7 @@ export default function CategoryDialog({
         })
       }
       setErrors({})
+      setUploadError(null)
     }
   }, [open, category])
 
@@ -85,6 +89,42 @@ export default function CategoryDialog({
     const timestamp = Date.now().toString().slice(-6)
     const nameCode = formData.category_name?.substring(0, 3).toUpperCase() || 'CAT'
     return `${nameCode}-${timestamp}`
+  }
+
+  const handleImageUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Only image files are allowed')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError('File size must be under 2MB')
+      return
+    }
+
+    setUploading(true)
+    setUploadError(null)
+
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+
+      const res = await fetch('/api/admin/categories/upload', {
+        method: 'POST',
+        body: fd,
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Upload failed')
+      }
+
+      const data = await res.json()
+      setFormData(prev => ({ ...prev, image_url: data.url }))
+    } catch (err: any) {
+      setUploadError(err.message)
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleSubmit = () => {
@@ -138,6 +178,71 @@ export default function CategoryDialog({
               onChange={(e) => setFormData(prev => ({ ...prev, category_description: e.target.value }))}
               className="min-h-24"
             />
+          </div>
+
+          {/* Category Image Upload */}
+          <div className="space-y-2">
+            <Label>Category Image</Label>
+            <p className="text-xs text-gray-500">
+              This image will be shown as the category avatar on your storefront.
+            </p>
+            {formData.image_url ? (
+              <div className="relative group">
+                <div className="w-20 h-20 rounded-xl overflow-hidden border border-gray-200">
+                  <img
+                    src={formData.image_url}
+                    alt="Category"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, image_url: '' }))}
+                    className="text-xs text-red-500 hover:text-red-600 font-medium"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="w-full h-20 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm">Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-5 w-5" />
+                    <span className="text-sm">Upload image (max 2MB)</span>
+                  </>
+                )}
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleImageUpload(file)
+              }}
+            />
+            {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
           </div>
 
           <div className="flex items-center gap-2">

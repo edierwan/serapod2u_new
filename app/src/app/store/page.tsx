@@ -1,25 +1,51 @@
 import Link from 'next/link'
 import { listProducts, listCategories } from '@/lib/storefront/products'
-import { listActiveStoreBanners } from '@/lib/storefront/banners'
+import { listActiveStoreBanners, getHeroConfig } from '@/lib/storefront/banners'
 import StorefrontProductCard from '@/components/storefront/ProductCard'
 import StoreHeroSlider from '@/components/storefront/StoreHeroSlider'
+import SplitHeroLayout from '@/components/storefront/SplitHeroLayout'
 import { ArrowRight, Package, ShieldCheck, Truck } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 export default async function StorefrontHomePage() {
-  // Fetch featured products (latest) + banners in parallel
-  const [{ products }, categories, banners] = await Promise.all([
+  // Fetch featured products (latest) + banners + config in parallel
+  const [{ products }, categories, banners, heroConfig] = await Promise.all([
     listProducts({ sort: 'newest', limit: 6 }),
     listCategories(),
     listActiveStoreBanners(),
+    getHeroConfig(),
   ])
 
   return (
     <div>
-      {/* Hero Section — dynamic slider if banners exist, otherwise static fallback */}
+      {/* Hero Section — dynamic layout based on heroConfig */}
       {banners.length > 0 ? (
-        <StoreHeroSlider banners={banners} interval={6000} />
+        (() => {
+          // Separate banners by layout slot
+          const carouselBanners = banners.filter(
+            (b) => !b.layout_slot || b.layout_slot === 'carousel' || b.layout_slot === 'split_main'
+          ).slice(0, heroConfig.max_slides)
+          const sideTop = banners.find((b) => b.layout_slot === 'split_side_top') || null
+          const sideBottom = banners.find((b) => b.layout_slot === 'split_side_bottom') || null
+
+          if (heroConfig.layout_type === 'split' && (sideTop || sideBottom)) {
+            return (
+              <SplitHeroLayout
+                mainBanners={carouselBanners}
+                sideBanners={[sideTop, sideBottom]}
+                interval={heroConfig.auto_rotate_interval}
+              />
+            )
+          }
+
+          return (
+            <StoreHeroSlider
+              banners={carouselBanners}
+              interval={heroConfig.auto_rotate_interval}
+            />
+          )
+        })()
       ) : (
         <section className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
           <div
@@ -115,8 +141,16 @@ export default async function StorefrontHomePage() {
                   href={`/store/products?category=${cat.id}`}
                   className="group flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-md transition-all bg-white"
                 >
-                  <div className="h-12 w-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
-                    <Package className="h-5 w-5 text-gray-600" />
+                  <div className="h-12 w-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors overflow-hidden">
+                    {cat.image_url ? (
+                      <img
+                        src={cat.image_url}
+                        alt={cat.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Package className="h-5 w-5 text-gray-600" />
+                    )}
                   </div>
                   <span className="text-sm font-medium text-gray-700 text-center line-clamp-2 group-hover:text-gray-900">
                     {cat.name}

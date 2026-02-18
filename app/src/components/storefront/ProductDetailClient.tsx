@@ -25,12 +25,18 @@ function resolveVariantImageUrl(rawPath: string | null) {
   if (!supabaseUrl) return rawPath
 
   const cleanPath = rawPath.replace(/^\/+/, '')
-  const bucket = 'product-variants'
-  const objectPath = cleanPath.startsWith(`${bucket}/`)
-    ? cleanPath.slice(bucket.length + 1)
-    : cleanPath
 
-  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
+  // Detect bucket from path prefix
+  const knownBuckets = ['product-variants', 'avatars']
+  for (const bucket of knownBuckets) {
+    if (cleanPath.startsWith(`${bucket}/`)) {
+      const objectPath = cleanPath.slice(bucket.length + 1)
+      return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
+    }
+  }
+
+  // Default to avatars bucket (admin uploads go there)
+  return `${supabaseUrl}/storage/v1/object/public/avatars/${cleanPath}`
 }
 
 function formatPrice(price: number | null) {

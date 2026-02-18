@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
-import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Package } from 'lucide-react'
 import CategoryDialog from '../dialogs/CategoryDialog'
 
 interface Category {
@@ -301,6 +301,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
           <TableHeader>
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>
+              <TableHead className="w-16 text-center">Image</TableHead>
               <TableHead 
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('category_name')}
@@ -341,6 +342,19 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
               getSortedCategories().map((category, index) => (
                 <TableRow key={category.id} className="hover:bg-gray-50">
                   <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
+                  <TableCell className="text-center">
+                    {category.image_url ? (
+                      <img
+                        src={category.image_url}
+                        alt={category.category_name}
+                        className="w-10 h-10 rounded-lg object-cover mx-auto border border-gray-100"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center mx-auto">
+                        <Package className="w-4 h-4 text-gray-400" />
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm">{category.category_name}</TableCell>
                   <TableCell className="text-xs text-gray-600 truncate max-w-xs">{category.category_description || '-'}</TableCell>
                   <TableCell className="text-center">
@@ -379,7 +393,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                   No categories found
                 </TableCell>
               </TableRow>

@@ -1,6 +1,13 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
-function toStorefrontImageUrl(rawPath: string | null): string | null {
+/**
+ * Resolve a variant image/media URL to a full public URL.
+ * Handles:
+ * - Full URLs (https://...) → returned as-is
+ * - Relative paths → resolved against known Supabase storage buckets
+ * - Tries 'avatars' bucket first (admin upload default), then 'product-variants'
+ */
+function toStorefrontMediaUrl(rawPath: string | null): string | null {
   if (!rawPath) return null
   if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath
 
@@ -8,14 +15,23 @@ function toStorefrontImageUrl(rawPath: string | null): string | null {
   if (!supabaseUrl) return rawPath
 
   const cleanPath = rawPath.replace(/^\/+/, '')
-  const bucket = 'product-variants'
 
-  const objectPath = cleanPath.startsWith(`${bucket}/`)
-    ? cleanPath.slice(bucket.length + 1)
-    : cleanPath
+  // Detect bucket from path prefix
+  const knownBuckets = ['product-variants', 'avatars']
+  for (const bucket of knownBuckets) {
+    if (cleanPath.startsWith(`${bucket}/`)) {
+      const objectPath = cleanPath.slice(bucket.length + 1)
+      return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
+    }
+  }
 
-  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
+  // Default to avatars bucket (admin uploads go there)
+  const defaultBucket = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || 'avatars'
+  return `${supabaseUrl}/storage/v1/object/public/${defaultBucket}/${cleanPath}`
 }
+
+/** @deprecated Use toStorefrontMediaUrl instead */
+const toStorefrontImageUrl = toStorefrontMediaUrl
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -31,6 +47,9 @@ export interface StorefrontProduct {
   category_name?: string
   brand_name?: string
   image_url: string | null
+  animation_url: string | null
+  /** 'image' | 'video' | 'animation' — resolved from available media */
+  media_type: 'image' | 'video' | 'animation'
   starting_price: number | null
   variant_count: number
   tags: string[]
@@ -65,6 +84,7 @@ export interface StorefrontVariant {
 export interface StorefrontCategory {
   id: string
   name: string
+  image_url: string | null
   product_count: number
 }
 
@@ -98,7 +118,7 @@ export async function listProducts(params: ListProductsParams = {}) {
       created_at,
       product_categories (id, category_name),
       brands (id, brand_name),
-      product_variants (id, variant_name, image_url, suggested_retail_price, is_active)
+      product_variants (id, variant_name, image_url, animation_url, suggested_retail_price, is_active)
     `, { count: 'exact' })
     .eq('is_active', true)
 
@@ -143,8 +163,19 @@ export async function listProducts(params: ListProductsParams = {}) {
 
     const startingPrice = prices.length > 0 ? Math.min(...prices) : null
 
-    // Get first available image from variants
-    const firstImage = toStorefrontImageUrl(activeVariants.find((v: any) => v.image_url)?.image_url || null)
+    // Get first available media from variants (image or animation/video)
+    const variantWithImage = activeVariants.find((v: any) => v.image_url)
+    const variantWithAnimation = activeVariants.find((v: any) => v.animation_url)
+    const firstImage = toStorefrontMediaUrl(variantWithImage?.image_url || null)
+    const firstAnimation = toStorefrontMediaUrl(variantWithAnimation?.animation_url || null)
+
+    // Determine media type
+    let mediaType: 'image' | 'video' | 'animation' = 'image'
+    if (firstAnimation) {
+      const animUrl = firstAnimation.toLowerCase()
+      if (animUrl.match(/\.(mp4|webm|mov)($|\?)/)) mediaType = 'video'
+      else if (animUrl.match(/\.(json|lottie)($|\?)/)) mediaType = 'animation'
+    }
 
     return {
       id: p.id,
@@ -158,6 +189,8 @@ export async function listProducts(params: ListProductsParams = {}) {
       category_name: (p.product_categories as any)?.category_name || null,
       brand_name: (p.brands as any)?.brand_name || null,
       image_url: firstImage,
+      animation_url: firstAnimation,
+      media_type: mediaType,
       starting_price: startingPrice,
       variant_count: activeVariants.length,
       tags: [
@@ -236,7 +269,7 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
         id: v.id,
         variant_name: v.variant_name,
         variant_code: v.variant_code,
-        image_url: toStorefrontImageUrl(v.image_url),
+        image_url: toStorefrontMediaUrl(v.image_url),
         suggested_retail_price: v.suggested_retail_price,
         base_cost: v.base_cost,
         is_active: v.is_active,
@@ -253,7 +286,9 @@ export async function listCategories(): Promise<StorefrontCategory[]> {
 
   const { data, error } = await supabase
     .from('product_categories')
-    .select('id, category_name')
+    .select('id, category_name, image_url')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
     .order('category_name', { ascending: true })
 
   if (error) {
@@ -261,11 +296,11 @@ export async function listCategories(): Promise<StorefrontCategory[]> {
     return []
   }
 
-  // Get product counts per category
   const categories: StorefrontCategory[] = (data || []).map((c: any) => ({
     id: c.id,
     name: c.category_name,
-    product_count: 0, // Will be populated separately if needed
+    image_url: toStorefrontMediaUrl(c.image_url),
+    product_count: 0,
   }))
 
   return categories

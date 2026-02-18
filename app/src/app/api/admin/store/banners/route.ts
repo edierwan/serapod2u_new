@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, subtitle, badge_text, image_url, link_url, link_text, sort_order, is_active, starts_at, ends_at } = body
+    const { title, subtitle, badge_text, image_url, link_url, link_text, sort_order, is_active, starts_at, ends_at, layout_slot } = body
 
     if (!image_url) {
       return NextResponse.json({ error: 'image_url is required' }, { status: 400 })
@@ -80,19 +80,23 @@ export async function POST(request: NextRequest) {
         link_text: link_text || 'Shop Now',
         sort_order: sort_order ?? 0,
         is_active: is_active ?? true,
-        starts_at: starts_at || new Date().toISOString(),
-        ends_at: ends_at || null,
+        starts_at: starts_at ? new Date(starts_at).toISOString() : new Date().toISOString(),
+        ends_at: ends_at ? new Date(ends_at).toISOString() : null,
+        layout_slot: layout_slot || 'carousel',
         created_by: admin.userId,
         updated_by: admin.userId,
       })
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('[admin/store/banners] POST DB error:', error)
+      return NextResponse.json({ error: error.message || 'Database error creating banner' }, { status: 500 })
+    }
     return NextResponse.json({ banner: data }, { status: 201 })
-  } catch (err) {
+  } catch (err: any) {
     console.error('[admin/store/banners] POST error:', err)
-    return NextResponse.json({ error: 'Failed to create banner' }, { status: 500 })
+    return NextResponse.json({ error: err?.message || 'Failed to create banner' }, { status: 500 })
   }
 }
 
@@ -114,6 +118,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Banner id is required' }, { status: 400 })
     }
 
+    // Clean up date fields if present
+    if (updates.starts_at) updates.starts_at = new Date(updates.starts_at).toISOString()
+    if (updates.ends_at) updates.ends_at = new Date(updates.ends_at).toISOString()
+
     // Ensure updated_by is set
     updates.updated_by = admin.userId
 
@@ -126,7 +134,10 @@ export async function PUT(request: NextRequest) {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('[admin/store/banners] PUT DB error:', error)
+      return NextResponse.json({ error: error.message || 'Failed to update banner' }, { status: 500 })
+    }
     return NextResponse.json({ banner: data })
   } catch (err) {
     console.error('[admin/store/banners] PUT error:', err)

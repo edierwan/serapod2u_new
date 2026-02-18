@@ -4,8 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useTheme } from '@/components/providers/ThemeProvider'
-import { useTranslation } from '@/lib/i18n/LanguageProvider'
-import type { Locale } from '@/lib/i18n/translations'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,7 +20,6 @@ import NotificationProvidersTab from './NotificationProvidersTab'
 import DocumentTemplateTab from './DocumentTemplateTab'
 import DocSequenceTab from './DocSequenceTab'
 import AuthorizationTab from './AuthorizationTab'
-import ModuleBannerTab from './ModuleBannerTab'
 import {
   Settings,
   User,
@@ -56,6 +53,7 @@ interface UserProfile {
   role_code: string
   organization_id: string
   is_active: boolean
+  department_id?: string | null
   organizations: {
     id: string
     org_name: string
@@ -118,10 +116,9 @@ interface OrganizationSettings {
 
 const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'profile')
-  const [orgSubTab, setOrgSubTab] = useState<'info' | 'logo-signature' | 'branding' | 'module-banners'>('info')
+  const [orgSubTab] = useState<'info'>('info')
   const [loading, setLoading] = useState(false)
   const { theme, setTheme } = useTheme()
-  const { locale, setLocale, t } = useTranslation()
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -185,7 +182,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
       loadSettings()
     }
     // Sync theme from context
-    setUserSettings(prev => ({ ...prev, theme, language: locale }))
+    setUserSettings(prev => ({ ...prev, theme }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -230,12 +227,12 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
       setRawSettings(settings)
 
       // Load system preferences
-      const { data: prefs } = await supabase
+      const { data: prefs } = await (supabase as any)
         .schema('core')
         .from('system_preferences')
         .select('*')
         .eq('company_id', userProfile.organizations.id)
-        .eq('module', 'qr_tracking')
+        .eq('module', 'qr_tracking') as { data: any[] | null }
 
       const qrVisibility = {
         manufacturer: {
@@ -337,7 +334,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
           ]
 
           for (const update of updates) {
-            const { error: prefError } = await supabase.schema('core').from('system_preferences').upsert({
+            const { error: prefError } = await (supabase as any).schema('core').from('system_preferences').upsert({
               company_id: userProfile.organizations.id,
               module: 'qr_tracking',
               key: update.key,
@@ -637,6 +634,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'organization', label: 'Organization', icon: Building2 },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'preferences', label: 'Preferences', icon: Settings },
     ...(userProfile.roles.role_level === 1 ? [{ id: 'authorization', label: 'Authorization', icon: Lock }] : []),
     ...(userProfile.roles.role_level === 1 ? [{ id: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle }] : [])
@@ -662,15 +660,15 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
         {activeTab === 'profile' && (
           <Card>
             <CardHeader>
-              <CardTitle>{t('settings.profileInfo')}</CardTitle>
+              <CardTitle>Profile Information</CardTitle>
               <CardDescription>
-                {t('settings.profileDesc')}
+                Update your personal information and contact details
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="fullName">{t('settings.fullName')}</Label>
+                  <Label htmlFor="fullName">Full Name</Label>
                   <Input
                     id="fullName"
                     value={userSettings.full_name}
@@ -679,7 +677,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">{t('settings.emailAddress')}</Label>
+                  <Label htmlFor="email">Email Address</Label>
                   <Input
                     id="email"
                     type="email"
@@ -687,10 +685,10 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                     disabled
                     className="bg-gray-50"
                   />
-                  <p className="text-xs text-gray-500">{t('settings.emailCannotChange')}</p>
+                  <p className="text-xs text-gray-500">Email cannot be changed here</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">{t('settings.phoneNumber')}</Label>
+                  <Label htmlFor="phone">Phone Number</Label>
                   <Input
                     id="phone"
                     value={userSettings.phone_number}
@@ -699,7 +697,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="role">{t('settings.role')}</Label>
+                  <Label htmlFor="role">Role</Label>
                   <Input
                     id="role"
                     value={userProfile.roles.role_name}
@@ -711,7 +709,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
               <div className="flex justify-end">
                 <Button onClick={handleSaveProfile} disabled={loading}>
                   <Save className="w-4 h-4 mr-2" />
-                  {loading ? t('common.saving') : t('settings.saveChanges')}
+                  {loading ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             </CardContent>
@@ -721,29 +719,177 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
         {/* Organization Settings with Sub-tabs */}
         {activeTab === 'organization' && (
           <div className="space-y-6">
-            <TabsComponent value={orgSubTab} onValueChange={(v: string) => setOrgSubTab(v as any)} className="w-full">
-              <TabsList2 className={`grid w-full mb-4 ${userProfile.roles.role_level === 1 ? 'grid-cols-4' : 'grid-cols-3'}`}>
-                <TabsTrigger2 value="info">Organization Info</TabsTrigger2>
-                <TabsTrigger2 value="logo-signature">Logo &amp; Signature</TabsTrigger2>
-                {userProfile.roles.role_level === 1 && (
-                  <TabsTrigger2 value="branding">System Branding</TabsTrigger2>
-                )}
-                <TabsTrigger2 value="module-banners">Module Banners</TabsTrigger2>
-              </TabsList2>
-
-              {/* Organization Information Tab */}
-              <TabsContent2 value="info">
+            {/* Organization Information */}
+            {orgSubTab === 'info' && (
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('settings.orgInfo')}</CardTitle>
+                  <CardTitle>Organization Information</CardTitle>
                   <CardDescription>
                     {canEditOrganization
-                      ? t('settings.orgInfoDesc')
-                      : t('settings.orgInfoReadOnly')
+                      ? 'Update your organization details and contact information'
+                      : 'View your organization information (read-only)'
                     }
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* Logo Upload Section */}
+                  {canEditOrganization && (
+                    <div className="pb-6 border-b border-gray-200">
+                      <Label className="text-base font-semibold mb-4 block">Organization Logo</Label>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+                        {/* Logo Preview */}
+                        <div className="flex-shrink-0">
+                          <Avatar className="w-32 h-32 rounded-lg" key={logoPreview || 'no-logo'}>
+                            <AvatarImage
+                              src={logoPreview || undefined}
+                              alt={`${orgSettings.org_name} logo`}
+                              className="object-contain"
+                            />
+                            <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50">
+                              <Building2 className="w-12 h-12 text-blue-600" />
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+
+                        {/* Upload Controls */}
+                        <div className="flex-1 space-y-3">
+                          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLogoFileChange}
+                              className="hidden"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={loading}
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              {logoPreview ? 'Change Logo' : 'Upload Logo'}
+                            </Button>
+                            {logoPreview && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleRemoveLogo}
+                                disabled={loading}
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500 space-y-1">
+                            <p className="flex items-center gap-1">
+                              <ImageIcon className="w-4 h-4" />
+                              Recommended: Square image, at least 200x200px
+                            </p>
+                            <p>Supported formats: JPG, PNG, GIF (Max 5MB)</p>
+                            {logoFile && (
+                              <p className="text-blue-600 font-medium">
+                                New logo selected: {logoFile.name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Signature Section */}
+                  {canEditOrganization && (
+                    <div className="pb-6 border-b border-gray-200 mb-6">
+                      <Label className="text-base font-semibold mb-4 block">Organization Signature</Label>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="signatureType">Signature Type</Label>
+                          <Select
+                            value={orgSettings.signature_type}
+                            onValueChange={(value: any) => setOrgSettings({ ...orgSettings, signature_type: value })}
+                          >
+                            <SelectTrigger id="signatureType" className="w-full md:w-1/2">
+                              <SelectValue placeholder="Select signature type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No signature</SelectItem>
+                              <SelectItem value="electronic">Electronic signature</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-gray-500">
+                            This signature will be used for documentation created by this organization.
+                          </p>
+                        </div>
+
+                        {orgSettings.signature_type === 'electronic' && (
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6 mt-4">
+                            {/* Signature Preview */}
+                            <div className="flex-shrink-0">
+                              <div className="w-48 h-24 border border-gray-200 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+                                {signaturePreview ? (
+                                  <img
+                                    src={signaturePreview}
+                                    alt="Signature preview"
+                                    className="max-w-full max-h-full object-contain"
+                                  />
+                                ) : (
+                                  <span className="text-gray-400 text-sm">No signature</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Upload Controls */}
+                            <div className="flex-1 space-y-3">
+                              <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+                                <input
+                                  ref={signatureInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleSignatureFileChange}
+                                  className="hidden"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => signatureInputRef.current?.click()}
+                                  disabled={loading}
+                                >
+                                  <Upload className="w-4 h-4 mr-2" />
+                                  {signaturePreview ? 'Change Signature' : 'Upload Signature'}
+                                </Button>
+                                {signaturePreview && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleRemoveSignature}
+                                    disabled={loading}
+                                  >
+                                    <X className="w-4 h-4 mr-2" />
+                                    Remove
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-500 space-y-1">
+                                <p>Recommended: Transparent PNG, approx 300x100px</p>
+                                {signatureFile && (
+                                  <p className="text-blue-600 font-medium">
+                                    New file selected: {signatureFile.name}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="orgName">Organization Name</Label>
@@ -898,193 +1044,10 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                   )}
                 </CardContent>
               </Card>
-              </TabsContent2>
+            )}
 
-              {/* Logo & Signature Tab */}
-              <TabsContent2 value="logo-signature">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Logo &amp; Signature</CardTitle>
-                  <CardDescription>
-                    {canEditOrganization
-                      ? 'Upload and manage your organization logo and authorized signature.'
-                      : 'View organization logo and signature settings.'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Logo Upload Section */}
-                  {canEditOrganization && (
-                    <div className="pb-6 border-b border-border">
-                      <Label className="text-base font-semibold mb-4 block">Organization Logo</Label>
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
-                        {/* Logo Preview */}
-                        <div className="flex-shrink-0">
-                          <Avatar className="w-32 h-32 rounded-lg" key={logoPreview || 'no-logo'}>
-                            <AvatarImage
-                              src={logoPreview || undefined}
-                              alt={`${orgSettings.org_name} logo`}
-                              className="object-contain"
-                            />
-                            <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50">
-                              <Building2 className="w-12 h-12 text-blue-600" />
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-
-                        {/* Upload Controls */}
-                        <div className="flex-1 space-y-3">
-                          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              accept="image/*"
-                              onChange={handleLogoFileChange}
-                              className="hidden"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => fileInputRef.current?.click()}
-                              disabled={loading}
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              {logoPreview ? 'Change Logo' : 'Upload Logo'}
-                            </Button>
-                            {logoPreview && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={handleRemoveLogo}
-                                disabled={loading}
-                              >
-                                <X className="w-4 h-4 mr-2" />
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground space-y-1">
-                            <p className="flex items-center gap-1">
-                              <ImageIcon className="w-4 h-4" />
-                              Recommended: Square image, at least 200x200px
-                            </p>
-                            <p>Supported formats: JPG, PNG, GIF (Max 5MB)</p>
-                            {logoFile && (
-                              <p className="text-blue-600 font-medium">
-                                New logo selected: {logoFile.name}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Signature Section */}
-                  {canEditOrganization && (
-                    <div className="pb-6 border-b border-border mb-6">
-                      <Label className="text-base font-semibold mb-4 block">Organization Signature</Label>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="signatureType">Signature Type</Label>
-                          <Select
-                            value={orgSettings.signature_type}
-                            onValueChange={(value: any) => setOrgSettings({ ...orgSettings, signature_type: value })}
-                          >
-                            <SelectTrigger id="signatureType" className="w-full md:w-1/2">
-                              <SelectValue placeholder="Select signature type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">No signature</SelectItem>
-                              <SelectItem value="electronic">Electronic signature</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">
-                            This signature will be used for documentation created by this organization.
-                          </p>
-                        </div>
-
-                        {orgSettings.signature_type === 'electronic' && (
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6 mt-4">
-                            {/* Signature Preview */}
-                            <div className="flex-shrink-0">
-                              <div className="w-48 h-24 border border-border rounded-lg flex items-center justify-center bg-muted overflow-hidden">
-                                {signaturePreview ? (
-                                  <img
-                                    src={signaturePreview}
-                                    alt="Signature preview"
-                                    className="max-w-full max-h-full object-contain"
-                                  />
-                                ) : (
-                                  <span className="text-muted-foreground text-sm">No signature</span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Upload Controls */}
-                            <div className="flex-1 space-y-3">
-                              <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-                                <input
-                                  ref={signatureInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleSignatureFileChange}
-                                  className="hidden"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => signatureInputRef.current?.click()}
-                                  disabled={loading}
-                                >
-                                  <Upload className="w-4 h-4 mr-2" />
-                                  {signaturePreview ? 'Change Signature' : 'Upload Signature'}
-                                </Button>
-                                {signaturePreview && (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleRemoveSignature}
-                                    disabled={loading}
-                                  >
-                                    <X className="w-4 h-4 mr-2" />
-                                    Remove
-                                  </Button>
-                                )}
-                              </div>
-                              <div className="text-sm text-muted-foreground space-y-1">
-                                <p>Recommended: Transparent PNG, approx 300x100px</p>
-                                {signatureFile && (
-                                  <p className="text-blue-600 font-medium">
-                                    New file selected: {signatureFile.name}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {canEditOrganization && (
-                    <div className="flex justify-end">
-                      <Button onClick={handleSaveOrganization} disabled={loading}>
-                        <Save className="w-4 h-4 mr-2" />
-                        {loading ? 'Saving...' : 'Save Logo & Signature'}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-              </TabsContent2>
-
-            {/* System Branding Settings Tab (Only for Super Admin) */}
-            <TabsContent2 value="branding">
-            {userProfile.roles.role_level === 1 && (
+            {/* System Branding Settings (Only for Super Admin) */}
+            {orgSubTab === 'info' && userProfile.roles.role_level === 1 && (
               <Card className="mt-6 border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
                 <CardHeader className="border-b border-blue-200">
                   <CardTitle className="flex items-center gap-2">
@@ -1483,17 +1446,89 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                 </CardContent>
               </Card>
             )}
-            </TabsContent2>
+          </div>
+        )}
 
-              {/* Module Banners Tab */}
-              <TabsContent2 value="module-banners">
-                <ModuleBannerTab
-                  organizationId={userProfile.organizations.id}
-                  canEdit={canEditOrganization}
-                />
-              </TabsContent2>
+        {/* Notifications Settings */}
+        {activeTab === 'notifications' && (
+          <div className="space-y-6">
+            {/* For HQ Power Users - Show comprehensive notification system */}
+            {userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? (
+              <TabsComponent defaultValue="types" className="w-full">
+                <TabsList2 className="grid w-full grid-cols-2">
+                  <TabsTrigger2 value="types">Notification Types</TabsTrigger2>
+                  <TabsTrigger2 value="providers">Providers</TabsTrigger2>
+                </TabsList2>
 
-            </TabsComponent>
+                <TabsContent2 value="types" className="mt-6">
+                  <NotificationTypesTab userProfile={userProfile} />
+                </TabsContent2>
+
+                <TabsContent2 value="providers" className="mt-6">
+                  <NotificationProvidersTab userProfile={userProfile} />
+                </TabsContent2>
+              </TabsComponent>
+            ) : (
+              /* Regular Users - Show simple notification preferences */
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notification Preferences</CardTitle>
+                  <CardDescription>
+                    Choose how you want to be notified about important updates
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    {/* Email Notifications */}
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <div className="space-y-0.5 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-gray-600" />
+                          <Label className="text-base font-medium">Email Notifications</Label>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          Receive notifications via email for important updates
+                        </p>
+                      </div>
+                      <Switch
+                        checked={userSettings.email_notifications}
+                        onCheckedChange={(checked) => setUserSettings({
+                          ...userSettings,
+                          email_notifications: checked
+                        })}
+                      />
+                    </div>
+
+                    {/* SMS Notifications */}
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50">
+                      <div className="space-y-0.5 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-gray-600" />
+                          <Label className="text-base font-medium">SMS Notifications</Label>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          Receive urgent notifications via SMS
+                        </p>
+                      </div>
+                      <Switch
+                        checked={userSettings.sms_notifications}
+                        onCheckedChange={(checked) => setUserSettings({
+                          ...userSettings,
+                          sms_notifications: checked
+                        })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveNotifications} disabled={loading}>
+                      <Save className="w-4 h-4 mr-2" />
+                      {loading ? 'Saving...' : 'Save Preferences'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
@@ -1501,23 +1536,23 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
         {activeTab === 'preferences' && (
           <TabsComponent defaultValue="system" className="w-full">
             <TabsList2 className="grid w-full grid-cols-3 mb-4">
-              <TabsTrigger2 value="system">{t('settings.systemPreferences')}</TabsTrigger2>
-              <TabsTrigger2 value="document-template">{t('settings.documentTemplate')}</TabsTrigger2>
-              <TabsTrigger2 value="doc-sequence">{t('settings.docSequence')}</TabsTrigger2>
+              <TabsTrigger2 value="system">System Preferences</TabsTrigger2>
+              <TabsTrigger2 value="document-template">Document Template</TabsTrigger2>
+              <TabsTrigger2 value="doc-sequence">Doc Sequence</TabsTrigger2>
             </TabsList2>
 
             <TabsContent2 value="system">
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('settings.systemPreferences')}</CardTitle>
+                  <CardTitle>System Preferences</CardTitle>
                   <CardDescription>
-                    {t('settings.systemPreferencesDesc')}
+                    Customize your system experience and regional settings
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="timezone">{t('settings.timezone')}</Label>
+                      <Label htmlFor="timezone">Timezone</Label>
                       <Select
                         value={userSettings.timezone}
                         onValueChange={(value) => setUserSettings({ ...userSettings, timezone: value })}
@@ -1534,13 +1569,10 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="language">{t('settings.language')}</Label>
+                      <Label htmlFor="language">Language</Label>
                       <Select
                         value={userSettings.language}
-                        onValueChange={(value) => {
-                          setUserSettings({ ...userSettings, language: value })
-                          setLocale(value as Locale)
-                        }}
+                        onValueChange={(value) => setUserSettings({ ...userSettings, language: value })}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -1553,7 +1585,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="theme">{t('settings.theme')}</Label>
+                      <Label htmlFor="theme">Theme</Label>
                       <Select
                         value={theme}
                         onValueChange={(value) => {
@@ -1565,8 +1597,8 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="light">{t('settings.light')}</SelectItem>
-                          <SelectItem value="dark">{t('settings.dark')}</SelectItem>
+                          <SelectItem value="light">Light</SelectItem>
+                          <SelectItem value="dark">Dark</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1574,7 +1606,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                   <div className="flex justify-end">
                     <Button onClick={handleSaveNotifications} disabled={loading}>
                       <Save className="w-4 h-4 mr-2" />
-                      {loading ? t('common.saving') : t('settings.savePreferences')}
+                      {loading ? 'Saving...' : 'Save Preferences'}
                     </Button>
                   </div>
                 </CardContent>
