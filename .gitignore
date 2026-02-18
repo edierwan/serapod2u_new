@@ -148,11 +148,8 @@ vite.config.ts.timestamp-*
 # SQL files (Keep local only)
 *.sql
 
-# Markdown files (Keep local only, except essential)
+# Markdown files (Keep local only)
 *.md
-!README.md
-!CHANGELOG.md
-!LICENSE.md
 
 # Data files
 *.csv

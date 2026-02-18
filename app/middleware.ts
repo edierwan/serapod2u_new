@@ -144,7 +144,7 @@ export async function middleware(request: NextRequest) {
   if (qrRedirect) return qrRedirect;
 
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront']
+  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/signup']
 
   // Check if current path is public
   const isPublicPath = PUBLIC_PATHS.some((path) =>
@@ -316,6 +316,16 @@ export async function middleware(request: NextRequest) {
 
     // Handle login redirect for authenticated users
     if (user && request.nextUrl.pathname === '/login') {
+      // Check if user is an End User — route to store instead of dashboard
+      const { data: profile } = await supabase
+        .from('users')
+        .select('org_type_code')
+        .eq('id', user.id)
+        .single()
+
+      if (profile?.org_type_code === 'END_USER') {
+        return NextResponse.redirect(new URL('/store', request.url))
+      }
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   } catch (error) {

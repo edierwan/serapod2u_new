@@ -138,15 +138,6 @@ export const settingsNavGroups: SettingsNavGroup[] = [
         ],
     },
     {
-        id: 'settings-payment-gateway',
-        label: 'Payment Gateway',
-        icon: CreditCard,
-        description: 'Configure payment providers for the storefront checkout.',
-        children: [
-            { id: 'settings/payment-gateway', label: 'Payment Gateway', icon: CreditCard, href: toHref('settings/payment-gateway'), description: 'Provider credentials & activation' },
-        ],
-    },
-    {
         id: 'settings-danger-zone',
         label: 'Danger Zone',
         icon: AlertTriangle,

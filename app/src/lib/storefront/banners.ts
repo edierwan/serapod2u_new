@@ -21,23 +21,43 @@ export interface HeroConfig {
 /**
  * Fetch active store hero banners (server-side).
  * Respects is_active, starts_at, and ends_at scheduling.
+ * Filters by banner_type = 'store' (default) or specified type.
  */
-export async function listActiveStoreBanners(): Promise<StoreBanner[]> {
+export async function listActiveStoreBanners(bannerType: 'store' | 'login' = 'store'): Promise<StoreBanner[]> {
   try {
     const supabase = createAdminClient()
     const now = new Date().toISOString()
 
+    // Build query with proper AND/OR logic
+    // Use .or() to combine starts_at and ends_at conditions correctly
     const { data, error } = await supabase
       .from('store_hero_banners' as any)
-      .select('id, title, subtitle, badge_text, image_url, link_url, link_text, sort_order, layout_slot')
+      .select('id, title, subtitle, badge_text, image_url, link_url, link_text, sort_order, layout_slot, banner_type')
       .eq('is_active', true)
+      .or(`banner_type.eq.${bannerType},banner_type.is.null`)
       .or(`starts_at.is.null,starts_at.lte.${now}`)
       .or(`ends_at.is.null,ends_at.gt.${now}`)
       .order('sort_order', { ascending: true })
       .limit(10)
 
     if (error) {
-      console.error('[listActiveStoreBanners] Error:', error.message)
+      console.error(`[listActiveStoreBanners] Error (type=${bannerType}):`, error.message)
+      // Fallback: try without banner_type filter for backward compatibility
+      if (bannerType === 'store') {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('store_hero_banners' as any)
+          .select('id, title, subtitle, badge_text, image_url, link_url, link_text, sort_order, layout_slot')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true })
+          .limit(10)
+
+        if (!fallbackError && fallbackData) {
+          return ((fallbackData as any[]) ?? []).map((b) => ({
+            ...b,
+            layout_slot: b.layout_slot || 'carousel',
+          })) as StoreBanner[]
+        }
+      }
       return []
     }
 
@@ -49,6 +69,13 @@ export async function listActiveStoreBanners(): Promise<StoreBanner[]> {
     console.error('[listActiveStoreBanners] Unexpected error:', err)
     return []
   }
+}
+
+/**
+ * Fetch active login page hero banners (server-side, no auth required).
+ */
+export async function listLoginHeroBanners(): Promise<StoreBanner[]> {
+  return listActiveStoreBanners('login')
 }
 
 /**

@@ -23,6 +23,8 @@ import {
     Store,
     ImageIcon,
     ShoppingBag,
+    CreditCard,
+    LogIn,
     type LucideIcon,
 } from 'lucide-react'
 import { isCrmViewId } from '@/modules/crm/crmNav'
@@ -142,7 +144,9 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         description: 'Manage your online storefront — hero banners, promotions, and store settings.',
         children: [
             { id: 'store-banner-manager', label: 'Hero Banners', icon: ImageIcon, route: '/ecommerce', description: 'Manage storefront hero banner slides', href: '/ecommerce' },
+            { id: 'login-hero-banner', label: 'Login Hero Banner', icon: LogIn, route: '/ecommerce', description: 'Manage login page hero banners', href: '/ecommerce' },
             { id: 'store-orders', label: 'Store Orders', icon: ShoppingBag, route: '/ecommerce', description: 'View and manage online store orders', href: '/ecommerce' },
+            { id: 'ecommerce/payment-gateway', label: 'Payment Gateway', icon: CreditCard, route: '/ecommerce', description: 'Configure payment providers for checkout', href: '/ecommerce' },
         ],
     },
 ]
@@ -150,7 +154,7 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
 // ── Helpers ────────────────────────────────────────────────────
 
 /** E-commerce view IDs */
-const ecommerceViewIds = new Set(['ecommerce', 'store-banner-manager', 'store-orders'])
+const ecommerceViewIds = new Set(['ecommerce', 'store-banner-manager', 'login-hero-banner', 'store-orders', 'ecommerce/payment-gateway'])
 export function isEcommerceViewId(viewId: string): boolean {
     return ecommerceViewIds.has(viewId)
 }
