@@ -112,7 +112,11 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
         fetch('/api/admin/store/banners'),
         fetch('/api/admin/store/hero-config'),
       ])
-      if (!bannersRes.ok) throw new Error('Failed to fetch banners')
+
+      if (!bannersRes.ok) {
+        const errData = await bannersRes.json().catch(() => ({}))
+        throw new Error(errData.error || `Failed to fetch banners (${bannersRes.status})`)
+      }
       const bannersData = await bannersRes.json()
       setBanners(bannersData.banners || [])
 

@@ -188,11 +188,11 @@ export default function CategoryDialog({
             </p>
             {formData.image_url ? (
               <div className="relative group">
-                <div className="w-20 h-20 rounded-xl overflow-hidden border border-gray-200">
+                <div className="w-24 h-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
                   <img
                     src={formData.image_url}
                     alt="Category"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain p-1"
                   />
                 </div>
                 <div className="flex items-center gap-2 mt-2">

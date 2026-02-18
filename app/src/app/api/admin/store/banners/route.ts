@@ -2,25 +2,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+// Admin role codes that are allowed to manage store banners
+const ADMIN_ROLES = ['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin']
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 async function getAuthenticatedAdmin(supabase: any) {
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) return null
+  try {
+    const { data: { user }, error: authErr } = await supabase.auth.getUser()
+    if (authErr || !user) return null
 
-  const adminClient = createAdminClient()
-  const { data: profile } = await adminClient
-    .from('users')
-    .select('id, organization_id, role_code, organizations(id, org_type_code), roles(role_level)')
-    .eq('id', user.id)
-    .single()
+    const adminClient = createAdminClient()
 
-  if (!profile) return null
-  const orgType = (profile.organizations as any)?.org_type_code
-  const roleLevel = (profile.roles as any)?.role_level
-  if (orgType !== 'HQ' || roleLevel > 30) return null
+    // Query user profile with org (avoid roles join — FK may not exist)
+    const { data: profile, error: profileErr } = await adminClient
+      .from('users')
+      .select('id, organization_id, role_code')
+      .eq('id', user.id)
+      .single()
 
-  return { userId: user.id, orgId: profile.organization_id }
+    if (profileErr || !profile) return null
+
+    // Check role via allowlist
+    if (!ADMIN_ROLES.includes(profile.role_code)) return null
+
+    // Verify org is HQ type
+    const { data: org } = await adminClient
+      .from('organizations')
+      .select('org_type_code')
+      .eq('id', profile.organization_id)
+      .single()
+
+    if (!org || org.org_type_code !== 'HQ') return null
+
+    return { userId: user.id, orgId: profile.organization_id }
+  } catch (err) {
+    console.error('[getAuthenticatedAdmin] Error:', err)
+    return null
+  }
 }
 
 // ── GET /api/admin/store/banners ────────────────────────────────────
@@ -41,11 +60,14 @@ export async function GET() {
       .eq('org_id', admin.orgId)
       .order('sort_order', { ascending: true })
 
-    if (error) throw error
+    if (error) {
+      console.error('[admin/store/banners] GET DB error:', error)
+      return NextResponse.json({ error: error.message || 'Database error fetching banners' }, { status: 500 })
+    }
     return NextResponse.json({ banners: data ?? [] })
-  } catch (err) {
+  } catch (err: any) {
     console.error('[admin/store/banners] GET error:', err)
-    return NextResponse.json({ error: 'Failed to fetch banners' }, { status: 500 })
+    return NextResponse.json({ error: err?.message || 'Failed to fetch banners' }, { status: 500 })
   }
 }
 

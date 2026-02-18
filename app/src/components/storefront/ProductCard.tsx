@@ -53,10 +53,23 @@ export default function StorefrontProductCard({ product }: { product: Storefront
   const animationUrl = resolveMediaUrl(product.animation_url)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [imgError, setImgError] = useState(false)
+  const [useFallback, setUseFallback] = useState(false)
 
-  // Determine what to display: prefer image, fallback to animation/video
-  const displayUrl = imageUrl || animationUrl
-  const mediaType = imageUrl ? getMediaType(imageUrl) : animationUrl ? getMediaType(animationUrl) : 'image'
+  // Prefer animation (video/gif) over static image — matching admin behavior.
+  // If both exist, show animation first. If it fails, fall back to image.
+  const primaryUrl = animationUrl || imageUrl
+  const fallbackUrl = animationUrl ? imageUrl : null
+  const displayUrl = useFallback ? fallbackUrl : primaryUrl
+  const mediaType = displayUrl ? getMediaType(displayUrl) : 'image'
+
+  const handleMediaError = () => {
+    if (!useFallback && fallbackUrl) {
+      // Try the fallback URL before giving up
+      setUseFallback(true)
+    } else {
+      setImgError(true)
+    }
+  }
 
   return (
     <Link
@@ -64,7 +77,7 @@ export default function StorefrontProductCard({ product }: { product: Storefront
       className="group block bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-gray-200 transition-all duration-300"
     >
       {/* Media */}
-      <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
+      <div className="relative aspect-[4/3] bg-gray-50 overflow-hidden">
         {displayUrl && !imgError ? (
           mediaType === 'video' ? (
             <video
@@ -74,16 +87,16 @@ export default function StorefrontProductCard({ product }: { product: Storefront
               loop
               playsInline
               autoPlay
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-              onError={() => setImgError(true)}
+              className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
+              onError={handleMediaError}
             />
           ) : (
             <img
               src={displayUrl}
               alt={product.product_name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
               loading="lazy"
-              onError={() => setImgError(true)}
+              onError={handleMediaError}
             />
           )
         ) : (
