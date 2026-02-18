@@ -67,11 +67,21 @@ export interface StorefrontProductDetail {
   variants: StorefrontVariant[]
 }
 
+export interface StorefrontMediaItem {
+  id: string
+  type: 'image' | 'video'
+  url: string
+  thumbnail_url: string | null
+  sort_order: number
+  is_default: boolean
+}
+
 export interface StorefrontVariant {
   id: string
   variant_name: string
   variant_code: string
   image_url: string | null
+  animation_url: string | null
   suggested_retail_price: number | null
   base_cost: number | null
   is_active: boolean | null
@@ -79,6 +89,7 @@ export interface StorefrontVariant {
   attributes: Record<string, unknown> | null
   barcode: string | null
   sort_order: number | null
+  media: StorefrontMediaItem[]
 }
 
 export interface StorefrontCategory {
@@ -234,13 +245,15 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
         variant_name,
         variant_code,
         image_url,
+        animation_url,
         suggested_retail_price,
         base_cost,
         is_active,
         is_default,
         attributes,
         barcode,
-        sort_order
+        sort_order,
+        variant_media (id, type, url, thumbnail_url, sort_order, is_default)
       )
     `)
     .eq('id', productId)
@@ -265,19 +278,46 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
     variants: (p.product_variants || [])
       .filter((v: any) => v.is_active !== false)
       .sort((a: any, b: any) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
-      .map((v: any) => ({
-        id: v.id,
-        variant_name: v.variant_name,
-        variant_code: v.variant_code,
-        image_url: toStorefrontMediaUrl(v.image_url),
-        suggested_retail_price: v.suggested_retail_price,
-        base_cost: v.base_cost,
-        is_active: v.is_active,
-        is_default: v.is_default,
-        attributes: v.attributes,
-        barcode: v.barcode,
-        sort_order: v.sort_order,
-      })),
+      .map((v: any) => {
+        // Build media list from variant_media table (or fall back to legacy fields)
+        let media: StorefrontMediaItem[] = []
+        if (v.variant_media && v.variant_media.length > 0) {
+          media = v.variant_media
+            .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+            .map((m: any) => ({
+              id: m.id,
+              type: m.type,
+              url: toStorefrontMediaUrl(m.url) || m.url,
+              thumbnail_url: m.thumbnail_url ? (toStorefrontMediaUrl(m.thumbnail_url) || m.thumbnail_url) : null,
+              sort_order: m.sort_order ?? 0,
+              is_default: m.is_default ?? false,
+            }))
+        } else {
+          // Legacy fallback
+          if (v.image_url) {
+            media.push({ id: `legacy-img-${v.id}`, type: 'image', url: toStorefrontMediaUrl(v.image_url)!, thumbnail_url: null, sort_order: 0, is_default: true })
+          }
+          if (v.animation_url) {
+            media.push({ id: `legacy-vid-${v.id}`, type: 'video', url: toStorefrontMediaUrl(v.animation_url)!, thumbnail_url: null, sort_order: media.length, is_default: media.length === 0 })
+          }
+        }
+
+        return {
+          id: v.id,
+          variant_name: v.variant_name,
+          variant_code: v.variant_code,
+          image_url: toStorefrontMediaUrl(v.image_url),
+          animation_url: toStorefrontMediaUrl(v.animation_url),
+          suggested_retail_price: v.suggested_retail_price,
+          base_cost: v.base_cost,
+          is_active: v.is_active,
+          is_default: v.is_default,
+          attributes: v.attributes,
+          barcode: v.barcode,
+          sort_order: v.sort_order,
+          media,
+        }
+      }),
   }
 }
 

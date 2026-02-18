@@ -1,84 +1,42 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Textarea } from '@/components/ui/textarea'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { X, Loader2, Upload, Image as ImageIcon, Plus, Star } from 'lucide-react'
+import {
+  X,
+  Loader2,
+  Plus,
+  Star,
+  Film,
+  ImageIcon,
+} from 'lucide-react'
 import { getStorageUrl } from '@/lib/utils'
 
-// Image compression utility for variant images
-// Variant images are small display images, compress to ~5KB
-const compressImage = (file: File): Promise<File> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = (event) => {
-      const img = new Image()
-      img.src = event.target?.result as string
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let width = img.width
-        let height = img.height
-        
-        // Variant image dimensions - small size for display
-        const MAX_WIDTH = 400
-        const MAX_HEIGHT = 400
-        
-        // Calculate new dimensions while maintaining aspect ratio
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height = Math.round((height * MAX_WIDTH) / width)
-            width = MAX_WIDTH
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width = Math.round((width * MAX_HEIGHT) / height)
-            height = MAX_HEIGHT
-          }
-        }
-        
-        canvas.width = width
-        canvas.height = height
-        
-        const ctx = canvas.getContext('2d')
-        ctx?.drawImage(img, 0, 0, width, height)
-        
-        // Convert to JPEG with compression (quality 0.7 = 70%)
-        // This targets ~5KB file size for variant images
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              // Create a new File object with compressed blob
-              const compressedFile = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
-                type: 'image/jpeg',
-                lastModified: Date.now(),
-              })
-              console.log(`🖼️ Variant image compressed: ${(file.size / 1024).toFixed(2)}KB → ${(compressedFile.size / 1024).toFixed(2)}KB`)
-              resolve(compressedFile)
-            } else {
-              reject(new Error('Canvas to Blob conversion failed'))
-            }
-          },
-          'image/jpeg',
-          0.7 // Compression quality for ~5KB target
-        )
-      }
-      img.onerror = () => reject(new Error('Image loading failed'))
-    }
-    reader.onerror = () => reject(new Error('File reading failed'))
-  })
-}
+// ── Types ────────────────────────────────────────────────────────
 
 interface Product {
   id: string
   product_name: string
 }
 
-interface Variant {
+export interface MediaItem {
+  id: string
+  type: 'image' | 'video'
+  url: string
+  thumbnailUrl?: string | null
+  file?: File | null
+  thumbnailFile?: Blob | null
+  isDefault: boolean
+  dbId?: string | null
+  mimeType?: string
+  fileSize?: number
+  durationMs?: number | null
+}
+
+export interface Variant {
   id?: string
   product_id: string
   variant_code?: string
@@ -97,13 +55,7 @@ interface Variant {
   image_url?: string | null
   additional_images?: string[] | null
   animation_url?: string | null
-}
-
-interface ImageItem {
-  id: string
-  file?: File
-  url: string
-  isDefault?: boolean
+  media?: MediaItem[]
 }
 
 interface VariantDialogProps {
@@ -112,712 +64,365 @@ interface VariantDialogProps {
   open: boolean
   isSaving: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (data: Partial<Variant>) => void
+  onSave: (data: Partial<Variant> & { mediaItems?: MediaItem[] }) => void
 }
 
-export default function VariantDialog({
-  variant,
-  products,
-  open,
-  isSaving,
-  onOpenChange,
-  onSave
-}: VariantDialogProps) {
-  // Initialize formData based on variant prop
-  const getInitialFormData = (): Partial<Variant> => {
-    if (variant) {
-      return {
-        product_id: variant.product_id || (products.length === 1 ? products[0].id : ''),
-        variant_name: variant.variant_name || '',
-        attributes: variant.attributes || {},
-        barcode: variant.barcode || '',
-        manufacturer_sku: variant.manufacturer_sku || '',
-        manual_sku: variant.manual_sku || '',
-        base_cost: variant.base_cost,
-        suggested_retail_price: variant.suggested_retail_price,
-        retailer_price: variant.retailer_price,
-        distributor_price: variant.distributor_price,
-        other_price: variant.other_price,
-        is_active: variant.is_active !== false,
-        is_default: variant.is_default || false,
-        image_url: variant.image_url || null,
-        additional_images: variant.additional_images || [],
-        animation_url: variant.animation_url || null
+const MAX_MEDIA = 10
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm']
+const ALL_ACCEPTED = [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES]
+
+function isVideoType(mime: string) {
+  return ACCEPTED_VIDEO_TYPES.includes(mime)
+}
+
+function compressImage(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let w = img.width, h = img.height
+        const MAX = 400
+        if (w > h) { if (w > MAX) { h = Math.round((h * MAX) / w); w = MAX } }
+        else { if (h > MAX) { w = Math.round((w * MAX) / h); h = MAX } }
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d')?.drawImage(img, 0, 0, w, h)
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return reject(new Error('compress failed'))
+            resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg', lastModified: Date.now() }))
+          },
+          'image/jpeg',
+          0.75,
+        )
       }
+      img.onerror = () => reject(new Error('Image load failed'))
     }
-    return {
-      product_id: products.length > 0 ? products[0].id : '',
-      variant_name: '',
-      attributes: {},
-      barcode: '',
-      manufacturer_sku: '',
-      manual_sku: '',
-      base_cost: null,
-      suggested_retail_price: null,
-      retailer_price: null,
-      distributor_price: null,
-      other_price: null,
-      is_active: true,
-      is_default: false,
-      image_url: null,
-      additional_images: [],
-      animation_url: null
+    reader.onerror = () => reject(new Error('File read failed'))
+  })
+}
+
+function captureVideoThumbnail(file: File): Promise<{ blob: Blob; url: string; durationMs: number }> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.muted = true
+    video.playsInline = true
+    const objectUrl = URL.createObjectURL(file)
+    video.src = objectUrl
+    video.onloadeddata = () => { video.currentTime = Math.min(video.duration * 0.25, 2) }
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.min(video.videoWidth, 400)
+      canvas.height = Math.round((canvas.width / video.videoWidth) * video.videoHeight)
+      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob(
+        (blob) => {
+          const durationMs = Math.round(video.duration * 1000)
+          URL.revokeObjectURL(objectUrl)
+          if (!blob) return reject(new Error('Thumbnail capture failed'))
+          resolve({ blob, url: URL.createObjectURL(blob), durationMs })
+        },
+        'image/jpeg',
+        0.8,
+      )
     }
-  }
+    video.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Video load failed')) }
+  })
+}
 
-  const [formData, setFormData] = useState<Partial<Variant>>(getInitialFormData)
+export default function VariantDialog({ variant, products, open, isSaving, onOpenChange, onSave }: VariantDialogProps) {
+  const mkInitial = useCallback(
+    (): Partial<Variant> =>
+      variant
+        ? {
+            product_id: variant.product_id || (products.length === 1 ? products[0].id : ''),
+            variant_name: variant.variant_name || '',
+            attributes: variant.attributes || {},
+            barcode: variant.barcode || '',
+            manufacturer_sku: variant.manufacturer_sku || '',
+            manual_sku: variant.manual_sku || '',
+            base_cost: variant.base_cost,
+            suggested_retail_price: variant.suggested_retail_price,
+            retailer_price: variant.retailer_price,
+            distributor_price: variant.distributor_price,
+            other_price: variant.other_price,
+            is_active: variant.is_active !== false,
+            is_default: variant.is_default || false,
+          }
+        : {
+            product_id: products.length > 0 ? products[0].id : '',
+            variant_name: '',
+            attributes: {},
+            barcode: '',
+            manufacturer_sku: '',
+            manual_sku: '',
+            base_cost: null,
+            suggested_retail_price: null,
+            retailer_price: null,
+            distributor_price: null,
+            other_price: null,
+            is_active: true,
+            is_default: false,
+          },
+    [variant, products],
+  )
 
+  const [formData, setFormData] = useState<Partial<Variant>>(mkInitial)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [images, setImages] = useState<ImageItem[]>([])
-  const [animationPreview, setAnimationPreview] = useState<string | null>(null)
-  const [animationFile, setAnimationFile] = useState<File | null>(null)
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (open) {
-      console.log('🔄 Dialog opened, products available:', products.length)
-      console.log('📋 Products list:', products.map(p => ({ id: p.id, name: p.product_name })))
-      
-      if (variant) {
-        console.log('📝 Editing variant:', variant)
-        console.log('🎯 Variant Product ID:', variant.product_id)
-        
-        // Check if the product exists in the products list
-        const productExists = products.find(p => p.id === variant.product_id)
-        console.log('✅ Product found in list:', productExists ? productExists.product_name : 'NOT FOUND!')
-        
-        const newFormData = {
-          product_id: variant.product_id || (products.length === 1 ? products[0].id : ''),
-          variant_name: variant.variant_name || '',
-          attributes: variant.attributes || {},
-          barcode: variant.barcode || '',
-          manufacturer_sku: variant.manufacturer_sku || '',
-          manual_sku: variant.manual_sku || '',
-          base_cost: variant.base_cost,
-          suggested_retail_price: variant.suggested_retail_price,
-          retailer_price: variant.retailer_price,
-          distributor_price: variant.distributor_price,
-          other_price: variant.other_price,
-          is_active: variant.is_active !== false,
-          is_default: variant.is_default || false,
-          image_url: variant.image_url || null,
-          additional_images: variant.additional_images || [],
-          animation_url: variant.animation_url || null
-        }
-        console.log('📦 Setting formData:', newFormData)
-        setFormData(newFormData)
-        
-        // Load existing images
-        const loadedImages: ImageItem[] = []
-        const additionalImages = variant.additional_images || []
-        
-        // If we have additional_images, use them
-        if (additionalImages.length > 0) {
-          additionalImages.forEach((url, index) => {
-            loadedImages.push({
-              id: `loaded-${index}`,
-              url: getStorageUrl(url, 'avatars') || url,
-              isDefault: index === 0
-            })
-          })
-        } else if (variant.image_url) {
-          // Fallback to single image_url
-          loadedImages.push({
-            id: 'loaded-primary',
-            url: getStorageUrl(variant.image_url, 'avatars') || variant.image_url,
-            isDefault: true
-          })
-        }
-        setImages(loadedImages)
-        setAnimationPreview(getStorageUrl(variant.animation_url, 'avatars') || null)
-      } else {
-        setFormData({
-          product_id: products.length > 0 ? products[0].id : '',
-          variant_name: '',
-          attributes: {},
-          barcode: '',
-          manufacturer_sku: '',
-          manual_sku: '',
-          base_cost: null,
-          suggested_retail_price: null,
-          retailer_price: null,
-          distributor_price: null,
-          other_price: null,
-          is_active: true,
-          is_default: false,
-          image_url: null,
-          additional_images: [],
-          animation_url: null
-        })
-        setImages([])
-        setAnimationPreview(null)
+    if (!open) return
+    setFormData(mkInitial())
+    setErrors({})
+    const items: MediaItem[] = []
+    if (variant?.media && variant.media.length > 0) {
+      items.push(...variant.media.map((m) => ({ ...m, file: null, thumbnailFile: null })))
+    } else {
+      if (variant?.image_url) {
+        items.push({ id: `legacy-img-${Date.now()}`, type: 'image' as const, url: getStorageUrl(variant.image_url) || variant.image_url, isDefault: true, dbId: null, file: null })
       }
-      setErrors({})
-      setAnimationFile(null)
+      if (variant?.animation_url) {
+        items.push({ id: `legacy-vid-${Date.now()}`, type: 'video' as const, url: getStorageUrl(variant.animation_url) || variant.animation_url, thumbnailUrl: null, isDefault: items.length === 0, dbId: null, file: null })
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    setMediaItems(items)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, variant, products])
 
-  const validate = (): boolean => {
-    const newErrors: Record<string, string> = {}
-    
-    // Check product_id - use variant's product_id as fallback
-    const effectiveProductId = formData.product_id || variant?.product_id
-    if (!effectiveProductId) {
-      newErrors.product_id = 'Product is required'
-    }
-
-    if (!formData.variant_name) {
-      newErrors.variant_name = 'Name is required'
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const generateVariantCode = (): string => {
-    const timestamp = Date.now().toString().slice(-6)
-    const nameCode = formData.variant_name?.substring(0, 3).toUpperCase() || 'VAR'
-    return `${nameCode}-${timestamp}`
-  }
-
-  const generateBarcode = (): string => {
+  const generateBarcode = useCallback(() => {
     if (!formData.product_id || !formData.variant_name) return ''
-    const product = products.find(p => p.id === formData.product_id)
-    const productCode = product ? product.product_name.substring(0, 3).toUpperCase() : 'PRD'
-    const variantCode = formData.variant_name.substring(0, 2).toUpperCase()
-    const timestamp = Date.now().toString().slice(-5)
-    return `${productCode}${variantCode}${timestamp}`
-  }
+    const product = products.find((p) => p.id === formData.product_id)
+    const pc = product ? product.product_name.substring(0, 3).toUpperCase() : 'PRD'
+    const vc = formData.variant_name.substring(0, 2).toUpperCase()
+    return `${pc}${vc}${Date.now().toString().slice(-5)}`
+  }, [formData.product_id, formData.variant_name, products])
 
-  const generateSKU = (): string => {
+  const generateSKU = useCallback(() => {
     if (!formData.product_id || !formData.variant_name) return ''
-    const product = products.find(p => p.id === formData.product_id)
-    const productCode = product ? product.product_name.substring(0, 3).toUpperCase() : 'PRD'
-    const variantCode = formData.variant_name.substring(0, 3).toUpperCase()
-    const timestamp = Date.now().toString().slice(-4)
-    return `SKU-${productCode}-${variantCode}-${timestamp}`
-  }
+    const product = products.find((p) => p.id === formData.product_id)
+    const pc = product ? product.product_name.substring(0, 3).toUpperCase() : 'PRD'
+    const vc = formData.variant_name.substring(0, 3).toUpperCase()
+    return `SKU-${pc}-${vc}-${Date.now().toString().slice(-4)}`
+  }, [formData.product_id, formData.variant_name, products])
+
+  const generateVariantCode = useCallback(() => {
+    const nc = formData.variant_name?.substring(0, 3).toUpperCase() || 'VAR'
+    return `${nc}-${Date.now().toString().slice(-6)}`
+  }, [formData.variant_name])
 
   useEffect(() => {
-    // Auto-generate barcode and SKU when variant name or product changes
     if (formData.variant_name && formData.product_id && !variant) {
-      setFormData(prev => ({
-        ...prev,
-        barcode: generateBarcode(),
-        manufacturer_sku: generateSKU()
-      }))
+      setFormData((p) => ({ ...p, barcode: generateBarcode(), manufacturer_sku: generateSKU() }))
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.product_id, formData.variant_name, variant])
 
-  const handleSubmit = () => {
-    if (validate()) {
-      console.log('📤 Submitting form data:', formData)
-      console.log('🎬 Animation file:', animationFile)
-      console.log('📝 Editing existing variant:', !!variant)
-      
-      // Get the default image (first image or existing image_url)
-      let primaryImageFile: File | undefined = undefined
-      if (images.length > 0) {
-        const defaultImage = images.find(img => img.isDefault) || images[0]
-        primaryImageFile = defaultImage.file
-      }
-      
-      // Ensure product_id is set - use variant's product_id as fallback
-      const finalProductId = formData.product_id || variant?.product_id || ''
-      
-      // When editing, preserve the existing variant_code and barcode
-      // When creating, generate new ones
-      const submitData = {
-        ...formData,
-        product_id: finalProductId,
-        variant_code: variant?.variant_code || generateVariantCode(),
-        barcode: variant ? formData.barcode : generateBarcode(),
-        imageFile: primaryImageFile,
-        animationFile: animationFile
-      }
-      
-      console.log('📦 Submitting data:', submitData)
-      console.log('🔑 Using variant_code:', submitData.variant_code)
-      console.log('🎯 Final product_id being submitted:', finalProductId)
-      onSave(submitData as any)
-    }
+  const validate = (): boolean => {
+    const e: Record<string, string> = {}
+    if (!(formData.product_id || variant?.product_id)) e.product_id = 'Product is required'
+    if (!formData.variant_name) e.variant_name = 'Name is required'
+    setErrors(e)
+    return Object.keys(e).length === 0
   }
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddMedia = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
-
-    const remainingSlots = 5 - images.length
-    if (remainingSlots <= 0) {
-      setErrors(prev => ({ ...prev, image: 'Maximum 5 images allowed' }))
-      return
-    }
-
-    const filesToAdd = Array.from(files).slice(0, remainingSlots)
-    
-    for (const file of filesToAdd) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        setErrors(prev => ({ ...prev, image: 'Please select valid image files' }))
-        continue
-      }
-
-      // Check for AVIF format - not supported by Supabase Storage
-      if (file.type === 'image/avif') {
-        setErrors(prev => ({ ...prev, image: 'AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.' }))
-        continue
-      }
-
-      // Validate file size (max 5MB before compression)
-      if (file.size > 5 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, image: 'Image size must be less than 5MB' }))
-        continue
-      }
-
+    const remaining = MAX_MEDIA - mediaItems.length
+    if (remaining <= 0) { setErrors((p) => ({ ...p, media: `Maximum ${MAX_MEDIA} media items allowed` })); return }
+    const toProcess = Array.from(files).slice(0, remaining)
+    const newItems: MediaItem[] = []
+    for (const file of toProcess) {
+      const isVideo = isVideoType(file.type)
+      if (!ALL_ACCEPTED.includes(file.type)) { setErrors((p) => ({ ...p, media: `Unsupported type: ${file.type}` })); continue }
+      if (file.type === 'image/avif') { setErrors((p) => ({ ...p, media: 'AVIF not supported.' })); continue }
+      if (isVideo && file.size > MAX_VIDEO_SIZE) { setErrors((p) => ({ ...p, media: 'Video must be under 50 MB' })); continue }
+      if (!isVideo && file.size > MAX_IMAGE_SIZE) { setErrors((p) => ({ ...p, media: 'Image must be under 5 MB' })); continue }
       try {
-        // Always compress variant images to optimize size (target ~5KB)
-        console.log('🖼️ Compressing variant image...')
-        const compressedFile = await compressImage(file)
-        
-        // Create preview
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          const newImage: ImageItem = {
-            id: `new-${Date.now()}-${Math.random()}`,
-            file: compressedFile,
-            url: reader.result as string,
-            isDefault: false // Will set default properly below
-          }
-          setImages(prev => {
-            const updatedImages = [...prev, newImage]
-            // If this is the first image, make it default
-            if (updatedImages.length === 1) {
-              updatedImages[0].isDefault = true
-            }
-            return updatedImages
-          })
+        if (isVideo) {
+          const { blob: thumbBlob, url: thumbUrl, durationMs } = await captureVideoThumbnail(file)
+          newItems.push({ id: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`, type: 'video', url: URL.createObjectURL(file), thumbnailUrl: thumbUrl, file, thumbnailFile: thumbBlob, isDefault: false, mimeType: file.type, fileSize: file.size, durationMs })
+        } else {
+          const compressed = await compressImage(file)
+          newItems.push({ id: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`, type: 'image', url: URL.createObjectURL(compressed), file: compressed, isDefault: false, mimeType: compressed.type, fileSize: compressed.size })
         }
-        reader.readAsDataURL(compressedFile)
-        
-        setErrors(prev => ({ ...prev, image: '' }))
-      } catch (error) {
-        console.error('Image compression failed:', error)
-        setErrors(prev => ({ ...prev, image: 'Image compression failed. Please try a different image.' }))
+        setErrors((p) => ({ ...p, media: '' }))
+      } catch (err) {
+        console.error('Media processing error:', err)
+        setErrors((p) => ({ ...p, media: 'Failed to process file.' }))
       }
     }
-    
-    // Reset input
-    if (e.target) {
-      e.target.value = ''
+    if (newItems.length > 0) {
+      setMediaItems((prev) => {
+        const merged = [...prev, ...newItems]
+        if (!merged.some((m) => m.isDefault)) merged[0].isDefault = true
+        return merged
+      })
     }
+    if (e.target) e.target.value = ''
   }
 
-  const handleRemoveImage = (imageId: string) => {
-    setImages(prev => {
-      const filtered = prev.filter(img => img.id !== imageId)
-      // If we removed the default, make the first one default
-      if (filtered.length > 0 && !filtered.some(img => img.isDefault)) {
-        filtered[0].isDefault = true
-      }
+  const handleRemoveMedia = (id: string) => {
+    setMediaItems((prev) => {
+      const filtered = prev.filter((m) => m.id !== id)
+      if (filtered.length > 0 && !filtered.some((m) => m.isDefault)) filtered[0].isDefault = true
       return filtered
     })
   }
 
-  const handleSetDefaultImage = (imageId: string) => {
-    setImages(prev => prev.map(img => ({
-      ...img,
-      isDefault: img.id === imageId
-    })))
+  const handleSetDefault = (id: string) => {
+    setMediaItems((prev) => prev.map((m) => ({ ...m, isDefault: m.id === id })))
   }
 
-  const handleAnimationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (!file.type.startsWith('video/')) {
-        setErrors(prev => ({ ...prev, animation: 'Please select a valid video file' }))
-        return
-      }
-      
-      // Validate file size (max 50MB for animation)
-      if (file.size > 50 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, animation: 'Animation size must be less than 50MB' }))
-        return
-      }
-
-      setAnimationFile(file)
-      setErrors(prev => ({ ...prev, animation: '' }))
-
-      // Create preview
-      const url = URL.createObjectURL(file)
-      setAnimationPreview(url)
-    }
+  const handleMoveMedia = (index: number, direction: -1 | 1) => {
+    setMediaItems((prev) => {
+      const next = [...prev]
+      const target = index + direction
+      if (target < 0 || target >= next.length) return prev
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
   }
 
-  const handleRemoveAnimation = () => {
-    setAnimationFile(null)
-    setAnimationPreview(null)
-    setFormData(prev => ({ ...prev, animation_url: null }))
-  }
-
-  const getVariantInitials = (name: string) => {
-    if (!name) return 'V'
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
+  const handleSubmit = () => {
+    if (!validate()) return
+    const finalProductId = formData.product_id || variant?.product_id || ''
+    onSave({
+      ...formData,
+      product_id: finalProductId,
+      variant_code: variant?.variant_code || generateVariantCode(),
+      barcode: variant ? formData.barcode : generateBarcode(),
+      mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
+    } as any)
   }
 
   if (!open) return null
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-          <h2 className="text-lg font-bold text-gray-900">
-            {variant ? 'Edit Variant' : 'Add Variant'}
-          </h2>
-          <button
-            onClick={() => onOpenChange(false)}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      <div className="w-full max-w-lg bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <h2 className="text-lg font-bold text-gray-900">{variant ? 'Edit Variant' : 'Add Variant'}</h2>
+          <button onClick={() => onOpenChange(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="p-6 space-y-4">
-          {/* Variant Images Upload - Up to 5 images */}
+        <div className="p-6 space-y-5">
+          {/* Unified Variant Media */}
           <div className="space-y-2">
-            <Label>Variant Images (Up to 5)</Label>
-            <div className="space-y-3">
-              {/* Image Grid */}
-              <div className="flex flex-wrap gap-3">
-                {images.map((image, index) => (
-                  <div key={image.id} className="relative group">
-                    <div className={`w-20 h-20 rounded-lg border-2 overflow-hidden ${image.isDefault ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200'}`}>
-                      <img 
-                        src={image.url} 
-                        alt={`Variant image ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    {/* Overlay with actions */}
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
-                      {!image.isDefault && (
-                        <button
-                          type="button"
-                          onClick={() => handleSetDefaultImage(image.id)}
-                          className="p-1.5 bg-white/90 rounded-full hover:bg-white text-primary"
-                          title="Set as default"
-                        >
-                          <Star className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveImage(image.id)}
-                        className="p-1.5 bg-white/90 rounded-full hover:bg-white text-red-600"
-                        title="Remove image"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    {/* Default badge */}
-                    {image.isDefault && (
-                      <div className="absolute -top-1 -right-1 bg-primary text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                        Default
-                      </div>
+            <Label className="text-sm font-semibold">Variant Media <span className="font-normal text-gray-500">(Up to {MAX_MEDIA} \u2014 images &amp; videos)</span></Label>
+            <div className="flex flex-wrap gap-3">
+              {mediaItems.map((item, idx) => (
+                <div key={item.id} className="relative group">
+                  <div className={`w-20 h-20 rounded-lg border-2 overflow-hidden ${item.isDefault ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-gray-200'}`}>
+                    {item.type === 'video' ? (
+                      <video src={item.url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+                    ) : (
+                      <img src={item.url} alt={`Media ${idx + 1}`} className="w-full h-full object-cover" />
                     )}
                   </div>
-                ))}
-                
-                {/* Add Image Button */}
-                {images.length < 5 && (
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('variant-image-upload')?.click()}
-                    className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 hover:border-primary hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-primary"
-                  >
-                    <Plus className="w-5 h-5" />
-                    <span className="text-[10px]">Add</span>
-                  </button>
-                )}
-              </div>
-              
-              <input
-                id="variant-image-upload"
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                onChange={handleImageChange}
-                multiple
-                className="hidden"
-              />
-              <p className="text-xs text-gray-500">
-                PNG, JPG, GIF up to 5MB each. Auto-compresses. First image is default. {images.length}/5 images
-              </p>
-              {errors.image && <p className="text-xs text-red-500">{errors.image}</p>}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Variant Animation (Optional)</Label>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-lg border-2 border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
-                {animationPreview ? (
-                  <video 
-                    src={animationPreview} 
-                    className="w-full h-full object-cover"
-                    muted
-                    loop
-                    autoPlay
-                    playsInline
-                  />
-                ) : (
-                  <div className="text-gray-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                  <span className={`absolute bottom-0.5 left-0.5 text-[9px] font-bold uppercase px-1 py-[1px] rounded flex items-center gap-0.5 ${item.type === 'video' ? 'bg-purple-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                    {item.type === 'video' ? <><Film className="w-2.5 h-2.5" /> Vid</> : <><ImageIcon className="w-2.5 h-2.5" /> Img</>}
+                  </span>
+                  {item.isDefault && <div className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">Default</div>}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
+                    {idx > 0 && <button type="button" onClick={() => handleMoveMedia(idx, -1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move left"><span className="text-[10px] font-bold">\u2190</span></button>}
+                    {!item.isDefault && <button type="button" onClick={() => handleSetDefault(item.id)} className="p-1.5 bg-white/90 rounded-full hover:bg-white text-blue-600" title="Set as default"><Star className="w-3.5 h-3.5" /></button>}
+                    <button type="button" onClick={() => handleRemoveMedia(item.id)} className="p-1.5 bg-white/90 rounded-full hover:bg-white text-red-600" title="Remove"><X className="w-3.5 h-3.5" /></button>
+                    {idx < mediaItems.length - 1 && <button type="button" onClick={() => handleMoveMedia(idx, 1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move right"><span className="text-[10px] font-bold">\u2192</span></button>}
                   </div>
-                )}
-              </div>
-              <div className="flex-1">
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => document.getElementById('variant-animation-upload')?.click()}
-                    className="flex items-center gap-2"
-                  >
-                    <Upload className="w-4 h-4" />
-                    {animationPreview ? 'Change Animation' : 'Upload Animation'}
-                  </Button>
-                  {animationPreview && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRemoveAnimation}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
                 </div>
-                <input
-                  id="variant-animation-upload"
-                  type="file"
-                  accept="video/mp4,video/webm"
-                  onChange={handleAnimationChange}
-                  className="hidden"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  MP4, WebM up to 50MB. Max 8 seconds recommended.
-                </p>
-                {errors.animation && <p className="text-xs text-red-500 mt-1">{errors.animation}</p>}
-              </div>
+              ))}
+              {mediaItems.length < MAX_MEDIA && (
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50/50 transition-colors flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-blue-500">
+                  <Plus className="w-5 h-5" /><span className="text-[10px]">Add</span>
+                </button>
+              )}
             </div>
+            <input ref={fileInputRef} type="file" accept={ALL_ACCEPTED.join(',')} onChange={handleAddMedia} multiple className="hidden" />
+            <p className="text-xs text-gray-500">Images: PNG, JPG, GIF \u2264 5 MB \u00B7 Videos: MP4, WebM \u2264 50 MB (8\u201315s recommended) \u00B7 {mediaItems.length}/{MAX_MEDIA}</p>
+            {errors.media && <p className="text-xs text-red-500">{errors.media}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="product">Product *</Label>
-            <select
-              id="product"
-              value={formData.product_id || (variant?.product_id || '')}
-              onChange={(e) => {
-                console.log('🔀 Product changed to:', e.target.value)
-                setFormData(prev => ({ ...prev, product_id: e.target.value }))
-                if (errors.product_id) setErrors(prev => ({ ...prev, product_id: '' }))
-              }}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.product_id ? 'border-red-500' : ''}`}
-            >
+            <select id="product" value={formData.product_id || variant?.product_id || ''} onChange={(e) => { setFormData((p) => ({ ...p, product_id: e.target.value })); if (errors.product_id) setErrors((p) => ({ ...p, product_id: '' })) }} className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.product_id ? 'border-red-500' : ''}`}>
               <option value="">Select a product</option>
-              {products.map(product => (
-                <option key={product.id} value={product.id}>{product.product_name}</option>
-              ))}
+              {products.map((product) => <option key={product.id} value={product.id}>{product.product_name}</option>)}
             </select>
             {errors.product_id && <p className="text-xs text-red-500">{errors.product_id}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="name">Variant Name *</Label>
-            <Input
-              id="name"
-              placeholder="e.g., Strawberry - 6mg"
-              value={formData.variant_name || ''}
-              onChange={(e) => {
-                setFormData(prev => ({ ...prev, variant_name: e.target.value }))
-                if (errors.variant_name) setErrors(prev => ({ ...prev, variant_name: '' }))
-              }}
-              className={errors.variant_name ? 'border-red-500' : ''}
-            />
+            <Input id="name" placeholder="e.g., Strawberry - 6mg" value={formData.variant_name || ''} onChange={(e) => { setFormData((p) => ({ ...p, variant_name: e.target.value })); if (errors.variant_name) setErrors((p) => ({ ...p, variant_name: '' })) }} className={errors.variant_name ? 'border-red-500' : ''} />
             {errors.variant_name && <p className="text-xs text-red-500">{errors.variant_name}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="barcode">Barcode <span className="text-xs text-gray-500">(Auto-generated)</span></Label>
-            <Input
-              id="barcode"
-              value={formData.barcode || ''}
-              readOnly
-              className="bg-gray-100 cursor-not-allowed text-gray-700"
-            />
+            <Input id="barcode" value={formData.barcode || ''} readOnly className="bg-gray-100 cursor-not-allowed text-gray-700" />
             <p className="text-xs text-gray-500">Automatically generated from product and variant name</p>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="sku">Manufacturer SKU <span className="text-xs text-gray-500">(Auto-generated)</span></Label>
-            <Input
-              id="sku"
-              value={formData.manufacturer_sku || ''}
-              readOnly
-              className="bg-gray-100 cursor-not-allowed text-gray-700"
-            />
-            <p className="text-xs text-gray-500">Format: SKU-[Product]-[Variant]-[ID] for easy product identification</p>
+            <Input id="sku" value={formData.manufacturer_sku || ''} readOnly className="bg-gray-100 cursor-not-allowed text-gray-700" />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="manual_sku">Manual SKU <span className="text-xs text-gray-500">(Optional, 5 chars max)</span></Label>
-            <Input
-              id="manual_sku"
-              value={formData.manual_sku || ''}
-              onChange={(e) => {
-                const value = e.target.value.toUpperCase().slice(0, 5)
-                setFormData(prev => ({ ...prev, manual_sku: value }))
-              }}
-              maxLength={5}
-              placeholder="Enter custom SKU"
-              className="uppercase"
-            />
-            <p className="text-xs text-gray-500">Enter your own SKU code (max 5 characters)</p>
+            <Input id="manual_sku" value={formData.manual_sku || ''} onChange={(e) => setFormData((p) => ({ ...p, manual_sku: e.target.value.toUpperCase().slice(0, 5) }))} maxLength={5} placeholder="Enter custom SKU" className="uppercase" />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="baseCost">Base Cost (RM)</Label>
-              <div className="flex items-center">
-                <span className="text-gray-600 mr-2">RM</span>
-                <Input
-                  id="baseCost"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.base_cost || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, base_cost: e.target.value ? parseFloat(e.target.value) : null }))}
-                  className="flex-1"
-                />
-              </div>
+              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="baseCost" type="number" step="0.01" placeholder="0.00" value={formData.base_cost ?? ''} onChange={(e) => setFormData((p) => ({ ...p, base_cost: e.target.value ? parseFloat(e.target.value) : null }))} className="flex-1" /></div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="retailPrice">Retail Price (RM)</Label>
-              <div className="flex items-center">
-                <span className="text-gray-600 mr-2">RM</span>
-                <Input
-                  id="retailPrice"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.suggested_retail_price || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, suggested_retail_price: e.target.value ? parseFloat(e.target.value) : null }))}
-                  className="flex-1"
-                />
-              </div>
+              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="retailPrice" type="number" step="0.01" placeholder="0.00" value={formData.suggested_retail_price ?? ''} onChange={(e) => setFormData((p) => ({ ...p, suggested_retail_price: e.target.value ? parseFloat(e.target.value) : null }))} className="flex-1" /></div>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="retailerPrice">Retailer Price (RM)</Label>
-              <div className="flex items-center">
-                <span className="text-gray-600 mr-2">RM</span>
-                <Input
-                  id="retailerPrice"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.retailer_price || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, retailer_price: e.target.value ? parseFloat(e.target.value) : null }))}
-                  className="flex-1"
-                />
-              </div>
+              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="retailerPrice" type="number" step="0.01" placeholder="0.00" value={formData.retailer_price ?? ''} onChange={(e) => setFormData((p) => ({ ...p, retailer_price: e.target.value ? parseFloat(e.target.value) : null }))} className="flex-1" /></div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="distributorPrice">Distributor Price (RM)</Label>
-              <div className="flex items-center">
-                <span className="text-gray-600 mr-2">RM</span>
-                <Input
-                  id="distributorPrice"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.distributor_price || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, distributor_price: e.target.value ? parseFloat(e.target.value) : null }))}
-                  className="flex-1"
-                />
-              </div>
+              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="distributorPrice" type="number" step="0.01" placeholder="0.00" value={formData.distributor_price ?? ''} onChange={(e) => setFormData((p) => ({ ...p, distributor_price: e.target.value ? parseFloat(e.target.value) : null }))} className="flex-1" /></div>
             </div>
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="otherPrice">Promo Price (RM)</Label>
-            <div className="flex items-center">
-              <span className="text-gray-600 mr-2">RM</span>
-              <Input
-                id="otherPrice"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.other_price || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, other_price: e.target.value ? parseFloat(e.target.value) : null }))}
-                className="flex-1"
-              />
-            </div>
+            <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="otherPrice" type="number" step="0.01" placeholder="0.00" value={formData.other_price ?? ''} onChange={(e) => setFormData((p) => ({ ...p, other_price: e.target.value ? parseFloat(e.target.value) : null }))} className="flex-1" /></div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Checkbox
-              id="is_default"
-              checked={formData.is_default || false}
-              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_default: Boolean(checked) }))}
-            />
+            <Checkbox id="is_default" checked={formData.is_default || false} onCheckedChange={(checked) => setFormData((p) => ({ ...p, is_default: Boolean(checked) }))} />
             <Label htmlFor="is_default" className="font-normal cursor-pointer">Set as Default Variant</Label>
           </div>
-
           <div className="flex items-center gap-2">
-            <Checkbox
-              id="is_active"
-              checked={formData.is_active !== false}
-              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: Boolean(checked) }))}
-            />
+            <Checkbox id="is_active" checked={formData.is_active !== false} onCheckedChange={(checked) => setFormData((p) => ({ ...p, is_active: Boolean(checked) }))} />
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSaving}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              'Save'
-            )}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700">
+            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : 'Save'}
           </Button>
         </div>
       </div>
