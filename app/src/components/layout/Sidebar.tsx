@@ -718,6 +718,10 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                         } else {
                           const modulePath = resolveModulePath(item.id)
                           if (modulePath) {
+                            // Always update view state first so the component re-renders
+                            // even if the URL hasn't changed (e.g. navigating back to
+                            // Supply Chain after visiting My Profile on the same page).
+                            onViewChange(item.id)
                             router.push(modulePath)
                             setIsMobileMenuOpen(false)
                           } else {

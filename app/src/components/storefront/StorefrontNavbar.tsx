@@ -110,7 +110,7 @@ export default function StorefrontNavbar() {
       setShowDropdown(false)
       router.push('/store')
       router.refresh()
-    } catch {}
+    } catch { }
   }
 
   const getInitials = (name: string | null, email: string) => {

@@ -104,6 +104,7 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
         description: 'Trace cartons/cases through scan events, receiving, and shipping operations.',
         children: [
             { id: 'qr-batches', label: 'QR Batches', icon: QrCode },
+            { id: 'manufacturer-scan-2', label: 'Manufacturer Scan', icon: Factory, access: { allowedOrgTypes: ['HQ', 'MFG'] } },
             { id: 'warehouse-receive-2', label: 'Warehouse Receive', icon: Warehouse, access: { allowedOrgTypes: ['HQ', 'DIST', 'WH'] } },
             { id: 'warehouse-ship-v2', label: 'Warehouse Ship', icon: Truck, access: { allowedOrgTypes: ['HQ', 'DIST', 'WH'] } },
         ],
