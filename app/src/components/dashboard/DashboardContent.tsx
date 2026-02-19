@@ -138,8 +138,7 @@ import { isCatalogViewId } from '@/modules/catalog/catalogNav'
 import CustomerGrowthLandingView from '@/modules/customer-growth/components/CustomerGrowthLandingView'
 import CustomerGrowthTopNav from '@/modules/customer-growth/components/CustomerGrowthTopNav'
 import { isCustomerGrowthViewId, isEcommerceViewId } from '@/modules/customer-growth/customerGrowthNav'
-import StoreBannerManagerView from '@/modules/ecommerce/components/StoreBannerManagerView'
-import LoginHeroBannerManagerView from '@/modules/ecommerce/components/LoginHeroBannerManagerView'
+import HeroBannersUnifiedView from '@/modules/ecommerce/components/HeroBannersUnifiedView'
 import StoreOrdersView from '@/modules/ecommerce/components/StoreOrdersView'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
@@ -404,10 +403,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'customer-growth':
         return <CustomerGrowthLandingView userName={userProfile.full_name} onViewChange={handleViewChange} bannerImageUrl={moduleBannerUrls.customer} />
 
+      case 'hero-banners':
       case 'store-banner-manager':
-        return <StoreBannerManagerView userProfile={userProfile} onViewChange={handleViewChange} />
+        return <HeroBannersUnifiedView userProfile={userProfile} onViewChange={handleViewChange} initialTab="landing" />
       case 'login-hero-banner':
-        return <LoginHeroBannerManagerView userProfile={userProfile} onViewChange={handleViewChange} />
+        return <HeroBannersUnifiedView userProfile={userProfile} onViewChange={handleViewChange} initialTab="login" />
       case 'store-orders':
         return <StoreOrdersView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'ecommerce/payment-gateway':

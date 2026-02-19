@@ -333,12 +333,12 @@ async function processRowOptimized(
     const realCurrentBalance = balanceCache.get(user.id) || 0;
     const lastMigrationValue = user.last_migration_point_value || 0;
     const rawPointsFromFile = row.points;
-    
+
     // Apply migration multiplier if configured
-    const multipliedPoints = migrationMultiplier && migrationMultiplier > 0 
-        ? rawPointsFromFile * migrationMultiplier 
+    const multipliedPoints = migrationMultiplier && migrationMultiplier > 0
+        ? rawPointsFromFile * migrationMultiplier
         : rawPointsFromFile;
-    
+
     const newMigrationValue = multipliedPoints;
     const delta = newMigrationValue - lastMigrationValue;
 
@@ -413,7 +413,7 @@ export async function POST(request: NextRequest) {
                         .select('organization_id, organizations!fk_users_organization(settings)')
                         .eq('id', user.id)
                         .single();
-                    
+
                     if (userProfile?.organizations) {
                         const settings = (userProfile.organizations as any)?.settings;
                         if (settings?.migration_multiplier && Number(settings.migration_multiplier) > 0) {
@@ -594,7 +594,7 @@ export async function POST(request: NextRequest) {
                             transaction_type: "MIGRATION",
                             points_amount: r.delta,
                             balance_after: r.realCurrentBalance + r.delta,
-                            description: r.multiplierApplied > 1 
+                            description: r.multiplierApplied > 1
                                 ? `Migration: ${r.rawPointsFromFile} × ${r.multiplierApplied} = ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`
                                 : `Migration: ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`,
                             transaction_date: new Date().toISOString(),
@@ -624,7 +624,7 @@ export async function POST(request: NextRequest) {
 
                     // Add successful results
                     for (const r of processedRows) {
-                        let message = r.multiplierApplied > 1 
+                        let message = r.multiplierApplied > 1
                             ? `Delta: ${r.delta} (${r.rawPointsFromFile} × ${r.multiplierApplied})`
                             : `Delta: ${r.delta}`;
 

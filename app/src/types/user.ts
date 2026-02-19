@@ -11,6 +11,8 @@ export interface User {
   updated_at: string
   avatar_url: string | null
   last_login_at: string | null
+  // Account scope
+  account_scope?: 'store' | 'portal' | null
   // HR Foundation fields
   department_id?: string | null
   manager_user_id?: string | null

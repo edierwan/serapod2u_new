@@ -18,7 +18,7 @@ interface UserInfo {
 }
 
 export default function StorefrontNavbar() {
-  const { totalItems } = useCart()
+  const { totalItems, clearCart } = useCart()
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -105,6 +105,7 @@ export default function StorefrontNavbar() {
     try {
       const supabase = createClient()
       await supabase.auth.signOut()
+      clearCart() // Clear cart on logout to avoid stale items for next user
       setUser(null)
       setShowDropdown(false)
       router.push('/store')

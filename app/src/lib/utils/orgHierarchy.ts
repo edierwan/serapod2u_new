@@ -5,7 +5,7 @@
  * based on the database constraints defined in validate_org_hierarchy()
  */
 
-export type OrgType = 'HQ' | 'MFG' | 'DIST' | 'WH' | 'SHOP'
+export type OrgType = 'HQ' | 'MFG' | 'DIST' | 'WH' | 'SHOP' | 'END_USER' | 'INDEP'
 
 export interface Organization {
   id: string
@@ -186,13 +186,16 @@ export function validateOrgHierarchy(
 /**
  * Get org type display name
  */
-export function getOrgTypeName(orgType: OrgType): string {
-  const names: Record<OrgType, string> = {
+export function getOrgTypeName(orgType: string): string {
+  const names: Record<string, string> = {
     HQ: 'Headquarters',
     MFG: 'Manufacturer',
+    MANU: 'Manufacturer',
     DIST: 'Distributor',
     WH: 'Warehouse',
-    SHOP: 'Shop'
+    SHOP: 'Shop',
+    END_USER: 'End User',
+    INDEP: 'Independent',
   }
   return names[orgType] || orgType
 }

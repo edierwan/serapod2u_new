@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { getOrgTypeName } from "@/lib/utils/orgHierarchy";
 import { useSupabaseAuth } from "@/lib/hooks/useSupabaseAuth";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -1111,18 +1112,7 @@ export default function UserManagementNew({
     return colors[roleCode] || "bg-gray-100 text-gray-800";
   };
 
-  const getOrgTypeName = (orgTypeCode: string): string => {
-    const typeNames: Record<string, string> = {
-      HQ: "Headquarters",
-      MANU: "Manufacturer",
-      MFG: "Manufacturer",
-      DIST: "Distributor",
-      WH: "Warehouse",
-      SHOP: "Shop",
-      END_USER: "End User",
-    };
-    return typeNames[orgTypeCode] || orgTypeCode;
-  };
+  // Use shared getOrgTypeName from @/lib/utils/orgHierarchy
 
   if (loading) {
     return (

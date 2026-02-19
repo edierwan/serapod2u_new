@@ -15,6 +15,7 @@ export interface UserProfileWithRelations {
   is_verified: boolean
   created_at: string
   updated_at: string
+  account_scope: 'store' | 'portal' | null
   organizations: {
     id: string
     org_name: string

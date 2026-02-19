@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { getOrgTypeName } from '@/lib/utils/orgHierarchy'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,6 +46,8 @@ interface UserProfile {
   bank_account_number: string | null
   bank_account_holder_name: string | null
   referral_phone: string | null
+  // Account scope
+  account_scope?: 'store' | 'portal' | null
   // HR Foundation fields
   department_id?: string | null
   manager_user_id?: string | null
@@ -834,16 +837,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     return normalized
   }
 
-  const getOrgTypeName = (orgTypeCode: string): string => {
-    const typeNames: Record<string, string> = {
-      'HQ': 'Headquarters',
-      'MANU': 'Manufacturer',
-      'DIST': 'Distributor',
-      'WH': 'Warehouse',
-      'SHOP': 'Shop',
-    }
-    return typeNames[orgTypeCode] || orgTypeCode
-  }
+  // Use shared getOrgTypeName from @/lib/utils/orgHierarchy
 
   if (isLoading) {
     return (
@@ -1334,49 +1328,54 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               </div>
             </div>
 
-            {/* Department (HR Foundation) */}
-            <div className="flex items-start gap-3 text-gray-700">
-              <Briefcase className="h-5 w-5 text-gray-400 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Department</p>
-                {userProfile.departments ? (
-                  <>
-                    <p className="text-base font-medium text-gray-900 mt-1">
-                      {userProfile.departments.dept_name}
-                    </p>
-                    {userProfile.departments.dept_code && (
-                      <Badge variant="outline" className="text-xs mt-1">
-                        {userProfile.departments.dept_code}
-                      </Badge>
+            {/* Department & Reports To — portal-only blocks */}
+            {userProfile.account_scope === 'portal' && userProfile.organization_id && (
+              <>
+                {/* Department (HR Foundation) */}
+                <div className="flex items-start gap-3 text-gray-700">
+                  <Briefcase className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500 font-medium">Department</p>
+                    {userProfile.departments ? (
+                      <>
+                        <p className="text-base font-medium text-gray-900 mt-1">
+                          {userProfile.departments.dept_name}
+                        </p>
+                        {userProfile.departments.dept_code && (
+                          <Badge variant="outline" className="text-xs mt-1">
+                            {userProfile.departments.dept_code}
+                          </Badge>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
                     )}
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
 
-            {/* Reports To (HR Foundation) */}
-            <div className="flex items-start gap-3 text-gray-700">
-              <UserCheck className="h-5 w-5 text-gray-400 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Reports To</p>
-                {userProfile.manager ? (
-                  <>
-                    <p className="text-base font-medium text-gray-900 mt-1">
-                      {userProfile.manager.full_name || userProfile.manager.email}
-                    </p>
-                    {userProfile.manager.full_name && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {userProfile.manager.email}
-                      </p>
+                {/* Reports To (HR Foundation) */}
+                <div className="flex items-start gap-3 text-gray-700">
+                  <UserCheck className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500 font-medium">Reports To</p>
+                    {userProfile.manager ? (
+                      <>
+                        <p className="text-base font-medium text-gray-900 mt-1">
+                          {userProfile.manager.full_name || userProfile.manager.email}
+                        </p>
+                        {userProfile.manager.full_name && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {userProfile.manager.email}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
                     )}
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

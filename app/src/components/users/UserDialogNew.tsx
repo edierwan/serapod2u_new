@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { getOrgTypeName } from '@/lib/utils/orgHierarchy'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -540,17 +541,7 @@ export default function UserDialogNew({
     }
   }
 
-  const getOrgTypeName = (orgTypeCode: string): string => {
-    const typeNames: Record<string, string> = {
-      'HQ': 'Headquarters',
-      'MANU': 'Manufacturer',
-      'MFG': 'Manufacturer',
-      'DIST': 'Distributor',
-      'WH': 'Warehouse',
-      'SHOP': 'Shop',
-    }
-    return typeNames[orgTypeCode] || orgTypeCode
-  }
+  // Use shared getOrgTypeName from @/lib/utils/orgHierarchy
 
   const handleInputChange = (field: string, value: any) => {
     let newValue = value

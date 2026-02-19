@@ -282,51 +282,62 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Update last_login_at when user first accesses any dashboard page
-    // Fire and forget - don't await to avoid blocking middleware
-    if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
-      supabase.rpc('update_last_login', { user_id: user.id }).then(({ error: updateError }) => {
-        if (updateError) {
-          console.error('🔍 Failed to update last_login_at:', updateError)
+    // ── Business routes: /dashboard, /hr, /finance, /settings ──
+    const BUSINESS_PREFIXES = ['/dashboard', '/hr', '/finance', '/settings']
+    const isBusinessRoute = BUSINESS_PREFIXES.some(p =>
+      request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/')
+    )
+
+    // No session on any business route → /login
+    if (!user && isBusinessRoute) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    // Authenticated user on business route → check account_scope
+    if (user && isBusinessRoute) {
+      // Lightweight check: fetch account_scope + organization_id only
+      const { data: scopeRow, error: scopeErr } = await supabase
+        .from('users')
+        .select('account_scope, organization_id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (scopeErr) {
+        console.error('🔴 Middleware scope check error:', scopeErr.message)
+        // On error, allow through (don't break existing users midway)
+      } else if (scopeRow) {
+        const isPortal = scopeRow.account_scope === 'portal' && scopeRow.organization_id != null
+        if (!isPortal) {
+          // Non-portal user tried /dashboard → bounce to /store
+          return NextResponse.redirect(new URL('/store', request.url))
         }
-      }, (error: unknown) => {
-        console.error('🔍 Exception updating last_login_at:', error)
-      })
-    }
+      }
 
-    // Handle protected routes
-    if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-
-    // HR routes require auth — fast redirect before server components run
-    if (!user && request.nextUrl.pathname.startsWith('/hr')) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-
-    // Finance routes require auth — fast redirect before server components run
-    if (!user && request.nextUrl.pathname.startsWith('/finance')) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-
-    // Settings routes require auth — fast redirect before server components run
-    if (!user && request.nextUrl.pathname.startsWith('/settings')) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      // Update last_login_at — fire and forget
+      if (request.nextUrl.pathname.startsWith('/dashboard')) {
+        supabase.rpc('update_last_login', { user_id: user.id }).then(({ error: updateError }) => {
+          if (updateError) {
+            console.error('🔍 Failed to update last_login_at:', updateError)
+          }
+        }, (error: unknown) => {
+          console.error('🔍 Exception updating last_login_at:', error)
+        })
+      }
     }
 
     // Handle login redirect for authenticated users
     if (user && request.nextUrl.pathname === '/login') {
-      // Check if user is an End User — route to store instead of dashboard
+      // Use account_scope to decide redirect
       const { data: profile } = await supabase
         .from('users')
-        .select('org_type_code')
+        .select('account_scope, organization_id')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
 
-      if (profile?.org_type_code === 'END_USER') {
-        return NextResponse.redirect(new URL('/store', request.url))
+      if (profile?.account_scope === 'portal' && profile?.organization_id) {
+        return NextResponse.redirect(new URL('/dashboard', request.url))
       }
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      return NextResponse.redirect(new URL('/store', request.url))
     }
   } catch (error) {
     console.error('Middleware error:', error)

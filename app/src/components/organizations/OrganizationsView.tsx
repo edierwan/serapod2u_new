@@ -853,6 +853,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 <SelectItem value="DIST">Distributor</SelectItem>
                 <SelectItem value="WH">Warehouse</SelectItem>
                 <SelectItem value="SHOP">Shop</SelectItem>
+                <SelectItem value="END_USER">End User</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
