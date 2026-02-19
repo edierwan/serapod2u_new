@@ -989,7 +989,7 @@ export default function UserManagementNew({
         );
         const matchesOrgType =
           !orgTypeFilter ||
-          (orgTypeFilter === "CUSTOMER" && !user.organization_id) ||
+          (orgTypeFilter === "END_USER" && !user.organization_id) ||
           (userOrg && userOrg.org_type_code === orgTypeFilter);
 
         // Status filter
@@ -1119,6 +1119,7 @@ export default function UserManagementNew({
       DIST: "Distributor",
       WH: "Warehouse",
       SHOP: "Shop",
+      END_USER: "End User",
     };
     return typeNames[orgTypeCode] || orgTypeCode;
   };
@@ -1264,7 +1265,6 @@ export default function UserManagementNew({
                 value={orgTypeFilter}
               >
                 <option value="">All Types</option>
-                <option value="CUSTOMER">End User</option>
                 {Array.from(
                   new Set(organizations.map((org) => org.org_type_code)),
                 )
