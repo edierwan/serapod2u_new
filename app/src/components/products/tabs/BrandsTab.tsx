@@ -19,6 +19,7 @@ interface Brand {
   brand_description: string | null
   logo_url: string | null
   is_active: boolean
+  hide_ecommerce?: boolean
   created_at: string
 }
 

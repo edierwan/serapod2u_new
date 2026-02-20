@@ -114,6 +114,14 @@ export async function listProducts(params: ListProductsParams = {}) {
   const supabase = createAdminClient()
   const offset = (page - 1) * limit
 
+  // Fetch hidden brands first
+  const { data: hiddenBrands } = await supabase
+    .from('brands')
+    .select('id')
+    .eq('hide_ecommerce', true)
+  
+  const hiddenBrandIds = hiddenBrands?.map(b => b.id) || []
+
   // Build query for products with their variants
   let query = supabase
     .from('products')
@@ -132,6 +140,12 @@ export async function listProducts(params: ListProductsParams = {}) {
       product_variants (id, variant_name, image_url, animation_url, suggested_retail_price, is_active)
     `, { count: 'exact' })
     .eq('is_active', true)
+
+  // Exclude products from hidden brands
+  if (hiddenBrandIds.length > 0) {
+    // We use not.in to exclude products that have a brand_id in the hidden list
+    query = query.not('brand_id', 'in', `(${hiddenBrandIds.map(id => `"${id}"`).join(',')})`)
+  }
 
   // Apply search filter
   if (search) {
@@ -239,7 +253,7 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
       short_description,
       is_active,
       product_categories (category_name),
-      brands (brand_name),
+      brands (brand_name, hide_ecommerce),
       product_variants (
         id,
         variant_name,
@@ -266,6 +280,12 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
   }
 
   const p = data as any
+  
+  // If the brand is hidden from e-commerce, don't return the product
+  if (p.brands?.hide_ecommerce) {
+    return null
+  }
+
   return {
     id: p.id,
     product_name: p.product_name,

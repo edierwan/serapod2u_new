@@ -18,6 +18,7 @@ interface Brand {
   brand_description: string | null
   logo_url: string | null
   is_active: boolean
+  hide_ecommerce?: boolean
 }
 
 interface BrandDialogProps {
@@ -39,7 +40,8 @@ export default function BrandDialog({
     brand_name: '',
     brand_description: '',
     logo_url: '',
-    is_active: true
+    is_active: true,
+    hide_ecommerce: false
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -57,7 +59,8 @@ export default function BrandDialog({
           brand_name: brand.brand_name,
           brand_description: brand.brand_description || '',
           logo_url: brand.logo_url || '',
-          is_active: brand.is_active
+          is_active: brand.is_active,
+          hide_ecommerce: brand.hide_ecommerce || false
         })
         setImagePreview(brand.logo_url || '')
       } else {
@@ -65,7 +68,8 @@ export default function BrandDialog({
           brand_name: '',
           brand_description: '',
           logo_url: '',
-          is_active: true
+          is_active: true,
+          hide_ecommerce: false
         })
         setImagePreview('')
       }
@@ -315,6 +319,15 @@ export default function BrandDialog({
               onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: Boolean(checked) }))}
             />
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="hide_ecommerce"
+              checked={formData.hide_ecommerce === true}
+              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, hide_ecommerce: Boolean(checked) }))}
+            />
+            <Label htmlFor="hide_ecommerce" className="font-normal cursor-pointer">Hide E-commerce</Label>
           </div>
         </div>
 
