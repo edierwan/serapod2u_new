@@ -39,6 +39,7 @@ function hasMinRole(viewer: HrRole, minRole: HrRole): boolean {
 }
 
 const SUGGESTION_POOL: SuggestionEntry[] = [
+  { intent: 'hrSetupGuidance', en: 'How to start setup?', ms: 'Macam mana nak mula setup?', minRole: 'HR_STAFF' },
   { intent: 'orgSummary', en: 'How many employees?', ms: 'Berapa ramai pekerja?', minRole: 'EMPLOYEE' },
   { intent: 'employeesMissingManager', en: 'Who has no manager?', ms: 'Siapa tiada manager?', minRole: 'MANAGER' },
   { intent: 'employeesMissingPosition', en: 'Missing positions?', ms: 'Siapa tiada jawatan?', minRole: 'MANAGER' },
@@ -60,14 +61,15 @@ const SUGGESTION_POOL: SuggestionEntry[] = [
 // ─── Follow-Up Map (what to suggest after each tool) ───────────────
 
 const FOLLOW_UP: Partial<Record<ToolName | 'general' | 'casual', (ToolName | 'general')[]>> = {
-  casual: ['leaveBalance', 'publicHolidays', 'orgSummary', 'payrollDateInfo'],
+  casual: ['leaveBalance', 'publicHolidays', 'orgSummary', 'hrSetupGuidance'],
   orgSummary: ['employeesMissingManager', 'employeesMissingPosition', 'listDepartments'],
   employeesMissingManager: ['employeesMissingPosition', 'departmentsMissingManager', 'orgSummary'],
   employeesMissingPosition: ['employeesMissingManager', 'listPositions', 'orgSummary'],
   departmentsMissingManager: ['listDepartments', 'employeesMissingManager', 'hrConfigAudit'],
   listDepartments: ['departmentsMissingManager', 'listPositions', 'orgSummary'],
   listPositions: ['employeesMissingPosition', 'listDepartments'],
-  hrConfigAudit: ['payrollSetupStatus', 'attendanceSummary', 'employeesMissingManager'],
+  hrConfigAudit: ['hrSetupGuidance', 'payrollSetupStatus', 'attendanceSummary'],
+  hrSetupGuidance: ['hrConfigAudit', 'leaveTypesSummary', 'payrollSetupStatus', 'orgSummary'],
   payrollSetupStatus: ['salaryInfo', 'hrConfigAudit', 'payrollDateInfo'],
   salaryInfo: ['payrollSetupStatus', 'payrollDateInfo', 'orgSummary'],
   leaveTypesSummary: ['leaveBalance', 'publicHolidays', 'applyLeave'],
@@ -78,7 +80,7 @@ const FOLLOW_UP: Partial<Record<ToolName | 'general' | 'casual', (ToolName | 'ge
   payrollDateInfo: ['payrollSetupStatus', 'salaryInfo', 'leaveBalance'],
   applyLeave: ['leaveBalance', 'myLeaveRequests', 'publicHolidays'],
   employeeSearch: ['orgSummary', 'employeesMissingManager', 'listDepartments'],
-  general: ['leaveBalance', 'publicHolidays', 'orgSummary', 'payrollDateInfo'],
+  general: ['hrSetupGuidance', 'leaveBalance', 'publicHolidays', 'orgSummary'],
 }
 
 // ─── Generator ─────────────────────────────────────────────────────
@@ -120,6 +122,7 @@ export function getWelcomeSuggestions(
 ): Suggestion[] {
   // Show the most commonly useful tools first
   const starters: (ToolName | 'general')[] = [
+    'hrSetupGuidance',
     'leaveBalance',
     'publicHolidays',
     'payrollDateInfo',

@@ -123,6 +123,21 @@ const INTENT_PATTERNS: IntentPattern[] = [
     priority: 15, // Higher than all HR intents so greetings always win
   },
 
+  // ── HR Setup Guidance (first-timers) ──────────────────────────
+  {
+    tool: 'hrSetupGuidance',
+    patterns: [
+      /\b(setup|set\s*up|configure|konfigurasi|tetapkan|how\s*to\s*start|cara\s*mula|get\s*started|quick\s*start|first\s*time|baru\s*guna|mulakan|mula|start)\b.*\b(hr|pekerja|payroll|gaji|cuti|leave)?\b/i,
+      /\b(hr|payroll|gaji|cuti|leave|pekerja)\b.*\b(setup|set\s*up|configure|ready|status|siap|sedia|start)\b/i,
+      /\b(apa|what)\b.*\b(perlu|need|required|missing|kekurangan)\b.*\b(setup|configure|sedia|tetapan)?\b/i,
+      /\b(guided?\s*setup|auto\s*setup|wizard|panduan)\b/i,
+      /^(help|tolong|bantuan?|how|macam\s*mana|bagaimana)\s*\??$/i,
+      /\b(belum|not\s*yet|haven't|tak|x)\b.*\b(setup|configure|sedia|start|mula)\b/i,
+      /\b(baru|new|first)\b.*\b(guna|use|pakai)\b.*\b(sistem|system|hr)?\b/i,
+    ],
+    priority: 13,
+  },
+
   // Missing Manager
   {
     tool: 'employeesMissingManager',

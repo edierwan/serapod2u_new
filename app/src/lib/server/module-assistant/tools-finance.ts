@@ -27,6 +27,7 @@ export type FinToolName =
   | 'glSettings'
   | 'arAgingSummary'
   | 'apAgingSummary'
+  | 'financeSetupStatus'
 
 export interface FinToolResult {
   success: boolean
@@ -49,6 +50,18 @@ interface IntentPattern {
 }
 
 const INTENT_PATTERNS: IntentPattern[] = [
+  {
+    tool: 'financeSetupStatus',
+    patterns: [
+      /\b(setup|set\s*up|configure|konfigurasi|tetapkan|how\s*to\s*start|cara\s*mula|get\s*started|quick\s*start|first\s*time|baru\s*guna|mulakan|mula|start)\b.*\b(financ|kewangan|accounting|akaun|perakaunan)?\b/i,
+      /\b(financ|kewangan|accounting|perakaunan)\b.*\b(setup|set\s*up|configure|ready|status|siap|sedia)\b/i,
+      /\b(apa|what)\b.*\b(perlu|need|required|missing|kekurangan)\b.*\b(setup|configure|sedia|tetapan)?\b/i,
+      /\b(guided?\s*setup|auto\s*setup|wizard|panduan)\b/i,
+      /^(help|tolong|bantuan?|how|macam\s*mana|bagaimana)\s*\??$/i,
+      /\b(belum|not\s*yet|haven't|tak|x)\b.*\b(setup|configure|sedia|start)\b/i,
+    ],
+    priority: 11,
+  },
   {
     tool: 'chartOfAccounts',
     patterns: [
@@ -242,6 +255,7 @@ export async function executeFinTool(
       case 'glSettings': return await glSettingsInfo(supabase, orgId)
       case 'arAgingSummary': return await outstandingInvoices(supabase, orgId)
       case 'apAgingSummary': return await outstandingBills(supabase, orgId)
+      case 'financeSetupStatus': return await financeSetupStatus(supabase, orgId)
       default: return { success: false, tool: toolName, summary: 'Unknown tool' }
     }
   } catch (err: any) {
@@ -551,13 +565,78 @@ async function glSettingsInfo(supabase: SupabaseClient, orgId: string): Promise<
   }
 }
 
+// ─── Finance Setup Status (First-Timer Guidance) ──────────────────
+
+async function financeSetupStatus(supabase: SupabaseClient, orgId: string): Promise<FinToolResult> {
+  // Run parallel checks for all critical finance setup items
+  const [
+    currRes, fyRes, coaRes, taxRes, bankRes, glRes, rulesRes,
+  ] = await Promise.all([
+    supabase.from('currencies').select('code', { count: 'exact', head: true }).eq('company_id', orgId),
+    supabase.from('fiscal_years').select('id', { count: 'exact', head: true }).eq('company_id', orgId),
+    supabase.from('gl_accounts').select('id', { count: 'exact', head: true }).eq('company_id', orgId),
+    supabase.from('tax_codes').select('id', { count: 'exact', head: true }).eq('company_id', orgId),
+    supabase.from('bank_accounts').select('id', { count: 'exact', head: true }).eq('company_id', orgId),
+    supabase.from('gl_settings').select('posting_mode, ar_control_account_id, ap_control_account_id, cash_account_id, sales_revenue_account_id').eq('company_id', orgId).maybeSingle(),
+    supabase.from('posting_rules').select('id', { count: 'exact', head: true }).eq('company_id', orgId),
+  ])
+
+  const checks = [
+    { label: 'Base Currency', done: (currRes.count ?? 0) > 0, tip: 'Set your base currency (e.g. MYR) in Finance > Settings.' },
+    { label: 'Fiscal Year', done: (fyRes.count ?? 0) > 0, tip: 'Create a fiscal year for your accounting periods.' },
+    { label: 'Chart of Accounts', done: (coaRes.count ?? 0) > 0, tip: 'Seed your chart of accounts — use the starter template or a full COA.' },
+    { label: 'Tax Codes', done: (taxRes.count ?? 0) > 0, tip: 'Add SST/GST tax codes for invoicing.' },
+    { label: 'Bank Account', done: (bankRes.count ?? 0) > 0, tip: 'Add your company bank account.' },
+    { label: 'GL Control Accounts', done: !!(glRes.data?.ar_control_account_id && glRes.data?.ap_control_account_id && glRes.data?.cash_account_id), tip: 'Map AR, AP, Cash, and Revenue control accounts under GL Settings.' },
+    { label: 'Posting Rules', done: (rulesRes.count ?? 0) > 0, tip: 'Set auto-posting rules for invoices, payments, receipts.' },
+  ]
+
+  const done = checks.filter(c => c.done).length
+  const total = checks.length
+  const pct = Math.round((done / total) * 100)
+
+  const statusEmoji = pct === 100 ? '✅' : pct >= 50 ? '🔶' : '🔴'
+  const incomplete = checks.filter(c => !c.done)
+
+  let summary = `${statusEmoji} **Finance Setup — ${pct}% Complete** (${done}/${total})\n\n`
+
+  if (pct === 100) {
+    summary += '🎉 All configuration steps are complete! Your finance module is ready to use.\n\n'
+    summary += '**Quick tips:**\n'
+    summary += '- Try creating your first invoice under Finance > Sales > Invoice\n'
+    summary += '- Run a trial balance to verify your opening balances\n'
+    summary += '- Set up budgets for expense tracking'
+  } else {
+    summary += '**Still needed:**\n'
+    for (const c of incomplete) {
+      summary += `- ❌ **${c.label}** — ${c.tip}\n`
+    }
+    summary += '\n'
+    summary += '**Completed:**\n'
+    for (const c of checks.filter(c => c.done)) {
+      summary += `- ✅ ${c.label}\n`
+    }
+    summary += '\n💡 **Tip:** Go to **Finance > Settings** and click **"Quick Setup — Apply All Defaults"** to auto-configure everything at once!'
+  }
+
+  return {
+    success: true,
+    tool: 'financeSetupStatus',
+    summary,
+    rows: checks.map(c => ({ item: c.label, configured: c.done })),
+    totalCount: total,
+  }
+}
+
 // ─── Suggestions ───────────────────────────────────────────────────
 
 export const FIN_SUGGESTIONS = [
+  { label: 'How to start setup?', intent: 'financeSetupStatus' },
   { label: 'Chart of accounts?', intent: 'chartOfAccounts' },
   { label: 'Pending journals?', intent: 'pendingPostings' },
   { label: 'Outstanding invoices?', intent: 'outstandingInvoices' },
   { label: 'Trial balance?', intent: 'trialBalance' },
   { label: 'Fiscal year info?', intent: 'fiscalYearInfo' },
   { label: 'GL settings?', intent: 'glSettings' },
+  { label: 'Tax codes?', intent: 'taxCodes' },
 ]

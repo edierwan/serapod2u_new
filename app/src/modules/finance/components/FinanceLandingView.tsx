@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { financeNavGroups, type FinanceNavGroup } from '@/modules/finance/financeNav'
 import FinanceHeroBanner from './FinanceHeroBanner'
+import SetupReadinessBanner from '@/components/shared/SetupReadinessBanner'
 import { Badge } from '@/components/ui/badge'
 
 // ── Props ────────────────────────────────────────────────────────
@@ -96,6 +97,14 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
         <div className="w-full space-y-6">
             {/* Hero Banner */}
             <FinanceHeroBanner userName={userName ?? null} bannerImageUrl={bannerImageUrl} />
+
+            {/* Setup Readiness */}
+            <SetupReadinessBanner
+                auditEndpoint="/api/finance/config/audit"
+                settingsHref="/dashboard?view=finance/settings/configuration"
+                moduleName="Finance"
+                accentColor="emerald"
+            />
 
             {/* Section subtitle */}
             <div>

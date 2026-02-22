@@ -51,6 +51,7 @@ export type ToolName =
   | 'payrollDateInfo'
   | 'employeeSearch'
   | 'applyLeave'
+  | 'hrSetupGuidance'
 
 export interface ToolDef {
   name: ToolName
@@ -76,6 +77,7 @@ export const TOOL_CATALOG: ToolDef[] = [
   { name: 'payrollDateInfo', description: 'Check payroll processing dates and status', sensitiveLevel: 'internal' },
   { name: 'employeeSearch', description: 'Search for an employee by name', sensitiveLevel: 'internal' },
   { name: 'applyLeave', description: 'Help user apply for leave', sensitiveLevel: 'public' },
+  { name: 'hrSetupGuidance', description: 'Check HR setup completeness and guide first-time users', sensitiveLevel: 'internal' },
 ]
 
 const MAX_ROWS = 50
@@ -150,6 +152,9 @@ export async function executeTool(
     case 'hrConfigAudit':
       // Delegate to existing audit — imported dynamically to avoid circular dep
       return hrConfigAuditTool(supabase, orgId)
+
+    case 'hrSetupGuidance':
+      return hrSetupGuidance(supabase, orgId)
 
     default:
       return { success: false, tool: toolName, summary: `Unknown tool: ${toolName}`, error: 'unknown_tool' }
@@ -888,5 +893,80 @@ async function applyLeaveInfo(
     rows: balances,
     totalCount: balances.length,
     deepLink: '/hr/mobile/leave',
+  }
+}
+
+// ─── Tool: HR Setup Guidance (First-Timer) ─────────────────────────
+
+async function hrSetupGuidance(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<ToolResult> {
+  // Run parallel checks for all critical HR setup items
+  const [
+    empRes, deptRes, leaveRes, shiftRes, holidayRes, salaryBandRes,
+    allowanceRes, deductionRes, settingsRes, approvalRes,
+  ] = await Promise.all([
+    supabase.from('users').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('is_active', true),
+    supabase.from('departments').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('is_active', true),
+    supabase.from('hr_leave_types').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+    supabase.from('hr_shifts').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+    supabase.from('hr_public_holidays').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+    supabase.from('hr_salary_bands').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+    supabase.from('hr_allowance_types').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+    supabase.from('hr_deduction_types').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+    supabase.from('hr_settings').select('payroll_day, epf_employer_rate, socso_enabled').eq('organization_id', orgId).maybeSingle(),
+    supabase.from('hr_approval_chains').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+  ])
+
+  const checks = [
+    { label: 'Employees', done: (empRes.count ?? 0) > 0, tip: 'Add or import your employees under HR > People > Employees.' },
+    { label: 'Departments', done: (deptRes.count ?? 0) > 0, tip: 'Create departments to organize your company structure.' },
+    { label: 'Leave Types', done: (leaveRes.count ?? 0) > 0, tip: 'Go to HR > Settings and click "Apply Malaysian Leave Types" for EA 1955 defaults.' },
+    { label: 'Work Shifts', done: (shiftRes.count ?? 0) > 0, tip: 'Set up at least one shift (e.g. Standard 9am-6pm).' },
+    { label: 'Public Holidays', done: (holidayRes.count ?? 0) > 0, tip: 'Import Malaysian public holidays via HR > Settings.' },
+    { label: 'Salary Bands', done: (salaryBandRes.count ?? 0) > 0, tip: 'Define salary ranges per grade level for payroll structure.' },
+    { label: 'Allowance Types', done: (allowanceRes.count ?? 0) > 0, tip: 'Add allowances like Housing, Transport, Meal, etc.' },
+    { label: 'Deduction Types', done: (deductionRes.count ?? 0) > 0, tip: 'Add statutory deductions: EPF, SOCSO, EIS, PCB.' },
+    { label: 'Payroll Settings', done: !!(settingsRes.data?.payroll_day), tip: 'Set your payroll day, EPF/SOCSO rates under HR > Settings.' },
+    { label: 'Approval Chain', done: (approvalRes.count ?? 0) > 0, tip: 'Set up leave/claim approval chain (Manager → HR).' },
+  ]
+
+  const done = checks.filter(c => c.done).length
+  const total = checks.length
+  const pct = Math.round((done / total) * 100)
+
+  const statusEmoji = pct === 100 ? '✅' : pct >= 50 ? '🔶' : '🔴'
+  const incomplete = checks.filter(c => !c.done)
+
+  let summary = `${statusEmoji} **HR Setup — ${pct}% Complete** (${done}/${total})\n\n`
+
+  if (pct === 100) {
+    summary += '🎉 All HR configuration is complete! Your HR module is fully operational.\n\n'
+    summary += '**What you can do now:**\n'
+    summary += '- Process payroll under HR > Payroll > Run Payroll\n'
+    summary += '- Manage leave requests and approvals\n'
+    summary += '- Set up performance appraisal cycles\n'
+    summary += '- Track attendance and overtime'
+  } else {
+    summary += '**Still needed:**\n'
+    for (const c of incomplete) {
+      summary += `- ❌ **${c.label}** — ${c.tip}\n`
+    }
+    summary += '\n'
+    summary += '**Already configured:**\n'
+    for (const c of checks.filter(c => c.done)) {
+      summary += `- ✅ ${c.label}\n`
+    }
+    summary += '\n💡 **Tip:** Go to **HR > Settings** and click **"Apply All Defaults"** to auto-configure Malaysian defaults (leave types, holidays, EPF/SOCSO, work shifts, salary bands) with one click!'
+  }
+
+  return {
+    success: true,
+    tool: 'hrSetupGuidance',
+    summary,
+    rows: checks.map(c => ({ item: c.label, configured: c.done })),
+    totalCount: total,
+    deepLink: '/hr/settings/configuration',
   }
 }

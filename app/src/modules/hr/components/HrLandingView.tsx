@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
 import { hrNavGroups, type HrNavGroup } from '@/modules/hr/hrNav'
 import HrHeroBanner from './HrHeroBanner'
+import SetupReadinessBanner from '@/components/shared/SetupReadinessBanner'
 
 // ── Props ────────────────────────────────────────────────────────
 
@@ -48,6 +49,14 @@ export default function HrLandingView({ userName, bannerImageUrl }: HrLandingVie
         <div className="w-full space-y-6">
             {/* Hero Banner */}
             <HrHeroBanner userName={userName ?? null} bannerImageUrl={bannerImageUrl} />
+
+            {/* Setup Readiness */}
+            <SetupReadinessBanner
+                auditEndpoint="/api/hr/config/audit"
+                settingsHref="/dashboard?view=hr/settings/configuration"
+                moduleName="HR"
+                accentColor="blue"
+            />
 
             {/* Section subtitle */}
             <div>
