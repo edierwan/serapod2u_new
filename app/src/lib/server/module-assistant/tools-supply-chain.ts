@@ -77,17 +77,22 @@ const INTENT_PATTERNS: IntentPattern[] = [
   {
     tool: 'recentOrders',
     patterns: [
-      /\b(recent|terkini|latest|baru)\b.*\b(orders?|pesanan)\b/i,
-      /\b(orders?|pesanan)\b.*\b(recent|terkini|latest|baru|last)\b/i,
+      /\b(recent|terkini|latest|baru|last|semua)\b.*\b(orders?|pesanan)\b/i,
+      /\b(orders?|pesanan)\b.*\b(recent|terkini|latest|baru|last|semua|senarai|list)\b/i,
+      /\b(boleh|nak|mau|show|can|give)\b.*\b(tahu|tau|know|see|lihat|tengok|check)\b.*\b(orders?|pesanan)\b/i,
+      /\b(senarai|list|show|papar)\b.*\b(orders?|pesanan)\b/i,
+      /\b(orders?|pesanan)\b.*\b(terbaru|baru|last\s*\d+)\b/i,
+      /^\s*(recent|latest)\s*orders?\s*\??\s*$/i,
     ],
     priority: 8,
   },
   {
     tool: 'orderSummary',
     patterns: [
-      /\b(orders?|pesanan)\b.*\b(summary|ringkasan|total|stat|berapa|how\s*many)\b/i,
-      /\b(summary|total|jumlah|berapa)\b.*\b(orders?|pesanan)\b/i,
+      /\b(orders?|pesanan)\b.*\b(summary|ringkasan|total|stat|berapa|how\s*many|overview)\b/i,
+      /\b(summary|total|jumlah|berapa|overview)\b.*\b(orders?|pesanan)\b/i,
       /^total\s*orders?\s*\??$/i,
+      /\b(berapa|how\s*many)\b.*\b(orders?|pesanan)\b/i,
     ],
     priority: 9,
   },
@@ -102,8 +107,10 @@ const INTENT_PATTERNS: IntentPattern[] = [
   {
     tool: 'pendingOrders',
     patterns: [
-      /\b(pending|belum|menunggu)\b.*\b(order|pesanan|approval|kelulusan)\b/i,
-      /\b(order|pesanan)\b.*\b(pending|belum|menunggu|await)\b/i,
+      /\b(pending|belum|menunggu|tunggu|awaiting)\b.*\b(order|pesanan|approval|kelulusan)\b/i,
+      /\b(order|pesanan)\b.*\b(pending|belum|menunggu|tunggu|await|draft|submitted)\b/i,
+      /^\s*pending\s*orders?\s*\??\s*$/i,
+      /\b(ada|any|berapa)\b.*\b(pending|belum)\b.*\b(order|pesanan)\b/i,
     ],
     priority: 10,
   },
@@ -309,7 +316,7 @@ async function lowStockItems(supabase: SupabaseClient, orgId: string): Promise<S
 async function recentOrders(supabase: SupabaseClient, orgId: string): Promise<SCToolResult> {
   const { data, count } = await supabase
     .from('orders')
-    .select('id, order_number, order_type, status, total_amount, created_at', { count: 'exact' })
+    .select('id, order_number, order_type, status, total_amount, created_at, organizations!orders_customer_org_id_fkey(org_name)', { count: 'exact' })
     .eq('company_id', orgId)
     .order('created_at', { ascending: false })
     .limit(10)
@@ -319,13 +326,18 @@ async function recentOrders(supabase: SupabaseClient, orgId: string): Promise<SC
     type: o.order_type,
     status: o.status,
     amount: o.total_amount,
+    customer: (o.organizations as any)?.org_name ?? '—',
     date: o.created_at?.split('T')[0],
   }))
+
+  const summary = (count ?? 0) > 0
+    ? `📋 **Recent Orders** (${count} total):\n${rows.map(r => `- **${r.order_no}** [${r.type}] — ${r.status} RM${r.amount ?? 0} → ${r.customer} (${r.date})`).join('\n')}\n\n_Showing last ${rows.length} of ${count} orders._`
+    : `📋 **Recent Orders** (0 total):\nNo orders found for this organization.`
 
   return {
     success: true,
     tool: 'recentOrders',
-    summary: `📋 **Recent Orders** (${count ?? 0} total):\n${rows.map(r => `- **${r.order_no}** [${r.type}] — ${r.status} RM${r.amount ?? 0} (${r.date})`).join('\n') || 'No orders found'}`,
+    summary,
     rows,
     totalCount: count ?? 0,
   }
@@ -362,19 +374,35 @@ async function ordersByStatus(supabase: SupabaseClient, orgId: string): Promise<
 }
 
 async function pendingOrders(supabase: SupabaseClient, orgId: string): Promise<SCToolResult> {
+  // Check multiple "pending" statuses
   const { data, count } = await supabase
     .from('orders')
-    .select('id, order_number, order_type, total_amount, created_at', { count: 'exact' })
+    .select('id, order_number, order_type, status, total_amount, created_at, organizations!orders_customer_org_id_fkey(org_name)', { count: 'exact' })
     .eq('company_id', orgId)
-    .in('status', ['draft', 'submitted'])
+    .in('status', ['draft', 'submitted', 'pending', 'pending_approval', 'processing'])
     .order('created_at', { ascending: false })
     .limit(MAX_ROWS)
+
+  const rows = (data ?? []).map((o: any) => ({
+    order_no: o.order_number,
+    type: o.order_type,
+    status: o.status,
+    amount: o.total_amount,
+    customer: (o.organizations as any)?.org_name ?? '—',
+    date: o.created_at?.split('T')[0],
+  }))
+
+  const totalAmount = rows.reduce((s, r) => s + (r.amount ?? 0), 0)
+
+  const summary = (count ?? 0) > 0
+    ? `⏳ **Pending Orders** (${count} orders, RM${totalAmount.toLocaleString()} total):\n${rows.slice(0, 10).map(r => `- **${r.order_no}** [${r.type}] — ${r.status} RM${r.amount ?? 0} → ${r.customer} (${r.date})`).join('\n')}`
+    : `✅ **Pending Orders**: No pending orders at the moment. All orders are processed!`
 
   return {
     success: true,
     tool: 'pendingOrders',
-    summary: `⏳ **Pending Orders** (${count ?? 0}):\n${(data ?? []).slice(0, 10).map((o: any) => `- **${o.order_number}** [${o.order_type}] — RM${o.total_amount ?? 0} (${o.created_at?.split('T')[0]})`).join('\n') || 'No pending orders'}`,
-    rows: data ?? [],
+    summary,
+    rows,
     totalCount: count ?? 0,
   }
 }

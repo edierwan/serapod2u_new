@@ -181,7 +181,11 @@ export async function POST(request: NextRequest) {
         }
 
         // ── SMART TOOL PATH: try intent-based DB query first ───────────
-        const toolExec = await tryToolExecution(moduleId, userMessage, supabase, orgId)
+        // Use admin client for tool queries to bypass RLS restrictions
+        const adminForTools = createAdminClient()
+        // Resolve HQ org for tool queries (users in sub-orgs should see HQ data)
+        const resolvedOrgId = await resolveHqOrgId(adminForTools, orgId)
+        const toolExec = await tryToolExecution(moduleId, userMessage, adminForTools, resolvedOrgId)
         if (toolExec && toolExec.result.success) {
             const totalMs = Date.now() - startMs
             const reply = toolExec.result.summary
@@ -318,6 +322,50 @@ export async function POST(request: NextRequest) {
     } catch (err: any) {
         console.error('[Module Assistant] Error:', err)
         return res(500, { error: 'Internal server error' })
+    }
+}
+
+// ─── HQ Org Resolution ─────────────────────────────────────────────
+
+/**
+ * Resolve the HQ organization ID for tool queries.
+ * If the user belongs to a sub-org (DIST, WAREHOUSE, SHOP, etc.),
+ * resolve up to the HQ that owns the orders/products.
+ */
+async function resolveHqOrgId(admin: any, orgId: string): Promise<string> {
+    try {
+        const { data: org } = await admin
+            .from('organizations')
+            .select('id, org_type_code, parent_org_id')
+            .eq('id', orgId)
+            .single()
+
+        if (!org) return orgId
+
+        // If already HQ, return as-is
+        if (org.org_type_code === 'HQ') return orgId
+
+        // If has parent_org_id, check if parent is HQ
+        if (org.parent_org_id) {
+            const { data: parent } = await admin
+                .from('organizations')
+                .select('id, org_type_code')
+                .eq('id', org.parent_org_id)
+                .single()
+            if (parent?.org_type_code === 'HQ') return parent.id
+        }
+
+        // Fallback: find the HQ org in the system
+        const { data: hq } = await admin
+            .from('organizations')
+            .select('id')
+            .eq('org_type_code', 'HQ')
+            .limit(1)
+            .single()
+
+        return hq?.id ?? orgId
+    } catch {
+        return orgId
     }
 }
 

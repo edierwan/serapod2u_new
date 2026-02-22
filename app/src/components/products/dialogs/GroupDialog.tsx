@@ -24,6 +24,7 @@ interface Group {
   is_active: boolean
   hide_price?: boolean
   hide_product?: boolean
+  hide_ecommerce?: boolean
 }
 
 interface GroupDialogProps {
@@ -49,7 +50,8 @@ export default function GroupDialog({
     group_description: '',
     is_active: true,
     hide_price: false,
-    hide_product: false
+    hide_product: false,
+    hide_ecommerce: false
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -64,7 +66,8 @@ export default function GroupDialog({
           group_description: group.group_description || '',
           is_active: group.is_active,
           hide_price: group.hide_price || false,
-          hide_product: group.hide_product || false
+          hide_product: group.hide_product || false,
+          hide_ecommerce: group.hide_ecommerce || false
         })
       } else {
         setFormData({
@@ -73,7 +76,8 @@ export default function GroupDialog({
           group_description: '',
           is_active: true,
           hide_price: false,
-          hide_product: false
+          hide_product: false,
+          hide_ecommerce: false
         })
       }
       setErrors({})
@@ -234,6 +238,15 @@ export default function GroupDialog({
                 }}
               />
               <Label htmlFor="hide_product" className="font-normal cursor-pointer">Hide Product (Catalog)</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="hide_ecommerce"
+                checked={formData.hide_ecommerce === true}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, hide_ecommerce: Boolean(checked) }))}
+              />
+              <Label htmlFor="hide_ecommerce" className="font-normal cursor-pointer">Hide E-commerce</Label>
             </div>
           </div>
         </div>

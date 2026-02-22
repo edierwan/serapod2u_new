@@ -18,7 +18,6 @@ interface Brand {
   brand_description: string | null
   logo_url: string | null
   is_active: boolean
-  hide_ecommerce?: boolean
 }
 
 interface BrandDialogProps {
@@ -40,15 +39,14 @@ export default function BrandDialog({
     brand_name: '',
     brand_description: '',
     logo_url: '',
-    is_active: true,
-    hide_ecommerce: false
+    is_active: true
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [uploading, setUploading] = useState(false)
   const [imagePreview, setImagePreview] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -59,8 +57,7 @@ export default function BrandDialog({
           brand_name: brand.brand_name,
           brand_description: brand.brand_description || '',
           logo_url: brand.logo_url || '',
-          is_active: brand.is_active,
-          hide_ecommerce: brand.hide_ecommerce || false
+          is_active: brand.is_active
         })
         setImagePreview(brand.logo_url || '')
       } else {
@@ -68,8 +65,7 @@ export default function BrandDialog({
           brand_name: '',
           brand_description: '',
           logo_url: '',
-          is_active: true,
-          hide_ecommerce: false
+          is_active: true
         })
         setImagePreview('')
       }
@@ -93,14 +89,14 @@ export default function BrandDialog({
         .select('id, brand_name')
         .ilike('brand_name', formData.brand_name)
         .eq('is_active', true)  // Only check active brands
-      
+
       // Exclude current brand when editing
       if (brand?.id) {
         query = query.neq('id', brand.id)
       }
-      
+
       const { data: existingBrands } = await query
-      
+
       if (existingBrands && existingBrands.length > 0) {
         newErrors.brand_name = 'This brand name is already in use. Please choose a different name.'
         setErrors(newErrors)
@@ -154,7 +150,7 @@ export default function BrandDialog({
 
       // Compress the image first
       const compressionResult = await compressAvatar(file)
-      
+
       toast({
         title: '🖼️ Image Compressed',
         description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
@@ -186,7 +182,7 @@ export default function BrandDialog({
 
       setFormData(prev => ({ ...prev, logo_url: publicUrl }))
       setImagePreview(publicUrl)
-      
+
       toast({
         title: 'Success',
         description: 'Image uploaded successfully'
@@ -277,7 +273,7 @@ export default function BrandDialog({
                   />
                 </div>
               )}
-              
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -285,7 +281,7 @@ export default function BrandDialog({
                 onChange={handleImageUpload}
                 className="hidden"
               />
-              
+
               <Button
                 type="button"
                 variant="outline"
@@ -305,7 +301,7 @@ export default function BrandDialog({
                   </>
                 )}
               </Button>
-              
+
               <p className="text-xs text-gray-500">
                 Recommended: PNG or JPG, max 2MB
               </p>
@@ -321,14 +317,7 @@ export default function BrandDialog({
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="hide_ecommerce"
-              checked={formData.hide_ecommerce === true}
-              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, hide_ecommerce: Boolean(checked) }))}
-            />
-            <Label htmlFor="hide_ecommerce" className="font-normal cursor-pointer">Hide E-commerce</Label>
-          </div>
+
         </div>
 
         <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">

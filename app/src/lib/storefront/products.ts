@@ -114,13 +114,13 @@ export async function listProducts(params: ListProductsParams = {}) {
   const supabase = createAdminClient()
   const offset = (page - 1) * limit
 
-  // Fetch hidden brands first
-  const { data: hiddenBrands } = await supabase
-    .from('brands')
+  // Fetch hidden groups (hide_ecommerce is now on product_groups, not brands)
+  const { data: hiddenGroups } = await supabase
+    .from('product_groups')
     .select('id')
     .eq('hide_ecommerce', true)
-  
-  const hiddenBrandIds = hiddenBrands?.map(b => b.id) || []
+
+  const hiddenGroupIds = hiddenGroups?.map(g => g.id) || []
 
   // Build query for products with their variants
   let query = supabase
@@ -141,10 +141,10 @@ export async function listProducts(params: ListProductsParams = {}) {
     `, { count: 'exact' })
     .eq('is_active', true)
 
-  // Exclude products from hidden brands
-  if (hiddenBrandIds.length > 0) {
-    // We use not.in to exclude products that have a brand_id in the hidden list
-    query = query.not('brand_id', 'in', `(${hiddenBrandIds.map(id => `"${id}"`).join(',')})`)
+  // Exclude products from hidden groups
+  if (hiddenGroupIds.length > 0) {
+    // We use not.in to exclude products that have a group_id in the hidden list
+    query = query.not('group_id', 'in', `(${hiddenGroupIds.map(id => `"${id}"`).join(',')})`)
   }
 
   // Apply search filter
@@ -253,7 +253,8 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
       short_description,
       is_active,
       product_categories (category_name),
-      brands (brand_name, hide_ecommerce),
+      brands (brand_name),
+      product_groups (hide_ecommerce),
       product_variants (
         id,
         variant_name,
@@ -280,9 +281,9 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
   }
 
   const p = data as any
-  
-  // If the brand is hidden from e-commerce, don't return the product
-  if (p.brands?.hide_ecommerce) {
+
+  // If the group is hidden from e-commerce, don't return the product
+  if (p.product_groups?.hide_ecommerce) {
     return null
   }
 

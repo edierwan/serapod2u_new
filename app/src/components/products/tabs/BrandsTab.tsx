@@ -19,7 +19,6 @@ interface Brand {
   brand_description: string | null
   logo_url: string | null
   is_active: boolean
-  hide_ecommerce?: boolean
   created_at: string
 }
 
@@ -46,9 +45,9 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
     if (isReady) {
       loadBrands()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, refreshTrigger])
 
   const loadBrands = async () => {
@@ -77,7 +76,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
   const handleSave = async (brandData: Partial<Brand>) => {
     try {
       setIsSaving(true)
-      
+
       if (editingBrand) {
         const { error } = await supabase
           .from('brands')
@@ -138,7 +137,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
       if (products && products.length > 0) {
         const productList = products.map(p => `${p.product_code} - ${p.product_name}`).join(', ')
         const moreText = products.length === 5 ? ' and possibly more' : ''
-        
+
         toast({
           title: '❌ Cannot Delete Brand',
           description: `This brand is currently used by ${products.length} product(s): ${productList}${moreText}. Please remove or reassign these products first.`,
@@ -159,12 +158,12 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
         .eq('id', id)
 
       if (deleteError) throw deleteError
-      
+
       toast({
         title: '✅ Success',
         description: 'Brand deleted successfully'
       })
-      
+
       loadBrands()
     } catch (error: any) {
       console.error('Error deleting brand:', error)
@@ -271,7 +270,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
           <TableHeader>
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>
-              <TableHead 
+              <TableHead
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('brand_name')}
               >
@@ -279,7 +278,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
                   Brand {renderSortIcon('brand_name')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('brand_description')}
               >
@@ -287,7 +286,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
                   Description {renderSortIcon('brand_description')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="text-center cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('is_active')}
               >
@@ -307,8 +306,8 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
                     <div className="flex items-center gap-3">
                       <Avatar className="w-10 h-10">
                         {brand.logo_url && (
-                          <AvatarImage 
-                            src={getStorageUrl(brand.logo_url) || brand.logo_url} 
+                          <AvatarImage
+                            src={getStorageUrl(brand.logo_url) || brand.logo_url}
                             alt={brand.brand_name}
                             onError={(e) => {
                               console.log('Brand logo load error:', brand.brand_name, brand.logo_url)

@@ -78,8 +78,9 @@ const INTENT_PATTERNS: IntentPattern[] = [
   {
     tool: 'recentJournals',
     patterns: [
-      /\b(recent|terkini|latest|baru)\b.*\b(journal|jurnal)\b/i,
-      /\b(journal|jurnal)\b.*\b(recent|terkini|latest|baru|last)\b/i,
+      /\b(recent|terkini|latest|baru|last|semua)\b.*\b(journal|jurnal)\b/i,
+      /\b(journal|jurnal)\b.*\b(recent|terkini|latest|baru|last|senarai|list)\b/i,
+      /\b(boleh|nak|show|can|senarai|list)\b.*\b(journal|jurnal)\b/i,
     ],
     priority: 8,
   },
@@ -106,6 +107,8 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /\b(invoices?|invois)\b.*\b(outstanding|tertunggak|unpaid|belum\s*bayar|overdue|pending)\b/i,
       /\b(ar|receivable|hutang\s*pelanggan|piutang)\b/i,
       /^outstanding\s*invoices?\s*\??$/i,
+      /\b(boleh|nak|show|berapa)\b.*\b(invoice|invois)\b/i,
+      /\b(ada|any|berapa)\b.*\b(outstanding|tertunggak|unpaid|belum)\b.*\b(invoice|invois|payment|bayaran)\b/i,
     ],
     priority: 10,
   },
