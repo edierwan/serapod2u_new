@@ -36,7 +36,7 @@ export async function GET() {
       .from('accounting_currency_settings')
       .select('*')
       .eq('company_id', companyId)
-      .single()
+      .maybeSingle()
 
     // Get fiscal years with periods
     const { data: fiscalYears } = await supabase

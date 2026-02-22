@@ -99,6 +99,11 @@ export async function resolveProviderConfig(
         }
       }
 
+      // If DB token decryption failed or was empty, fall back to env token
+      if (!token && targetProvider === 'ollama') {
+        token = process.env.OLLAMA_TOKEN || ''
+      }
+
       resolvedFromDb = true
       console.log(`[AI Settings] Resolved ${targetProvider} from DB for org ${organizationId.slice(0, 8)}… baseUrl=${row.base_url?.slice(0, 40)}`)
 

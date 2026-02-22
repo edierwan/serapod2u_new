@@ -10,8 +10,9 @@ import { Button } from '@/components/ui/button'
 // ── Types ────────────────────────────────────────────────────────
 
 interface AuditSection {
-    title: string
-    checks: { label: string; status: 'ok' | 'warning' | 'error' }[]
+    title?: string
+    section?: string
+    checks: { label: string; status: 'ok' | 'warning' | 'error' | 'configured' | 'partial' | 'missing' }[]
 }
 
 interface SetupReadinessBannerProps {
@@ -57,9 +58,9 @@ export default function SetupReadinessBanner({
                 for (const section of sections) {
                     for (const check of section.checks) {
                         total++
-                        if (check.status === 'ok') {
+                        if (check.status === 'ok' || check.status === 'configured') {
                             passed++
-                        } else if (check.status === 'error') {
+                        } else if (check.status === 'error' || check.status === 'missing') {
                             missing.push(check.label)
                         }
                     }

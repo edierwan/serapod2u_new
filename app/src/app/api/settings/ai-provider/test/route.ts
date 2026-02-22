@@ -64,6 +64,11 @@ export async function POST(request: Request) {
             }
         }
 
+        // Last-resort fallback: use env-based token if DB decryption failed
+        if (!resolvedToken && provider === 'ollama') {
+            resolvedToken = process.env.OLLAMA_TOKEN || ''
+        }
+
         // ── Ollama test ──────────────────────────────────────────────
         if (provider === 'ollama') {
             const testUrl = (baseUrl || 'https://bot.serapod2u.com/ollama').replace(/\/+$/, '')
