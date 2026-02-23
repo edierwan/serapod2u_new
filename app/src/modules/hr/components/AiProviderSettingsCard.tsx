@@ -438,7 +438,7 @@ export default function AiProviderSettingsCard({
                     <>
                       {availableModels.map((m) => (
                         <SelectItem key={m} value={m}>
-                          {m}{m === 'qwen2.5:3b' ? ' (recommended)' : ''}
+                          {m}{m === 'qwen2.5:3b' ? ' (fast, recommended)' : m === 'qwen2.5:7b' ? ' (better quality, slower)' : ''}
                         </SelectItem>
                       ))}
                       {/* Keep current selection if model is not in available list */}
