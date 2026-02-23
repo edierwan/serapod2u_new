@@ -75,6 +75,7 @@ export default function AiProviderSettingsCard({
   const [testing, setTesting] = useState(false)
   const [showToken, setShowToken] = useState(false)
   const [health, setHealth] = useState<HealthStatus | null>(null)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
 
   // ── Load settings ──────────────────────────────────────────────
 
@@ -107,6 +108,26 @@ export default function AiProviderSettingsCard({
   }, [])
 
   useEffect(() => { loadSettings() }, [loadSettings])
+
+  // ── Auto-probe available models on load ─────────────────────
+
+  useEffect(() => {
+    async function probeModels() {
+      try {
+        const res = await fetch('/api/settings/ai-provider/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'ollama' }),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.models && data.models.length > 0) {
+          setAvailableModels(data.models)
+        }
+      } catch { /* silent */ }
+    }
+    probeModels()
+  }, [])
 
   // ── Test connection ────────────────────────────────────────────
 
@@ -148,6 +169,11 @@ export default function AiProviderSettingsCard({
           },
         },
       })
+
+      // Update available models from server response
+      if (data.models && data.models.length > 0) {
+        setAvailableModels(data.models)
+      }
 
       if (data.ok) {
         toast({
@@ -408,15 +434,33 @@ export default function AiProviderSettingsCard({
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="qwen2.5:3b">qwen2.5:3b (recommended, fast)</SelectItem>
-                  <SelectItem value="qwen2.5:3b-instruct">qwen2.5:3b-instruct</SelectItem>
-                  <SelectItem value="llama3.2:3b">llama3.2:3b (alternative)</SelectItem>
-                  <SelectItem value="qwen2.5:7b-instruct-q4_K_M">qwen2.5:7b-instruct-q4 (slower, better quality)</SelectItem>
-                  <SelectItem value="phi3:mini">phi3:mini (compact)</SelectItem>
+                  {availableModels.length > 0 ? (
+                    <>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m}{m === 'qwen2.5:3b' ? ' (recommended)' : ''}
+                        </SelectItem>
+                      ))}
+                      {/* Keep current selection if model is not in available list */}
+                      {model && !availableModels.includes(model) && (
+                        <SelectItem value={model}>{model} (not installed)</SelectItem>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <SelectItem value="qwen2.5:3b">qwen2.5:3b (recommended, fast)</SelectItem>
+                      <SelectItem value="qwen2.5:3b-instruct">qwen2.5:3b-instruct</SelectItem>
+                      <SelectItem value="llama3.2:3b">llama3.2:3b (alternative)</SelectItem>
+                      <SelectItem value="qwen2.5:7b-instruct-q4_K_M">qwen2.5:7b-instruct-q4 (slower, better quality)</SelectItem>
+                      <SelectItem value="phi3:mini">phi3:mini (compact)</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Choose a model suitable for your server resources. For 8GB RAM / 2 vCPU, use 3B parameter models.
+                {availableModels.length > 0
+                  ? `${availableModels.length} model(s) installed on server. For 8GB RAM / 2 vCPU, use 3B parameter models.`
+                  : 'Choose a model suitable for your server resources. For 8GB RAM / 2 vCPU, use 3B parameter models.'}
               </p>
             </div>
 
