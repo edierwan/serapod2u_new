@@ -780,117 +780,118 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                       activations.map((activation, index) => {
                         const rowNumber = (currentPage - 1) * pageSize + index + 1
                         return (
-                        <tr key={activation.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-xs text-gray-600 font-medium">
-                            {rowNumber}
-                          </td>
-                          {columnOrder.map((col) => {
-                            if (col === 'order') {
-                              return (
-                                <td key="order" className="px-4 py-3">
-                                  <div className="flex flex-col">
-                                    <span className="text-xs font-medium text-blue-600">{activation.order_doc_no}</span>
-                                    {activation.legacy_order_no && (
-                                      <span className="text-[10px] text-gray-500">Legacy: {activation.legacy_order_no}</span>
-                                    )}
-                                  </div>
-                                </td>
-                              )
-                            } else {
-                              return (
-                                <td key="product" className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
-                                    {activation.variant_image && (
-                                      <Avatar className="h-8 w-8">
-                                        <AvatarImage src={activation.variant_image} alt={activation.variant_name} />
-                                        <AvatarFallback>{activation.variant_name?.charAt(0)}</AvatarFallback>
-                                      </Avatar>
-                                    )}
-                                    <div>
-                                      <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
-                                      {activation.variant_name && (
-                                        <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
+                          <tr key={activation.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-xs text-gray-600 font-medium">
+                              {rowNumber}
+                            </td>
+                            {columnOrder.map((col) => {
+                              if (col === 'order') {
+                                return (
+                                  <td key="order" className="px-4 py-3">
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-medium text-blue-600">{activation.order_doc_no}</span>
+                                      {activation.legacy_order_no && (
+                                        <span className="text-[10px] text-gray-500">Legacy: {activation.legacy_order_no}</span>
                                       )}
                                     </div>
-                                  </div>
-                                </td>
-                              )
-                            }
-                          })}
-                          <td className="px-4 py-3 text-xs text-gray-600">
-                            {activation.sequence_number || '-'}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-600">
-                            <div className="flex flex-col">
-                              <span className="font-medium">{new Date(activation.activated_at).toLocaleDateString()}</span>
-                              <span className="text-[10px] text-gray-500">{new Date(activation.activated_at).toLocaleTimeString()}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div>
-                              <p className="text-xs font-medium text-gray-900">
-                                {activation.consumer_name || 'Anonymous'}
-                              </p>
-                              <p className="text-[10px] text-gray-500">{activation.consumer_phone}</p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-600">
-                            {activation.shop_name}
-                          </td>
-                          <td className="px-4 py-3">
-                            {activation.independent_user_name ? (
-                              <span className="text-xs font-medium text-blue-600">{activation.independent_user_name}</span>
-                            ) : (
-                              <span className="text-xs text-gray-500">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {activation.points_awarded > 0 ? (
-                              <span className="text-[10px] font-medium text-green-600">
-                                +{activation.points_awarded}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-500">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {activation.gift_redeemed ? (
-                              <div className="flex items-center gap-2">
-                                {activation.gift_image && (
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={activation.gift_image} alt={activation.gift_name} />
-                                    <AvatarFallback>R</AvatarFallback>
-                                  </Avatar>
-                                )}
-                                <span className="text-xs text-gray-700">
-                                  {activation.gift_name || 'Redeemed'}
-                                </span>
+                                  </td>
+                                )
+                              } else {
+                                return (
+                                  <td key="product" className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      {activation.variant_image && (
+                                        <Avatar className="h-8 w-8">
+                                          <AvatarImage src={activation.variant_image} alt={activation.variant_name} />
+                                          <AvatarFallback>{activation.variant_name?.charAt(0)}</AvatarFallback>
+                                        </Avatar>
+                                      )}
+                                      <div>
+                                        <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
+                                        {activation.variant_name && (
+                                          <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                )
+                              }
+                            })}
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              {activation.sequence_number || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              <div className="flex flex-col">
+                                <span className="font-medium">{new Date(activation.activated_at).toLocaleDateString()}</span>
+                                <span className="text-[10px] text-gray-500">{new Date(activation.activated_at).toLocaleTimeString()}</span>
                               </div>
-                            ) : (
-                              <span className="text-xs text-gray-500">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-600">
-                            {activation.game_card_won ? (
-                              <div className="flex items-center gap-2">
-                                {activation.game_card_image ? (
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={activation.game_card_image} alt={activation.game_card_name} />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                ) : (
-                                  <Trophy className="h-4 w-4 text-yellow-500" />
-                                )}
-                                <span className="text-xs text-gray-700">
-                                  {activation.game_card_name || 'Won'}
-                                </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="text-xs font-medium text-gray-900">
+                                  {activation.consumer_name || 'Anonymous'}
+                                </p>
+                                <p className="text-[10px] text-gray-500">{activation.consumer_phone}</p>
                               </div>
-                            ) : (
-                              <span className="text-xs text-gray-500">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      )})
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              {activation.shop_name}
+                            </td>
+                            <td className="px-4 py-3">
+                              {activation.independent_user_name ? (
+                                <span className="text-xs font-medium text-blue-600">{activation.independent_user_name}</span>
+                              ) : (
+                                <span className="text-xs text-gray-500">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {activation.points_awarded > 0 ? (
+                                <span className="text-[10px] font-medium text-green-600">
+                                  +{activation.points_awarded}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-500">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {activation.gift_redeemed ? (
+                                <div className="flex items-center gap-2">
+                                  {activation.gift_image && (
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarImage src={activation.gift_image} alt={activation.gift_name} />
+                                      <AvatarFallback>R</AvatarFallback>
+                                    </Avatar>
+                                  )}
+                                  <span className="text-xs text-gray-700">
+                                    {activation.gift_name || 'Redeemed'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-500">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              {activation.game_card_won ? (
+                                <div className="flex items-center gap-2">
+                                  {activation.game_card_image ? (
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarImage src={activation.game_card_image} alt={activation.game_card_name} />
+                                      <AvatarFallback>W</AvatarFallback>
+                                    </Avatar>
+                                  ) : (
+                                    <Trophy className="h-4 w-4 text-yellow-500" />
+                                  )}
+                                  <span className="text-xs text-gray-700">
+                                    {activation.game_card_name || 'Won'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-500">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })
                     )}
                   </tbody>
                 </table>

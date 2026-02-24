@@ -81,11 +81,36 @@ const RECONNECT_MAX_DELAY = 60000;
 class TenantSocketManager {
     private sockets: Map<string, TenantSocketState> = new Map();
     private authRoot: string;
+    private cachedVersion: { version: [number, number, number]; isLatest: boolean } | null = null;
+    private versionFetchedAt: number = 0;
+    private static VERSION_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
     constructor() {
         this.authRoot = process.env.AUTH_ROOT || '/opt/baileys-gateway/auth';
         this.ensureAuthRoot();
         logger.info({ authRoot: this.authRoot }, 'TenantSocketManager initialized');
+    }
+
+    /**
+     * Get Baileys version with caching (avoid network fetch on every reconnect)
+     */
+    private async getBaileysVersion(): Promise<{ version: [number, number, number]; isLatest: boolean }> {
+        const now = Date.now();
+        if (this.cachedVersion && (now - this.versionFetchedAt) < TenantSocketManager.VERSION_CACHE_TTL) {
+            return this.cachedVersion;
+        }
+        try {
+            const result = await fetchLatestBaileysVersion();
+            this.cachedVersion = result;
+            this.versionFetchedAt = now;
+            logger.info({ version: result.version, isLatest: result.isLatest }, 'Baileys version fetched & cached');
+            return result;
+        } catch (err) {
+            logger.warn({ error: err }, 'Failed to fetch Baileys version, using cached or default');
+            if (this.cachedVersion) return this.cachedVersion;
+            // Fallback to a known-good version
+            return { version: [2, 3000, 1015901307] as [number, number, number], isLatest: false };
+        }
     }
 
     private ensureAuthRoot(): void {
@@ -259,8 +284,8 @@ class TenantSocketManager {
             const authPath = this.ensureTenantAuthDir(tenantId);
             state.authPath = authPath;
 
-            // Get latest Baileys version
-            const { version, isLatest } = await fetchLatestBaileysVersion();
+            // Get Baileys version (cached to avoid network fetch on reconnect)
+            const { version, isLatest } = await this.getBaileysVersion();
             logger.info({ tenantId, version, isLatest }, 'Baileys version');
 
             // Load auth state
@@ -280,11 +305,17 @@ class TenantSocketManager {
                 generateHighQualityLinkPreview: false,
                 markOnlineOnConnect: true,
                 syncFullHistory: false,
-                // Resilience settings
-                connectTimeoutMs: 10_000,
-                keepAliveIntervalMs: 30_000,
-                defaultQueryTimeoutMs: 60_000,
-                retryRequestDelayMs: 2000,
+                emitOwnEvents: true,
+                // Resilience settings — increased timeouts for VPS stability
+                connectTimeoutMs: 30_000,
+                keepAliveIntervalMs: 25_000,
+                defaultQueryTimeoutMs: 120_000,
+                retryRequestDelayMs: 3000,
+            });
+
+            // Socket-level error listener to prevent unhandled crash
+            state.socket.ws?.on('error', (err: any) => {
+                logger.error({ tenantId, error: err?.message || err }, 'WebSocket error event');
             });
 
             // Event handlers
@@ -293,6 +324,19 @@ class TenantSocketManager {
             state.socket.ev.on('connection.update', (update: Partial<ConnectionState>) => {
                 this.handleConnectionUpdate(tenantId, update);
             });
+
+            // Periodic WebSocket error listener (ws may be set after events register)
+            const attachWsErrorListener = () => {
+                if (state.socket?.ws && !(state.socket.ws as any).__errListenerAttached) {
+                    state.socket.ws.on('error', (err: any) => {
+                        logger.error({ tenantId, error: err?.message || err }, 'WS error (deferred attach)');
+                    });
+                    (state.socket.ws as any).__errListenerAttached = true;
+                }
+            };
+            // Try immediately and again after 2 seconds (ws may not be ready yet)
+            attachWsErrorListener();
+            setTimeout(attachWsErrorListener, 2000);
 
             state.socket.ev.on('messages.upsert', (m: any) => {
                 logger.debug({ tenantId, messageCount: m.messages?.length }, 'Messages received');

@@ -2184,8 +2184,9 @@ export default function PremiumLoyaltyTemplate({
                 updateData.shop_name = newShopName.trim() || null
             }
 
-            // Add referral phone if changed
-            if (newReferralPhone !== userReferralPhone) {
+            // Add referral phone if changed — use RPC for approval flow
+            const referralPhoneChanged = newReferralPhone !== userReferralPhone
+            if (referralPhoneChanged) {
                 if (newReferralPhone && newReferralPhone.trim()) {
                     const validation = validatePhoneNumber(newReferralPhone.trim())
                     if (!validation.isValid) {
@@ -2194,7 +2195,7 @@ export default function PremiumLoyaltyTemplate({
                         return
                     }
                 }
-                updateData.referral_phone = newReferralPhone.trim() || null
+                // Don't include in updateData — handled via RPC after main save
             }
 
             // Add bank details if shop user or independent consumer
@@ -2267,6 +2268,42 @@ export default function PremiumLoyaltyTemplate({
                 throw new Error(data.error || 'Failed to update profile')
             }
 
+            // Handle referral phone change via RPC (supports approval flow)
+            if (referralPhoneChanged) {
+                try {
+                    const { data: refResult, error: refError } = await supabase.rpc('process_reference_change', {
+                        p_shop_user_id: userId,
+                        p_new_ref_phone: newReferralPhone?.trim() || null,
+                        p_requested_by: userId
+                    })
+
+                    if (refError) {
+                        console.error('Referral change RPC error:', refError)
+                        // Fallback: update directly via API if RPC not deployed yet
+                        await fetch('/api/user/update-profile', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userId, referral_phone: newReferralPhone?.trim() || null })
+                        })
+                        setUserReferralPhone(newReferralPhone || '')
+                    } else if (refResult && typeof refResult === 'object') {
+                        const refData = refResult as any
+                        if (refData.success && refData.status === 'pending') {
+                            setProfileSaveError('')
+                            // Show pending info — don't update local state since it's pending
+                            alert('Your reference change has been submitted for approval.')
+                        } else if (refData.success) {
+                            setUserReferralPhone(newReferralPhone || '')
+                        } else {
+                            setProfileSaveError(refData.error || 'Reference change failed')
+                        }
+                    }
+                } catch (refErr) {
+                    console.error('Referral change error:', refErr)
+                    setUserReferralPhone(newReferralPhone || '')
+                }
+            }
+
             // Update local state
             if (updateData.full_name) {
                 setUserName(updateData.full_name)
@@ -2279,9 +2316,6 @@ export default function PremiumLoyaltyTemplate({
             }
             if (updateData.shop_name !== undefined) {
                 setUserShopName(updateData.shop_name || '')
-            }
-            if (updateData.referral_phone !== undefined) {
-                setUserReferralPhone(updateData.referral_phone || '')
             }
 
             setProfileSaveSuccess(true)

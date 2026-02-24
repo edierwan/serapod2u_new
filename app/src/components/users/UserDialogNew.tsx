@@ -762,18 +762,18 @@ export default function UserDialogNew({
   // Define tab config based on user type
   const tabConfig = isEndUser
     ? [
-        { value: 'profile', label: 'Profile', icon: 'user' },
-        { value: 'business', label: 'Business', icon: 'store' },
-        { value: 'banking', label: 'Banking', icon: 'credit-card' },
-        { value: 'security', label: 'Security', icon: 'shield' },
-      ]
+      { value: 'profile', label: 'Profile', icon: 'user' },
+      { value: 'business', label: 'Business', icon: 'store' },
+      { value: 'banking', label: 'Banking', icon: 'credit-card' },
+      { value: 'security', label: 'Security', icon: 'shield' },
+    ]
     : [
-        { value: 'profile', label: 'Profile', icon: 'user' },
-        { value: 'role', label: 'Role & Access', icon: 'briefcase' },
-        ...(showDepartmentFields ? [{ value: 'hr', label: 'HR', icon: 'building' }] : []),
-        ...(selectedOrgIsShop ? [{ value: 'banking', label: 'Banking', icon: 'credit-card' }] : []),
-        { value: 'security', label: 'Security', icon: 'shield' },
-      ]
+      { value: 'profile', label: 'Profile', icon: 'user' },
+      { value: 'role', label: 'Role & Access', icon: 'briefcase' },
+      ...(showDepartmentFields ? [{ value: 'hr', label: 'HR', icon: 'building' }] : []),
+      ...(selectedOrgIsShop ? [{ value: 'banking', label: 'Banking', icon: 'credit-card' }] : []),
+      { value: 'security', label: 'Security', icon: 'shield' },
+    ]
 
   const tabIcon = (icon: string) => {
     switch (icon) {

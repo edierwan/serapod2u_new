@@ -23,20 +23,7 @@ import {
   PlayCircle
 } from 'lucide-react'
 import { Database } from '@/types/database'
-
-type PointsRuleRow = Database['public']['Tables']['points_rules']['Row']
-type PointsRuleInsert = Database['public']['Tables']['points_rules']['Insert']
-type PointsRuleUpdate = Database['public']['Tables']['points_rules']['Update']
-
-interface PointsConfigurationSettingsProps {
-  userProfile: any
-}
-
-export function PointsConfigurationSettings({ userProfile }: PointsConfigurationSettingsProps) {
-  const supabase = createClient()
-  const companyId = userProfile.organizations.id
-
-  // State
+import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeRule, setActiveRule] = useState<PointsRuleRow | null>(null)
@@ -52,7 +39,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [mediaDisplayDuration, setMediaDisplayDuration] = useState<number>(3)
   
   // Sub-tab state
-  const [settingsTab, setSettingsTab] = useState<'points' | 'media'>('points')
+  const [settingsTab, setSettingsTab] = useState<'points' | 'media' | 'referral'>('points')
   
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
@@ -299,8 +286,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       )}
 
       {/* Sub-tabs */}
-      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media')}>
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media' | 'referral')}>
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="points" className="gap-2">
             <Coins className="h-4 w-4" />
             Point Collection
@@ -308,6 +295,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           <TabsTrigger value="media" className="gap-2">
             <PlayCircle className="h-4 w-4" />
             Media Display
+          </TabsTrigger>
+          <TabsTrigger value="referral" className="gap-2">
+            <Banknote className="h-4 w-4" />
+            Referral Incentives
           </TabsTrigger>
         </TabsList>
 
@@ -685,6 +676,11 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Referral Incentives Settings Tab */}
+        <TabsContent value="referral" className="space-y-6 mt-6">
+          <ReferralIncentiveSettings userProfile={userProfile} />
         </TabsContent>
       </Tabs>
     </div>

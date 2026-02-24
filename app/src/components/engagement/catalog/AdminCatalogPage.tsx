@@ -77,6 +77,9 @@ import {
 } from "lucide-react"
 import { PointsConfigurationSettings } from './PointsConfigurationSettings'
 import { CategorySettingsDialog } from './CategorySettingsDialog'
+import { ReferralMonitor } from './ReferralMonitor'
+import { ReferenceChangeLog } from './ReferenceChangeLog'
+import { ReferralDetail } from './ReferralDetail'
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
@@ -153,9 +156,12 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
-  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback">("rewards")
+  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback" | "referral">("rewards")
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
+
+  // Referral states
+  const [selectedReferenceId, setSelectedReferenceId] = useState<string | null>(null)
 
   // Feedback states
   const [feedback, setFeedback] = useState<any[]>([])
@@ -878,7 +884,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rewards" | "users" | "consumers" | "settings" | "redemptions")} className="space-y-6" suppressHydrationWarning>
+      <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as typeof activeTab); if (value !== 'referral') setSelectedReferenceId(null); }} className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="rewards" className="gap-2">
             <Package className="h-4 w-4" /> Manage Rewards
@@ -891,6 +897,9 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           </TabsTrigger>
           <TabsTrigger value="redemptions" className="gap-2">
             <Gift className="h-4 w-4" /> Redemption History
+          </TabsTrigger>
+          <TabsTrigger value="referral" className="gap-2">
+            <TrendingUp className="h-4 w-4" /> Referral Monitor
           </TabsTrigger>
           <TabsTrigger value="settings" className="gap-2">
             <Settings className="h-4 w-4" /> Settings
@@ -1834,6 +1843,25 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* REFERRAL MONITOR TAB */}
+        <TabsContent value="referral" className="space-y-6">
+          {selectedReferenceId ? (
+            <ReferralDetail
+              userProfile={userProfile}
+              referenceUserId={selectedReferenceId}
+              onBack={() => setSelectedReferenceId(null)}
+            />
+          ) : (
+            <>
+              <ReferralMonitor
+                userProfile={userProfile}
+                onViewDetail={(userId: string) => setSelectedReferenceId(userId)}
+              />
+              <ReferenceChangeLog userProfile={userProfile} />
+            </>
+          )}
         </TabsContent>
 
         {/* POINT SETTINGS TAB */}

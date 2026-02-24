@@ -602,14 +602,21 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         }
       }
 
+      // Separate referral_phone change from main update — handled via RPC
+      const referralChanged = (formData.referral_phone?.trim() || null) !== (userProfile.referral_phone || null)
+
       let updateData: any = {
         full_name: formData.full_name?.trim() || null,
         phone: formData.phone?.trim() || null,
         address: formData.address?.trim() || null,
         location: formData.location || null,
         shop_name: formData.shop_name?.trim() || null,
-        referral_phone: formData.referral_phone?.trim() || null,
         updated_at: new Date().toISOString()
+      }
+
+      // If referral module is not enabled, include referral_phone directly (legacy)
+      if (!referralChanged) {
+        updateData.referral_phone = formData.referral_phone?.trim() || null
       }
 
       // Handle avatar upload if file is selected
@@ -670,6 +677,38 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       })
 
       if (!result.success) throw new Error(result.error || 'Failed to update profile')
+
+      // Handle referral phone change via RPC (supports approval flow)
+      if (referralChanged) {
+        const { data: refResult, error: refError } = await supabase.rpc('process_reference_change', {
+          p_shop_user_id: userProfile.id,
+          p_new_ref_phone: formData.referral_phone?.trim() || null,
+          p_requested_by: userProfile.id
+        })
+
+        if (refError) {
+          console.error('Referral change RPC error:', refError)
+          // Fallback: update directly if RPC fails (module may not be deployed yet)
+          await supabase.from('users').update({
+            referral_phone: formData.referral_phone?.trim() || null,
+            updated_at: new Date().toISOString()
+          }).eq('id', userProfile.id)
+        } else if (refResult && typeof refResult === 'object') {
+          const refData = refResult as any
+          if (!refData.success) {
+            toast({
+              title: "Reference Change",
+              description: refData.error || "Reference change request failed.",
+              variant: "destructive",
+            })
+          } else if (refData.status === 'pending') {
+            toast({
+              title: "Reference Change Pending",
+              description: "Your reference change request has been submitted for approval by HQ.",
+            })
+          }
+        }
+      }
 
       toast({
         title: "Success",

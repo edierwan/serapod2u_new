@@ -591,14 +591,14 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                         typeof p === 'string'
                           ? <span key={p} className="px-1 text-muted-foreground">…</span>
                           : <Button
-                              key={p}
-                              variant={currentPage === p ? 'default' : 'ghost'}
-                              size="icon"
-                              className={`h-8 w-8 text-xs ${currentPage === p ? '' : 'text-muted-foreground'}`}
-                              onClick={() => setCurrentPage(p as number)}
-                            >
-                              {p}
-                            </Button>
+                            key={p}
+                            variant={currentPage === p ? 'default' : 'ghost'}
+                            size="icon"
+                            className={`h-8 w-8 text-xs ${currentPage === p ? '' : 'text-muted-foreground'}`}
+                            onClick={() => setCurrentPage(p as number)}
+                          >
+                            {p}
+                          </Button>
                       )}
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
                         <ChevronRight className="h-4 w-4" />
