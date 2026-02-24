@@ -437,11 +437,13 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       }
 
       // Total points
+      // Fetch ALL matching qr_codes (Supabase defaults to 1000 rows – override with a high limit)
       let pointsQuery = supabase
         .from('qr_codes')
         .select('points_value, consumer_qr_scans(points_amount)')
         .eq('company_id', userProfile.organizations.id)
         .eq('is_points_collected', true)
+        .limit(50000)
 
       if (selectedOrderId && selectedOrderId !== 'all') {
         pointsQuery = pointsQuery.eq('order_id', selectedOrderId)
@@ -598,7 +600,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="mb-2 sm:mb-0">
                 <p className="text-xs sm:text-sm text-gray-600">Total Scans</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_scans}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_scans.toLocaleString()}</p>
               </div>
               <Scan className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
             </div>
@@ -610,7 +612,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="mb-2 sm:mb-0">
                 <p className="text-xs sm:text-sm text-gray-600">Unique Consumers</p>
-                <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.unique_consumers}</p>
+                <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.unique_consumers.toLocaleString()}</p>
               </div>
               <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
             </div>
@@ -622,8 +624,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="mb-2 sm:mb-0">
                 <p className="text-xs sm:text-sm text-gray-600">Points Distributed</p>
-                <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.total_points}</p>
-                <p className="text-xs text-gray-500 mt-1">Est. Cost: RM {stats.total_cost.toFixed(2)}</p>
+                <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.total_points.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">Est. Cost: RM {stats.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               </div>
               <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600" />
             </div>
@@ -635,7 +637,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="mb-2 sm:mb-0">
                 <p className="text-xs sm:text-sm text-gray-600">Today&apos;s Scans</p>
-                <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.today_scans}</p>
+                <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.today_scans.toLocaleString()}</p>
               </div>
               <Calendar className="h-6 w-6 sm:h-8 sm:w-8 text-orange-600" />
             </div>
