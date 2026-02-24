@@ -27,6 +27,8 @@ interface ConsumerUser {
   consumer_email: string | null
   consumer_location?: string | null
   consumer_reference?: string | null
+  referral_name?: string | null
+  referral_email?: string | null
   consumer_shop_name?: string | null
   current_balance: number
   total_collected_system: number
@@ -66,7 +68,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { id: 'phone', label: 'Phone', defaultVisible: false, group: 'identity', sortKey: 'consumer_phone', exportFn: (u) => u.consumer_phone || '' },
   { id: 'email', label: 'Email', defaultVisible: false, group: 'identity', sortKey: 'consumer_email', exportFn: (u) => u.consumer_email || '' },
   { id: 'location', label: 'Location', defaultVisible: true, group: 'identity', sortKey: 'consumer_location', exportFn: (u) => u.consumer_location || '' },
-  { id: 'reference', label: 'Reference', defaultVisible: true, group: 'identity', sortKey: 'consumer_reference', exportFn: (u) => u.consumer_reference || '' },
+  { id: 'reference', label: 'Reference', defaultVisible: true, group: 'identity', sortKey: 'consumer_reference', exportFn: (u) => [u.referral_name, u.consumer_reference, u.referral_email].filter(Boolean).join(' | ') },
   { id: 'shop_name', label: 'Shop Name', defaultVisible: true, group: 'identity', sortKey: 'consumer_shop_name', exportFn: (u) => u.consumer_shop_name || '' },
   { id: 'current_balance', label: 'Current Balance', shortLabel: 'Balance', defaultVisible: true, group: 'balance', sortKey: 'current_balance', exportFn: (u) => u.current_balance },
   { id: 'collected_system', label: 'Collected (System)', shortLabel: 'System', defaultVisible: true, group: 'balance', sortKey: 'total_collected_system', exportFn: (u) => u.total_collected_system },
@@ -267,9 +269,29 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
       case 'location':
         return <td key={colId} className="px-3 py-3 text-sm">{user.consumer_location || '-'}</td>
       case 'reference':
-        return <td key={colId} className="px-3 py-3 text-sm font-mono text-muted-foreground">{user.consumer_reference || '-'}</td>
+        return (
+          <td key={colId} className="px-3 py-3">
+            {user.consumer_reference ? (
+              <>
+                {user.referral_name && (
+                  <div className="font-medium text-sm">{user.referral_name}</div>
+                )}
+                <div className="text-xs text-muted-foreground">{user.consumer_reference}</div>
+                {user.referral_email && (
+                  <div className="text-xs text-muted-foreground">{user.referral_email}</div>
+                )}
+              </>
+            ) : (
+              <span className="text-sm text-muted-foreground">-</span>
+            )}
+          </td>
+        )
       case 'shop_name':
-        return <td key={colId} className="px-3 py-3 text-sm">{user.consumer_shop_name || '-'}</td>
+        return (
+          <td key={colId} className="px-3 py-3">
+            <span className="text-sm">{user.consumer_shop_name || '-'}</span>
+          </td>
+        )
       case 'current_balance':
         return (
           <td key={colId} className="px-3 py-3">
