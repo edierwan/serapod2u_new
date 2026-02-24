@@ -22,19 +22,19 @@ import {
 import { formatNumber } from './catalog-utils'
 
 interface ReferralMonitorEntry {
-  reference_user_id: string
-  reference_name: string
-  reference_phone: string
-  reference_email: string
-  employment_status: string
-  assigned_shops_count: number
-  total_accrued_points: number
-  total_accrued_rm: number
-  total_claimed_points: number
-  total_claimed_rm: number
-  pending_claims_count: number
-  claimable_points: number
-  claimable_rm: number
+  reference_user_id: string | null
+  reference_name: string | null
+  reference_phone: string | null
+  reference_email: string | null
+  employment_status: string | null
+  assigned_shops_count: number | null
+  total_accrued_points: number | null
+  total_accrued_rm: number | null
+  total_claimed_points: number | null
+  total_claimed_rm: number | null
+  pending_claims_count: number | null
+  claimable_points: number | null
+  claimable_rm: number | null
 }
 
 interface PendingClaim {
@@ -166,7 +166,7 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
         p_claim_id: selectedClaim.id,
         p_action: claimAction,
         p_reviewer_id: userProfile.id,
-        p_reason: claimReason || null,
+        p_reason: claimReason || undefined,
       })
       if (error) throw error
       setSelectedClaim(null)
@@ -185,7 +185,7 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
     try {
       setProcessing(true)
       const { data: result, error } = await supabase.rpc('bulk_reassign_reference', {
-        p_old_reference_id: reassignFrom.reference_user_id,
+        p_old_reference_id: reassignFrom.reference_user_id!,
         p_new_reference_id: reassignToId,
         p_admin_id: userProfile.id,
         p_transfer_balance: transferBalance,
@@ -411,7 +411,7 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
                     </td>
                     <td className="px-3 py-2 text-right font-medium">{row.assigned_shops_count}</td>
                     <td className="px-3 py-2 text-right">
-                      <span className="text-green-600">+{formatNumber(row.total_accrued_points)}</span>
+                      <span className="text-green-600">+{formatNumber(row.total_accrued_points ?? 0)}</span>
                     </td>
                     <td className="px-3 py-2 text-right font-medium">
                       RM {Number(row.total_accrued_rm).toFixed(2)}
@@ -423,7 +423,7 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
                       RM {Number(row.claimable_rm).toFixed(2)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {row.pending_claims_count > 0 && (
+                      {(row.pending_claims_count ?? 0) > 0 && (
                         <Badge variant="destructive" className="text-xs">{row.pending_claims_count}</Badge>
                       )}
                     </td>
@@ -434,7 +434,7 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
                           size="sm"
                           className="h-7 w-7 p-0"
                           title="View Details"
-                          onClick={() => onViewDetail?.(row.reference_user_id)}
+                          onClick={() => onViewDetail?.(row.reference_user_id!)}
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </Button>

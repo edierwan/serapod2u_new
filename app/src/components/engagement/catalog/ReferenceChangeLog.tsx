@@ -133,7 +133,7 @@ export function ReferenceChangeLog({ userProfile }: ReferenceChangeLogProps) {
         p_change_id: selectedEntry.id,
         p_action: approvalAction,
         p_reviewer_id: userProfile.id,
-        p_reason: rejectionReason || null,
+        p_reason: rejectionReason || undefined,
       })
       if (error) throw error
       setSelectedEntry(null)

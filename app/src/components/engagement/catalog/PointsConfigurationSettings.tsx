@@ -24,6 +24,20 @@ import {
 } from 'lucide-react'
 import { Database } from '@/types/database'
 import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
+
+type PointsRuleRow = Database['public']['Tables']['points_rules']['Row']
+type PointsRuleInsert = Database['public']['Tables']['points_rules']['Insert']
+type PointsRuleUpdate = Database['public']['Tables']['points_rules']['Update']
+
+interface PointsConfigurationSettingsProps {
+  userProfile: any
+}
+
+export function PointsConfigurationSettings({ userProfile }: PointsConfigurationSettingsProps) {
+  const supabase = createClient()
+  const companyId = userProfile.organizations.id
+
+  // State
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeRule, setActiveRule] = useState<PointsRuleRow | null>(null)

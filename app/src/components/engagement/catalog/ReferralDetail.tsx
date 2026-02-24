@@ -54,7 +54,7 @@ interface ClaimEntry {
 interface AssignmentEntry {
   id: string
   shop_user_id: string
-  reference_phone: string
+  reference_phone: string | null
   effective_from: string
   effective_to: string | null
   change_source: string
@@ -135,13 +135,13 @@ export function ReferralDetail({ userProfile, referenceUserId, onBack }: Referra
         const shopIds = [...new Set(accData.map(a => a.shop_user_id))]
         const { data: shops } = await supabase
           .from('users')
-          .select('id, full_name, phone, shop_name')
+          .select('id, full_name, phone')
           .in('id', shopIds)
         const shopMap = Object.fromEntries((shops || []).map(s => [s.id, s]))
 
         setAccruals(accData.map(a => ({
           ...a,
-          shop_name: shopMap[a.shop_user_id]?.shop_name || shopMap[a.shop_user_id]?.full_name || '',
+          shop_name: shopMap[a.shop_user_id]?.full_name || '',
           shop_phone: shopMap[a.shop_user_id]?.phone || '',
         })))
       } else {
@@ -167,13 +167,13 @@ export function ReferralDetail({ userProfile, referenceUserId, onBack }: Referra
         const shopIds = [...new Set(assignData.map(a => a.shop_user_id))]
         const { data: shops } = await supabase
           .from('users')
-          .select('id, full_name, phone, shop_name')
+          .select('id, full_name, phone')
           .in('id', shopIds)
         const shopMap = Object.fromEntries((shops || []).map(s => [s.id, s]))
 
         setAssignments(assignData.map(a => ({
           ...a,
-          shop_name: shopMap[a.shop_user_id]?.shop_name || shopMap[a.shop_user_id]?.full_name || '',
+          shop_name: shopMap[a.shop_user_id]?.full_name || '',
           shop_phone: shopMap[a.shop_user_id]?.phone || '',
         })))
       } else {
@@ -243,8 +243,8 @@ export function ReferralDetail({ userProfile, referenceUserId, onBack }: Referra
         p_claim_id: selectedClaim.id,
         p_action: claimAction,
         p_reviewer_id: userProfile.id,
-        p_reason: claimReason || null,
-        p_payment_reference: claimPayRef || null,
+        p_reason: claimReason || undefined,
+        p_payment_reference: claimPayRef || undefined,
       })
       if (error) throw error
       setSelectedClaim(null)

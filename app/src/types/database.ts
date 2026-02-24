@@ -6628,6 +6628,419 @@ export type Database = {
         }
         Relationships: []
       }
+      referral_incentive_settings: {
+        Row: {
+          id: string
+          org_id: string
+          enabled: boolean
+          conversion_points: number
+          conversion_rm: number
+          include_migration_points: boolean
+          min_claim_threshold_rm: number
+          first_time_auto_approve: boolean
+          subsequent_change_mode: string
+          cooldown_days: number
+          updated_by: string | null
+          updated_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          enabled?: boolean
+          conversion_points?: number
+          conversion_rm?: number
+          include_migration_points?: boolean
+          min_claim_threshold_rm?: number
+          first_time_auto_approve?: boolean
+          subsequent_change_mode?: string
+          cooldown_days?: number
+          updated_by?: string | null
+          updated_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          enabled?: boolean
+          conversion_points?: number
+          conversion_rm?: number
+          include_migration_points?: boolean
+          min_claim_threshold_rm?: number
+          first_time_auto_approve?: boolean
+          subsequent_change_mode?: string
+          cooldown_days?: number
+          updated_by?: string | null
+          updated_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_incentive_settings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reference_assignments: {
+        Row: {
+          id: string
+          org_id: string
+          shop_user_id: string
+          reference_user_id: string | null
+          reference_phone: string | null
+          effective_from: string
+          effective_to: string | null
+          change_source: string
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          shop_user_id: string
+          reference_user_id?: string | null
+          reference_phone?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          change_source?: string
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          shop_user_id?: string
+          reference_user_id?: string | null
+          reference_phone?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          change_source?: string
+          created_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reference_assignments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_assignments_shop_user_id_fkey"
+            columns: ["shop_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_assignments_reference_user_id_fkey"
+            columns: ["reference_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reference_change_log: {
+        Row: {
+          id: string
+          org_id: string
+          shop_user_id: string
+          shop_name: string | null
+          shop_phone: string | null
+          old_reference_phone: string | null
+          old_reference_name: string | null
+          old_reference_id: string | null
+          new_reference_phone: string | null
+          new_reference_name: string | null
+          new_reference_id: string | null
+          changed_by: string | null
+          changed_by_type: string
+          changed_at: string
+          policy_mode: string
+          status: Database["public"]["Enums"]["referral_change_status"]
+          reviewed_by: string | null
+          reviewed_at: string | null
+          rejection_reason: string | null
+          effective_from: string | null
+          assignment_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          shop_user_id: string
+          shop_name?: string | null
+          shop_phone?: string | null
+          old_reference_phone?: string | null
+          old_reference_name?: string | null
+          old_reference_id?: string | null
+          new_reference_phone?: string | null
+          new_reference_name?: string | null
+          new_reference_id?: string | null
+          changed_by?: string | null
+          changed_by_type?: string
+          changed_at?: string
+          policy_mode?: string
+          status?: Database["public"]["Enums"]["referral_change_status"]
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          rejection_reason?: string | null
+          effective_from?: string | null
+          assignment_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          shop_user_id?: string
+          shop_name?: string | null
+          shop_phone?: string | null
+          old_reference_phone?: string | null
+          old_reference_name?: string | null
+          old_reference_id?: string | null
+          new_reference_phone?: string | null
+          new_reference_name?: string | null
+          new_reference_id?: string | null
+          changed_by?: string | null
+          changed_by_type?: string
+          changed_at?: string
+          policy_mode?: string
+          status?: Database["public"]["Enums"]["referral_change_status"]
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          rejection_reason?: string | null
+          effective_from?: string | null
+          assignment_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reference_change_log_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reference_change_log_shop_user_id_fkey"
+            columns: ["shop_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_accruals: {
+        Row: {
+          id: string
+          org_id: string
+          reference_user_id: string
+          shop_user_id: string
+          source_type: string
+          source_id: string | null
+          points_amount: number
+          rm_amount: number
+          assignment_id: string | null
+          event_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          reference_user_id: string
+          shop_user_id: string
+          source_type: string
+          source_id?: string | null
+          points_amount: number
+          rm_amount?: number
+          assignment_id?: string | null
+          event_at: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          reference_user_id?: string
+          shop_user_id?: string
+          source_type?: string
+          source_id?: string | null
+          points_amount?: number
+          rm_amount?: number
+          assignment_id?: string | null
+          event_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_accruals_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_accruals_reference_user_id_fkey"
+            columns: ["reference_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_accruals_shop_user_id_fkey"
+            columns: ["shop_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_claims: {
+        Row: {
+          id: string
+          org_id: string
+          reference_user_id: string
+          claim_points: number
+          claim_rm: number
+          conversion_points: number
+          conversion_rm: number
+          status: Database["public"]["Enums"]["referral_claim_status"]
+          reviewed_by: string | null
+          reviewed_at: string | null
+          rejection_reason: string | null
+          approval_notes: string | null
+          paid_by: string | null
+          paid_at: string | null
+          payment_reference: string | null
+          submitted_by: string
+          submitted_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          reference_user_id: string
+          claim_points: number
+          claim_rm: number
+          conversion_points: number
+          conversion_rm: number
+          status?: Database["public"]["Enums"]["referral_claim_status"]
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          rejection_reason?: string | null
+          approval_notes?: string | null
+          paid_by?: string | null
+          paid_at?: string | null
+          payment_reference?: string | null
+          submitted_by: string
+          submitted_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          reference_user_id?: string
+          claim_points?: number
+          claim_rm?: number
+          conversion_points?: number
+          conversion_rm?: number
+          status?: Database["public"]["Enums"]["referral_claim_status"]
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          rejection_reason?: string | null
+          approval_notes?: string | null
+          paid_by?: string | null
+          paid_at?: string | null
+          payment_reference?: string | null
+          submitted_by?: string
+          submitted_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_claims_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_claims_reference_user_id_fkey"
+            columns: ["reference_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_adjustments: {
+        Row: {
+          id: string
+          org_id: string
+          reference_user_id: string
+          adjustment_type: Database["public"]["Enums"]["referral_adjustment_type"]
+          points_amount: number
+          rm_amount: number
+          reason: string
+          related_claim_id: string | null
+          related_user_id: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          reference_user_id: string
+          adjustment_type: Database["public"]["Enums"]["referral_adjustment_type"]
+          points_amount: number
+          rm_amount?: number
+          reason: string
+          related_claim_id?: string | null
+          related_user_id?: string | null
+          created_by: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          reference_user_id?: string
+          adjustment_type?: Database["public"]["Enums"]["referral_adjustment_type"]
+          points_amount?: number
+          rm_amount?: number
+          reason?: string
+          related_claim_id?: string | null
+          related_user_id?: string | null
+          created_by?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_adjustments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_adjustments_reference_user_id_fkey"
+            columns: ["reference_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_adjustments_related_claim_id_fkey"
+            columns: ["related_claim_id"]
+            isOneToOne: false
+            referencedRelation: "referral_claims"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       mv_product_catalog: {
@@ -7785,6 +8198,26 @@ export type Database = {
           },
         ]
       }
+      v_referral_monitor: {
+        Row: {
+          reference_user_id: string | null
+          reference_name: string | null
+          reference_phone: string | null
+          reference_email: string | null
+          employment_status: string | null
+          reference_org_id: string | null
+          org_id: string | null
+          assigned_shops_count: number | null
+          total_accrued_points: number | null
+          total_accrued_rm: number | null
+          total_claimed_points: number | null
+          total_claimed_rm: number | null
+          pending_claims_count: number | null
+          claimable_points: number | null
+          claimable_rm: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _movement_warehouse_id: {
@@ -8600,6 +9033,51 @@ export type Database = {
         }
         Returns: Json
       }
+      process_reference_change: {
+        Args: {
+          p_shop_user_id: string
+          p_new_reference_phone: string
+          p_changed_by?: string
+          p_changed_by_type?: string
+        }
+        Returns: Json
+      }
+      approve_reference_change: {
+        Args: {
+          p_change_id: string
+          p_action: string
+          p_reviewer_id: string
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      submit_referral_claim: {
+        Args: {
+          p_reference_user_id: string
+          p_claim_points: number
+          p_org_id?: string
+        }
+        Returns: Json
+      }
+      process_referral_claim: {
+        Args: {
+          p_claim_id: string
+          p_action: string
+          p_reviewer_id: string
+          p_reason?: string
+          p_payment_reference?: string
+        }
+        Returns: Json
+      }
+      bulk_reassign_reference: {
+        Args: {
+          p_old_reference_id: string
+          p_new_reference_id: string
+          p_admin_id: string
+          p_transfer_balance?: boolean
+        }
+        Returns: Json
+      }
     }
     Enums: {
       document_status: "pending" | "acknowledged" | "completed"
@@ -8611,6 +9089,21 @@ export type Database = {
       | "PAYMENT_REQUEST"
       order_status: "draft" | "submitted" | "approved" | "closed"
       order_type: "H2M" | "D2H" | "S2D"
+      referral_change_status:
+      | "auto_approved"
+      | "pending"
+      | "approved"
+      | "rejected"
+      referral_claim_status:
+      | "pending"
+      | "approved"
+      | "rejected"
+      | "paid"
+      referral_adjustment_type:
+      | "credit"
+      | "debit"
+      | "transfer_in"
+      | "transfer_out"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -8742,6 +9235,9 @@ export const Constants = {
       document_type: ["PO", "INVOICE", "PAYMENT", "RECEIPT", "PAYMENT_REQUEST"],
       order_status: ["draft", "submitted", "approved", "closed"],
       order_type: ["H2M", "D2H", "S2D"],
+      referral_change_status: ["auto_approved", "pending", "approved", "rejected"],
+      referral_claim_status: ["pending", "approved", "rejected", "paid"],
+      referral_adjustment_type: ["credit", "debit", "transfer_in", "transfer_out"],
     },
   },
 } as const

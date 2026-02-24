@@ -72,14 +72,14 @@ export function ReferralIncentiveSettings({ userProfile }: ReferralIncentiveSett
         if (error && error.code !== 'PGRST116') throw error
 
         if (data) {
-          setSettings(data)
+          setSettings(data as ReferralSettings)
           setEnabled(data.enabled)
           setConversionPoints(data.conversion_points)
           setConversionRm(Number(data.conversion_rm))
           setIncludeMigrationPoints(data.include_migration_points)
           setMinClaimThreshold(Number(data.min_claim_threshold_rm))
           setFirstTimeAutoApprove(data.first_time_auto_approve)
-          setSubsequentChangeMode(data.subsequent_change_mode)
+          setSubsequentChangeMode(data.subsequent_change_mode as 'auto' | 'approval')
           setCooldownDays(data.cooldown_days)
         }
       } catch (error: any) {
@@ -145,7 +145,7 @@ export function ReferralIncentiveSettings({ userProfile }: ReferralIncentiveSett
         .select('*')
         .eq('org_id', companyId)
         .single()
-      if (refreshed) setSettings(refreshed)
+      if (refreshed) setSettings(refreshed as ReferralSettings)
 
     } catch (error: any) {
       console.error('Error saving referral settings:', error)
