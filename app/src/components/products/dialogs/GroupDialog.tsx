@@ -106,14 +106,14 @@ export default function GroupDialog({
         .select('id, group_name')
         .ilike('group_name', formData.group_name)
         .eq('is_active', true)  // Only check active groups
-      
+
       // Exclude current group when editing
       if (group?.id) {
         query = query.neq('id', group.id)
       }
-      
+
       const { data: existingGroups } = await query
-      
+
       if (existingGroups && existingGroups.length > 0) {
         newErrors.group_name = 'This group name is already in use. Please choose a different name.'
         setErrors(newErrors)

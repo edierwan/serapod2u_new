@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import {
   Plus, Trash2, Eye, EyeOff, Upload, Image as ImageIcon,
   Save, ArrowLeft, Loader2, Calendar, Link as LinkIcon,
   ExternalLink
 } from 'lucide-react'
+import AnimationSettingsPanel from './AnimationSettingsPanel'
+import BannerImageUploader from './BannerImageUploader'
+import type { AnimationStyle, AnimationIntensity } from '@/lib/storefront/banner-constants'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -23,6 +25,9 @@ interface LoginBanner {
   starts_at: string | null
   ends_at: string | null
   banner_type: string
+  animation_enabled: boolean
+  animation_style: string
+  animation_intensity: string
   created_at: string
   updated_at: string
 }
@@ -52,22 +57,25 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
     is_active: true,
     starts_at: '',
     ends_at: '',
+    animation_enabled: false,
+    animation_style: 'none' as AnimationStyle,
+    animation_intensity: 'low' as AnimationIntensity,
   })
 
-  // ── Fetch banners ─────────────────────────────────────────────
+  // ── Fetch banners (via API route — bypasses RLS) ───────────────
 
   const fetchBanners = useCallback(async () => {
     try {
       setLoading(true)
-      const supabase = createClient()
-      const { data, error: fetchError } = await supabase
-        .from('store_hero_banners' as any)
-        .select('*')
-        .eq('banner_type', 'login')
-        .order('sort_order', { ascending: true })
-
-      if (fetchError) throw new Error(fetchError.message)
-      setBanners((data as any[]) || [])
+      const res = await fetch('/api/admin/store/banners')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `Failed to fetch banners (${res.status})`)
+      }
+      const data = await res.json()
+      // Filter to login banners only
+      const loginBanners = (data.banners || []).filter((b: any) => b.banner_type === 'login')
+      setBanners(loginBanners)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -110,12 +118,14 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
   // ── Save banner ───────────────────────────────────────────────
 
   const saveBanner = async () => {
-    if (!form.image_url) { setError('Please upload an image'); return }
+    if (!form.image_url && !form.animation_enabled) {
+      setError('Please upload an image or enable an animation')
+      return
+    }
     setSaving(true)
     setError(null)
 
     try {
-      const supabase = createClient()
       const payload = {
         title: form.title,
         subtitle: form.subtitle,
@@ -128,33 +138,38 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
         ends_at: form.ends_at || null,
         banner_type: 'login',
         layout_slot: 'carousel',
-        org_id: userProfile?.company_id,
-        updated_at: new Date().toISOString(),
-        updated_by: userProfile?.id,
+        sort_order: editingBanner ? editingBanner.sort_order : banners.length,
+        animation_enabled: form.animation_enabled,
+        animation_style: form.animation_style,
+        animation_intensity: form.animation_intensity,
       }
 
       if (editingBanner) {
-        const { error: updateErr } = await supabase
-          .from('store_hero_banners' as any)
-          .update(payload as any)
-          .eq('id', editingBanner.id)
-        if (updateErr) throw new Error(updateErr.message)
+        const res = await fetch('/api/admin/store/banners', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingBanner.id, ...payload }),
+        })
+        if (!res.ok) {
+          const resData = await res.json().catch(() => ({}))
+          throw new Error(resData.error || 'Failed to update banner')
+        }
       } else {
-        const { error: insertErr } = await supabase
-          .from('store_hero_banners' as any)
-          .insert({
-            ...payload,
-            sort_order: banners.length,
-            created_at: new Date().toISOString(),
-            created_by: userProfile?.id,
-          } as any)
-        if (insertErr) throw new Error(insertErr.message)
+        const res = await fetch('/api/admin/store/banners', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) {
+          const resData = await res.json().catch(() => ({}))
+          throw new Error(resData.error || 'Failed to create banner')
+        }
       }
 
       setShowForm(false)
       setEditingBanner(null)
       resetForm()
-      fetchBanners()
+      await fetchBanners()
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -167,13 +182,9 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
   const deleteBanner = async (id: string) => {
     if (!confirm('Delete this login banner?')) return
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('store_hero_banners' as any)
-        .delete()
-        .eq('id', id)
-      if (error) throw new Error(error.message)
-      fetchBanners()
+      const res = await fetch(`/api/admin/store/banners?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      await fetchBanners()
     } catch (err: any) {
       setError(err.message)
     }
@@ -183,13 +194,13 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
 
   const toggleVisibility = async (banner: LoginBanner) => {
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('store_hero_banners' as any)
-        .update({ is_active: !banner.is_active, updated_at: new Date().toISOString() } as any)
-        .eq('id', banner.id)
-      if (error) throw new Error(error.message)
-      fetchBanners()
+      const res = await fetch('/api/admin/store/banners', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: banner.id, is_active: !banner.is_active }),
+      })
+      if (!res.ok) throw new Error('Failed to update')
+      await fetchBanners()
     } catch (err: any) {
       setError(err.message)
     }
@@ -200,6 +211,9 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
       title: '', subtitle: '', badge_text: '', image_url: '',
       link_url: '/store/products', link_text: 'Shop Now', is_active: true,
       starts_at: '', ends_at: '',
+      animation_enabled: false,
+      animation_style: 'none' as AnimationStyle,
+      animation_intensity: 'low' as AnimationIntensity,
     })
   }
 
@@ -211,6 +225,9 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
       is_active: banner.is_active,
       starts_at: banner.starts_at ? banner.starts_at.slice(0, 16) : '',
       ends_at: banner.ends_at ? banner.ends_at.slice(0, 16) : '',
+      animation_enabled: banner.animation_enabled ?? false,
+      animation_style: (banner.animation_style || 'none') as AnimationStyle,
+      animation_intensity: (banner.animation_intensity || 'low') as AnimationIntensity,
     })
     setShowForm(true)
   }
@@ -272,43 +289,22 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
           <h2 className="font-semibold text-sm">{editingBanner ? 'Edit' : 'Add'} Login Banner</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Image */}
+            {/* Image — enhanced with size guidance & validation */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Banner Image *</label>
-              <div className="relative">
-                {form.image_url ? (
-                  <div className="relative">
-                    <img src={form.image_url} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
-                    <button
-                      onClick={() => setForm(prev => ({ ...prev, image_url: '' }))}
-                      className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full text-xs"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    className="h-48 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-violet-400 transition-colors"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {uploading ? (
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    ) : (
-                      <>
-                        <Upload className="h-8 w-8 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Click to upload (max 5MB)</span>
-                      </>
-                    )}
-                  </div>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
-                />
-              </div>
+              <BannerImageUploader
+                imageUrl={form.image_url}
+                context="login"
+                uploading={uploading}
+                onUpload={handleImageUpload}
+                onClear={() => setForm(prev => ({ ...prev, image_url: '' }))}
+              />
+              {!form.image_url && form.animation_enabled && (
+                <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                  <span className="text-[10px] text-amber-700 dark:text-amber-300">
+                    <strong>Tip:</strong> Upload an image for best results. Without an image, a generated gradient background will be used with the animation.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Form fields */}
@@ -366,15 +362,30 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
             </div>
           </div>
 
+          {/* Animation Settings */}
+          <AnimationSettingsPanel
+            enabled={form.animation_enabled}
+            style={form.animation_style}
+            intensity={form.animation_intensity}
+            imageUrl={form.image_url}
+            context="login"
+            onChange={(update) => setForm(prev => ({
+              ...prev,
+              ...(update.animation_enabled !== undefined && { animation_enabled: update.animation_enabled }),
+              ...(update.animation_style !== undefined && { animation_style: update.animation_style }),
+              ...(update.animation_intensity !== undefined && { animation_intensity: update.animation_intensity }),
+            }))}
+          />
+
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 border-t border-border">
             <button
               onClick={saveBanner}
-              disabled={saving || !form.image_url}
+              disabled={saving || uploading || (!form.image_url && !form.animation_enabled)}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              {editingBanner ? 'Update' : 'Save'}
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {uploading ? 'Uploading…' : editingBanner ? 'Update' : 'Save'}
             </button>
             <button
               onClick={() => { setShowForm(false); setEditingBanner(null); resetForm() }}
@@ -416,6 +427,11 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
               <div className="w-40 h-24 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
                 {banner.image_url ? (
                   <img src={banner.image_url} alt={banner.title || 'Banner'} className="w-full h-full object-cover" />
+                ) : banner.animation_enabled ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900 text-white/70">
+                    <span className="text-[10px] font-medium uppercase tracking-wider">Animation</span>
+                    <span className="text-[9px] mt-0.5 capitalize">{banner.animation_style || 'none'}</span>
+                  </div>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
@@ -428,11 +444,10 @@ export default function LoginHeroBannerManagerView({ userProfile, onViewChange }
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="text-xs font-mono text-muted-foreground">#{idx + 1}</span>
-                    <span className={`ml-2 inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
-                      banner.is_active
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                    }`}>
+                    <span className={`ml-2 inline-block px-2 py-0.5 text-xs font-medium rounded-full ${banner.is_active
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                      }`}>
                       {banner.is_active ? 'Active' : 'Hidden'}
                     </span>
                     <h3 className="font-medium text-sm mt-1">

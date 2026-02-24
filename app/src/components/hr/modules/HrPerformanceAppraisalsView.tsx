@@ -36,11 +36,11 @@ interface AppraisalCycle {
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = {
-    draft:       { label: 'Draft',       color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',   icon: ClipboardList },
-    active:      { label: 'Active',      color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',   icon: PlayCircle },
-    in_review:   { label: 'In Review',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300', icon: Users },
+    draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', icon: ClipboardList },
+    active: { label: 'Active', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300', icon: PlayCircle },
+    in_review: { label: 'In Review', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300', icon: Users },
     calibration: { label: 'Calibration', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300', icon: BarChart3 },
-    completed:   { label: 'Completed',   color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', icon: CheckCircle2 },
+    completed: { label: 'Completed', color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', icon: CheckCircle2 },
 }
 
 const CYCLE_TYPES = ['annual', 'semi_annual', 'quarterly', 'probation']

@@ -122,6 +122,7 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         icon: Trophy,
         description: 'Manage loyalty point rewards, lucky draw events, interactive games, and gift redemptions.',
         children: [
+            { id: 'consumer-activations', label: 'Customer Activation', icon: Scan, route: '/crm', description: 'Track consumer scans and engagement', href: '/crm' },
             { id: 'point-catalog', label: 'Point Catalog', icon: Gift, route: '/loyalty', description: 'Points-based reward catalog', href: '/loyalty' },
             { id: 'lucky-draw', label: 'Lucky Draw', icon: Trophy, route: '/loyalty', description: 'Lucky draw events', href: '/loyalty' },
             { id: 'scratch-card-game', label: 'Games', icon: Gamepad2, route: '/loyalty', description: 'Interactive scratch card games', href: '/loyalty' },

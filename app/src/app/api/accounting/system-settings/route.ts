@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server'
 export async function GET() {
   try {
     const supabase = await createClient() as any
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
@@ -51,9 +51,9 @@ export async function GET() {
       .order('start_date', { ascending: false })
 
     // Get current fiscal year and period
-    const currentFiscalYear = fiscalYears?.find((fy: any) => 
-      fy.status === 'open' && 
-      new Date() >= new Date(fy.start_date) && 
+    const currentFiscalYear = fiscalYears?.find((fy: any) =>
+      fy.status === 'open' &&
+      new Date() >= new Date(fy.start_date) &&
       new Date() <= new Date(fy.end_date)
     )
 
@@ -92,7 +92,7 @@ export async function PUT(request: Request) {
   try {
     const supabase = await createClient() as any
     const body = await request.json()
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {

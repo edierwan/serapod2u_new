@@ -525,6 +525,11 @@ export default function UserManagementNew({
           is_active: userData.is_active ?? true,
         };
 
+        // Include end user / independent user fields if present
+        if ("shop_name" in userData) updateData.shop_name = (userData as any).shop_name || null;
+        if ("address" in userData) updateData.address = (userData as any).address || null;
+        if ("referral_phone" in userData) updateData.referral_phone = (userData as any).referral_phone || null;
+
         // Handle password reset (Super Admin only)
         if (resetPassword && resetPassword.password) {
           try {
@@ -564,36 +569,46 @@ export default function UserManagementNew({
           (userData as any).bank_id ||
           (userData as any).bank_account_number
         ) {
-          try {
-            const bankResponse = await fetch(
-              "/api/organization/update-bank-details",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  organizationId: userData.organization_id,
-                  bankId: (userData as any).bank_id,
-                  bankAccountNumber: (userData as any).bank_account_number,
-                  bankAccountHolderName: (userData as any)
-                    .bank_account_holder_name,
-                }),
-              },
-            );
-
-            if (!bankResponse.ok) {
-              const errorData = await bankResponse.json();
-              throw new Error(
-                errorData.error || "Failed to update bank details",
+          // For end users (no organization), save bank details directly to user record
+          const isEndUserEdit = !userData.organization_id;
+          if (isEndUserEdit) {
+            // Bank fields will be included in updateData and saved to user table
+            if ((userData as any).bank_id) updateData.bank_id = (userData as any).bank_id;
+            if ((userData as any).bank_account_number) updateData.bank_account_number = (userData as any).bank_account_number;
+            if ((userData as any).bank_account_holder_name) updateData.bank_account_holder_name = (userData as any).bank_account_holder_name;
+          } else {
+            // For org users, update bank details on the organization
+            try {
+              const bankResponse = await fetch(
+                "/api/organization/update-bank-details",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    organizationId: userData.organization_id,
+                    bankId: (userData as any).bank_id,
+                    bankAccountNumber: (userData as any).bank_account_number,
+                    bankAccountHolderName: (userData as any)
+                      .bank_account_holder_name,
+                  }),
+                },
               );
+
+              if (!bankResponse.ok) {
+                const errorData = await bankResponse.json();
+                throw new Error(
+                  errorData.error || "Failed to update bank details",
+                );
+              }
+            } catch (bankError: any) {
+              console.error("Error updating bank details:", bankError);
+              toast({
+                title: "Bank Details Update Failed",
+                description: bankError.message || "Failed to update bank details",
+                variant: "destructive",
+              });
+              // Continue with user update
             }
-          } catch (bankError: any) {
-            console.error("Error updating bank details:", bankError);
-            toast({
-              title: "Bank Details Update Failed",
-              description: bankError.message || "Failed to update bank details",
-              variant: "destructive",
-            });
-            // Continue with user update
           }
         }
 
@@ -1534,9 +1549,16 @@ export default function UserManagementNew({
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="text-gray-900 truncate font-medium">
+                              <button
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setDialogOpen(true);
+                                }}
+                                className="text-gray-900 truncate font-medium hover:text-blue-600 hover:underline transition-colors text-left block max-w-full"
+                                title="Click to edit user"
+                              >
                                 {user.full_name || "No Name"}
-                              </div>
+                              </button>
                               <div className="text-xs text-gray-500 truncate">
                                 {user.email}
                                 {user.phone && (

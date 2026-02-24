@@ -21,6 +21,10 @@ import {
   Columns,
   RotateCcw,
 } from 'lucide-react'
+import AnimationSettingsPanel from './AnimationSettingsPanel'
+import BannerImageUploader from './BannerImageUploader'
+import type { AnimationStyle, AnimationIntensity } from '@/lib/storefront/banner-constants'
+import { DEFAULT_ANIMATION_CONFIG } from '@/lib/storefront/banner-constants'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -101,6 +105,9 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
     starts_at: '',
     ends_at: '',
     layout_slot: 'carousel' as LayoutSlot,
+    animation_enabled: false,
+    animation_style: 'none' as AnimationStyle,
+    animation_intensity: 'low' as AnimationIntensity,
   })
 
   // ── Fetch banners + config ──────────────────────────────────────
@@ -200,8 +207,8 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
   // ── Save banner ───────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!form.image_url) {
-      setError('Please upload a banner image')
+    if (!form.image_url && !form.animation_enabled) {
+      setError('Please upload a banner image or enable an animation')
       return
     }
 
@@ -215,6 +222,9 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
         ends_at: form.ends_at || null,
         layout_slot: form.layout_slot || 'carousel',
         sort_order: editingBanner ? editingBanner.sort_order : banners.length,
+        animation_enabled: form.animation_enabled,
+        animation_style: form.animation_style,
+        animation_intensity: form.animation_intensity,
       }
 
       if (editingBanner) {
@@ -297,6 +307,9 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
       starts_at: banner.starts_at ? banner.starts_at.slice(0, 16) : '',
       ends_at: banner.ends_at ? banner.ends_at.slice(0, 16) : '',
       layout_slot: banner.layout_slot || 'carousel',
+      animation_enabled: (banner as any).animation_enabled ?? false,
+      animation_style: ((banner as any).animation_style || 'none') as AnimationStyle,
+      animation_intensity: ((banner as any).animation_intensity || 'low') as AnimationIntensity,
     })
     setShowForm(true)
   }
@@ -313,6 +326,9 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
       starts_at: '',
       ends_at: '',
       layout_slot: 'carousel',
+      animation_enabled: false,
+      animation_style: 'none' as AnimationStyle,
+      animation_intensity: 'low' as AnimationIntensity,
     })
   }
 
@@ -339,11 +355,10 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowConfigPanel(prev => !prev)}
-            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
-              showConfigPanel
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${showConfigPanel
                 ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
                 : 'border-border hover:bg-accent'
-            }`}
+              }`}
           >
             <Settings2 className="h-3.5 w-3.5" />
             Layout Config
@@ -388,11 +403,10 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
               {/* Carousel layout */}
               <button
                 onClick={() => saveHeroConfig({ layout_type: 'carousel' })}
-                className={`relative p-4 rounded-xl border-2 text-left transition-all ${
-                  heroConfig.layout_type === 'carousel'
+                className={`relative p-4 rounded-xl border-2 text-left transition-all ${heroConfig.layout_type === 'carousel'
                     ? 'border-violet-500 bg-violet-50/50 dark:bg-violet-900/20'
                     : 'border-border hover:border-violet-200 dark:hover:border-violet-800'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-100 to-violet-200 dark:from-violet-800 dark:to-violet-900 flex items-center justify-center">
@@ -421,11 +435,10 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
               {/* Split layout */}
               <button
                 onClick={() => saveHeroConfig({ layout_type: 'split' })}
-                className={`relative p-4 rounded-xl border-2 text-left transition-all ${
-                  heroConfig.layout_type === 'split'
+                className={`relative p-4 rounded-xl border-2 text-left transition-all ${heroConfig.layout_type === 'split'
                     ? 'border-violet-500 bg-violet-50/50 dark:bg-violet-900/20'
                     : 'border-border hover:border-violet-200 dark:hover:border-violet-800'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-800 dark:to-emerald-900 flex items-center justify-center">
@@ -522,56 +535,14 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
             {editingBanner ? 'Edit Banner' : 'New Banner'}
           </h2>
 
-          {/* Image Upload */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Banner Image *</label>
-            {form.image_url ? (
-              <div className="relative group rounded-xl overflow-hidden border border-border">
-                <img
-                  src={form.image_url}
-                  alt="Banner preview"
-                  className="w-full h-48 object-cover"
-                />
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-medium text-white bg-white/20 backdrop-blur-sm rounded-lg hover:bg-white/30 transition-colors"
-                  >
-                    Change Image
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="w-full h-48 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-violet-400 hover:text-violet-500 transition-colors"
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                    <span className="text-sm">Uploading...</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-8 w-8" />
-                    <span className="text-sm font-medium">Click to upload image</span>
-                    <span className="text-xs">JPG, PNG, WebP — max 5MB</span>
-                  </>
-                )}
-              </button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) handleImageUpload(file)
-              }}
-            />
-          </div>
+          {/* Image Upload — enhanced with size guidance & validation */}
+          <BannerImageUploader
+            imageUrl={form.image_url}
+            context="landing"
+            uploading={uploading}
+            onUpload={handleImageUpload}
+            onClear={() => setForm(prev => ({ ...prev, image_url: '' }))}
+          />
 
           {/* Title & Subtitle */}
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
@@ -680,6 +651,21 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
             </p>
           </div>
 
+          {/* Animation Settings */}
+          <AnimationSettingsPanel
+            enabled={form.animation_enabled}
+            style={form.animation_style}
+            intensity={form.animation_intensity}
+            imageUrl={form.image_url}
+            context="landing"
+            onChange={(update) => setForm(prev => ({
+              ...prev,
+              ...(update.animation_enabled !== undefined && { animation_enabled: update.animation_enabled }),
+              ...(update.animation_style !== undefined && { animation_style: update.animation_style }),
+              ...(update.animation_intensity !== undefined && { animation_intensity: update.animation_intensity }),
+            }))}
+          />
+
           {/* Active toggle */}
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -695,7 +681,7 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
           <div className="flex items-center gap-2 pt-2">
             <button
               onClick={handleSave}
-              disabled={saving || !form.image_url}
+              disabled={saving || (!form.image_url && !form.animation_enabled)}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -736,20 +722,25 @@ export default function StoreBannerManagerView({ userProfile, onViewChange }: St
           {banners.map((banner, index) => (
             <div
               key={banner.id}
-              className={`bg-card border rounded-xl overflow-hidden transition-all ${
-                banner.is_active
+              className={`bg-card border rounded-xl overflow-hidden transition-all ${banner.is_active
                   ? 'border-border hover:border-violet-200 dark:hover:border-violet-800'
                   : 'border-border/50 opacity-60'
-              }`}
+                }`}
             >
               <div className="flex items-stretch">
                 {/* Thumbnail */}
                 <div className="w-40 sm:w-56 flex-shrink-0 relative">
-                  <img
-                    src={banner.image_url}
-                    alt={banner.title || 'Banner'}
-                    className="w-full h-full object-cover min-h-[100px]"
-                  />
+                  {banner.image_url ? (
+                    <img
+                      src={banner.image_url}
+                      alt={banner.title || 'Banner'}
+                      className="w-full h-full object-cover min-h-[100px]"
+                    />
+                  ) : (
+                    <div className="w-full h-full min-h-[100px] bg-gradient-to-br from-slate-800 via-blue-900 to-indigo-900 flex items-center justify-center">
+                      <span className="text-xs text-white/50 font-medium">Animation Only</span>
+                    </div>
+                  )}
                   {!banner.is_active && (
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                       <span className="text-xs font-medium text-white bg-black/60 px-2 py-0.5 rounded">Hidden</span>

@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Admin role codes that are allowed to manage store banners
-const ADMIN_ROLES = ['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin']
-
 // ── Helpers ─────────────────────────────────────────────────────────
 
 async function getAuthenticatedAdmin(supabase: any) {
@@ -14,30 +11,24 @@ async function getAuthenticatedAdmin(supabase: any) {
 
     const adminClient = createAdminClient()
 
-    // Query user profile with org (avoid roles join — FK may not exist)
-    const { data: profile, error: profileErr } = await adminClient
+    // Single joined query — matches the proven store/orders pattern
+    const { data: profile } = await adminClient
       .from('users')
-      .select('id, organization_id, role_code')
+      .select('id, organization_id, role_code, organizations!fk_users_organization(id, org_type_code), roles(role_level)')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
-    if (profileErr || !profile) return null
+    if (!profile) return null
 
-    // Check role via allowlist
-    if (!ADMIN_ROLES.includes(profile.role_code)) return null
+    const orgType = (profile as any).organizations?.org_type_code
+    const roleLevel = (profile as any).roles?.role_level
 
-    // Verify org is HQ type
-    const { data: org } = await adminClient
-      .from('organizations')
-      .select('org_type_code')
-      .eq('id', profile.organization_id)
-      .single()
-
-    if (!org || org.org_type_code !== 'HQ') return null
+    // HQ users with role level ≤ 30 (Admin / Manager / Super Admin)
+    if (orgType !== 'HQ' || !roleLevel || roleLevel > 30) return null
 
     return { userId: user.id, orgId: profile.organization_id }
   } catch (err) {
-    console.error('[getAuthenticatedAdmin] Error:', err)
+    console.error('[banners/getAuthenticatedAdmin] Error:', err)
     return null
   }
 }
@@ -83,10 +74,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, subtitle, badge_text, image_url, link_url, link_text, sort_order, is_active, starts_at, ends_at, layout_slot } = body
+    const { title, subtitle, badge_text, image_url, link_url, link_text, sort_order, is_active, starts_at, ends_at, layout_slot, banner_type, animation_enabled, animation_style, animation_intensity } = body
 
-    if (!image_url) {
-      return NextResponse.json({ error: 'image_url is required' }, { status: 400 })
+    if (!image_url && !animation_enabled) {
+      return NextResponse.json({ error: 'image_url or animation_enabled is required' }, { status: 400 })
     }
 
     const adminClient = createAdminClient()
@@ -97,7 +88,7 @@ export async function POST(request: NextRequest) {
         title: title || '',
         subtitle: subtitle || '',
         badge_text: badge_text || '',
-        image_url,
+        image_url: image_url || '',
         link_url: link_url || '/store/products',
         link_text: link_text || 'Shop Now',
         sort_order: sort_order ?? 0,
@@ -105,11 +96,15 @@ export async function POST(request: NextRequest) {
         starts_at: starts_at ? new Date(starts_at).toISOString() : new Date().toISOString(),
         ends_at: ends_at ? new Date(ends_at).toISOString() : null,
         layout_slot: layout_slot || 'carousel',
+        banner_type: banner_type || 'landing',
+        animation_enabled: animation_enabled ?? false,
+        animation_style: animation_style || 'none',
+        animation_intensity: animation_intensity || 'low',
         created_by: admin.userId,
         updated_by: admin.userId,
       })
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error('[admin/store/banners] POST DB error:', error)
@@ -154,7 +149,7 @@ export async function PUT(request: NextRequest) {
       .eq('id', id)
       .eq('org_id', admin.orgId)
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error('[admin/store/banners] PUT DB error:', error)

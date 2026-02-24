@@ -8,7 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Upload, X, Loader2, ImageIcon, AlertCircle, Building2, UserCheck } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
+import {
+  Upload, X, Loader2, ImageIcon, AlertCircle, Building2, UserCheck,
+  User as UserIcon, Shield, Briefcase, CreditCard, Store, MapPin, Phone,
+  Settings, Lock, KeyRound
+} from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
@@ -138,6 +144,7 @@ export default function UserDialogNew({
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
   const [positions, setPositions] = useState<PositionOption[]>([])
   const [orgTypeFilter, setOrgTypeFilter] = useState<string>('')
+  const [activeTab, setActiveTab] = useState('profile')
   const [formData, setFormData] = useState<Partial<User> & {
     password?: string;
     confirmPassword?: string;
@@ -150,6 +157,9 @@ export default function UserDialogNew({
     employment_type?: string;
     join_date?: string;
     employment_status?: string;
+    shop_name?: string;
+    address?: string;
+    referral_phone?: string;
   }>(
     user || {
       email: '',
@@ -169,7 +179,10 @@ export default function UserDialogNew({
       position_id: '',
       employment_type: '',
       join_date: '',
-      employment_status: 'active'
+      employment_status: 'active',
+      shop_name: '',
+      address: '',
+      referral_phone: ''
     }
   )
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null)
@@ -196,6 +209,17 @@ export default function UserDialogNew({
   // Check if selected organization is a Shop
   const selectedOrg = organizations.find(o => o.id === formData.organization_id)
   const selectedOrgIsShop = selectedOrg?.org_type_code === 'SHOP'
+
+  // Determine if user is an End User (independent user)
+  const selectedRole = roles.find(r => r.role_code === formData.role_code)
+  const selectedRoleLevel = selectedRole?.role_level
+  const isEndUser = !formData.organization_id || selectedRoleLevel === 50
+
+  // Determine if Department & Reports To fields should be shown
+  const eligibleRoleLevels = [1, 10, 20, 30, 40]
+  const isEligibleRole = selectedRoleLevel !== undefined && eligibleRoleLevels.includes(selectedRoleLevel)
+  const isSeraOrg = selectedOrg?.org_code?.toUpperCase().includes('SERA') || selectedOrg?.org_name?.toLowerCase().includes('serapod')
+  const showDepartmentFields = formData.organization_id && isEligibleRole && isSeraOrg
 
   // Fetch banks
   useEffect(() => {
@@ -408,6 +432,7 @@ export default function UserDialogNew({
   // Re-initialize form when user prop changes
   useEffect(() => {
     if (open) {
+      setActiveTab('profile')
       if (user) {
         setFormData({
           ...user,
@@ -416,7 +441,13 @@ export default function UserDialogNew({
           position_id: (user as any).position_id || '',
           employment_type: (user as any).employment_type || '',
           join_date: (user as any).join_date || '',
-          employment_status: (user as any).employment_status || 'active'
+          employment_status: (user as any).employment_status || 'active',
+          shop_name: (user as any).shop_name || '',
+          address: (user as any).address || '',
+          referral_phone: (user as any).referral_phone || '',
+          bank_id: (user as any).bank_id || '',
+          bank_account_number: (user as any).bank_account_number || '',
+          bank_account_holder_name: (user as any).bank_account_holder_name || '',
         })
         // Clean avatar URL (remove cache-busting params for display)
         setAvatarPreview(user.avatar_url ? user.avatar_url.split('?')[0] : null)
@@ -439,7 +470,10 @@ export default function UserDialogNew({
           position_id: '',
           employment_type: '',
           join_date: '',
-          employment_status: 'active'
+          employment_status: 'active',
+          shop_name: '',
+          address: '',
+          referral_phone: '',
         })
         setAvatarPreview(null)
       }
@@ -642,8 +676,8 @@ export default function UserDialogNew({
       newErrors.confirmPassword = 'Passwords do not match'
     }
 
-    // Validate Bank Account for Shop
-    if (selectedOrgIsShop) {
+    // Validate Bank Account for Shop or end user
+    if (selectedOrgIsShop || isEndUser) {
       if (formData.bank_id) {
         const selectedBank = banks.find(b => b.id === formData.bank_id)
         if (selectedBank) {
@@ -678,6 +712,28 @@ export default function UserDialogNew({
     }
 
     setErrors(newErrors)
+
+    // Navigate to the tab containing the first error
+    if (Object.keys(newErrors).length > 0) {
+      const errorKey = Object.keys(newErrors)[0]
+      const profileFields = ['email', 'full_name', 'phone', 'password', 'confirmPassword']
+      const roleFields = ['role_code', 'organization_id']
+      const bankFields = ['bank_id', 'bank_account_number', 'bank_account_holder_name']
+      const securityFields = ['resetPassword', 'resetPasswordConfirm']
+
+      if (profileFields.includes(errorKey)) {
+        setActiveTab('profile')
+      } else if (isEndUser && bankFields.includes(errorKey)) {
+        setActiveTab('banking')
+      } else if (!isEndUser && roleFields.includes(errorKey)) {
+        setActiveTab('role')
+      } else if (!isEndUser && bankFields.includes(errorKey)) {
+        setActiveTab('banking')
+      } else if (securityFields.includes(errorKey)) {
+        setActiveTab('security')
+      }
+    }
+
     return Object.keys(newErrors).length === 0
   }
 
@@ -703,130 +759,196 @@ export default function UserDialogNew({
 
   if (!open) return null
 
-  // Determine if Department & Reports To fields should be shown
-  // Only for roles with level 1, 10, 20, 30, 40 and when org is Serapod Technology (org_code contains 'SERA')
-  const selectedRole = roles.find(r => r.role_code === formData.role_code)
-  const selectedRoleLevel = selectedRole?.role_level
-  const eligibleRoleLevels = [1, 10, 20, 30, 40]
-  const isEligibleRole = selectedRoleLevel !== undefined && eligibleRoleLevels.includes(selectedRoleLevel)
-  const isSeraOrg = selectedOrg?.org_code?.toUpperCase().includes('SERA') || selectedOrg?.org_name?.toLowerCase().includes('serapod')
-  const showDepartmentFields = formData.organization_id && isEligibleRole && isSeraOrg
+  // Define tab config based on user type
+  const tabConfig = isEndUser
+    ? [
+        { value: 'profile', label: 'Profile', icon: 'user' },
+        { value: 'business', label: 'Business', icon: 'store' },
+        { value: 'banking', label: 'Banking', icon: 'credit-card' },
+        { value: 'security', label: 'Security', icon: 'shield' },
+      ]
+    : [
+        { value: 'profile', label: 'Profile', icon: 'user' },
+        { value: 'role', label: 'Role & Access', icon: 'briefcase' },
+        ...(showDepartmentFields ? [{ value: 'hr', label: 'HR', icon: 'building' }] : []),
+        ...(selectedOrgIsShop ? [{ value: 'banking', label: 'Banking', icon: 'credit-card' }] : []),
+        { value: 'security', label: 'Security', icon: 'shield' },
+      ]
+
+  const tabIcon = (icon: string) => {
+    switch (icon) {
+      case 'user': return <UserIcon className="w-3.5 h-3.5" />
+      case 'store': return <Store className="w-3.5 h-3.5" />
+      case 'credit-card': return <CreditCard className="w-3.5 h-3.5" />
+      case 'shield': return <Shield className="w-3.5 h-3.5" />
+      case 'briefcase': return <Briefcase className="w-3.5 h-3.5" />
+      case 'building': return <Building2 className="w-3.5 h-3.5" />
+      default: return null
+    }
+  }
+
+  // Count errors per tab for badges
+  const profileErrorFields = ['email', 'full_name', 'phone', 'password', 'confirmPassword']
+  const roleErrorFields = ['role_code', 'organization_id']
+  const bankErrorFields = ['bank_id', 'bank_account_number', 'bank_account_holder_name']
+  const securityErrorFields = ['resetPassword', 'resetPasswordConfirm']
+  const hrErrorFields = ['department_id', 'position_id', 'manager_user_id']
+  const businessErrorFields = ['shop_name', 'address', 'referral_phone']
+
+  const tabErrorCount = (tabValue: string): number => {
+    const errorKeys = Object.keys(errors)
+    switch (tabValue) {
+      case 'profile': return errorKeys.filter(k => profileErrorFields.includes(k)).length
+      case 'role': return errorKeys.filter(k => roleErrorFields.includes(k)).length
+      case 'banking': return errorKeys.filter(k => bankErrorFields.includes(k)).length
+      case 'security': return errorKeys.filter(k => securityErrorFields.includes(k)).length
+      case 'hr': return errorKeys.filter(k => hrErrorFields.includes(k)).length
+      case 'business': return errorKeys.filter(k => businessErrorFields.includes(k)).length
+      default: return 0
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg max-h-screen overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-bold text-gray-900">
-            {user ? 'Edit User' : 'Add New User'}
-          </h2>
+      <div className="w-full max-w-2xl bg-white rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {user ? 'Edit User' : 'Add New User'}
+            </h2>
+            {user && (
+              <Badge variant={isEndUser ? 'secondary' : 'outline'} className={`text-[10px] px-2 py-0.5 ${isEndUser ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                {isEndUser ? 'End User' : 'Internal'}
+              </Badge>
+            )}
+          </div>
           <button
             onClick={handleClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 transition-colors rounded-lg p-1 hover:bg-gray-100"
             disabled={isSaving}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Avatar Upload Section */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Profile Picture</h3>
-
-            <div className="flex items-start gap-6">
-              {/* Avatar Preview */}
-              <div className="flex-shrink-0">
-                <Avatar className="w-24 h-24 border-2 border-gray-200">
-                  <AvatarImage src={avatarPreview || undefined} />
-                  <AvatarFallback className="text-2xl bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                    {getInitials(formData.full_name as string | null)}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-
-              {/* Upload Controls */}
-              <div className="flex-1">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                />
-
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isSaving}
-                      className="flex items-center gap-2"
-                    >
-                      <Upload className="w-4 h-4" />
-                      {avatarFile ? 'Change Image' : 'Upload Image'}
-                    </Button>
-
-                    {(avatarFile || avatarPreview) && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={resetAvatarUpload}
-                        disabled={isSaving}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <X className="w-4 h-4 mr-1" />
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-
-                  {avatarFile && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded">
-                      <ImageIcon className="w-4 h-4 text-blue-600" />
-                      <span className="truncate flex-1">{avatarFile.name}</span>
-                      <span className="text-xs text-gray-500">
-                        {(avatarFile.size / 1024).toFixed(1)}KB
-                      </span>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-gray-500">
-                    JPG, PNG, GIF, or WebP (max 5MB). AVIF not supported. Recommended: 400×400px
-                  </p>
-                  <p className="text-xs text-blue-600 mt-1">
-                    ✨ Images will be automatically compressed to ~10KB (200×200px JPEG) for optimal performance
-                  </p>
-
-                  {errors.avatar && (
-                    <p className="text-xs text-red-500">{errors.avatar}</p>
-                  )}
+        {/* Avatar Section - Always Visible */}
+        <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/50">
+          <div className="flex items-center gap-4">
+            <div className="relative group">
+              <Avatar className="w-16 h-16 border-2 border-white shadow-sm">
+                <AvatarImage src={avatarPreview || undefined} />
+                <AvatarFallback className="text-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white font-medium">
+                  {getInitials(formData.full_name as string | null)}
+                </AvatarFallback>
+              </Avatar>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSaving}
+                className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100"
+              >
+                <Upload className="w-4 h-4 text-white" />
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {formData.full_name || 'New User'}
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                {formData.email || 'No email set'}
+              </p>
+              {avatarFile && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <ImageIcon className="w-3 h-3 text-blue-500" />
+                  <span className="text-[10px] text-gray-500 truncate">{avatarFile.name}</span>
+                  <span className="text-[10px] text-gray-400">({(avatarFile.size / 1024).toFixed(0)}KB)</span>
                 </div>
-              </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSaving}
+                className="h-7 text-xs px-2.5"
+              >
+                <Upload className="w-3 h-3 mr-1" />
+                {avatarFile ? 'Change' : 'Upload'}
+              </Button>
+              {(avatarFile || avatarPreview) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={resetAvatarUpload}
+                  disabled={isSaving}
+                  className="h-7 text-xs px-2.5 text-red-500 hover:text-red-600 hover:bg-red-50"
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  Remove
+                </Button>
+              )}
             </div>
           </div>
+          {errors.avatar && (
+            <p className="text-xs text-red-500 mt-2">{errors.avatar}</p>
+          )}
+        </div>
 
-          {/* Basic Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+          <div className="px-6 pt-2 border-b border-gray-100">
+            <TabsList className="h-9 bg-transparent p-0 gap-0 w-full justify-start">
+              {tabConfig.map((tab) => {
+                const errCount = tabErrorCount(tab.value)
+                return (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="relative h-9 px-3 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-blue-600 text-gray-500 hover:text-gray-700 text-xs font-medium gap-1.5 transition-colors"
+                  >
+                    {tabIcon(tab.icon)}
+                    {tab.label}
+                    {errCount > 0 && (
+                      <span className="ml-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-medium">
+                        {errCount}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">
+          {/* Tab Content - Scrollable */}
+          <div className="flex-1 overflow-y-auto">
+
+            {/* ==================== PROFILE TAB ==================== */}
+            <TabsContent value="profile" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+              {/* Email */}
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-xs font-medium text-gray-700">
                   Email <span className="text-red-500">*</span>
                 </Label>
                 <div className="relative">
                   <Input
                     id="email"
                     type="email"
-                    placeholder="Enter your email address"
+                    placeholder="Enter email address"
                     value={formData.email || ''}
                     onChange={(e) => handleInputChange('email', e.target.value)}
                     disabled={!!user || isSaving}
-                    className={`${errors.email ? 'border-red-500' : ''} ${emailCheckStatus === 'available' ? 'border-green-500' : ''
-                      } placeholder:text-gray-400 placeholder:italic`}
+                    className={`h-9 text-sm ${errors.email ? 'border-red-500' : ''} ${emailCheckStatus === 'available' ? 'border-green-500' : ''} placeholder:text-gray-400`}
                   />
                   {!user && isCheckingEmail && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -835,8 +957,8 @@ export default function UserDialogNew({
                   )}
                   {!user && emailCheckStatus === 'available' && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                        <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center">
+                        <svg className="w-2.5 h-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
@@ -844,575 +966,652 @@ export default function UserDialogNew({
                   )}
                   {!user && emailCheckStatus === 'taken' && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <AlertCircle className="w-5 h-5 text-red-500" />
+                      <AlertCircle className="w-4 h-4 text-red-500" />
                     </div>
                   )}
                 </div>
-                {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
+                {errors.email && <p className="text-[11px] text-red-500">{errors.email}</p>}
                 {!errors.email && emailCheckStatus === 'available' && (
-                  <p className="text-xs text-green-600">✓ Email is available</p>
+                  <p className="text-[11px] text-green-600">Email is available</p>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="full_name">
+              {/* Full Name */}
+              <div className="space-y-1.5">
+                <Label htmlFor="full_name" className="text-xs font-medium text-gray-700">
                   Full Name <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="full_name"
-                  placeholder="Enter your full name"
+                  placeholder="Enter full name"
                   value={formData.full_name || ''}
                   onChange={(e) => handleInputChange('full_name', e.target.value)}
                   disabled={isSaving}
-                  className={`${errors.full_name ? 'border-red-500' : ''} placeholder:text-gray-400 placeholder:italic`}
+                  className={`h-9 text-sm ${errors.full_name ? 'border-red-500' : ''} placeholder:text-gray-400`}
                 />
-                {errors.full_name && <p className="text-xs text-red-500">{errors.full_name}</p>}
+                {errors.full_name && <p className="text-[11px] text-red-500">{errors.full_name}</p>}
               </div>
-            </div>
 
-            {!user && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="password">
-                    Password <span className="text-red-500">*</span>
-                  </Label>
+              {/* Phone */}
+              <div className="space-y-1.5">
+                <Label htmlFor="phone" className="text-xs font-medium text-gray-700">Phone Number</Label>
+                <div className="relative">
                   <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter a secure password"
-                    value={formData.password || ''}
-                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    id="phone"
+                    placeholder="e.g., 0123456789 (MY) or 13800138000 (CN)"
+                    value={formData.phone || ''}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
                     disabled={isSaving}
-                    className={`${errors.password ? 'border-red-500' : ''} placeholder:text-gray-400 placeholder:italic`}
+                    className={`h-9 text-sm ${errors.phone ? 'border-red-500' : ''} ${phoneCheckStatus === 'available' ? 'border-green-500' : ''} ${phoneCheckStatus === 'invalid' ? 'border-amber-500' : ''} placeholder:text-gray-400`}
                   />
-                  {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
-                  <p className="text-xs text-gray-500">Minimum 6 characters</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">
-                    Confirm Password <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    placeholder="Re-enter your password"
-                    value={formData.confirmPassword || ''}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                    disabled={isSaving}
-                    className={`${errors.confirmPassword ? 'border-red-500' : ''} placeholder:text-gray-400 placeholder:italic`}
-                  />
-                  {errors.confirmPassword && <p className="text-xs text-red-500">{errors.confirmPassword}</p>}
-                  {!errors.confirmPassword && formData.password && formData.confirmPassword && formData.password === formData.confirmPassword && (
-                    <p className="text-xs text-green-600">✓ Passwords match</p>
+                  {isCheckingPhone && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    </div>
+                  )}
+                  {phoneCheckStatus === 'available' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center">
+                        <svg className="w-2.5 h-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                  {(phoneCheckStatus === 'taken' || phoneCheckStatus === 'invalid') && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <AlertCircle className={`w-4 h-4 ${phoneCheckStatus === 'taken' ? 'text-red-500' : 'text-amber-500'}`} />
+                    </div>
                   )}
                 </div>
-              </>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <div className="relative">
-                <Input
-                  id="phone"
-                  placeholder="e.g., 0123456789 (MY) or 13800138000 (CN)"
-                  value={formData.phone || ''}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  disabled={isSaving}
-                  className={`${errors.phone ? 'border-red-500' : ''} ${phoneCheckStatus === 'available' ? 'border-green-500' : ''
-                    } ${phoneCheckStatus === 'invalid' ? 'border-amber-500' : ''} placeholder:text-gray-400 placeholder:italic`}
-                />
-                {isCheckingPhone && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                  </div>
+                {errors.phone && <p className="text-[11px] text-red-500">{errors.phone}</p>}
+                {!errors.phone && phoneCheckStatus === 'available' && phoneValidation?.country && (
+                  <p className="text-[11px] text-green-600">
+                    Phone available ({phoneValidation.country === 'MY' ? 'Malaysia' : 'China'})
+                  </p>
                 )}
-                {phoneCheckStatus === 'available' && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                      <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
+                {!errors.phone && !formData.phone && (
+                  <p className="text-[11px] text-gray-400">Malaysia (+60) or China (+86)</p>
+                )}
+              </div>
+
+              {/* Password fields - new user only */}
+              {!user && (
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center gap-2 pb-1">
+                    <Lock className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Password</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="password" className="text-xs font-medium text-gray-700">
+                        Password <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="Min. 6 characters"
+                        value={formData.password || ''}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        disabled={isSaving}
+                        className={`h-9 text-sm ${errors.password ? 'border-red-500' : ''} placeholder:text-gray-400`}
+                      />
+                      {errors.password && <p className="text-[11px] text-red-500">{errors.password}</p>}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="confirmPassword" className="text-xs font-medium text-gray-700">
+                        Confirm Password <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        placeholder="Re-enter password"
+                        value={formData.confirmPassword || ''}
+                        onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                        disabled={isSaving}
+                        className={`h-9 text-sm ${errors.confirmPassword ? 'border-red-500' : ''} placeholder:text-gray-400`}
+                      />
+                      {errors.confirmPassword && <p className="text-[11px] text-red-500">{errors.confirmPassword}</p>}
+                      {!errors.confirmPassword && formData.password && formData.confirmPassword && formData.password === formData.confirmPassword && (
+                        <p className="text-[11px] text-green-600">Passwords match</p>
+                      )}
                     </div>
                   </div>
-                )}
-                {(phoneCheckStatus === 'taken' || phoneCheckStatus === 'invalid') && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <AlertCircle className={`w-5 h-5 ${phoneCheckStatus === 'taken' ? 'text-red-500' : 'text-amber-500'}`} />
+                </div>
+              )}
+
+              {/* Role selector - shown here for end users since they dont have Role tab */}
+              {isEndUser && (
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex items-center gap-2 pb-1">
+                    <Briefcase className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Role</span>
                   </div>
-                )}
-              </div>
-              {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
-              {!errors.phone && phoneCheckStatus === 'available' && phoneValidation?.country && (
-                <p className="text-xs text-green-600">
-                  ✓ Phone number is available ({phoneValidation.country === 'MY' ? '🇲🇾 Malaysia' : '🇨🇳 China'})
-                </p>
+                  <Select
+                    value={formData.role_code || ''}
+                    onValueChange={(value) => handleInputChange('role_code', value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger className={`h-9 text-sm ${errors.role_code ? 'border-red-500' : ''}`}>
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableRoles.map(role => (
+                        <SelectItem key={role.role_code} value={role.role_code}>
+                          {role.role_name} (Level {role.role_level})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.role_code && <p className="text-[11px] text-red-500">{errors.role_code}</p>}
+                </div>
               )}
-              {!errors.phone && phoneCheckStatus === 'idle' && formData.phone && formData.phone.trim() && (
-                <p className="text-xs text-gray-500">
-                  Supported: Malaysia (+60) and China (+86) mobile numbers
-                </p>
-              )}
-              {!formData.phone && (
-                <p className="text-xs text-gray-400">
-                  Malaysia: 01x-xxxxxxx • China: 1xxxxxxxxxx
-                </p>
-              )}
-            </div>
-          </div>
+            </TabsContent>
 
-          {/* Role & Organization */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Role & Access</h3>
+            {/* ==================== BUSINESS TAB (End User Only) ==================== */}
+            {isEndUser && (
+              <TabsContent value="business" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+                <div className="flex items-center gap-2 pb-1">
+                  <Store className="w-4 h-4 text-amber-500" />
+                  <span className="text-sm font-medium text-gray-700">Business Information</span>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="role_code">
-                  Role <span className="text-red-500">*</span>
-                </Label>
-                <Select
-                  value={formData.role_code || ''}
-                  onValueChange={(value) => handleInputChange('role_code', value)}
-                  disabled={isSaving}
-                >
-                  <SelectTrigger className={errors.role_code ? 'border-red-500' : ''}>
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableRoles.map(role => (
-                      <SelectItem key={role.role_code} value={role.role_code}>
-                        {role.role_name} (Level {role.role_level})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.role_code && <p className="text-xs text-red-500">{errors.role_code}</p>}
-              </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="shop_name" className="text-xs font-medium text-gray-700">Shop Name</Label>
+                  <Input
+                    id="shop_name"
+                    placeholder="Enter shop name"
+                    value={(formData as any).shop_name || ''}
+                    onChange={(e) => handleInputChange('shop_name', e.target.value)}
+                    disabled={isSaving}
+                    className="h-9 text-sm placeholder:text-gray-400"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="organization_id">Organization</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="address" className="text-xs font-medium text-gray-700">
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                      Address
+                    </span>
+                  </Label>
+                  <Input
+                    id="address"
+                    placeholder="Enter shop address"
+                    value={(formData as any).address || ''}
+                    onChange={(e) => handleInputChange('address', e.target.value)}
+                    disabled={isSaving}
+                    className="h-9 text-sm placeholder:text-gray-400"
+                  />
+                </div>
 
-                {/* Organization Type Filter */}
-                {!lockOrganization && (
-                  <div className="mb-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="referral_phone" className="text-xs font-medium text-gray-700">
+                    <span className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-gray-400" />
+                      Reference / Referral Phone
+                    </span>
+                  </Label>
+                  <Input
+                    id="referral_phone"
+                    placeholder="Referral phone number"
+                    value={(formData as any).referral_phone || ''}
+                    onChange={(e) => handleInputChange('referral_phone', e.target.value)}
+                    disabled={isSaving}
+                    className="h-9 text-sm placeholder:text-gray-400"
+                  />
+                  <p className="text-[11px] text-gray-400">Phone number of the person who referred this user</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="organization_id_enduser" className="text-xs font-medium text-gray-700">Linked Organization</Label>
+                  <Select
+                    value={formData.organization_id || ''}
+                    onValueChange={(value) => handleInputChange('organization_id', value)}
+                    disabled={isSaving || lockOrganization}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="No organization (independent)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {organizations.map(org => (
+                        <SelectItem key={org.id} value={org.id}>
+                          {org.org_name} ({org.org_code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-gray-400">Optional: link to an organization</p>
+                </div>
+              </TabsContent>
+            )}
+
+            {/* ==================== ROLE & ACCESS TAB (Internal Only) ==================== */}
+            {!isEndUser && (
+              <TabsContent value="role" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="role_code" className="text-xs font-medium text-gray-700">
+                      Role <span className="text-red-500">*</span>
+                    </Label>
                     <Select
-                      value={orgTypeFilter}
-                      onValueChange={(value) => {
-                        setOrgTypeFilter(value)
-                        // Clear selected organization if it doesn't match the new type
-                        if (value && value !== 'ALL' && formData.organization_id) {
-                          const selectedOrg = organizations.find(o => o.id === formData.organization_id)
-                          if (selectedOrg && selectedOrg.org_type_code !== value) {
-                            handleInputChange('organization_id', '')
-                          }
-                        }
-                      }}
+                      value={formData.role_code || ''}
+                      onValueChange={(value) => handleInputChange('role_code', value)}
                       disabled={isSaving}
                     >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Filter by Type" />
+                      <SelectTrigger className={`h-9 text-sm ${errors.role_code ? 'border-red-500' : ''}`}>
+                        <SelectValue placeholder="Select a role" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="ALL">All Types</SelectItem>
-                        {Array.from(new Set(organizations.map(org => org.org_type_code)))
-                          .filter((t): t is string => !!t)
-                          .map(typeCode => (
-                            <SelectItem key={typeCode} value={typeCode}>
-                              {getOrgTypeName(typeCode)}
+                        {availableRoles.map(role => (
+                          <SelectItem key={role.role_code} value={role.role_code}>
+                            {role.role_name} (Level {role.role_level})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.role_code && <p className="text-[11px] text-red-500">{errors.role_code}</p>}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="organization_id" className="text-xs font-medium text-gray-700">Organization</Label>
+                    {!lockOrganization && (
+                      <div className="mb-1.5">
+                        <Select
+                          value={orgTypeFilter}
+                          onValueChange={(value) => {
+                            setOrgTypeFilter(value)
+                            if (value && value !== 'ALL' && formData.organization_id) {
+                              const currentOrg = organizations.find(o => o.id === formData.organization_id)
+                              if (currentOrg && currentOrg.org_type_code !== value) {
+                                handleInputChange('organization_id', '')
+                              }
+                            }
+                          }}
+                          disabled={isSaving}
+                        >
+                          <SelectTrigger className="h-7 text-[11px]">
+                            <SelectValue placeholder="Filter by Type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ALL">All Types</SelectItem>
+                            {Array.from(new Set(organizations.map(org => org.org_type_code)))
+                              .filter((t): t is string => !!t)
+                              .map(typeCode => (
+                                <SelectItem key={typeCode} value={typeCode}>
+                                  {getOrgTypeName(typeCode)}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <Select
+                      value={formData.organization_id || ''}
+                      onValueChange={(value) => {
+                        handleInputChange('organization_id', value)
+                        setFormData(prev => ({
+                          ...prev,
+                          organization_id: value,
+                          department_id: '',
+                          manager_user_id: ''
+                        }))
+                      }}
+                      disabled={isSaving || lockOrganization}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select organization" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {organizations
+                          .filter(org => !orgTypeFilter || orgTypeFilter === 'ALL' || org.org_type_code === orgTypeFilter)
+                          .map(org => (
+                            <SelectItem key={org.id} value={org.id}>
+                              {org.org_name} ({org.org_code})
                             </SelectItem>
                           ))}
                       </SelectContent>
                     </Select>
                   </div>
-                )}
-
-                <Select
-                  value={formData.organization_id || ''}
-                  onValueChange={(value) => {
-                    handleInputChange('organization_id', value)
-                    // Clear department and manager when org changes
-                    setFormData(prev => ({
-                      ...prev,
-                      organization_id: value,
-                      department_id: '',
-                      manager_user_id: ''
-                    }))
-                  }}
-                  disabled={isSaving || lockOrganization}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an organization" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {organizations
-                      .filter(org => !orgTypeFilter || orgTypeFilter === 'ALL' || org.org_type_code === orgTypeFilter)
-                      .map(org => (
-                        <SelectItem key={org.id} value={org.id}>
-                          {org.org_name} ({org.org_code})
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Department & Reporting Line (HR Foundation) */}
-            {/* Only show for roles 1, 10, 20, 30, 40 and Serapod Technology org */}
-            {showDepartmentFields && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="department_id" className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-gray-500" />
-                    Department
-                  </Label>
-                  <Select
-                    value={formData.department_id || ''}
-                    onValueChange={(value) => handleInputChange('department_id', value === 'none' ? '' : value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Department</SelectItem>
-                      {departments.map(dept => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          {dept.dept_code ? `${dept.dept_code} - ` : ''}{dept.dept_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-500">Assign user to a department for org chart</p>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="position_id" className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-gray-500" />
-                    Position (Job Title)
-                  </Label>
-                  <Select
-                    value={formData.position_id || ''}
-                    onValueChange={(value) => handleInputChange('position_id', value === 'none' ? '' : value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select position (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Position</SelectItem>
-                      {positions.filter(p => p.is_active).map(position => (
-                        <SelectItem key={position.id} value={position.id}>
-                          {position.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-500">Assign job title for HR and org chart</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="manager_user_id" className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-gray-500" />
-                    Reports To (Manager)
-                  </Label>
-                  <Select
-                    value={formData.manager_user_id || ''}
-                    onValueChange={(value) => handleInputChange('manager_user_id', value === 'none' ? '' : value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select manager (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Manager</SelectItem>
-                      {orgUsers.map(u => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.full_name || u.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-500">Direct supervisor for approval routing</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="employment_type" className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-gray-500" />
-                    Employment Type
-                  </Label>
-                  <Select
-                    value={(formData as any).employment_type || ''}
-                    onValueChange={(value) => handleInputChange('employment_type', value === 'none' ? '' : value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select employment type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Not set</SelectItem>
-                      <SelectItem value="Full-time">Full-time</SelectItem>
-                      <SelectItem value="Part-time">Part-time</SelectItem>
-                      <SelectItem value="Contract">Contract</SelectItem>
-                      <SelectItem value="Intern">Intern</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="join_date" className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-gray-500" />
-                    Join Date
-                  </Label>
-                  <Input
-                    id="join_date"
-                    type="date"
-                    value={(formData as any).join_date || ''}
-                    onChange={(e) => handleInputChange('join_date', e.target.value)}
-                    disabled={isSaving}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="employment_status" className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-gray-500" />
-                    Employment Status
-                  </Label>
-                  <Select
-                    value={(formData as any).employment_status || 'active'}
-                    onValueChange={(value) => handleInputChange('employment_status', value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="resigned">Resigned</SelectItem>
-                      <SelectItem value="terminated">Terminated</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              </TabsContent>
             )}
-          </div>
 
-          {/* Bank Account (Shop Only) */}
-          {selectedOrgIsShop && (
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="text-lg font-semibold text-gray-900">Bank Account</h3>
-              <p className="text-sm text-gray-500">Enter bank details for this shop.</p>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="bank_account_holder_name">
-                    Full Name (Account Holder)
-                  </Label>
-                  <Input
-                    id="bank_account_holder_name"
-                    placeholder="e.g., ALI BIN ABU"
-                    value={formData.bank_account_holder_name || ''}
-                    onChange={(e) => handleInputChange('bank_account_holder_name', e.target.value)}
-                    disabled={isSaving}
-                  />
+            {/* ==================== HR TAB (Internal Only, Sera org) ==================== */}
+            {!isEndUser && showDepartmentFields && (
+              <TabsContent value="hr" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+                <div className="flex items-center gap-2 pb-1">
+                  <Building2 className="w-4 h-4 text-blue-500" />
+                  <span className="text-sm font-medium text-gray-700">HR & Organization</span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="bank_id">
-                      Bank Name
-                    </Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="department_id" className="text-xs font-medium text-gray-700">Department</Label>
                     <Select
-                      value={formData.bank_id || ''}
-                      onValueChange={(value) => handleInputChange('bank_id', value)}
+                      value={formData.department_id || ''}
+                      onValueChange={(value) => handleInputChange('department_id', value === 'none' ? '' : value)}
                       disabled={isSaving}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Bank" />
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select department" />
                       </SelectTrigger>
                       <SelectContent>
-                        {banks.map(bank => (
-                          <SelectItem key={bank.id} value={bank.id}>
-                            {bank.short_name}
+                        <SelectItem value="none">No Department</SelectItem>
+                        {departments.map(dept => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.dept_code ? `${dept.dept_code} - ` : ''}{dept.dept_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="bank_account_number">
-                      Account Number
-                    </Label>
-                    <Input
-                      id="bank_account_number"
-                      placeholder="e.g., 1234567890"
-                      value={formData.bank_account_number || ''}
-                      onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="position_id" className="text-xs font-medium text-gray-700">Position</Label>
+                    <Select
+                      value={formData.position_id || ''}
+                      onValueChange={(value) => handleInputChange('position_id', value === 'none' ? '' : value)}
                       disabled={isSaving}
-                      className={errors.bank_account_number ? 'border-red-500' : ''}
-                    />
-                    {errors.bank_account_number && <p className="text-xs text-red-500">{errors.bank_account_number}</p>}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Password Reset (Super Admin only - for existing users) */}
-          {user && isSuperAdmin && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Reset User Password</h3>
-                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
-                  Super Admin Only
-                </span>
-              </div>
-
-              {!showPasswordReset ? (
-                <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-                  <p className="text-sm text-gray-600 mb-3">
-                    Reset this user's password without knowing their current password.
-                  </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowPasswordReset(true)}
-                    disabled={isSaving}
-                    className="border-red-300 text-red-700 hover:bg-red-50"
-                  >
-                    Reset Password
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4 p-4 border-2 border-red-200 rounded-lg bg-red-50">
-                  <div className="flex items-start gap-2 text-sm text-red-700 mb-4">
-                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Warning: Password Reset</p>
-                      <p className="text-xs text-red-600 mt-1">
-                        This will change the user's password. They will need to use the new password to log in.
-                      </p>
-                    </div>
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select position" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Position</SelectItem>
+                        {positions.filter(p => p.is_active).map(position => (
+                          <SelectItem key={position.id} value={position.id}>
+                            {position.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="resetPassword">
-                      New Password <span className="text-red-500">*</span>
-                    </Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="manager_user_id" className="text-xs font-medium text-gray-700">Reports To</Label>
+                    <Select
+                      value={formData.manager_user_id || ''}
+                      onValueChange={(value) => handleInputChange('manager_user_id', value === 'none' ? '' : value)}
+                      disabled={isSaving}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select manager" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Manager</SelectItem>
+                        {orgUsers.map(u => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.full_name || u.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-gray-400">Direct supervisor for approvals</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="employment_type" className="text-xs font-medium text-gray-700">Employment Type</Label>
+                    <Select
+                      value={(formData as any).employment_type || ''}
+                      onValueChange={(value) => handleInputChange('employment_type', value === 'none' ? '' : value)}
+                      disabled={isSaving}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not set</SelectItem>
+                        <SelectItem value="Full-time">Full-time</SelectItem>
+                        <SelectItem value="Part-time">Part-time</SelectItem>
+                        <SelectItem value="Contract">Contract</SelectItem>
+                        <SelectItem value="Intern">Intern</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="join_date" className="text-xs font-medium text-gray-700">Join Date</Label>
                     <Input
-                      id="resetPassword"
-                      type="password"
-                      placeholder="Enter new password"
-                      value={resetPassword}
-                      onChange={(e) => {
-                        setResetPassword(e.target.value)
-                        if (errors.resetPassword) {
+                      id="join_date"
+                      type="date"
+                      value={(formData as any).join_date || ''}
+                      onChange={(e) => handleInputChange('join_date', e.target.value)}
+                      disabled={isSaving}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="employment_status" className="text-xs font-medium text-gray-700">Status</Label>
+                    <Select
+                      value={(formData as any).employment_status || 'active'}
+                      onValueChange={(value) => handleInputChange('employment_status', value)}
+                      disabled={isSaving}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="resigned">Resigned</SelectItem>
+                        <SelectItem value="terminated">Terminated</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </TabsContent>
+            )}
+
+            {/* ==================== BANKING TAB ==================== */}
+            <TabsContent value="banking" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+              <div className="flex items-center gap-2 pb-1">
+                <CreditCard className="w-4 h-4 text-green-500" />
+                <span className="text-sm font-medium text-gray-700">Bank Account Details</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="bank_account_holder_name" className="text-xs font-medium text-gray-700">Account Holder Name</Label>
+                <Input
+                  id="bank_account_holder_name"
+                  placeholder="e.g., ALI BIN ABU"
+                  value={formData.bank_account_holder_name || ''}
+                  onChange={(e) => handleInputChange('bank_account_holder_name', e.target.value)}
+                  disabled={isSaving}
+                  className="h-9 text-sm placeholder:text-gray-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="bank_id" className="text-xs font-medium text-gray-700">Bank</Label>
+                  <Select
+                    value={formData.bank_id || ''}
+                    onValueChange={(value) => handleInputChange('bank_id', value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select bank" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {banks.map(bank => (
+                        <SelectItem key={bank.id} value={bank.id}>
+                          {bank.short_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="bank_account_number" className="text-xs font-medium text-gray-700">Account Number</Label>
+                  <Input
+                    id="bank_account_number"
+                    placeholder="e.g., 1234567890"
+                    value={formData.bank_account_number || ''}
+                    onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
+                    disabled={isSaving}
+                    className={`h-9 text-sm ${errors.bank_account_number ? 'border-red-500' : ''} placeholder:text-gray-400`}
+                  />
+                  {errors.bank_account_number && <p className="text-[11px] text-red-500">{errors.bank_account_number}</p>}
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ==================== SECURITY TAB ==================== */}
+            <TabsContent value="security" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+              {/* Active Status */}
+              <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-gray-50/50">
+                <div className="space-y-0.5 flex-1">
+                  <Label htmlFor="is_active" className="text-sm font-medium text-gray-700">Active Status</Label>
+                  <p className="text-[11px] text-gray-500">Inactive users cannot log in</p>
+                </div>
+                <Checkbox
+                  id="is_active"
+                  checked={formData.is_active || false}
+                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Password Reset - Super Admin only, existing users */}
+              {user && isSuperAdmin && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="w-4 h-4 text-red-500" />
+                      <span className="text-sm font-medium text-gray-700">Password Reset</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">
+                      Super Admin
+                    </Badge>
+                  </div>
+
+                  {!showPasswordReset ? (
+                    <div className="p-3 border border-gray-200 rounded-lg bg-gray-50/50">
+                      <p className="text-xs text-gray-500 mb-2.5">Reset without knowing current password.</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowPasswordReset(true)}
+                        disabled={isSaving}
+                        className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                      >
+                        <KeyRound className="w-3 h-3 mr-1.5" />
+                        Reset Password
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 p-4 border-2 border-red-200 rounded-lg bg-red-50/50">
+                      <div className="flex items-start gap-2 text-xs text-red-600">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <p>This will change the user&apos;s password immediately.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="resetPassword" className="text-xs font-medium text-gray-700">
+                            New Password <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="resetPassword"
+                            type="password"
+                            placeholder="Min. 6 characters"
+                            value={resetPassword}
+                            onChange={(e) => {
+                              setResetPassword(e.target.value)
+                              if (errors.resetPassword) {
+                                setErrors(prev => {
+                                  const newErrors = { ...prev }
+                                  delete newErrors.resetPassword
+                                  return newErrors
+                                })
+                              }
+                            }}
+                            disabled={isSaving}
+                            className={`h-9 text-sm ${errors.resetPassword ? 'border-red-500' : ''} bg-white placeholder:text-gray-400`}
+                          />
+                          {errors.resetPassword && <p className="text-[11px] text-red-500">{errors.resetPassword}</p>}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="resetPasswordConfirm" className="text-xs font-medium text-gray-700">
+                            Confirm <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="resetPasswordConfirm"
+                            type="password"
+                            placeholder="Re-enter password"
+                            value={resetPasswordConfirm}
+                            onChange={(e) => {
+                              setResetPasswordConfirm(e.target.value)
+                              if (errors.resetPasswordConfirm) {
+                                setErrors(prev => {
+                                  const newErrors = { ...prev }
+                                  delete newErrors.resetPasswordConfirm
+                                  return newErrors
+                                })
+                              }
+                            }}
+                            disabled={isSaving}
+                            className={`h-9 text-sm ${errors.resetPasswordConfirm ? 'border-red-500' : ''} bg-white placeholder:text-gray-400`}
+                          />
+                          {errors.resetPasswordConfirm && <p className="text-[11px] text-red-500">{errors.resetPasswordConfirm}</p>}
+                          {!errors.resetPasswordConfirm && resetPassword && resetPasswordConfirm && resetPassword === resetPasswordConfirm && (
+                            <p className="text-[11px] text-green-600">Passwords match</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setShowPasswordReset(false)
+                          setResetPassword('')
+                          setResetPasswordConfirm('')
                           setErrors(prev => {
                             const newErrors = { ...prev }
                             delete newErrors.resetPassword
-                            return newErrors
-                          })
-                        }
-                      }}
-                      disabled={isSaving}
-                      className={`${errors.resetPassword ? 'border-red-500' : ''} bg-white placeholder:text-gray-400 placeholder:italic`}
-                    />
-                    {errors.resetPassword && <p className="text-xs text-red-500">{errors.resetPassword}</p>}
-                    <p className="text-xs text-gray-600">Minimum 6 characters</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="resetPasswordConfirm">
-                      Confirm New Password <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="resetPasswordConfirm"
-                      type="password"
-                      placeholder="Re-enter new password"
-                      value={resetPasswordConfirm}
-                      onChange={(e) => {
-                        setResetPasswordConfirm(e.target.value)
-                        if (errors.resetPasswordConfirm) {
-                          setErrors(prev => {
-                            const newErrors = { ...prev }
                             delete newErrors.resetPasswordConfirm
                             return newErrors
                           })
-                        }
-                      }}
-                      disabled={isSaving}
-                      className={`${errors.resetPasswordConfirm ? 'border-red-500' : ''} bg-white placeholder:text-gray-400 placeholder:italic`}
-                    />
-                    {errors.resetPasswordConfirm && <p className="text-xs text-red-500">{errors.resetPasswordConfirm}</p>}
-                    {!errors.resetPasswordConfirm && resetPassword && resetPasswordConfirm && resetPassword === resetPasswordConfirm && (
-                      <p className="text-xs text-green-600">✓ Passwords match</p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setShowPasswordReset(false)
-                        setResetPassword('')
-                        setResetPasswordConfirm('')
-                        setErrors(prev => {
-                          const newErrors = { ...prev }
-                          delete newErrors.resetPassword
-                          delete newErrors.resetPasswordConfirm
-                          return newErrors
-                        })
-                      }}
-                      disabled={isSaving}
-                    >
-                      Cancel Reset
-                    </Button>
-                  </div>
+                        }}
+                        disabled={isSaving}
+                        className="h-7 text-xs text-gray-500"
+                      >
+                        Cancel Reset
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Settings */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Settings</h3>
-
-            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-              <div className="space-y-0.5 flex-1">
-                <Label htmlFor="is_active" className="text-base">Active Status</Label>
-                <p className="text-sm text-gray-500">
-                  Inactive users cannot log in
-                </p>
-              </div>
-              <Checkbox
-                id="is_active"
-                checked={formData.is_active || false}
-                onCheckedChange={(checked) => handleInputChange('is_active', checked)}
-                disabled={isSaving}
-              />
-            </div>
+            </TabsContent>
           </div>
-        </div>
+        </Tabs>
 
-        <div className="flex gap-3 justify-end p-6 border-t border-gray-200 sticky bottom-0 bg-white">
+        {/* Footer */}
+        <div className="flex gap-2 justify-end px-6 py-3 border-t border-gray-100 bg-gray-50/30">
           <Button
             variant="outline"
+            size="sm"
             onClick={handleClose}
             disabled={isSaving}
+            className="h-8 text-xs px-4"
           >
             Cancel
           </Button>
           <Button
+            size="sm"
             onClick={handleSubmit}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400"
+            className="h-8 text-xs px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400"
           >
             {isSaving ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 Saving...
               </>
             ) : (

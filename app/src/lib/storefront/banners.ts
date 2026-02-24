@@ -10,6 +10,9 @@ export interface StoreBanner {
   link_text: string
   sort_order: number
   layout_slot: 'carousel' | 'split_main' | 'split_side_top' | 'split_side_bottom'
+  animation_enabled?: boolean
+  animation_style?: 'none' | 'kenburns' | 'floatGlow' | 'parallax'
+  animation_intensity?: 'low' | 'medium' | 'high'
 }
 
 export interface HeroConfig {
@@ -32,7 +35,7 @@ export async function listActiveStoreBanners(bannerType: 'store' | 'login' = 'st
     // Use .or() to combine starts_at and ends_at conditions correctly
     const { data, error } = await supabase
       .from('store_hero_banners' as any)
-      .select('id, title, subtitle, badge_text, image_url, link_url, link_text, sort_order, layout_slot, banner_type')
+      .select('id, title, subtitle, badge_text, image_url, link_url, link_text, sort_order, layout_slot, banner_type, animation_enabled, animation_style, animation_intensity')
       .eq('is_active', true)
       .or(`banner_type.eq.${bannerType},banner_type.is.null`)
       .or(`starts_at.is.null,starts_at.lte.${now}`)

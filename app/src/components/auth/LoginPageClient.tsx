@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import useEmblaCarousel from 'embla-carousel-react'
 import Autoplay from 'embla-carousel-autoplay'
+import HeroMedia from '@/components/storefront/HeroMedia'
+import VectorAuroraBackground from '@/components/storefront/VectorAuroraBackground'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -26,6 +28,9 @@ interface HeroBanner {
     image_url: string
     link_url: string
     link_text: string
+    animation_enabled?: boolean
+    animation_style?: 'none' | 'kenburns' | 'floatGlow' | 'parallax'
+    animation_intensity?: 'low' | 'medium' | 'high'
 }
 
 interface LoginPageClientProps {
@@ -278,20 +283,15 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                             <div className="flex h-full">
                                 {loginBanners.map((banner, index) => (
                                     <div key={banner.id} className="relative flex-[0_0_100%] min-w-0 h-full">
-                                        {banner.image_url ? (
-                                            <Image
-                                                src={banner.image_url}
-                                                alt={banner.title || 'Banner'}
-                                                fill
-                                                className="object-cover"
-                                                priority={index === 0}
-                                                sizes="60vw"
-                                                unoptimized
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900" />
-                                        )}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+                                        <HeroMedia
+                                            imageUrl={banner.image_url}
+                                            alt={banner.title || 'Banner'}
+                                            animationEnabled={banner.animation_enabled}
+                                            animationStyle={banner.animation_style || 'none'}
+                                            intensity={banner.animation_intensity || 'low'}
+                                            context="login"
+                                            priority={index === 0}
+                                        />
                                         {(banner.title || banner.subtitle) && (
                                             <div className="absolute bottom-12 left-8 right-8 text-white">
                                                 {banner.badge_text && (
@@ -327,33 +327,39 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                         )}
                     </>
                 ) : (
-                    /* Default hero when no login banners configured */
-                    <div className="flex items-center justify-center w-full p-12">
-                        <div className="absolute inset-0 opacity-30" style={{
-                            background: 'radial-gradient(circle at 30% 50%, rgba(59,130,246,0.2), transparent 50%), radial-gradient(circle at 70% 50%, rgba(168,85,247,0.15), transparent 50%)',
-                        }} />
-                        <div className="relative text-center text-white max-w-lg">
-                            <div className="h-16 w-16 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-6 border border-white/20">
-                                <Package className="h-8 w-8 text-white" />
-                            </div>
-                            <h2 className="text-4xl font-bold mb-4">Serapod2U</h2>
-                            <p className="text-lg text-white/70 leading-relaxed">
-                                Your one-stop platform for premium products, seamless supply chain management, and exceptional shopping experience.
-                            </p>
-                            <div className="mt-8 flex items-center justify-center gap-8">
-                                <div className="text-center">
-                                    <div className="text-2xl font-bold">500+</div>
-                                    <div className="text-sm text-white/60">Products</div>
+                    /* Default hero — SVG vector aurora when no login banners configured */
+                    <div className="relative w-full h-full overflow-hidden">
+                        <VectorAuroraBackground intensity="medium" animate={true} />
+
+                        {/* Gradient overlay for depth */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 z-[2]" />
+
+                        {/* Content */}
+                        <div className="relative flex items-center justify-center w-full h-full p-12 z-10">
+                            <div className="text-center text-white max-w-lg">
+                                {/* Logo badge */}
+                                <div className="h-16 w-16 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-6 border border-white/20 shadow-lg shadow-blue-500/10">
+                                    <Package className="h-8 w-8 text-white" />
                                 </div>
-                                <div className="w-px h-10 bg-white/20" />
-                                <div className="text-center">
-                                    <div className="text-2xl font-bold">24/7</div>
-                                    <div className="text-sm text-white/60">Support</div>
-                                </div>
-                                <div className="w-px h-10 bg-white/20" />
-                                <div className="text-center">
-                                    <div className="text-2xl font-bold">100%</div>
-                                    <div className="text-sm text-white/60">Authentic</div>
+                                <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-white via-blue-200 to-white bg-clip-text text-transparent">Serapod2U</h2>
+                                <p className="text-lg text-white/70 leading-relaxed">
+                                    Your one-stop platform for premium products, seamless supply chain management, and exceptional shopping experience.
+                                </p>
+                                <div className="mt-8 flex items-center justify-center gap-8">
+                                    <div className="text-center">
+                                        <div className="text-2xl font-bold" style={{ textShadow: '0 0 20px rgba(99,102,241,0.3)' }}>500+</div>
+                                        <div className="text-sm text-white/60">Products</div>
+                                    </div>
+                                    <div className="w-px h-10 bg-white/20" />
+                                    <div className="text-center">
+                                        <div className="text-2xl font-bold" style={{ textShadow: '0 0 20px rgba(99,102,241,0.3)' }}>24/7</div>
+                                        <div className="text-sm text-white/60">Support</div>
+                                    </div>
+                                    <div className="w-px h-10 bg-white/20" />
+                                    <div className="text-center">
+                                        <div className="text-2xl font-bold" style={{ textShadow: '0 0 20px rgba(99,102,241,0.3)' }}>100%</div>
+                                        <div className="text-sm text-white/60">Authentic</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

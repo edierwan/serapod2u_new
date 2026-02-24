@@ -7,6 +7,7 @@ import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react'
 import useEmblaCarousel from 'embla-carousel-react'
 import Autoplay from 'embla-carousel-autoplay'
 import { motion, AnimatePresence } from 'framer-motion'
+import HeroMedia from './HeroMedia'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -19,6 +20,9 @@ interface HeroBanner {
   link_url: string
   link_text: string
   layout_slot?: string
+  animation_enabled?: boolean
+  animation_style?: 'none' | 'kenburns' | 'floatGlow' | 'parallax'
+  animation_intensity?: 'low' | 'medium'
 }
 
 interface SplitHeroLayoutProps {
@@ -184,23 +188,16 @@ export default function SplitHeroLayout({
                     aria-roledescription="slide"
                     aria-label={`Slide ${index + 1} of ${count}`}
                   >
-                    {/* BG image */}
-                    <div className="absolute inset-0">
-                      {banner.image_url ? (
-                        <Image
-                          src={banner.image_url}
-                          alt={banner.title || 'Hero banner'}
-                          fill
-                          className="object-cover"
-                          priority={index === 0}
-                          sizes="(max-width: 1024px) 100vw, 66vw"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900" />
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-r from-gray-900/80 via-gray-900/40 to-transparent" />
-                    </div>
+                    {/* BG image with optional animation */}
+                    <HeroMedia
+                      imageUrl={banner.image_url}
+                      alt={banner.title || 'Hero banner'}
+                      animationEnabled={banner.animation_enabled}
+                      animationStyle={banner.animation_style || 'none'}
+                      intensity={banner.animation_intensity || 'low'}
+                      context="landing"
+                      priority={index === 0}
+                    />
 
                     {/* Text content */}
                     <div className="relative h-full flex items-center">
@@ -299,9 +296,8 @@ export default function SplitHeroLayout({
                     onClick={() => scrollTo(i)}
                     role="tab"
                     aria-selected={i === selectedIndex}
-                    className={`h-1.5 rounded-full transition-all focus:outline-none ${
-                      i === selectedIndex ? 'w-5 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/60'
-                    }`}
+                    className={`h-1.5 rounded-full transition-all focus:outline-none ${i === selectedIndex ? 'w-5 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/60'
+                      }`}
                     aria-label={`Go to slide ${i + 1}`}
                   />
                 ))}

@@ -503,8 +503,8 @@ export default function AiProviderSettingsCard({
         {/* Health detail (expanded after test) */}
         {providerHealth && (
           <div className={`rounded-lg border p-3 text-sm ${providerHealth.ok
-              ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
-              : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+            ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
+            : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
             }`}>
             <div className="flex items-center gap-2 font-medium mb-1">
               {providerHealth.ok ? (

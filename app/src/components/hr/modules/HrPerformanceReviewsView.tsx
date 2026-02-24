@@ -56,11 +56,11 @@ interface Employee {
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = {
-    draft:       { label: 'Draft',       color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',   icon: ClipboardList },
-    in_progress: { label: 'In Progress', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',   icon: Clock },
-    submitted:   { label: 'Submitted',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300', icon: Send },
-    reviewed:    { label: 'Reviewed',    color: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300', icon: Eye },
-    completed:   { label: 'Completed',   color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', icon: CheckCircle2 },
+    draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', icon: ClipboardList },
+    in_progress: { label: 'In Progress', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300', icon: Clock },
+    submitted: { label: 'Submitted', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300', icon: Send },
+    reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300', icon: Eye },
+    completed: { label: 'Completed', color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', icon: CheckCircle2 },
 }
 
 const REVIEW_TYPES = ['self', 'manager', 'peer', '360', 'probation']

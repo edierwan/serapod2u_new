@@ -161,7 +161,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
     // ── Render ────────────────────────────────────────────────────
 
     return (
-        <div className="sticky top-0 z-30 bg-card border-b border-border print:hidden">
+        <div className="sticky top-0 z-40 bg-card border-b border-border print:hidden">
             {/* ─── Main Row ─────────────────────────────────────────── */}
             <div className="flex items-center h-12 px-3 gap-2">
                 {/* HR badge */}

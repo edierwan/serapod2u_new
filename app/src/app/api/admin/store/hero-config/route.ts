@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Admin role codes that are allowed to manage hero config
-const ADMIN_ROLES = ['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin']
-
 // ── Helpers ─────────────────────────────────────────────────────────
 
 async function getAuthenticatedAdmin(supabase: any) {
@@ -14,33 +11,24 @@ async function getAuthenticatedAdmin(supabase: any) {
 
     const adminClient = createAdminClient()
 
-    // Query user profile (avoid roles join — FK may not exist)
-    const { data: profile, error: profileErr } = await adminClient
+    // Single joined query — matches the proven store/orders pattern
+    const { data: profile } = await adminClient
       .from('users')
-      .select('id, organization_id, role_code')
+      .select('id, organization_id, role_code, organizations!fk_users_organization(id, org_type_code), roles(role_level)')
       .eq('id', user.id)
       .single()
 
-    if (profileErr || !profile) return null
+    if (!profile) return null
 
-    // Check role via allowlist
-    if (!ADMIN_ROLES.includes(profile.role_code)) return null
+    const orgType = (profile as any).organizations?.org_type_code
+    const roleLevel = (profile as any).roles?.role_level
 
-    // Verify org is HQ type
-    const orgId = profile.organization_id
-    if (!orgId) return null
+    // HQ users with role level ≤ 30 (Admin / Manager / Super Admin)
+    if (orgType !== 'HQ' || !roleLevel || roleLevel > 30) return null
 
-    const { data: org } = await adminClient
-      .from('organizations')
-      .select('org_type_code')
-      .eq('id', orgId)
-      .single()
-
-    if (!org || org.org_type_code !== 'HQ') return null
-
-    return { userId: user.id, orgId }
+    return { userId: user.id, orgId: profile.organization_id }
   } catch (err) {
-    console.error('[getAuthenticatedAdmin] Error:', err)
+    console.error('[hero-config/getAuthenticatedAdmin] Error:', err)
     return null
   }
 }

@@ -55,9 +55,9 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
       loadCategories()
       loadGroups()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, refreshTrigger])
 
   const loadCategories = async () => {
@@ -99,7 +99,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
         .order('group_name', { ascending: true })
 
       if (error) throw error
-      
+
       const groupsData = (data || []).map((group: any) => ({
         id: group.id,
         category_id: group.category_id,
@@ -111,11 +111,11 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
         hide_product: group.hide_product || false,
         hide_ecommerce: group.hide_ecommerce || false,
         created_at: group.created_at,
-        category_name: Array.isArray(group.product_categories) 
+        category_name: Array.isArray(group.product_categories)
           ? group.product_categories[0]?.category_name || '-'
           : group.product_categories?.category_name || '-'
       }))
-      
+
       setGroups(groupsData as Group[])
     } catch (error) {
       console.error('Error loading groups:', error)
@@ -182,7 +182,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
       if (products && products.length > 0) {
         const productList = products.map(p => `${p.product_code} - ${p.product_name}`).join(', ')
         const moreText = products.length === 5 ? ' and possibly more' : ''
-        
+
         toast({
           title: '❌ Cannot Delete Group',
           description: `This group is used by ${products.length} product(s): ${productList}${moreText}. Please remove or reassign these products first.`,
@@ -204,7 +204,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
       if (subgroups && subgroups.length > 0) {
         const subgroupList = subgroups.map(s => s.subgroup_name).join(', ')
         const moreText = subgroups.length === 5 ? ' and possibly more' : ''
-        
+
         toast({
           title: '❌ Cannot Delete Group',
           description: `This group has ${subgroups.length} subgroup(s): ${subgroupList}${moreText}. Please delete these subgroups first.`,
@@ -225,12 +225,12 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
         .eq('id', id)
 
       if (deleteError) throw deleteError
-      
+
       toast({
         title: '✅ Success',
         description: 'Group deleted successfully'
       })
-      
+
       loadGroups()
     } catch (error: any) {
       console.error('Error deleting group:', error)
@@ -343,7 +343,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
           <TableHeader>
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>
-              <TableHead 
+              <TableHead
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('group_name')}
               >
@@ -351,7 +351,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
                   Name {renderSortIcon('group_name')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('category_name')}
               >
@@ -359,7 +359,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
                   Category {renderSortIcon('category_name')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('group_description')}
               >
@@ -367,7 +367,7 @@ export default function GroupsTab({ userProfile, onRefresh, refreshTrigger }: Gr
                   Description {renderSortIcon('group_description')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="text-center cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('is_active')}
               >

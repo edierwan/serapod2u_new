@@ -18,6 +18,7 @@ import {
     Trophy,
     Gift,
     Gamepad2,
+    Scan,
     type LucideIcon,
 } from 'lucide-react'
 
@@ -49,6 +50,7 @@ export const loyaltyNavGroups: LoyaltyNavGroup[] = [
         icon: Trophy,
         description: 'Manage loyalty point rewards, lucky draw events, interactive games, and gift redemptions.',
         children: [
+            { id: 'consumer-activations', label: 'Customer Activation', icon: Scan },
             { id: 'point-catalog', label: 'Point Catalog', icon: Gift },
             { id: 'lucky-draw', label: 'Lucky Draw', icon: Trophy },
             { id: 'scratch-card-game', label: 'Games', icon: Gamepad2 },

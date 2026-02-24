@@ -149,11 +149,10 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
                                             <button
                                                 onClick={() => router.push(child.href)}
                                                 disabled={isComingSoon}
-                                                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm transition-colors group ${
-                                                    isComingSoon
+                                                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm transition-colors group ${isComingSoon
                                                         ? 'text-muted-foreground/50 cursor-not-allowed'
                                                         : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                                                }`}
+                                                    }`}
                                             >
                                                 <ChildIcon className="h-4 w-4 shrink-0" />
                                                 <span className="flex-1 text-left">{child.label}</span>
