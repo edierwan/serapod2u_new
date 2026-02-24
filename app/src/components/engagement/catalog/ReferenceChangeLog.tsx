@@ -70,6 +70,9 @@ export function ReferenceChangeLog({ userProfile }: ReferenceChangeLogProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
   const pageSize = 25
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'changed_at', direction: 'desc'
+  })
 
   // Approval dialog
   const [selectedEntry, setSelectedEntry] = useState<ChangeLogEntry | null>(null)
@@ -113,8 +116,16 @@ export function ReferenceChangeLog({ userProfile }: ReferenceChangeLogProps) {
     if (statusFilter !== 'all') {
       result = result.filter(r => r.status === statusFilter)
     }
+    // Sort
+    result = [...result].sort((a: any, b: any) => {
+      const aVal = a[sortConfig.key] ?? ''
+      const bVal = b[sortConfig.key] ?? ''
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
     return result
-  }, [data, searchTerm, statusFilter])
+  }, [data, searchTerm, statusFilter, sortConfig])
 
   const paginatedData = useMemo(() => {
     const start = (page - 1) * pageSize
@@ -124,6 +135,14 @@ export function ReferenceChangeLog({ userProfile }: ReferenceChangeLogProps) {
   const totalPages = Math.ceil(filteredData.length / pageSize)
 
   const pendingCount = useMemo(() => data.filter(d => d.status === 'pending').length, [data])
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }))
+    setPage(1)
+  }
 
   const handleApproval = async () => {
     if (!selectedEntry || !approvalAction) return
@@ -240,15 +259,31 @@ export function ReferenceChangeLog({ userProfile }: ReferenceChangeLogProps) {
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="px-3 py-2 text-left">#</th>
-                  <th className="px-3 py-2 text-left">Date</th>
-                  <th className="px-3 py-2 text-left">Shop</th>
-                  <th className="px-3 py-2 text-left">Old Reference</th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('changed_at')}>
+                    <span className="flex items-center gap-1">Date <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('shop_name')}>
+                    <span className="flex items-center gap-1">Shop <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('old_reference_name')}>
+                    <span className="flex items-center gap-1">Old Reference <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
                   <th className="px-3 py-2 text-center w-8"></th>
-                  <th className="px-3 py-2 text-left">New Reference</th>
-                  <th className="px-3 py-2 text-left">Changed By</th>
-                  <th className="px-3 py-2 text-left">Policy</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Effective From</th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('new_reference_name')}>
+                    <span className="flex items-center gap-1">New Reference <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('changed_by_type')}>
+                    <span className="flex items-center gap-1">Changed By <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('policy_mode')}>
+                    <span className="flex items-center gap-1">Policy <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('status')}>
+                    <span className="flex items-center gap-1">Status <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
+                  <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('effective_from')}>
+                    <span className="flex items-center gap-1">Effective From <ArrowUpDown className="h-3 w-3" /></span>
+                  </th>
                   <th className="px-3 py-2 text-center">Actions</th>
                 </tr>
               </thead>
