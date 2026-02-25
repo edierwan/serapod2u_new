@@ -46,12 +46,15 @@ export async function getHrPageContext() {
         roles
     }
 
+    // Superadmin (role_level 1) always has full access
+    const isSuperAdmin = roles?.role_level === 1
+
     const [viewUsers, viewSettings] = await Promise.all([
         checkPermissionForUser(user.id, 'view_users'),
         checkPermissionForUser(user.id, 'view_settings')
     ])
 
-    const canViewHr = viewUsers.allowed || viewSettings.allowed
+    const canViewHr = isSuperAdmin || viewUsers.allowed || viewSettings.allowed
 
     return { user, userProfile: transformedUserProfile, canViewHr }
 }
