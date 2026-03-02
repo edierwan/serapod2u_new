@@ -268,6 +268,12 @@ export default function WhatsAppSubTabs({
             if (errorStr.includes('Connection closed')) return 'Connection dropped (temporary). Auto-reconnecting...'
             if (errorStr.toLowerCase().includes('logged out')) return 'Logged out. Please reconnect (scan QR).'
             if (errorStr.includes('401')) return 'Authentication failed. Check API Key.'
+            if (errorStr.toLowerCase().includes('qr') && (errorStr.toLowerCase().includes('expired') || errorStr.toLowerCase().includes('refs'))) {
+                return 'QR code expired. Click "Connect WhatsApp" or "Retry Connection" to generate a new QR code.'
+            }
+            if (errorStr.includes('restartRequired') || errorStr.includes('515')) {
+                return 'QR code expired. Click "Connect WhatsApp" or "Retry Connection" to generate a new QR code.'
+            }
             return errorStr
         } catch (e) {
             return errorStr
@@ -411,18 +417,33 @@ export default function WhatsAppSubTabs({
             setQrCode(null)
 
             // Step 1: Logout (safe, prevents auto-reconnect)
-            const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
-            if (!logoutRes.ok) {
-                const logoutData = await logoutRes.json()
-                throw new Error(logoutData.error || 'Logout failed')
+            try {
+                const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
+                if (!logoutRes.ok) {
+                    const logoutData = await logoutRes.json()
+                    console.warn('Logout warning:', logoutData.error || 'Logout returned non-OK')
+                    // Continue anyway - socket may already be disconnected
+                }
+            } catch (logoutErr: any) {
+                console.warn('Logout error (continuing):', logoutErr.message)
             }
 
+            // Wait for logout to fully propagate on the gateway
+            await new Promise(resolve => setTimeout(resolve, 2000))
+
             // Step 2: Clear auth state
-            const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
-            if (!clearRes.ok) {
-                const clearData = await clearRes.json()
-                throw new Error(clearData.error || 'Clear session failed')
+            try {
+                const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
+                if (!clearRes.ok) {
+                    const clearData = await clearRes.json()
+                    console.warn('Clear warning:', clearData.error || 'Clear returned non-OK')
+                }
+            } catch (clearErr: any) {
+                console.warn('Clear error (continuing):', clearErr.message)
             }
+
+            // Wait for clear to finish on the gateway
+            await new Promise(resolve => setTimeout(resolve, 1000))
 
             // Step 3: Start new session
             const startRes = await fetch('/api/settings/whatsapp/start', { method: 'POST' })
@@ -433,12 +454,12 @@ export default function WhatsAppSubTabs({
 
             // Update UI state to show QR panel
             setGatewayStatus(prev =>
-                prev ? { ...prev, pairing_state: 'waiting_qr', connected: false, phone_number: null, push_name: null } : null
+                prev ? { ...prev, pairing_state: 'waiting_qr', connected: false, phone_number: null, push_name: null, last_error: null } : null
             )
 
-            // Step 4: Poll for QR code (up to 15 seconds)
+            // Step 4: Poll for QR code (up to 20 seconds with longer intervals)
             let qrFound = false
-            for (let i = 0; i < 15; i++) {
+            for (let i = 0; i < 20; i++) {
                 await new Promise(resolve => setTimeout(resolve, 1000))
                 try {
                     const qrRes = await fetch('/api/settings/whatsapp/qr')
@@ -461,6 +482,12 @@ export default function WhatsAppSubTabs({
                         qrFound = true
                         break
                     }
+
+                    // If status shows connected already (unlikely but possible), break
+                    if (qrData.connected) {
+                        qrFound = true
+                        break
+                    }
                 } catch {
                     // Continue polling
                 }
@@ -468,7 +495,7 @@ export default function WhatsAppSubTabs({
 
             if (!qrFound) {
                 // Still show waiting_qr state - the normal polling will pick it up
-                console.warn('QR not available yet after 15s polling, normal poll will continue')
+                console.warn('QR not available yet after 20s polling, normal poll will continue')
             }
 
         } catch (error: any) {
@@ -487,16 +514,27 @@ export default function WhatsAppSubTabs({
             setGatewayAction('logout')
 
             // Step 1: Logout
-            const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
-            if (!logoutRes.ok) {
-                const logoutData = await logoutRes.json()
-                throw new Error(logoutData.error || 'Logout failed')
+            try {
+                const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
+                if (!logoutRes.ok) {
+                    const logoutData = await logoutRes.json()
+                    console.warn('Logout warning:', logoutData.error)
+                }
+            } catch (logoutErr: any) {
+                console.warn('Logout error (continuing):', logoutErr.message)
             }
 
+            // Wait for logout to propagate
+            await new Promise(resolve => setTimeout(resolve, 1500))
+
             // Step 2: Clear auth so next connect shows fresh QR
-            const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
-            if (!clearRes.ok) {
-                console.warn('Clear failed after logout, continuing anyway')
+            try {
+                const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
+                if (!clearRes.ok) {
+                    console.warn('Clear failed after logout, continuing anyway')
+                }
+            } catch {
+                console.warn('Clear error after logout, continuing anyway')
             }
 
             setGatewayStatus(prev => (prev ? {
@@ -505,6 +543,7 @@ export default function WhatsAppSubTabs({
                 pairing_state: 'disconnected',
                 phone_number: null,
                 push_name: null,
+                last_error: null,
             } : null))
             setQrCode(null)
         } catch (error: any) {
@@ -518,13 +557,19 @@ export default function WhatsAppSubTabs({
         try {
             setGatewayAction('reconnect')
 
+            // Clear error state in UI immediately for better UX
+            setGatewayStatus(prev =>
+                prev ? { ...prev, last_error: null, pairing_state: 'connecting' as any } : null
+            )
+            setQrCode(null)
+
             // Use start endpoint to initiate fresh connection
             const response = await fetch('/api/settings/whatsapp/start', { method: 'POST' })
             const data = await response.json()
 
             if (response.ok) {
-                // Wait a moment then refresh status
-                await new Promise(resolve => setTimeout(resolve, 2000))
+                // Wait for QR generation then refresh status
+                await new Promise(resolve => setTimeout(resolve, 3000))
                 await fetchGatewayStatus()
             } else {
                 alert(`Failed to reconnect: ${data.error}`)

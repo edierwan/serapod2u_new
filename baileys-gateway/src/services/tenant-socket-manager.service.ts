@@ -66,6 +66,7 @@ interface TenantSocketState {
     qrExpiry: number;
     lastQrAt: string | null;
     reconnectAttempts: number;
+    qrRefreshCount: number; // Track QR exhaustion cycles to avoid infinite loop
     authPath: string;
     startLock: boolean;
     reconnectTimer: ReturnType<typeof setTimeout> | null;
@@ -162,6 +163,7 @@ class TenantSocketManager {
                 qrExpiry: 0,
                 lastQrAt: null,
                 reconnectAttempts: 0,
+                qrRefreshCount: 0,
                 authPath: this.getTenantAuthPath(tenantId),
                 startLock: false,
                 reconnectTimer: null,
@@ -191,6 +193,11 @@ class TenantSocketManager {
 
         // Waiting for QR - socket exists and is working
         if (state.pairingState === 'waiting_qr' && state.socket) {
+            return state;
+        }
+
+        // Manual disconnect active (change-number flow in progress) - don't auto-create
+        if (state.manualDisconnect) {
             return state;
         }
 
@@ -400,13 +407,14 @@ class TenantSocketManager {
         if (connection === 'close') {
             const error = lastDisconnect?.error as Boom;
             const statusCode = error?.output?.statusCode;
+            const isQrExhausted = statusCode === DisconnectReason.restartRequired;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
             // Capture structured disconnect info
             state.lastDisconnectCode = statusCode || null;
             state.lastDisconnectReason = error?.message || 'Connection closed';
 
-            logger.info({ tenantId, statusCode, shouldReconnect, reason: error?.message, manualDisconnect: state.manualDisconnect }, 'Connection closed');
+            logger.info({ tenantId, statusCode, shouldReconnect, isQrExhausted, reason: error?.message, manualDisconnect: state.manualDisconnect }, 'Connection closed');
 
             // Cancel any pending reconnect timer from previous cycle
             this.cancelReconnectTimer(tenantId);
@@ -414,15 +422,47 @@ class TenantSocketManager {
             state.qrCode = null;
             state.pairingState = 'disconnected';
 
-            // Store human-readable error
-            state.lastError = error?.message || `Disconnected (code: ${statusCode || 'unknown'})`;
-
             // If manual disconnect, do NOT auto-reconnect
             if (state.manualDisconnect) {
                 logger.info({ tenantId }, 'Manual disconnect flag set - skipping auto-reconnect');
+                state.lastError = null; // Clear error for clean state
                 state.reconnectAttempts = 0;
                 return;
             }
+
+            // Handle QR exhaustion (code 515 / restartRequired) specially:
+            // Auto-restart up to 3 times to generate fresh QR batches, then stop.
+            if (isQrExhausted) {
+                state.qrRefreshCount++;
+                const MAX_QR_REFRESH_CYCLES = 3;
+
+                if (state.qrRefreshCount <= MAX_QR_REFRESH_CYCLES) {
+                    logger.info({ tenantId, qrRefreshCount: state.qrRefreshCount }, 'QR refs exhausted - auto-restarting for fresh QR batch');
+                    state.lastError = 'QR code expired. Generating new QR code...';
+                    state.pairingState = 'reconnecting';
+
+                    // Brief delay then restart with fresh socket
+                    state.reconnectTimer = setTimeout(async () => {
+                        state.reconnectTimer = null;
+                        if (!state.isShuttingDown && !state.manualDisconnect) {
+                            try {
+                                state.lastSocketCreatedAt = 0; // Bypass cooldown
+                                await this.initializeSocket(tenantId);
+                            } catch (e) {
+                                logger.error({ tenantId, error: e }, 'QR refresh restart failed');
+                            }
+                        }
+                    }, 2000);
+                } else {
+                    logger.warn({ tenantId, qrRefreshCount: state.qrRefreshCount }, 'QR refresh limit reached - waiting for manual action');
+                    state.lastError = 'QR code expired. Please click "Connect WhatsApp" or "Retry Connection" to generate a new QR code.';
+                    state.qrRefreshCount = 0; // Reset for next manual attempt
+                }
+                return;
+            }
+
+            // Store human-readable error
+            state.lastError = error?.message || `Disconnected (code: ${statusCode || 'unknown'})`;
 
             if (shouldReconnect && !state.isShuttingDown && state.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 state.reconnectAttempts++;
@@ -462,6 +502,7 @@ class TenantSocketManager {
             state.lastError = null; // Clear error on success
             state.qrCode = null;
             state.isReady = true;
+            state.qrRefreshCount = 0; // Reset QR refresh counter on successful connection
             // Only reset reconnect attempts after stable connection (don't reset here,
             // reset after 30s of stable connection via timer)
 
@@ -610,6 +651,12 @@ class TenantSocketManager {
         const state = this.getOrCreateState(tenantId);
 
         try {
+            // Set manual disconnect to prevent auto-reconnect during reset
+            state.manualDisconnect = true;
+
+            // Cancel any pending reconnect timers
+            this.cancelReconnectTimer(tenantId);
+
             // Logout if connected
             if (state.socket) {
                 try {
@@ -617,8 +664,7 @@ class TenantSocketManager {
                 } catch (error) {
                     // Ignore logout errors
                 }
-                state.socket.end(undefined);
-                state.socket = null;
+                this.cleanupSocket(tenantId);
             }
 
             // Clear auth state
@@ -632,8 +678,13 @@ class TenantSocketManager {
             state.lastDisconnectCode = null;
             state.lastDisconnectReason = null;
             state.reconnectAttempts = 0;
+            state.qrRefreshCount = 0;
             state.pairingState = 'disconnected';
             state.isReady = false;
+            state.lastSocketCreatedAt = 0; // Reset cooldown
+
+            // Clear manual disconnect flag for new session
+            state.manualDisconnect = false;
 
             // Reinitialize to get new QR
             await this.initializeSocket(tenantId);
@@ -662,6 +713,9 @@ class TenantSocketManager {
         // Set manual disconnect flag FIRST to prevent auto-reconnect
         state.manualDisconnect = true;
 
+        // Cancel any pending reconnect timers
+        this.cancelReconnectTimer(tenantId);
+
         if (state.socket) {
             try {
                 await state.socket.logout();
@@ -674,6 +728,9 @@ class TenantSocketManager {
         state.isReady = false;
         state.pairingState = 'disconnected';
         state.qrCode = null;
+        state.lastError = null;
+        state.qrRefreshCount = 0;
+        state.reconnectAttempts = 0;
 
         return { ok: true };
     }
@@ -684,6 +741,11 @@ class TenantSocketManager {
     async clearSession(tenantId: string): Promise<{ ok: boolean }> {
         logger.info({ tenantId }, 'Clearing session auth...');
         const state = this.getOrCreateState(tenantId);
+
+        // Ensure socket is fully cleaned up before clearing auth
+        if (state.socket) {
+            this.cleanupSocket(tenantId);
+        }
 
         // Delete auth directory contents
         this.clearTenantAuth(tenantId);
@@ -697,6 +759,9 @@ class TenantSocketManager {
         state.lastDisconnectReason = null;
         state.qrCode = null;
         state.lastQrAt = null;
+        state.qrRefreshCount = 0;
+        state.reconnectAttempts = 0;
+        state.lastSocketCreatedAt = 0; // Reset cooldown for fresh start
 
         return { ok: true };
     }
@@ -719,6 +784,14 @@ class TenantSocketManager {
             // Clear manual disconnect flag
             state.manualDisconnect = false;
             state.reconnectAttempts = 0;
+            state.qrRefreshCount = 0;
+            state.lastError = null;
+
+            // Reset cooldown so initializeSocket doesn't skip
+            state.lastSocketCreatedAt = 0;
+
+            // Cancel any pending timers from previous session
+            this.cancelReconnectTimer(tenantId);
 
             // Initialize socket (will generate new QR)
             await this.initializeSocket(tenantId);
